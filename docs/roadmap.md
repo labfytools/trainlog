@@ -2,7 +2,7 @@
 
 ## Gate 0 — Project contract
 
-Status: IN PROGRESS
+Status: VALIDATION PENDING — REVIEW #1
 
 Deliverables:
 
@@ -12,13 +12,21 @@ Deliverables:
 - coding-style documentation;
 - exchange-format v1 draft;
 - JSON Schema draft;
-- valid example fixture.
+- valid example fixture;
+- semantic validator;
+- positive and negative fixture suite;
+- Gate 0 review report.
 
 Exit criteria:
 
 - documentation reviewed;
-- JSON example validates against the schema;
+- JSON example validates;
+- valid fixtures are accepted;
+- invalid fixtures are rejected;
+- semantic invariants are documented;
 - repository clean after commit.
+
+Gate 0 is not PASS until the review #1 validation commands pass in the canonical working tree and the resulting commit is pushed.
 
 ## Gate 1 — Exchange format v1 freeze
 
@@ -31,13 +39,16 @@ Deliverables:
 - rest representation;
 - body weight;
 - measurement list;
-- unknown-field policy;
-- invalid fixture suite.
+- strict unknown-field policy;
+- valid fixture suite;
+- invalid fixture suite;
+- stable semantic-validation contract.
 
 Exit criteria:
 
 - `TRAINLOG_FORMAT_V1=FROZEN`;
 - schema tests pass;
+- semantic tests pass;
 - Android and TUI can implement against the contract without ambiguity.
 
 ## Gate 2 — TUI persistence core
@@ -61,10 +72,11 @@ Exit criteria:
 Deliverables:
 
 - ncursesw initialization;
-- theme module;
+- centralized color theme module;
 - dashboard shell;
 - exercise list;
 - session history;
+- direct session entry;
 - import screen;
 - minimum-terminal fallback.
 

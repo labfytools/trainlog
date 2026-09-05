@@ -1,0 +1,32 @@
+{
+  "format": "trainlog",
+  "version": 1,
+  "exercises": [
+    {
+      "exercise_id": "plank",
+      "name": "Gainage ventral"
+    }
+  ],
+  "session": {
+    "session_id": "20260905-190000-active1",
+    "started_at": "2026-09-05T19:00:00+02:00",
+    "exercises": [
+      {
+        "exercise_id": "plank",
+        "rest_seconds": 60,
+        "target": {
+          "sets": 3,
+          "duration_seconds": 45
+        },
+        "sets": [
+          {
+            "duration_seconds": 45
+          },
+          {
+            "duration_seconds": 38
+          }
+        ]
+      }
+    ]
+  }
+}

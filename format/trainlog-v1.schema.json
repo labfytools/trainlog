@@ -34,6 +34,12 @@
       "maxLength": 128,
       "pattern": "^[a-z0-9][a-z0-9_-]*$"
     },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
     "exerciseCatalogEntry": {
       "type": "object",
       "additionalProperties": false,
@@ -72,16 +78,26 @@
           "maximum": 5000
         }
       },
-      "anyOf": [
+      "oneOf": [
         {
           "required": [
             "reps"
-          ]
+          ],
+          "not": {
+            "required": [
+              "duration_seconds"
+            ]
+          }
         },
         {
           "required": [
             "duration_seconds"
-          ]
+          ],
+          "not": {
+            "required": [
+              "reps"
+            ]
+          }
         }
       ]
     },
@@ -113,16 +129,26 @@
           "maximum": 5000
         }
       },
-      "anyOf": [
+      "oneOf": [
         {
           "required": [
             "reps"
-          ]
+          ],
+          "not": {
+            "required": [
+              "duration_seconds"
+            ]
+          }
         },
         {
           "required": [
             "duration_seconds"
-          ]
+          ],
+          "not": {
+            "required": [
+              "reps"
+            ]
+          }
         }
       ]
     },
@@ -160,6 +186,7 @@
     "measurements": {
       "type": "object",
       "additionalProperties": false,
+      "minProperties": 1,
       "properties": {
         "waist_cm": {
           "type": "number",
@@ -214,14 +241,11 @@
       "required": [
         "session_id",
         "started_at",
-        "ended_at",
         "exercises"
       ],
       "properties": {
         "session_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+          "$ref": "#/$defs/sessionId"
         },
         "started_at": {
           "type": "string",

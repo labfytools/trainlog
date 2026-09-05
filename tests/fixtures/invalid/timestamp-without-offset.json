@@ -1,0 +1,40 @@
+{
+  "format": "trainlog",
+  "version": 1,
+  "exercises": [
+    {
+      "exercise_id": "leg_press",
+      "name": "Presse à cuisses"
+    },
+    {
+      "exercise_id": "plank",
+      "name": "Gainage ventral"
+    }
+  ],
+  "session": {
+    "session_id": "fixture-session-1",
+    "started_at": "2026-09-05T18:00:00",
+    "ended_at": "2026-09-05T19:00:00+02:00",
+    "exercises": [
+      {
+        "exercise_id": "leg_press",
+        "rest_seconds": 60,
+        "target": {
+          "sets": 4,
+          "reps": 5,
+          "weight_kg": 80
+        },
+        "sets": [
+          {
+            "reps": 5,
+            "weight_kg": 80
+          },
+          {
+            "reps": 5,
+            "weight_kg": 80
+          }
+        ]
+      }
+    ]
+  }
+}

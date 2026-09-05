@@ -2,9 +2,16 @@
 
 ## 1. Status
 
-This document defines the initial Trainlog v1 exchange contract.
+This document defines the Trainlog v1 exchange contract draft.
 
-Until explicitly marked `FROZEN`, incompatible changes are allowed during early development.
+Current state:
+
+```text
+TRAINLOG_FORMAT_V1=DRAFT
+GATE_0=VALIDATION_PENDING
+```
+
+Incompatible changes are allowed until the format is explicitly marked `FROZEN`.
 
 Once frozen, incompatible changes require a new format version.
 
@@ -15,6 +22,10 @@ A Trainlog exchange document is:
 - JSON;
 - UTF-8;
 - one top-level JSON object.
+
+Unknown fields are rejected in v1.
+
+This strict rule is intentional: a misspelled or unsupported field must fail validation rather than be silently ignored.
 
 ## 3. Required top-level fields
 
@@ -37,17 +48,11 @@ trainlog
 
 ### `version`
 
-Integer schema version.
+Must equal integer `1`.
 
-For this document:
+## 4. Exercise catalog
 
-```text
-1
-```
-
-## 4. Exercise catalog entries
-
-Each exercise entry contains:
+Each catalog entry contains:
 
 ```json
 {
@@ -56,22 +61,44 @@ Each exercise entry contains:
 }
 ```
 
-### `exercise_id`
+### 4.1 Stable identity
 
-Stable identifier.
+`exercise_id` is the permanent machine identifier.
 
 Rules:
 
-- non-empty;
-- unique within the document;
-- treated as identity;
-- must not change merely because the display name changes.
+- ASCII lowercase identifier;
+- 1 to 128 characters;
+- allowed characters: `a-z`, `0-9`, `_`, `-`;
+- unique within one exchange document;
+- must not change merely because the visible name changes.
 
-### `name`
+The visible name is not the persistent identity.
 
-Human-readable display name.
+### 4.2 Display-name anti-duplication rule
 
-The TUI may update the local display name later without changing `exercise_id`.
+Two catalog entries must not have equivalent display names.
+
+For duplicate detection, implementations normalize names using this semantic algorithm:
+
+1. Unicode NFC normalization;
+2. remove leading and trailing whitespace;
+3. collapse each internal run of whitespace to one ASCII space;
+4. Unicode case folding.
+
+Example:
+
+```text
+"Presse   à cuisses"
+" presse à cuisses "
+"PRESSE À CUISSES"
+```
+
+are considered the same display name.
+
+This rule prevents accidental duplicate exercises while still allowing an exercise to be renamed without changing `exercise_id`.
+
+JSON Schema cannot express this normalization rule. It is mandatory semantic validation.
 
 ## 5. Session
 
@@ -79,13 +106,19 @@ Required fields:
 
 - `session_id`;
 - `started_at`;
-- `ended_at`;
 - `exercises`.
 
-Optional body fields may include:
+Optional fields:
 
+- `ended_at`;
 - `body_weight_kg`;
 - `measurements`.
+
+`ended_at` is optional because Trainlog may preserve an active or interrupted session.
+
+A completed Android export normally includes `ended_at`.
+
+The TUI must never invent an end timestamp for a session that does not have one.
 
 ## 6. Session identifier
 
@@ -95,25 +128,35 @@ Example:
 20260905-183412-a84c
 ```
 
-The exact generation algorithm is implementation-defined in v1.
+Rules:
 
-The invariant is uniqueness.
+- 1 to 128 characters;
+- starts with an ASCII alphanumeric character;
+- remaining characters are ASCII alphanumeric, `_`, or `-`;
+- treated as an opaque unique identifier.
 
-The TUI must enforce uniqueness at import.
+The generation algorithm is implementation-defined in v1.
+
+The TUI enforces uniqueness in SQLite.
+
+Repeated import of the same `session_id` is idempotent.
 
 ## 7. Timestamps
 
-Timestamps use ISO 8601 with an explicit UTC offset.
+Timestamps use RFC 3339 / ISO 8601 date-time syntax with an explicit UTC offset.
 
-Example:
+Examples:
 
 ```text
 2026-09-05T18:34:12+02:00
+2026-09-05T16:34:12Z
 ```
 
-The timezone offset is part of the serialized value.
+An offset-less timestamp is invalid.
 
-The TUI must not silently reinterpret a timestamp as local time without using the encoded offset.
+If `ended_at` is present, it must represent an instant strictly later than `started_at`.
+
+Chronological ordering is a semantic validation rule.
 
 ## 8. Workout exercise entry
 
@@ -137,83 +180,160 @@ Example:
 }
 ```
 
-The `target` object describes the intended work.
+`target` describes intended work.
 
-The `sets` array describes what was actually performed.
+`sets` describes actual performed work.
 
-These two concepts must remain distinct.
+The two concepts must remain distinct.
 
-## 9. Timed exercises
+The number of actual sets is deliberately allowed to differ from `target.sets`.
 
-Timed exercises such as planks use `duration_seconds`.
+This records failure, extra work, interrupted sessions, and manual corrections truthfully.
 
-Example:
+## 9. Repetition mode and timed mode
+
+Each workout exercise has exactly one target mode:
+
+- repetition mode: `reps`;
+- timed mode: `duration_seconds`.
+
+A target must not contain both.
+
+All actual sets for that exercise must use the same mode as the target.
+
+### Repetition example
 
 ```json
 {
-  "exercise_id": "plank",
-  "rest_seconds": 60,
   "target": {
-    "sets": 3,
-    "duration_seconds": 45
-  },
-  "sets": [
-    { "duration_seconds": 45 },
-    { "duration_seconds": 45 },
-    { "duration_seconds": 38 }
-  ]
-}
-```
-
-A set may represent repetitions or duration.
-
-The schema forbids an empty set object.
-
-## 10. Body measurements
-
-The initial v1 measurement object supports named measurements in centimeters.
-
-Example:
-
-```json
-{
-  "measurements": {
-    "waist_cm": 91.0,
-    "chest_cm": 104.0,
-    "left_arm_cm": 35.0,
-    "right_arm_cm": 35.0,
-    "left_thigh_cm": 58.0,
-    "right_thigh_cm": 57.0
+    "sets": 4,
+    "reps": 5
   }
 }
 ```
 
-The initial schema intentionally uses explicit field names rather than arbitrary free-form keys.
+### Timed example
 
-Additional measurements may be added before v1 is frozen.
+```json
+{
+  "target": {
+    "sets": 3,
+    "duration_seconds": 45
+  }
+}
+```
 
-## 11. Idempotent import
+The schema rejects a set or target containing both `reps` and `duration_seconds`.
 
-The TUI must treat `session_id` as a uniqueness key.
+The target/actual mode-match rule is semantic validation.
 
-If a session has already been imported:
+## 10. Load
+
+`weight_kg` represents external load in kilograms.
+
+It is optional because some exercises are bodyweight or duration-only exercises.
+
+When supplied, actual-set load is recorded per set so a session can truthfully represent load changes between sets.
+
+## 11. Rest
+
+`rest_seconds` is the planned rest duration after sets for the workout exercise.
+
+Example:
+
+```text
+60
+```
+
+means one minute.
+
+v1 does not record measured rest duration per individual set.
+
+That may be introduced only by an additive compatible extension before freeze or a later format version after freeze.
+
+## 12. Body weight
+
+`body_weight_kg` is optional and uses kilograms.
+
+It represents body weight associated with the session.
+
+Standalone body-weight observations outside a workout session are a TUI/database concern and do not require this session exchange object.
+
+## 13. Body measurements
+
+Supported v1 measurements use centimeters:
+
+- `waist_cm`;
+- `chest_cm`;
+- `shoulders_cm`;
+- `left_arm_cm`;
+- `right_arm_cm`;
+- `left_thigh_cm`;
+- `right_thigh_cm`;
+- `left_calf_cm`;
+- `right_calf_cm`.
+
+If `measurements` is present, it must contain at least one measurement.
+
+Additional measurements may still be added before v1 is frozen.
+
+## 14. Catalog references
+
+Every `session.exercises[*].exercise_id` must reference an entry present in the top-level `exercises` catalog.
+
+This permits Android to introduce a new exercise safely during import.
+
+An unknown reference makes the document invalid.
+
+JSON Schema cannot express this cross-reference rule. It is mandatory semantic validation.
+
+## 15. Duplicate workout exercise entries
+
+A session must not contain the same `exercise_id` more than once.
+
+All performed sets for one exercise belong to its single workout entry.
+
+This keeps analysis and editing deterministic.
+
+## 16. Idempotent import
+
+The TUI treats `session_id` as a uniqueness key.
+
+If the session is already present:
 
 - do not create another session;
-- do not duplicate its sets;
+- do not duplicate sets;
+- do not partially merge the repeated document;
 - report that the session already exists.
 
-## 12. New exercises
+Database constraints are the final anti-duplication barrier.
 
-When Android exports a session containing an exercise unknown to the TUI:
+## 17. Validation layers
 
-1. the exercise must exist in the top-level `exercises` array;
-2. its `exercise_id` must be valid;
-3. its `name` must be non-empty;
-4. the TUI imports the catalog entry;
-5. the session may then reference that exercise.
+A valid Trainlog v1 document must pass both:
 
-## 13. Unknown fields
+1. JSON Schema validation;
+2. Trainlog semantic validation.
 
-Before v1 is frozen, implementations may reject unknown fields during development to catch mistakes early.
+Schema validation handles structure and primitive bounds.
 
-The final forward-compatibility policy will be frozen explicitly before release.
+Semantic validation handles rules such as:
+
+- normalized exercise-name uniqueness;
+- exercise identifier uniqueness;
+- catalog-reference integrity;
+- duplicate workout exercise rejection;
+- target/actual mode consistency;
+- timestamp chronology.
+
+Both Android export and TUI import must eventually implement the same semantic contract.
+
+## 18. Freeze policy
+
+`TRAINLOG_FORMAT_V1` must not be marked `FROZEN` until:
+
+- all v1 fields are reviewed;
+- valid fixtures pass;
+- invalid fixtures fail for the intended reason;
+- Android and TUI requirements contain no format ambiguity;
+- the semantic validator contract is stable.
