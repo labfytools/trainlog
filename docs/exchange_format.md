@@ -4,9 +4,10 @@
 
 ```text
 GATE_0=PASS
-GATE_1_REVIEW_01=IMPLEMENTED
-GATE_1=VALIDATION_PENDING
-TRAINLOG_FORMAT_V1=DRAFT
+GATE_1_REVIEW_01=PASS
+GATE_1_REVIEW_02=PASS
+GATE_1=PASS
+TRAINLOG_FORMAT_V1=FROZEN
 ```
 
 This document defines the proposed final Trainlog v1 exchange contract.
@@ -475,11 +476,15 @@ Gate 1 may freeze v1 only after:
 - the schema and semantic contract contain no known ambiguity;
 - the reviewed commit is pushed and mirrored.
 
-Until then:
+Gate 1 validation and mirrored review completed successfully.
+
+The exchange format is now frozen:
 
 ```text
-TRAINLOG_FORMAT_V1=DRAFT
+TRAINLOG_FORMAT_V1=FROZEN
 ```
+
+Any incompatible semantic or structural change requires a new exchange-format version.
 ## 23. Generated identifier policy
 
 The wire format treats `exercise_id` and `session_id` as opaque identifiers satisfying their defined syntax.

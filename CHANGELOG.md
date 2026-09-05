@@ -26,11 +26,11 @@ The project uses a simple pre-release changelog during early development.
 ### Changed
 
 - Gate 0 project contract is complete.
-- Gate 1 remains active pending review #2 validation.
+- Gate 1 completed and Trainlog exchange format v1 frozen.
 - Actual repetition count may be zero for a failed attempt.
 - Planned exercises may contain zero actual sets.
 - Top-level exercise metadata must exactly match session exercise references.
 - Assistance kilograms have distinct semantics from external resistance.
 - Different exercise IDs with equivalent normalized names are hard import conflicts.
 - Same exercise ID with incompatible tracking mode is a hard import conflict.
-- `TRAINLOG_FORMAT_V1` remains draft pending Gate 1 closure.
+- `TRAINLOG_FORMAT_V1=FROZEN`; incompatible changes require a new format version.

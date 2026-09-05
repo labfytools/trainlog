@@ -25,15 +25,22 @@ ebd4316ed68c58598a471e567edf13455d00f92b
 
 ## Gate 1 — Exchange format v1 freeze
 
-Status: VALIDATION PENDING — REVIEW #2
+Status: PASS
 
-Canonical state:
+Canonical result:
 
 ```text
-GATE_1_REVIEW_01=IMPLEMENTED
-GATE_1_REVIEW_02=IMPLEMENTED
-GATE_1=VALIDATION_PENDING
-TRAINLOG_FORMAT_V1=DRAFT
+GATE_1_REVIEW_01=PASS
+GATE_1_REVIEW_02=PASS
+GATE_1=PASS
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+Reviewed commits:
+
+```text
+9d9a9223a0c46df72f5c3ab208107c0ac6698438
+dfd6717cb7978d009670f1a49029c62c9154af55
 ```
 
 Review #1 defined:
@@ -55,7 +62,7 @@ Review #2 closes:
 - different-ID/same-name anti-duplicate conflicts;
 - atomic catalog reconciliation.
 
-Exit criteria:
+Exit criteria satisfied before closure:
 
 - `python tools/validate_json.py` passes;
 - `python tools/validate_import_contract.py` passes;
@@ -63,8 +70,11 @@ Exit criteria:
 - Android documentation aligned;
 - TUI documentation aligned;
 - both review commits pushed to Forgejo and GitHub;
-- mirrored review passes;
-- closure sets `TRAINLOG_FORMAT_V1=FROZEN`.
+- GitHub mirror read back and reviewed.
+
+Gate 1 is closed.
+
+Gate 2 is now the active gate.
 
 ## Gate 2 — TUI persistence core
 
