@@ -480,3 +480,89 @@ Until then:
 ```text
 TRAINLOG_FORMAT_V1=DRAFT
 ```
+## 23. Generated identifier policy
+
+The wire format treats `exercise_id` and `session_id` as opaque identifiers satisfying their defined syntax.
+
+Official Trainlog implementations that create new identifiers must generate random UUID version 4 values.
+
+Generated exercise identifiers use:
+
+```text
+ex_<uuid-v4>
+```
+
+Generated session identifiers use:
+
+```text
+se_<uuid-v4>
+```
+
+Example:
+
+```text
+ex_550e8400-e29b-41d4-a716-446655440000
+se_550e8400-e29b-41d4-a716-446655440000
+```
+
+Importers accept any identifier valid under the v1 schema; they must not require that legacy or externally created IDs follow the UUID generation convention.
+
+The generation rule exists to prevent collisions when Android and TUI can both create exercises independently.
+
+## 24. Local catalog reconciliation
+
+Document validity and local importability are separate concepts.
+
+For each incoming exercise, the TUI reconciles against the local canonical catalog before the import transaction commits.
+
+### Same ID, same tracking mode
+
+Reuse the existing exercise.
+
+If the normalized display name differs, import is allowed but a non-fatal metadata warning is surfaced.
+
+The canonical local name is not silently changed.
+
+### Same ID, different tracking mode
+
+Reject the entire session import.
+
+A repetition identity and duration identity are semantically incompatible.
+
+### Different ID, equivalent normalized name
+
+Reject the entire session import as an identity conflict.
+
+Trainlog must not silently:
+
+- create a duplicate;
+- merge identities;
+- rewrite historical identifiers.
+
+The user must explicitly reconcile the conflict.
+
+### New ID, unique normalized name
+
+Create the exercise as part of the same database transaction as the session import.
+
+### Atomicity
+
+Any hard catalog conflict aborts the entire import.
+
+No partial session or exercise data may remain.
+
+## 25. Gate 1 executable import contract
+
+Before the production importer exists, catalog reconciliation is specified by:
+
+```text
+tests/contract/catalog-import-cases.json
+tools/validate_import_contract.py
+```
+
+Canonical validation requires both:
+
+```bash
+python tools/validate_json.py
+python tools/validate_import_contract.py
+```

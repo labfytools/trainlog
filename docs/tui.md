@@ -144,3 +144,47 @@ Numeric input is validated before persistent state is committed.
 Invalid input must never partially mutate a saved session.
 
 Imports use full validation before the database transaction commits.
+## 14. Catalog reconciliation during import
+
+Before creating any exercise or session rows, the TUI classifies incoming exercise metadata against the canonical local catalog.
+
+Rules:
+
+```text
+same ID + same mode + same normalized name
+    -> reuse
+
+same ID + same mode + different name
+    -> reuse + metadata warning
+
+same ID + different mode
+    -> reject entire import
+
+different ID + same normalized name
+    -> reject entire import
+
+new ID + unique normalized name
+    -> create inside import transaction
+```
+
+The TUI must never silently merge different exercise IDs merely because names match.
+
+The TUI must never create two identities with equivalent normalized display names.
+
+Any hard catalog conflict aborts the complete session import transaction.
+
+## 15. Generated identifiers
+
+When the TUI creates a new exercise directly, it generates:
+
+```text
+ex_<random UUID v4>
+```
+
+When the TUI creates a new session directly, it generates:
+
+```text
+se_<random UUID v4>
+```
+
+The database stores these identifiers as opaque stable text.

@@ -15,17 +15,22 @@ The project uses a simple pre-release changelog during early development.
 - Positive and negative exchange-format fixtures.
 - Gate 0 review and closure records.
 - Gate 1 exchange-format freeze-candidate review.
+- Gate 1 exercise-identity collision review.
 - Stable exercise tracking modes.
 - Explicit load modes for no load, external resistance, and assistance.
 - Optional bounded session and exercise notes.
 - Extended body measurement list.
+- Executable local catalog reconciliation contract.
+- UUIDv4 generation policy for new Trainlog exercise and session IDs.
 
 ### Changed
 
 - Gate 0 project contract is complete.
-- Gate 1 is the active format-freeze gate.
+- Gate 1 remains active pending review #2 validation.
 - Actual repetition count may be zero for a failed attempt.
 - Planned exercises may contain zero actual sets.
-- Top-level exercise metadata must exactly match the session exercise references.
+- Top-level exercise metadata must exactly match session exercise references.
 - Assistance kilograms have distinct semantics from external resistance.
-- `TRAINLOG_FORMAT_V1` remains draft pending Gate 1 validation and mirrored review.
+- Different exercise IDs with equivalent normalized names are hard import conflicts.
+- Same exercise ID with incompatible tracking mode is a hard import conflict.
+- `TRAINLOG_FORMAT_V1` remains draft pending Gate 1 closure.

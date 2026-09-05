@@ -178,3 +178,30 @@ Initial Android versions do not need:
 - muscle classification;
 - distance/cardio metrics;
 - per-set rest measurement.
+## 13. Identifier generation
+
+When Android creates a new exercise, it generates:
+
+```text
+ex_<random UUID v4>
+```
+
+When Android creates a new session, it generates:
+
+```text
+se_<random UUID v4>
+```
+
+Display-name slugs must not be used as persistent identifiers.
+
+The visible exercise name remains independent from identity.
+
+## 14. Catalog conflict behavior
+
+Android must prevent duplicate normalized names inside its own local catalog.
+
+A valid Android export can still conflict with an independently edited TUI catalog.
+
+The TUI owns final reconciliation.
+
+Android must not assume that a matching display name means two different IDs may be silently merged.

@@ -111,3 +111,28 @@ Before every meaningful push:
 4. run `git diff --check`;
 5. inspect `git status --short`;
 6. review documentation changes.
+## 10. Catalog reconciliation contract
+
+Before the C17 importer exists, Gate 1 defines local catalog merge behavior through an executable Python specification.
+
+Run:
+
+```bash
+python tools/validate_import_contract.py
+```
+
+Canonical cases cover:
+
+- exact existing exercise reuse;
+- same identity with renamed display text;
+- same identity with incompatible tracking mode;
+- different identities with equivalent normalized names;
+- new unique exercise creation.
+
+The full Gate 1 validation command is:
+
+```bash
+python tools/validate_json.py
+python tools/validate_import_contract.py
+git diff --check
+```

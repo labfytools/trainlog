@@ -11,16 +11,6 @@ GATE_0=PASS
 GATE_0_REVIEW_01=PASS
 ```
 
-Gate 0 established:
-
-- repository structure;
-- development contract;
-- architecture documentation;
-- coding-style rules;
-- exchange-format draft;
-- structural and semantic validation;
-- positive and negative fixture strategy.
-
 Reviewed hardening commit:
 
 ```text
@@ -35,43 +25,46 @@ ebd4316ed68c58598a471e567edf13455d00f92b
 
 ## Gate 1 — Exchange format v1 freeze
 
-Status: VALIDATION PENDING — REVIEW #1
+Status: VALIDATION PENDING — REVIEW #2
 
 Canonical state:
 
 ```text
 GATE_1_REVIEW_01=IMPLEMENTED
+GATE_1_REVIEW_02=IMPLEMENTED
 GATE_1=VALIDATION_PENDING
 TRAINLOG_FORMAT_V1=DRAFT
 ```
 
-Review #1 freezes the proposed model for:
+Review #1 defined:
 
-- exercise identity;
-- stable repetition/duration tracking mode;
-- session identity;
-- session ordering;
-- external/none/assistance load semantics;
-- planned versus actual sets;
-- zero-repetition failed attempts;
-- planned exercises with zero actual sets;
-- planned rest;
-- body weight;
-- final v1 body-measurement field list;
-- optional notes;
-- strict catalog completeness;
-- strict unknown-field behavior.
+- exercise identity and tracking mode;
+- session identity and ordering;
+- load semantics;
+- target versus actual work;
+- rest;
+- body weight and measurements;
+- notes;
+- strict document validation.
+
+Review #2 closes:
+
+- official UUIDv4 identifier generation;
+- Android/TUI catalog collision handling;
+- hard tracking-mode identity conflicts;
+- different-ID/same-name anti-duplicate conflicts;
+- atomic catalog reconciliation.
 
 Exit criteria:
 
-- all valid fixtures accepted;
-- all invalid fixtures rejected for the intended reason;
+- `python tools/validate_json.py` passes;
+- `python tools/validate_import_contract.py` passes;
+- `git diff --check` passes;
 - Android documentation aligned;
 - TUI documentation aligned;
-- schema and semantic validator aligned;
-- review commit pushed to Forgejo and GitHub;
+- both review commits pushed to Forgejo and GitHub;
 - mirrored review passes;
-- `TRAINLOG_FORMAT_V1=FROZEN`.
+- closure sets `TRAINLOG_FORMAT_V1=FROZEN`.
 
 ## Gate 2 — TUI persistence core
 
@@ -80,7 +73,9 @@ Deliverables:
 - Meson C17 project;
 - SQLite open/create;
 - schema versioning;
+- UUIDv4 identity generation;
 - exercise catalog;
+- atomic catalog reconciliation;
 - session import transaction;
 - idempotent import tests.
 
@@ -113,6 +108,7 @@ Exit criteria:
 Deliverables:
 
 - local exercise catalog;
+- UUIDv4 identity generation;
 - start/stop session timestamps;
 - target entry;
 - actual-set entry;

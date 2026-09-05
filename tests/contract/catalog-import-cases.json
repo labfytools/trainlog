@@ -1,0 +1,86 @@
+[
+  {
+    "name": "same-id-same-name-same-mode",
+    "local": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
+    },
+    "incoming": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
+    },
+    "expected": "reuse"
+  },
+  {
+    "name": "same-id-renamed-same-mode",
+    "local": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
+    },
+    "incoming": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Presse jambes",
+      "tracking_mode": "reps"
+    },
+    "expected": "reuse_with_name_warning"
+  },
+  {
+    "name": "same-id-mode-conflict",
+    "local": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Gainage",
+      "tracking_mode": "reps"
+    },
+    "incoming": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Gainage",
+      "tracking_mode": "duration"
+    },
+    "expected": "reject_mode_conflict"
+  },
+  {
+    "name": "different-id-equivalent-name",
+    "local": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
+    },
+    "incoming": {
+      "exercise_id": "ex_22222222-2222-4222-8222-222222222222",
+      "name": "  PRESSE   À CUISSES ",
+      "tracking_mode": "reps"
+    },
+    "expected": "reject_name_identity_conflict"
+  },
+  {
+    "name": "different-id-equivalent-name-different-mode",
+    "local": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Gainage",
+      "tracking_mode": "reps"
+    },
+    "incoming": {
+      "exercise_id": "ex_22222222-2222-4222-8222-222222222222",
+      "name": " gainage ",
+      "tracking_mode": "duration"
+    },
+    "expected": "reject_name_identity_conflict"
+  },
+  {
+    "name": "new-id-unique-name",
+    "local": {
+      "exercise_id": "ex_11111111-1111-4111-8111-111111111111",
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
+    },
+    "incoming": {
+      "exercise_id": "ex_22222222-2222-4222-8222-222222222222",
+      "name": "Gainage ventral",
+      "tracking_mode": "duration"
+    },
+    "expected": "create"
+  }
+]
