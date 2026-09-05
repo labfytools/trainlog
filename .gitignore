@@ -1,0 +1,34 @@
+# Build directories
+build/
+builddir/
+meson-logs/
+meson-private/
+
+# Android / Gradle
+.gradle/
+local.properties
+**/build/
+
+# Editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+
+# Local user data
+data/
+exports/
+
+# Python helpers
+__pycache__/
+*.pyc
+
+# Temporary files
+*.tmp
+*.bak
