@@ -11,9 +11,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <curses.h>
 
+#include "trainlog/bodyviz.h"
 #include "trainlog/catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/id.h"
@@ -26,6 +28,9 @@
 #define MAX_SESSIONS 128U
 #define MAX_WEIGHT_POINTS 256U
 
+#define MAX_BODY_METRIC_POINTS 256U
+
+
 /* TRAINLOG_TUI_V02_POLISH */
 
 typedef enum DashboardAction {
@@ -35,6 +40,30 @@ typedef enum DashboardAction {
     DASHBOARD_BODY,
     DASHBOARD_QUIT
 } DashboardAction;
+
+/* TRAINLOG_DASHBOARD_FORWARD_DECLARATIONS */
+static DashboardAction screen_dashboard(
+    TrainlogDatabase *database
+);
+
+static void screen_exercises(
+    TrainlogDatabase *database
+);
+
+static void dashboard_panel(
+    int top,
+    int left,
+    int bottom,
+    int right,
+    const char *label
+);
+
+static void dashboard_ascii_header(void);
+
+static void draw_dashboard_body_graph(
+    TrainlogDatabase *database
+);
+
 
 static void draw_shell(const char *heading, const char *footer)
 {
@@ -209,214 +238,6 @@ static bool prompt_optional_double(
     }
 }
 
-static void draw_weight_sparkline(
-    int row,
-    const TrainlogWeightPoint *points,
-    size_t count
-)
-{
-    double minimum;
-    double maximum;
-    size_t start;
-    size_t index;
-    int width;
-    int height = 6;
-
-    if (count == 0U) {
-        mvprintw(row, 4, "Aucune donnée de poids.");
-        return;
-    }
-
-    width = COLS - 12;
-    if (width < 10) {
-        return;
-    }
-
-    start = count > (size_t)width
-        ? count - (size_t)width
-        : 0U;
-
-    minimum = points[start].body_weight_kg;
-    maximum = points[start].body_weight_kg;
-
-    for (index = start + 1U; index < count; ++index) {
-        if (points[index].body_weight_kg < minimum) {
-            minimum = points[index].body_weight_kg;
-        }
-        if (points[index].body_weight_kg > maximum) {
-            maximum = points[index].body_weight_kg;
-        }
-    }
-
-    /*
-     * A flat series has no useful vertical scale. Showing the same value at
-     * both ends of the axis is visually misleading, so render one centered
-     * reference value instead.
-     */
-    if (maximum == minimum) {
-        int graph_row = row + (height / 2);
-
-        mvprintw(graph_row, 2, "%.1f kg", minimum);
-
-        attron(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
-
-        for (index = start; index < count; ++index) {
-            int x = 10 + (int)(index - start);
-
-            if (x < COLS - 2) {
-                mvaddch(graph_row, x, (chtype)'*');
-            }
-        }
-
-        attroff(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
-        return;
-    }
-
-    mvprintw(row, 2, "%.1f", maximum);
-    mvprintw(row + height - 1, 2, "%.1f", minimum);
-
-    attron(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
-
-    for (index = start; index < count; ++index) {
-        double ratio =
-            (points[index].body_weight_kg - minimum) /
-            (maximum - minimum);
-        int y = row + height - 1 -
-            (int)(ratio * (double)(height - 1));
-        int x = 8 + (int)(index - start);
-
-        if (y < row) {
-            y = row;
-        }
-        if (y > row + height - 1) {
-            y = row + height - 1;
-        }
-
-        if (x < COLS - 2) {
-            mvaddch(y, x, (chtype)'*');
-        }
-    }
-
-    attroff(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
-}
-
-static DashboardAction screen_dashboard(TrainlogDatabase *database)
-{
-    static const char *const labels[] = {
-        "Nouvelle séance",
-        "Historique",
-        "Exercices",
-        "Corps / mensurations"
-    };
-    size_t session_count = 0U;
-    size_t exercise_count = 0U;
-    TrainlogWeightPoint points[MAX_WEIGHT_POINTS];
-    size_t weight_count = 0U;
-    int selected = 0;
-
-    for (;;) {
-        int key;
-        int index;
-
-        (void)trainlog_database_session_count(database, &session_count);
-        (void)trainlog_database_exercise_count(database, &exercise_count);
-        (void)trainlog_database_list_weight_points(
-            database,
-            points,
-            MAX_WEIGHT_POINTS,
-            &weight_count
-        );
-
-        draw_shell(
-            "TRAINLOG — Dashboard",
-            "↑↓ naviguer  Entrée ouvrir  F1 séance  F2 historique  F3 exercices  F4 corps  q quitter"
-        );
-
-        mvprintw(
-            3,
-            4,
-            "Séances : %-6zu   Exercices : %-6zu",
-            session_count,
-            exercise_count
-        );
-
-        if (weight_count > 0U) {
-            double latest = points[weight_count - 1U].body_weight_kg;
-            double delta = latest - points[0].body_weight_kg;
-
-            mvprintw(
-                4,
-                4,
-                "Poids : %.1f kg   évolution enregistrée : %+.1f kg",
-                latest,
-                delta
-            );
-        } else {
-            mvprintw(4, 4, "Poids : aucune donnée");
-        }
-
-        draw_weight_sparkline(6, points, weight_count);
-
-        for (index = 0; index < 4; ++index) {
-            int menu_row = 13 + index;
-
-            if (index == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
-                );
-            }
-
-            mvprintw(
-                menu_row,
-                4,
-                " %d  %-28s ",
-                index + 1,
-                labels[index]
-            );
-
-            if (index == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
-                );
-            }
-        }
-
-        refresh();
-        key = getch();
-
-        switch (key) {
-        case KEY_UP:
-            selected = selected > 0 ? selected - 1 : 3;
-            break;
-        case KEY_DOWN:
-            selected = selected < 3 ? selected + 1 : 0;
-            break;
-        case '\n':
-        case KEY_ENTER:
-            return (DashboardAction)selected;
-        case KEY_F(1):
-        case '1':
-            return DASHBOARD_NEW_SESSION;
-        case KEY_F(2):
-        case '2':
-            return DASHBOARD_HISTORY;
-        case KEY_F(3):
-        case '3':
-            return DASHBOARD_EXERCISES;
-        case KEY_F(4):
-        case '4':
-            return DASHBOARD_BODY;
-        case 'q':
-        case 'Q':
-            return DASHBOARD_QUIT;
-        default:
-            break;
-        }
-    }
-}
-
 static void screen_exercises(TrainlogDatabase *database)
 {
     TrainlogExercise exercises[MAX_EXERCISES];
@@ -448,7 +269,10 @@ static void screen_exercises(TrainlogDatabase *database)
 
         if (count > 0U &&
             selected >= (size_t)visible_rows) {
-            top = selected - (size_t)visible_rows + 1U;
+            top =
+                selected -
+                (size_t)visible_rows +
+                1U;
         }
 
         draw_shell(
@@ -470,7 +294,9 @@ static void screen_exercises(TrainlogDatabase *database)
             if (absolute == selected) {
                 attron(
                     A_REVERSE |
-                    trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_ACCENT
+                    )
                 );
             }
 
@@ -479,7 +305,8 @@ static void screen_exercises(TrainlogDatabase *database)
                 4,
                 " %-42s [%s] ",
                 exercises[absolute].name,
-                exercises[absolute].tracking_mode == TRAINLOG_TRACKING_REPS
+                exercises[absolute].tracking_mode ==
+                    TRAINLOG_TRACKING_REPS
                     ? "reps"
                     : "durée"
             );
@@ -487,7 +314,9 @@ static void screen_exercises(TrainlogDatabase *database)
             if (absolute == selected) {
                 attroff(
                     A_REVERSE |
-                    trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_ACCENT
+                    )
                 );
             }
         }
@@ -500,16 +329,26 @@ static void screen_exercises(TrainlogDatabase *database)
         }
 
         if (count > 0U && key == KEY_UP) {
-            selected = selected > 0U ? selected - 1U : count - 1U;
-        } else if (count > 0U && key == KEY_DOWN) {
-            selected = selected + 1U < count ? selected + 1U : 0U;
+            selected =
+                selected > 0U
+                    ? selected - 1U
+                    : count - 1U;
+        } else if (count > 0U &&
+                   key == KEY_DOWN) {
+            selected =
+                selected + 1U < count
+                    ? selected + 1U
+                    : 0U;
         } else if (key == 'a') {
             char name[TRAINLOG_NAME_MAX + 1U];
             int mode = 1;
             TrainlogExercise created;
             TrainlogStatus status;
 
-            draw_shell("Nouvel exercice", "Entrée valide chaque champ");
+            draw_shell(
+                "Nouvel exercice",
+                "Entrée valide chaque champ"
+            );
 
             if (!prompt_text(
                     4,
@@ -532,21 +371,33 @@ static void screen_exercises(TrainlogDatabase *database)
                 continue;
             }
 
-            status = trainlog_catalog_create_exercise(
-                database,
-                name,
-                mode == 1
-                    ? TRAINLOG_TRACKING_REPS
-                    : TRAINLOG_TRACKING_DURATION,
-                &created
-            );
+            status =
+                trainlog_catalog_create_exercise(
+                    database,
+                    name,
+                    mode == 1
+                        ? TRAINLOG_TRACKING_REPS
+                        : TRAINLOG_TRACKING_DURATION,
+                    &created
+                );
 
             if (status == TRAINLOG_STATUS_OK) {
-                status_line("✓ Exercice ajouté.", TRAINLOG_COLOR_SUCCESS);
-            } else if (status == TRAINLOG_STATUS_CONFLICT) {
-                status_line("Doublon détecté.", TRAINLOG_COLOR_WARNING);
+                status_line(
+                    "✓ Exercice ajouté.",
+                    TRAINLOG_COLOR_SUCCESS
+                );
+            } else if (
+                status == TRAINLOG_STATUS_CONFLICT
+            ) {
+                status_line(
+                    "Doublon détecté.",
+                    TRAINLOG_COLOR_WARNING
+                );
             } else {
-                status_line("Impossible d'ajouter l'exercice.", TRAINLOG_COLOR_ERROR);
+                status_line(
+                    "Impossible d'ajouter l'exercice.",
+                    TRAINLOG_COLOR_ERROR
+                );
             }
 
             wait_key();
@@ -641,8 +492,6 @@ static bool choose_exercise(
 }
 
 /* TRAINLOG_DURATION_BODY_GRAPH_HELPERS */
-
-#define MAX_BODY_METRIC_POINTS 256U
 
 typedef struct TrainlogBodyMetricView {
     TrainlogBodyMetric metric;
@@ -1009,6 +858,1683 @@ static void add_body_observation(TrainlogDatabase *database)
     }
 
     wait_key();
+}
+
+/* TRAINLOG_GLOBAL_BODY_OVERLAY_HELPERS */
+
+#define MAX_GLOBAL_BODY_DATES \
+    (MAX_BODY_METRIC_POINTS * 14U)
+
+typedef struct TrainlogGlobalBodySeries {
+    TrainlogBodyMetricPoint points[MAX_BODY_METRIC_POINTS];
+    size_t count;
+    double baseline;
+    double latest_percent;
+    char symbol;
+    TrainlogColorRole role;
+} TrainlogGlobalBodySeries;
+
+static const char GLOBAL_BODY_SYMBOLS[] = {
+    'P', 'N', 'E', 'C', 'T', 'H', 'A',
+    'B', 'F', 'G', 'Q', 'R', 'M', 'D'
+};
+
+static const TrainlogColorRole GLOBAL_BODY_ROLES[] = {
+    TRAINLOG_COLOR_ACCENT,
+    TRAINLOG_COLOR_SUCCESS,
+    TRAINLOG_COLOR_WARNING,
+    TRAINLOG_COLOR_ERROR,
+    TRAINLOG_COLOR_GRAPH,
+    TRAINLOG_COLOR_MUTED,
+    TRAINLOG_COLOR_ACCENT,
+    TRAINLOG_COLOR_SUCCESS,
+    TRAINLOG_COLOR_WARNING,
+    TRAINLOG_COLOR_ERROR,
+    TRAINLOG_COLOR_GRAPH,
+    TRAINLOG_COLOR_MUTED,
+    TRAINLOG_COLOR_ACCENT,
+    TRAINLOG_COLOR_SUCCESS
+};
+
+static int global_date_compare(
+    const void *left,
+    const void *right
+)
+{
+    return strcmp(
+        (const char *)left,
+        (const char *)right
+    );
+}
+
+static bool global_date_add(
+    char dates[MAX_GLOBAL_BODY_DATES][TRAINLOG_TIMESTAMP_MAX + 1U],
+    size_t *date_count,
+    const char *value
+)
+{
+    size_t index;
+
+    if (dates == NULL ||
+        date_count == NULL ||
+        value == NULL) {
+        return false;
+    }
+
+    for (index = 0U; index < *date_count; ++index) {
+        if (strcmp(dates[index], value) == 0) {
+            return true;
+        }
+    }
+
+    if (*date_count >= MAX_GLOBAL_BODY_DATES) {
+        return false;
+    }
+
+    (void)snprintf(
+        dates[*date_count],
+        sizeof(dates[*date_count]),
+        "%s",
+        value
+    );
+
+    ++(*date_count);
+    return true;
+}
+
+static size_t global_date_index(
+    char dates[MAX_GLOBAL_BODY_DATES][TRAINLOG_TIMESTAMP_MAX + 1U],
+    size_t date_count,
+    const char *value
+)
+{
+    size_t low = 0U;
+    size_t high = date_count;
+
+    while (low < high) {
+        size_t middle =
+            low + ((high - low) / 2U);
+
+        int comparison =
+            strcmp(dates[middle], value);
+
+        if (comparison < 0) {
+            low = middle + 1U;
+        } else {
+            high = middle;
+        }
+    }
+
+    return low < date_count
+        ? low
+        : date_count - 1U;
+}
+
+static void global_plot_point(
+    int row,
+    int column,
+    char symbol,
+    TrainlogColorRole role
+)
+{
+    chtype current;
+    chtype character;
+
+    if (row < 0 ||
+        row >= LINES ||
+        column < 0 ||
+        column >= COLS) {
+        return;
+    }
+
+    current =
+        mvinch(row, column) &
+        A_CHARTEXT;
+
+    character =
+        (chtype)(unsigned char)symbol;
+
+    if (current != (chtype)' ' &&
+        current != (chtype)'.' &&
+        current != character) {
+        character = (chtype)'#';
+    }
+
+    attron(trainlog_theme_attribute(role));
+    mvaddch(row, column, character);
+    attroff(trainlog_theme_attribute(role));
+}
+
+static void global_plot_segment(
+    int x1,
+    int y1,
+    int x2,
+    int y2,
+    char symbol,
+    TrainlogColorRole role
+)
+{
+    int x;
+
+    if (x2 < x1) {
+        return;
+    }
+
+    if (x1 == x2) {
+        global_plot_point(
+            y2,
+            x2,
+            symbol,
+            role
+        );
+        return;
+    }
+
+    for (x = x1; x <= x2; ++x) {
+        int y =
+            y1 +
+            (((y2 - y1) * (x - x1)) /
+             (x2 - x1));
+
+        global_plot_point(
+            y,
+            x,
+            symbol,
+            role
+        );
+    }
+}
+
+static int normalized_graph_row(
+    double value,
+    double minimum,
+    double maximum,
+    int graph_top,
+    int graph_height
+)
+{
+    double ratio;
+    int row;
+
+    if (maximum <= minimum) {
+        return graph_top +
+            (graph_height / 2);
+    }
+
+    ratio =
+        (value - minimum) /
+        (maximum - minimum);
+
+    row =
+        graph_top +
+        graph_height -
+        1 -
+        (int)(
+            ratio *
+            (double)(graph_height - 1)
+        );
+
+    if (row < graph_top) {
+        row = graph_top;
+    }
+
+    if (row >
+        graph_top + graph_height - 1) {
+        row =
+            graph_top +
+            graph_height -
+            1;
+    }
+
+    return row;
+}
+
+static void draw_global_body_overlay(
+    TrainlogDatabase *database
+)
+{
+    static TrainlogGlobalBodySeries series[14];
+
+    static char dates[MAX_GLOBAL_BODY_DATES]
+        [TRAINLOG_TIMESTAMP_MAX + 1U];
+
+    const size_t metric_count =
+        sizeof(BODY_METRICS) /
+        sizeof(BODY_METRICS[0]);
+
+    size_t date_count = 0U;
+    size_t metric_index;
+    double minimum = 100.0;
+    double maximum = 100.0;
+    const int graph_top = 5;
+    const int graph_height = 5;
+    const int graph_left = 8;
+    int graph_width =
+        COLS - graph_left - 3;
+
+    (void)memset(
+        series,
+        0,
+        sizeof(series)
+    );
+
+    (void)memset(
+        dates,
+        0,
+        sizeof(dates)
+    );
+
+    for (metric_index = 0U;
+         metric_index < metric_count;
+         ++metric_index) {
+        TrainlogGlobalBodySeries *item =
+            &series[metric_index];
+
+        size_t point_index;
+
+        item->symbol =
+            GLOBAL_BODY_SYMBOLS[metric_index];
+
+        item->role =
+            GLOBAL_BODY_ROLES[metric_index];
+
+        if (trainlog_database_list_body_metric_points(
+                database,
+                BODY_METRICS[metric_index].metric,
+                item->points,
+                MAX_BODY_METRIC_POINTS,
+                &item->count
+            ) != TRAINLOG_STATUS_OK ||
+            item->count == 0U) {
+            continue;
+        }
+
+        item->baseline =
+            item->points[0].value;
+
+        (void)trainlog_body_percent_change(
+            item->baseline,
+            item->points[item->count - 1U].value,
+            &item->latest_percent
+        );
+
+        for (point_index = 0U;
+             point_index < item->count;
+             ++point_index) {
+            double normalized = 100.0;
+
+            (void)global_date_add(
+                dates,
+                &date_count,
+                item->points[point_index].observed_at
+            );
+
+            if (trainlog_body_index100(
+                    item->baseline,
+                    item->points[point_index].value,
+                    &normalized
+                ) == TRAINLOG_STATUS_OK) {
+                if (normalized < minimum) {
+                    minimum = normalized;
+                }
+
+                if (normalized > maximum) {
+                    maximum = normalized;
+                }
+            }
+        }
+    }
+
+    if (date_count == 0U) {
+        mvprintw(
+            4,
+            4,
+            "Aucune mensuration disponible pour la vue globale."
+        );
+        return;
+    }
+
+    if (graph_width < 10) {
+        return;
+    }
+
+    qsort(
+        dates,
+        date_count,
+        sizeof(dates[0]),
+        global_date_compare
+    );
+
+    mvprintw(
+        3,
+        4,
+        "Vue globale — première mesure de chaque série = 100"
+    );
+
+    if (minimum == maximum) {
+        minimum = 99.0;
+        maximum = 101.0;
+    }
+
+    mvprintw(
+        graph_top,
+        2,
+        "%.1f",
+        maximum
+    );
+
+    mvprintw(
+        graph_top + graph_height - 1,
+        2,
+        "%.1f",
+        minimum
+    );
+
+    if (100.0 >= minimum &&
+        100.0 <= maximum) {
+        int baseline_row =
+            normalized_graph_row(
+                100.0,
+                minimum,
+                maximum,
+                graph_top,
+                graph_height
+            );
+
+        int column;
+
+        attron(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        for (column = graph_left;
+             column <
+                graph_left + graph_width;
+             ++column) {
+            mvaddch(
+                baseline_row,
+                column,
+                (chtype)'.'
+            );
+        }
+
+        attroff(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+    }
+
+    for (metric_index = 0U;
+         metric_index < metric_count;
+         ++metric_index) {
+        TrainlogGlobalBodySeries *item =
+            &series[metric_index];
+
+        size_t point_index;
+        int previous_x = -1;
+        int previous_y = -1;
+
+        if (item->count == 0U) {
+            continue;
+        }
+
+        for (point_index = 0U;
+             point_index < item->count;
+             ++point_index) {
+            size_t date_index =
+                global_date_index(
+                    dates,
+                    date_count,
+                    item->points[point_index].observed_at
+                );
+
+            double normalized = 100.0;
+            int x;
+            int y;
+
+            if (trainlog_body_index100(
+                    item->baseline,
+                    item->points[point_index].value,
+                    &normalized
+                ) != TRAINLOG_STATUS_OK) {
+                continue;
+            }
+
+            if (date_count == 1U) {
+                x =
+                    graph_left +
+                    (graph_width / 2);
+            } else {
+                x =
+                    graph_left +
+                    (int)(
+                        (date_index *
+                         (size_t)(graph_width - 1)) /
+                        (date_count - 1U)
+                    );
+            }
+
+            y =
+                normalized_graph_row(
+                    normalized,
+                    minimum,
+                    maximum,
+                    graph_top,
+                    graph_height
+                );
+
+            if (previous_x >= 0 &&
+                previous_y >= 0) {
+                global_plot_segment(
+                    previous_x,
+                    previous_y,
+                    x,
+                    y,
+                    item->symbol,
+                    item->role
+                );
+            } else {
+                global_plot_point(
+                    y,
+                    x,
+                    item->symbol,
+                    item->role
+                );
+            }
+
+            previous_x = x;
+            previous_y = y;
+        }
+    }
+
+    {
+        size_t row_index = 0U;
+
+        for (metric_index = 0U;
+             metric_index < metric_count;
+             ++metric_index) {
+            TrainlogGlobalBodySeries *item =
+                &series[metric_index];
+
+            int column;
+            int row;
+
+            if (item->count == 0U) {
+                continue;
+            }
+
+            row =
+                11 +
+                (int)(row_index % 7U);
+
+            column =
+                row_index < 7U
+                    ? 4
+                    : (COLS / 2);
+
+            attron(
+                trainlog_theme_attribute(
+                    item->role
+                )
+            );
+
+            mvprintw(
+                row,
+                column,
+                "%c %-16s %+.1f%%",
+                item->symbol,
+                BODY_METRICS[metric_index].label,
+                item->latest_percent
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    item->role
+                )
+            );
+
+            ++row_index;
+        }
+    }
+}
+
+/* TRAINLOG_DASHBOARD_GRAPH_ONLY */
+
+/* TRAINLOG_DASHBOARD_12_MONTHS */
+
+#define DASHBOARD_MONTH_COUNT 12U
+
+typedef struct TrainlogDashboardMonth {
+    int year;
+    int month;
+} TrainlogDashboardMonth;
+
+typedef struct TrainlogDashboardMonthValue {
+    bool present;
+    double value;
+} TrainlogDashboardMonthValue;
+
+static bool dashboard_parse_year_month(
+    const char *timestamp,
+    int *year,
+    int *month
+)
+{
+    int parsed_year;
+    int parsed_month;
+
+    if (timestamp == NULL ||
+        year == NULL ||
+        month == NULL ||
+        strlen(timestamp) < 7U ||
+        timestamp[4] != '-' ||
+        timestamp[0] < '0' || timestamp[0] > '9' ||
+        timestamp[1] < '0' || timestamp[1] > '9' ||
+        timestamp[2] < '0' || timestamp[2] > '9' ||
+        timestamp[3] < '0' || timestamp[3] > '9' ||
+        timestamp[5] < '0' || timestamp[5] > '9' ||
+        timestamp[6] < '0' || timestamp[6] > '9') {
+        return false;
+    }
+
+    parsed_year =
+        ((timestamp[0] - '0') * 1000) +
+        ((timestamp[1] - '0') * 100) +
+        ((timestamp[2] - '0') * 10) +
+        (timestamp[3] - '0');
+
+    parsed_month =
+        ((timestamp[5] - '0') * 10) +
+        (timestamp[6] - '0');
+
+    if (parsed_year < 1 ||
+        parsed_month < 1 ||
+        parsed_month > 12) {
+        return false;
+    }
+
+    *year = parsed_year;
+    *month = parsed_month;
+    return true;
+}
+
+static long dashboard_month_key(
+    int year,
+    int month
+)
+{
+    return ((long)year * 12L) +
+        (long)(month - 1);
+}
+
+static void dashboard_month_from_key(
+    long key,
+    TrainlogDashboardMonth *output
+)
+{
+    long year;
+    long month_zero;
+
+    year = key / 12L;
+    month_zero = key % 12L;
+
+    if (month_zero < 0L) {
+        month_zero += 12L;
+        --year;
+    }
+
+    output->year = (int)year;
+    output->month = (int)month_zero + 1;
+}
+
+static bool dashboard_current_month_key(
+    long *output_key
+)
+{
+    time_t now;
+    struct tm local_time;
+
+    if (output_key == NULL) {
+        return false;
+    }
+
+    now = time(NULL);
+    if (now == (time_t)-1) {
+        return false;
+    }
+
+    if (localtime_r(&now, &local_time) == NULL) {
+        return false;
+    }
+
+    *output_key =
+        dashboard_month_key(
+            local_time.tm_year + 1900,
+            local_time.tm_mon + 1
+        );
+
+    return true;
+}
+
+static int dashboard_month_x(
+    size_t month_index,
+    int graph_left,
+    int graph_width
+)
+{
+    if (DASHBOARD_MONTH_COUNT <= 1U) {
+        return graph_left;
+    }
+
+    return graph_left +
+        (int)(
+            (month_index *
+             (size_t)(graph_width - 1)) /
+            (DASHBOARD_MONTH_COUNT - 1U)
+        );
+}
+
+static void dashboard_draw_month_axis(
+    const TrainlogDashboardMonth months[DASHBOARD_MONTH_COUNT],
+    int row,
+    int graph_left,
+    int graph_width
+)
+{
+    size_t index;
+    int spacing =
+        graph_width /
+        (int)(DASHBOARD_MONTH_COUNT - 1U);
+
+    attron(
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_MUTED
+        )
+    );
+
+    for (index = 0U;
+         index < DASHBOARD_MONTH_COUNT;
+         ++index) {
+        int x =
+            dashboard_month_x(
+                index,
+                graph_left,
+                graph_width
+            );
+
+        if (spacing >= 6) {
+            char label[8];
+
+            (void)snprintf(
+                label,
+                sizeof(label),
+                "%02d/%02d",
+                months[index].month,
+                months[index].year % 100
+            );
+
+            /*
+             * Center the month label on its slot, then clamp it inside
+             * the terminal so the first and last visible months are not
+             * silently lost at the borders.
+             */
+            x -= 2;
+
+            if (x < 2) {
+                x = 2;
+            }
+
+            if (x > COLS - 7) {
+                x = COLS - 7;
+            }
+
+            mvprintw(
+                row,
+                x,
+                "%s",
+                label
+            );
+        } else {
+            if (x + 2 < COLS - 1) {
+                mvprintw(
+                    row,
+                    x,
+                    "%02d",
+                    months[index].month
+                );
+            }
+        }
+    }
+
+    attroff(
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_MUTED
+        )
+    );
+}
+
+/* TRAINLOG_DASHBOARD_ASCII_PANELS */
+
+static void dashboard_panel(
+    int top,
+    int left,
+    int bottom,
+    int right,
+    const char *label
+)
+{
+    WINDOW *panel;
+    int height;
+    int width;
+
+    if (top < 0 ||
+        left < 0 ||
+        bottom <= top ||
+        right <= left ||
+        bottom >= LINES ||
+        right >= COLS) {
+        return;
+    }
+
+    height = bottom - top + 1;
+    width = right - left + 1;
+
+    panel = derwin(
+        stdscr,
+        height,
+        width,
+        top,
+        left
+    );
+
+    if (panel == NULL) {
+        return;
+    }
+
+    box(panel, 0, 0);
+
+    if (label != NULL &&
+        label[0] != '\0' &&
+        width > 8) {
+        wattron(
+            panel,
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        mvwprintw(
+            panel,
+            0,
+            2,
+            " %.*s ",
+            width - 6,
+            label
+        );
+
+        wattroff(
+            panel,
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+    }
+
+    /*
+     * derwin() shares the parent screen storage. syncok()+wsyncup() makes
+     * the panel border part of stdscr, so later dashboard content and one
+     * final refresh() compose cleanly.
+     */
+    syncok(panel, TRUE);
+    wsyncup(panel);
+    delwin(panel);
+}
+
+static void dashboard_ascii_header(void)
+{
+    static const char *const logo[] = {
+        "TTTTT RRRR   AAA  IIIII N   N L       OOO   GGG ",
+        "  T   R   R A   A   I   NN  N L      O   O G    ",
+        "  T   RRRR  AAAAA   I   N N N L      O   O G  GG",
+        "  T   R  R  A   A   I   N  NN L      O   O G   G",
+        "  T   R   R A   A IIIII N   N LLLLL   OOO   GGG "
+    };
+
+    const size_t line_count =
+        sizeof(logo) /
+        sizeof(logo[0]);
+
+    size_t index;
+
+    attron(
+        A_BOLD |
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_ACCENT
+        )
+    );
+
+    for (index = 0U;
+         index < line_count;
+         ++index) {
+        int width =
+            (int)strlen(logo[index]);
+
+        int column =
+            (COLS - width) / 2;
+
+        if (column < 2) {
+            column = 2;
+        }
+
+        mvprintw(
+            1 + (int)index,
+            column,
+            "%.*s",
+            COLS - column - 2,
+            logo[index]
+        );
+    }
+
+    attroff(
+        A_BOLD |
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_ACCENT
+        )
+    );
+
+    attron(
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_MUTED
+        )
+    );
+
+    {
+        const char *label =
+            ":: D A S H B O A R D ::";
+        int width =
+            (int)strlen(label);
+        int column =
+            (COLS - width) / 2;
+
+        if (column < 2) {
+            column = 2;
+        }
+
+        mvprintw(
+            6,
+            column,
+            "%s",
+            label
+        );
+    }
+
+    attroff(
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_MUTED
+        )
+    );
+}
+
+static void draw_dashboard_body_graph(
+    TrainlogDatabase *database
+)
+{
+    static TrainlogGlobalBodySeries series[14];
+
+    static TrainlogDashboardMonthValue
+        monthly[14][DASHBOARD_MONTH_COUNT];
+
+    TrainlogDashboardMonth
+        months[DASHBOARD_MONTH_COUNT];
+
+    const size_t metric_count =
+        sizeof(BODY_METRICS) /
+        sizeof(BODY_METRICS[0]);
+
+    bool large_layout =
+        COLS >= 100 &&
+        LINES >= 30;
+
+    int graph_panel_top =
+        large_layout ? 8 : 2;
+
+    int graph_panel_bottom =
+        large_layout ? 17 : 9;
+
+    int graph_top =
+        graph_panel_top + 1;
+
+    int graph_height =
+        graph_panel_bottom -
+        graph_panel_top -
+        3;
+
+    int graph_left =
+        large_layout ? 10 : 8;
+
+    int graph_right =
+        COLS - 5;
+
+    int graph_width =
+        graph_right -
+        graph_left +
+        1;
+
+    int axis_row =
+        graph_panel_bottom - 1;
+
+    int legend_panel_top =
+        large_layout
+            ? graph_panel_bottom + 1
+            : 10;
+
+    int legend_rows =
+        large_layout ? 5 : 6;
+
+    int legend_panel_bottom =
+        legend_panel_top +
+        legend_rows +
+        1;
+
+    int legend_top =
+        legend_panel_top + 1;
+
+    size_t metric_index;
+    size_t plotted_series = 0U;
+    double minimum = 0.0;
+    double maximum = 0.0;
+    long current_key;
+    long first_key;
+
+    if (large_layout) {
+        dashboard_panel(
+            graph_panel_top,
+            2,
+            graph_panel_bottom,
+            COLS - 3,
+            "EVOLUTION CORPORELLE - 12 MOIS"
+        );
+
+        dashboard_panel(
+            legend_panel_top,
+            2,
+            legend_panel_bottom,
+            COLS - 3,
+            "MESURES"
+        );
+    } else {
+        attron(
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        mvprintw(
+            1,
+            3,
+            "TRAINLOG :: DASHBOARD"
+        );
+
+        attroff(
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+    }
+
+    if (!dashboard_current_month_key(
+            &current_key
+        )) {
+        mvprintw(
+            graph_top + 1,
+            5,
+            "Impossible de déterminer le mois courant."
+        );
+        return;
+    }
+
+    first_key =
+        current_key -
+        (long)(DASHBOARD_MONTH_COUNT - 1U);
+
+    for (metric_index = 0U;
+         metric_index < DASHBOARD_MONTH_COUNT;
+         ++metric_index) {
+        dashboard_month_from_key(
+            first_key + (long)metric_index,
+            &months[metric_index]
+        );
+    }
+
+    (void)memset(series, 0, sizeof(series));
+    (void)memset(monthly, 0, sizeof(monthly));
+
+    for (metric_index = 0U;
+         metric_index < metric_count;
+         ++metric_index) {
+        TrainlogGlobalBodySeries *item =
+            &series[metric_index];
+
+        size_t point_index;
+        size_t visible_count = 0U;
+        size_t first_visible = 0U;
+        size_t latest_visible = 0U;
+        bool have_first = false;
+
+        item->symbol =
+            GLOBAL_BODY_SYMBOLS[metric_index];
+
+        item->role =
+            GLOBAL_BODY_ROLES[metric_index];
+
+        if (trainlog_database_list_body_metric_points(
+                database,
+                BODY_METRICS[metric_index].metric,
+                item->points,
+                MAX_BODY_METRIC_POINTS,
+                &item->count
+            ) != TRAINLOG_STATUS_OK ||
+            item->count == 0U) {
+            continue;
+        }
+
+        /*
+         * The dashboard is monthly: multiple observations in one month keep
+         * the last actual value, while absent months remain absent.
+         */
+        for (point_index = 0U;
+             point_index < item->count;
+             ++point_index) {
+            int year;
+            int month;
+            long key;
+            long offset;
+
+            if (!dashboard_parse_year_month(
+                    item->points[point_index].observed_at,
+                    &year,
+                    &month
+                )) {
+                continue;
+            }
+
+            key =
+                dashboard_month_key(
+                    year,
+                    month
+                );
+
+            offset = key - first_key;
+
+            if (offset < 0L ||
+                offset >=
+                    (long)DASHBOARD_MONTH_COUNT) {
+                continue;
+            }
+
+            monthly[metric_index][(size_t)offset]
+                .present = true;
+
+            monthly[metric_index][(size_t)offset]
+                .value =
+                    item->points[point_index].value;
+        }
+
+        for (point_index = 0U;
+             point_index < DASHBOARD_MONTH_COUNT;
+             ++point_index) {
+            if (!monthly[metric_index][point_index]
+                    .present) {
+                continue;
+            }
+
+            if (!have_first) {
+                first_visible = point_index;
+                have_first = true;
+            }
+
+            latest_visible = point_index;
+            ++visible_count;
+        }
+
+        if (!have_first) {
+            item->count = 0U;
+            continue;
+        }
+
+        item->baseline =
+            monthly[metric_index][first_visible]
+                .value;
+
+        if (trainlog_body_percent_change(
+                item->baseline,
+                monthly[metric_index][latest_visible]
+                    .value,
+                &item->latest_percent
+            ) != TRAINLOG_STATUS_OK) {
+            item->count = 0U;
+            continue;
+        }
+
+        item->count = visible_count;
+
+        if (visible_count < 2U) {
+            continue;
+        }
+
+        ++plotted_series;
+
+        for (point_index = 0U;
+             point_index < DASHBOARD_MONTH_COUNT;
+             ++point_index) {
+            double percent = 0.0;
+
+            if (!monthly[metric_index][point_index]
+                    .present) {
+                continue;
+            }
+
+            if (trainlog_body_percent_change(
+                    item->baseline,
+                    monthly[metric_index][point_index]
+                        .value,
+                    &percent
+                ) == TRAINLOG_STATUS_OK) {
+                if (percent < minimum) {
+                    minimum = percent;
+                }
+
+                if (percent > maximum) {
+                    maximum = percent;
+                }
+            }
+        }
+    }
+
+    if (graph_width < 12 ||
+        graph_height < 3) {
+        return;
+    }
+
+    if (plotted_series == 0U) {
+        attron(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        mvprintw(
+            graph_top + 1,
+            graph_left,
+            "Premières courbes après 2 mois relevés pour une même mesure."
+        );
+
+        mvprintw(
+            graph_top + 2,
+            graph_left,
+            "Un mois sans relevé reste vide."
+        );
+
+        attroff(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        dashboard_draw_month_axis(
+            months,
+            axis_row,
+            graph_left,
+            graph_width
+        );
+    } else {
+        if (minimum == maximum) {
+            minimum = -1.0;
+            maximum = 1.0;
+        }
+
+        mvprintw(
+            graph_top,
+            3,
+            "%+.1f%%",
+            maximum
+        );
+
+        mvprintw(
+            graph_top + graph_height - 1,
+            3,
+            "%+.1f%%",
+            minimum
+        );
+
+        {
+            int zero_row =
+                normalized_graph_row(
+                    0.0,
+                    minimum,
+                    maximum,
+                    graph_top,
+                    graph_height
+                );
+
+            int column;
+
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+
+            for (column = graph_left;
+                 column <= graph_right;
+                 ++column) {
+                mvaddch(
+                    zero_row,
+                    column,
+                    (chtype)'.'
+                );
+            }
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+        }
+
+        for (metric_index = 0U;
+             metric_index < metric_count;
+             ++metric_index) {
+            TrainlogGlobalBodySeries *item =
+                &series[metric_index];
+
+            size_t month_index;
+            int previous_x = -1;
+            int previous_y = -1;
+            long previous_month = -2L;
+
+            if (item->count < 2U) {
+                continue;
+            }
+
+            for (month_index = 0U;
+                 month_index < DASHBOARD_MONTH_COUNT;
+                 ++month_index) {
+                double percent = 0.0;
+                int x;
+                int y;
+
+                if (!monthly[metric_index][month_index]
+                        .present) {
+                    previous_x = -1;
+                    previous_y = -1;
+                    previous_month = -2L;
+                    continue;
+                }
+
+                if (trainlog_body_percent_change(
+                        item->baseline,
+                        monthly[metric_index][month_index]
+                            .value,
+                        &percent
+                    ) != TRAINLOG_STATUS_OK) {
+                    continue;
+                }
+
+                x =
+                    dashboard_month_x(
+                        month_index,
+                        graph_left,
+                        graph_width
+                    );
+
+                y =
+                    normalized_graph_row(
+                        percent,
+                        minimum,
+                        maximum,
+                        graph_top,
+                        graph_height
+                    );
+
+                if (previous_x >= 0 &&
+                    previous_y >= 0 &&
+                    previous_month + 1L ==
+                        (long)month_index) {
+                    global_plot_segment(
+                        previous_x,
+                        previous_y,
+                        x,
+                        y,
+                        item->symbol,
+                        item->role
+                    );
+                } else {
+                    global_plot_point(
+                        y,
+                        x,
+                        item->symbol,
+                        item->role
+                    );
+                }
+
+                previous_x = x;
+                previous_y = y;
+                previous_month =
+                    (long)month_index;
+            }
+        }
+
+        dashboard_draw_month_axis(
+            months,
+            axis_row,
+            graph_left,
+            graph_width
+        );
+    }
+
+    {
+        size_t legend_index = 0U;
+
+        int columns =
+            large_layout ? 3 : 2;
+
+        int cell_width =
+            (COLS - 8) /
+            columns;
+
+        for (metric_index = 0U;
+             metric_index < metric_count;
+             ++metric_index) {
+            TrainlogGlobalBodySeries *item =
+                &series[metric_index];
+
+            char label[96];
+            char evolution[16];
+            int logical_column;
+            int logical_row;
+            int row;
+            int column;
+            int label_width;
+            size_t month_index;
+            size_t latest_month = 0U;
+            bool found = false;
+            double latest = 0.0;
+
+            if (item->count == 0U) {
+                continue;
+            }
+
+            for (month_index = 0U;
+                 month_index < DASHBOARD_MONTH_COUNT;
+                 ++month_index) {
+                if (monthly[metric_index][month_index]
+                        .present) {
+                    latest_month = month_index;
+                    found = true;
+                }
+            }
+
+            if (!found) {
+                continue;
+            }
+
+            logical_column =
+                (int)(
+                    legend_index /
+                    (size_t)legend_rows
+                );
+
+            logical_row =
+                (int)(
+                    legend_index %
+                    (size_t)legend_rows
+                );
+
+            if (logical_column >= columns) {
+                break;
+            }
+
+            latest =
+                monthly[metric_index][latest_month]
+                    .value;
+
+            row =
+                legend_top +
+                logical_row;
+
+            column =
+                (large_layout ? 4 : 2) +
+                (logical_column * cell_width);
+
+            label_width =
+                cell_width - 18;
+
+            if (label_width < 7) {
+                label_width = 7;
+            }
+
+            (void)snprintf(
+                label,
+                sizeof(label),
+                "%s (%s)",
+                BODY_METRICS[metric_index].label,
+                BODY_METRICS[metric_index].unit
+            );
+
+            if (item->count < 2U) {
+                (void)snprintf(
+                    evolution,
+                    sizeof(evolution),
+                    "%s",
+                    "réf."
+                );
+            } else {
+                (void)snprintf(
+                    evolution,
+                    sizeof(evolution),
+                    "%+.1f%%",
+                    item->latest_percent
+                );
+            }
+
+            attron(
+                trainlog_theme_attribute(
+                    item->role
+                )
+            );
+
+            mvprintw(
+                row,
+                column,
+                "%c %-*.*s %6.1f",
+                item->symbol,
+                label_width,
+                label_width,
+                label,
+                latest
+            );
+
+            mvprintw(
+                row,
+                column + cell_width - 7,
+                "%6s",
+                evolution
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    item->role
+                )
+            );
+
+            ++legend_index;
+        }
+    }
+}
+
+static DashboardAction screen_dashboard(
+    TrainlogDatabase *database
+)
+{
+    static const char *const labels[] = {
+        "1 Séance",
+        "2 Historique",
+        "3 Exercices",
+        "4 Corps"
+    };
+
+    static const char *const footer =
+        "←→ naviguer  Entrée ouvrir  F1-F4 accès direct  q quitter";
+
+    int selected = 0;
+
+    for (;;) {
+        bool large_layout =
+            COLS >= 100 &&
+            LINES >= 30;
+
+        int nav_top =
+            large_layout ? 25 : LINES - 4;
+
+        int nav_bottom =
+            large_layout ? 27 : LINES - 3;
+
+        int key;
+        int index;
+        int column;
+
+        erase();
+        box(stdscr, 0, 0);
+
+        if (large_layout) {
+            dashboard_ascii_header();
+
+            dashboard_panel(
+                nav_top,
+                2,
+                nav_bottom,
+                COLS - 3,
+                "NAVIGATION"
+            );
+        }
+
+        draw_dashboard_body_graph(database);
+
+        column =
+            large_layout ? 6 : 3;
+
+        for (index = 0;
+             index < 4;
+             ++index) {
+            int width =
+                (int)strlen(labels[index]) + 4;
+
+            if (index == selected) {
+                attron(
+                    A_REVERSE |
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_ACCENT
+                    )
+                );
+            }
+
+            mvprintw(
+                large_layout
+                    ? nav_top + 1
+                    : LINES - 3,
+                column,
+                " %s ",
+                labels[index]
+            );
+
+            if (index == selected) {
+                attroff(
+                    A_REVERSE |
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_ACCENT
+                    )
+                );
+            }
+
+            column += width + 3;
+        }
+
+        attron(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        mvprintw(
+            LINES - 2,
+            2,
+            "%.*s",
+            COLS - 4,
+            footer
+        );
+
+        attroff(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        refresh();
+        key = getch();
+
+        switch (key) {
+        case KEY_UP:
+        case KEY_LEFT:
+            selected =
+                selected > 0
+                    ? selected - 1
+                    : 3;
+            break;
+
+        case KEY_DOWN:
+        case KEY_RIGHT:
+            selected =
+                selected < 3
+                    ? selected + 1
+                    : 0;
+            break;
+
+        case '\n':
+        case KEY_ENTER:
+            return (DashboardAction)selected;
+
+        case KEY_F(1):
+        case '1':
+            return DASHBOARD_NEW_SESSION;
+
+        case KEY_F(2):
+        case '2':
+            return DASHBOARD_HISTORY;
+
+        case KEY_F(3):
+        case '3':
+            return DASHBOARD_EXERCISES;
+
+        case KEY_F(4):
+        case '4':
+            return DASHBOARD_BODY;
+
+        case 'q':
+        case 'Q':
+            return DASHBOARD_QUIT;
+
+        default:
+            break;
+        }
+    }
 }
 
 static bool build_session_exercise(
@@ -1705,135 +3231,190 @@ static void screen_history(TrainlogDatabase *database)
 static void screen_body(TrainlogDatabase *database)
 {
     size_t selected = 0U;
+    bool global_mode = false;
+
     const size_t metric_count =
-        sizeof(BODY_METRICS) / sizeof(BODY_METRICS[0]);
+        sizeof(BODY_METRICS) /
+        sizeof(BODY_METRICS[0]);
 
     for (;;) {
-        const TrainlogBodyMetricView *view =
-            &BODY_METRICS[selected];
-
-        TrainlogBodyMetricPoint points[MAX_BODY_METRIC_POINTS];
-        size_t count = 0U;
-        size_t start;
-        size_t index;
         int key;
 
-        (void)trainlog_database_list_body_metric_points(
-            database,
-            view->metric,
-            points,
-            MAX_BODY_METRIC_POINTS,
-            &count
-        );
-
-        draw_shell(
-            "TRAINLOG — Corps",
-            "←→ métrique  a ajouter des mesures  b/Échap retour"
-        );
-
-        attron(
-            A_BOLD |
-            trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
-        );
-
-        mvprintw(
-            3,
-            4,
-            "%s  [%zu/%zu]",
-            view->label,
-            selected + 1U,
-            metric_count
-        );
-
-        attroff(
-            A_BOLD |
-            trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
-        );
-
-        if (count > 0U) {
-            double first = points[0].value;
-            double latest = points[count - 1U].value;
-            double delta = latest - first;
-
-            mvprintw(
-                4,
-                4,
-                "Actuel : %.1f %s   Départ : %.1f %s   Évolution : %+.1f %s",
-                latest,
-                view->unit,
-                first,
-                view->unit,
-                delta,
-                view->unit
+        if (global_mode) {
+            draw_shell(
+                "TRAINLOG — Corps — Vue globale",
+                "g vue individuelle  b/Échap retour"
             );
-        } else {
-            mvprintw(4, 4, "Aucune valeur enregistrée.");
+
+            draw_global_body_overlay(database);
+
+            refresh();
+            key = getch();
+
+            if (key == 'b' || key == 27) {
+                return;
+            }
+
+            if (key == 'g' || key == 'G') {
+                global_mode = false;
+            }
+
+            continue;
         }
 
         {
-            TrainlogBodyMetric left;
-            TrainlogBodyMetric right;
-            const char *pair_label;
+            const TrainlogBodyMetricView *view =
+                &BODY_METRICS[selected];
 
-            if (body_metric_pair(
-                    view->metric,
-                    &left,
-                    &right,
-                    &pair_label
-                )) {
-                TrainlogBodyPairPoint pair;
+            TrainlogBodyMetricPoint
+                points[MAX_BODY_METRIC_POINTS];
 
-                if (trainlog_database_latest_body_pair(
-                        database,
-                        left,
-                        right,
-                        &pair
-                    ) == TRAINLOG_STATUS_OK &&
-                    pair.found) {
-                    double difference =
-                        pair.right_value - pair.left_value;
+            size_t count = 0U;
+            size_t start;
+            size_t index;
 
-                    mvprintw(
-                        5,
-                        4,
-                        "%s : G %.1f cm  D %.1f cm  écart %.1f cm %s",
-                        pair_label,
-                        pair.left_value,
-                        pair.right_value,
-                        difference < 0.0
-                            ? -difference
-                            : difference,
-                        difference > 0.0
-                            ? "à droite"
-                            : (difference < 0.0
-                                ? "à gauche"
-                                : "équilibré")
-                    );
+            (void)trainlog_database_list_body_metric_points(
+                database,
+                view->metric,
+                points,
+                MAX_BODY_METRIC_POINTS,
+                &count
+            );
+
+            draw_shell(
+                "TRAINLOG — Corps",
+                "←→ métrique  g vue globale  a ajouter  b/Échap retour"
+            );
+
+            attron(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+
+            mvprintw(
+                3,
+                4,
+                "%s  [%zu/%zu]",
+                view->label,
+                selected + 1U,
+                metric_count
+            );
+
+            attroff(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+
+            if (count > 0U) {
+                double first =
+                    points[0].value;
+
+                double latest =
+                    points[count - 1U].value;
+
+                double delta =
+                    latest - first;
+
+                mvprintw(
+                    4,
+                    4,
+                    "Actuel : %.1f %s   Départ : %.1f %s   Évolution : %+.1f %s",
+                    latest,
+                    view->unit,
+                    first,
+                    view->unit,
+                    delta,
+                    view->unit
+                );
+            } else {
+                mvprintw(
+                    4,
+                    4,
+                    "Aucune valeur enregistrée."
+                );
+            }
+
+            {
+                TrainlogBodyMetric left;
+                TrainlogBodyMetric right;
+                const char *pair_label;
+
+                if (body_metric_pair(
+                        view->metric,
+                        &left,
+                        &right,
+                        &pair_label
+                    )) {
+                    TrainlogBodyPairPoint pair;
+
+                    if (trainlog_database_latest_body_pair(
+                            database,
+                            left,
+                            right,
+                            &pair
+                        ) == TRAINLOG_STATUS_OK &&
+                        pair.found) {
+                        double difference =
+                            pair.right_value -
+                            pair.left_value;
+
+                        mvprintw(
+                            5,
+                            4,
+                            "%s : G %.1f cm  D %.1f cm  écart %.1f cm %s",
+                            pair_label,
+                            pair.left_value,
+                            pair.right_value,
+                            difference < 0.0
+                                ? -difference
+                                : difference,
+                            difference > 0.0
+                                ? "à droite"
+                                : (
+                                    difference < 0.0
+                                        ? "à gauche"
+                                        : "équilibré"
+                                )
+                        );
+                    }
                 }
             }
-        }
 
-        draw_body_metric_graph(
-            7,
-            5,
-            points,
-            count,
-            view->unit
-        );
-
-        mvprintw(13, 4, "Dernières valeurs :");
-
-        start = count > 3U ? count - 3U : 0U;
-
-        for (index = start; index < count; ++index) {
-            mvprintw(
-                14 + (int)(index - start),
-                6,
-                "%-25s %.1f %s",
-                points[index].observed_at,
-                points[index].value,
+            draw_body_metric_graph(
+                7,
+                5,
+                points,
+                count,
                 view->unit
             );
+
+            mvprintw(
+                13,
+                4,
+                "Dernières valeurs :"
+            );
+
+            start =
+                count > 3U
+                    ? count - 3U
+                    : 0U;
+
+            for (index = start;
+                 index < count;
+                 ++index) {
+                mvprintw(
+                    14 + (int)(index - start),
+                    6,
+                    "%-25s %.1f %s",
+                    points[index].observed_at,
+                    points[index].value,
+                    view->unit
+                );
+            }
         }
 
         refresh();
@@ -1855,6 +3436,8 @@ static void screen_body(TrainlogDatabase *database)
                     : metric_count - 1U;
         } else if (key == 'a') {
             add_body_observation(database);
+        } else if (key == 'g' || key == 'G') {
+            global_mode = true;
         }
     }
 }

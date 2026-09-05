@@ -25,6 +25,7 @@ strict_c_args = [
 ]
 
 trainlog_core_sources = files(
+  'src/bodyviz.c',
   'src/catalog.c',
   'src/database.c',
   'src/duration.c',
@@ -125,3 +126,12 @@ test_body_metrics = executable(
 
 test('duration', test_duration)
 test('body_metrics', test_body_metrics)
+
+test_bodyviz = executable(
+  'test_bodyviz',
+  'tests/test_bodyviz.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('bodyviz', test_bodyviz)

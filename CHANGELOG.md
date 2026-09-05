@@ -54,10 +54,25 @@ Implemented:
 - left/right asymmetry summaries.
 
 Next:
-- normalized global body overlay graph;
+- normalized global body overlay graph (implemented);
 - metric legend using both colors and symbols;
 - percentage evolution summary;
-- richer dashboard weight graph;
-- dashboard previous-weight delta and min/max;
-- compact body/asymmetry dashboard summary.
+- richer dashboard weight graph (implemented);
+- dashboard previous-weight delta and min/max (implemented);
+- compact body/asymmetry dashboard summary (implemented).
 <!-- TRAINLOG_GLOBAL_BODY_GRAPH_CHANGELOG _END -->
+
+### Dashboard graph-only refinement
+
+- removed redundant weight/min/max/asymmetry summary lines;
+- dashboard now uses a global body evolution graph;
+- dates are shown on X;
+- Y is percentage evolution from each metric baseline;
+- legend shows metric name, unit, and latest percentage change.
+
+### Dashboard rolling 12 months
+
+- added a fixed 12-month rolling X axis;
+- empty months remain visible and empty;
+- no zero fill or interpolation across missing months;
+- multiple readings in one month use the last monthly value.

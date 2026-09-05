@@ -390,7 +390,7 @@ Immediate order:
 <!-- TRAINLOG_TUI_V02_CURRENT_AND_NEXT _END -->
 
 <!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT -->
-## 21. Global body evolution graph — next implementation slice
+## 21. Global body evolution graph — implemented
 
 `F4 Corps` keeps its current per-metric graph and gains a global normalized
 overlay view.
@@ -428,7 +428,7 @@ Per-metric navigation remains left/right.
 The global view also shows a compact percentage summary from first to latest
 recorded value for each available metric.
 
-## 22. Dashboard graph v2 — next implementation slice
+## 22. Dashboard graph v2 — implemented
 
 The dashboard body-weight graph becomes a richer summary.
 
@@ -457,3 +457,40 @@ EXERCISE_PERFORMANCE_GRAPHS=AFTER
 
 Android remains deferred until these TUI daily-use views are satisfactory.
 <!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT _END -->
+
+## Dashboard graph-only layout
+
+The home screen avoids duplicating numeric summaries already visible in the
+graph.
+
+The dashboard uses:
+
+```text
+X = recorded date
+Y = percentage evolution from the first real value of each metric
+```
+
+The legend identifies every available series using a symbol, theme color,
+human metric name, unit (`kg` or `cm`), and current percentage evolution.
+
+Detailed absolute values remain available in `F4 Corps`.
+
+## Dashboard rolling 12-month window
+
+The dashboard graph uses a rolling calendar window ending in the current month.
+
+Exactly 12 month slots are displayed.
+
+Rules:
+
+- months with no observation remain visible and empty;
+- missing months are never filled with zero;
+- missing months are never interpolated;
+- if several observations exist in one month, the last one is used on the
+  dashboard;
+- each metric is normalized from its first visible month in the 12-month
+  window;
+- the detailed F4 history keeps the exact original timestamps and values.
+
+The dashboard legend keeps the last visible raw value and the percentage
+change over the visible 12-month window.
