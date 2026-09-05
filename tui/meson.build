@@ -27,6 +27,7 @@ strict_c_args = [
 trainlog_core_sources = files(
   'src/catalog.c',
   'src/database.c',
+  'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
 )
@@ -107,3 +108,20 @@ test(
   'session_detail',
   test_session_detail,
 )
+
+test_duration = executable(
+  'test_duration',
+  'tests/test_duration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test_body_metrics = executable(
+  'test_body_metrics',
+  'tests/test_body_metrics.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('duration', test_duration)
+test('body_metrics', test_body_metrics)

@@ -37,8 +37,27 @@ Added:
 
 Planned next:
 
-- human duration input such as `1:30`, `1m30`, `2m`, and `45s`;
-- automatic minute/second display formatting;
-- history graphs for all body measurements;
-- left/right asymmetry summaries.
+- human duration input such as `1:30`, `1m30`, `2m`, and `45s` (implemented);
+- automatic minute/second display formatting (implemented);
+- history graphs for all body measurements (implemented);
+- left/right asymmetry summaries (implemented).
 <!-- TRAINLOG_TUI_V02_CHANGELOG _END -->
+
+<!-- TRAINLOG_GLOBAL_BODY_GRAPH_CHANGELOG -->
+### Current TUI checkpoint
+
+Implemented:
+- human duration input;
+- human minute/second display;
+- graphs for every persisted body metric;
+- recent values for every body metric;
+- left/right asymmetry summaries.
+
+Next:
+- normalized global body overlay graph;
+- metric legend using both colors and symbols;
+- percentage evolution summary;
+- richer dashboard weight graph;
+- dashboard previous-weight delta and min/max;
+- compact body/asymmetry dashboard summary.
+<!-- TRAINLOG_GLOBAL_BODY_GRAPH_CHANGELOG _END -->

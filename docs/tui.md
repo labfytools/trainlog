@@ -267,7 +267,7 @@ Inside one workout, left/right or up/down changes the selected exercise.
 Assistance remains direction-aware: more assistance kilograms mean more help,
 not greater strength.
 
-## 18. Duration input and display — next implementation slice
+## 18. Duration input and display — implemented
 
 Persistent duration and rest units remain **seconds**.
 
@@ -313,7 +313,7 @@ The same parser and formatter are reused for:
 
 Invalid malformed forms are rejected before persistence.
 
-## 19. Body screen and measurement graphs — next implementation slice
+## 19. Body screen and measurement graphs — implemented
 
 `F4 Corps` becomes a full history and visualization screen.
 
@@ -388,3 +388,72 @@ Immediate order:
 7. Android recorder and JSON import workflow
 ```
 <!-- TRAINLOG_TUI_V02_CURRENT_AND_NEXT _END -->
+
+<!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT -->
+## 21. Global body evolution graph — next implementation slice
+
+`F4 Corps` keeps its current per-metric graph and gains a global normalized
+overlay view.
+
+The global graph must not overlay raw kilograms and centimeters directly.
+
+Each metric is normalized to its own first real observation:
+
+```text
+first recorded value = 100
+```
+
+Examples:
+
+```text
+waist 100 -> 96 = -4 %
+right arm 100 -> 103 = +3 %
+weight 100 -> 98 = -2 %
+```
+
+This makes unlike units visually comparable without changing persisted data.
+
+Rules:
+- no missing observation becomes zero;
+- each metric begins only at its first real value;
+- original dates remain ordered;
+- every series has both a color and a distinct text/symbol identity;
+- left/right limb metrics remain separate;
+- normalization is display-only;
+- canonical SQLite values remain untouched.
+
+The global view is toggled from `F4 Corps` with `g`.
+Per-metric navigation remains left/right.
+
+The global view also shows a compact percentage summary from first to latest
+recorded value for each available metric.
+
+## 22. Dashboard graph v2 — next implementation slice
+
+The dashboard body-weight graph becomes a richer summary.
+
+It will show:
+- current body weight;
+- change from first recorded weight;
+- change from previous recorded weight;
+- minimum recorded weight;
+- maximum recorded weight;
+- recent weight graph;
+- latest waist measurement when available;
+- latest left/right asymmetry alert when meaningful.
+
+The dashboard remains intentionally compact.
+The complete multi-metric overlay belongs to `F4 Corps`.
+
+## 23. Immediate TUI implementation order
+
+```text
+TUI_DURATION_HUMAN_INPUT=IMPLEMENTED
+TUI_BODY_METRIC_GRAPHS=IMPLEMENTED
+TUI_GLOBAL_BODY_OVERLAY=NEXT
+DASHBOARD_GRAPH_V2=NEXT
+EXERCISE_PERFORMANCE_GRAPHS=AFTER
+```
+
+Android remains deferred until these TUI daily-use views are satisfactory.
+<!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT _END -->

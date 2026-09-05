@@ -15,6 +15,7 @@
 #include <curses.h>
 
 #include "trainlog/catalog.h"
+#include "trainlog/duration.h"
 #include "trainlog/id.h"
 #include "trainlog/theme.h"
 #include "trainlog/timeutil.h"
@@ -639,6 +640,377 @@ static bool choose_exercise(
     }
 }
 
+/* TRAINLOG_DURATION_BODY_GRAPH_HELPERS */
+
+#define MAX_BODY_METRIC_POINTS 256U
+
+typedef struct TrainlogBodyMetricView {
+    TrainlogBodyMetric metric;
+    const char *label;
+    const char *unit;
+} TrainlogBodyMetricView;
+
+static const TrainlogBodyMetricView BODY_METRICS[] = {
+    {TRAINLOG_BODY_METRIC_WEIGHT, "Poids", "kg"},
+    {TRAINLOG_BODY_METRIC_NECK, "Cou", "cm"},
+    {TRAINLOG_BODY_METRIC_SHOULDERS, "Épaules", "cm"},
+    {TRAINLOG_BODY_METRIC_CHEST, "Poitrine", "cm"},
+    {TRAINLOG_BODY_METRIC_WAIST, "Tour de taille", "cm"},
+    {TRAINLOG_BODY_METRIC_HIPS, "Hanches", "cm"},
+    {TRAINLOG_BODY_METRIC_LEFT_ARM, "Bras gauche", "cm"},
+    {TRAINLOG_BODY_METRIC_RIGHT_ARM, "Bras droit", "cm"},
+    {TRAINLOG_BODY_METRIC_LEFT_FOREARM, "Avant-bras gauche", "cm"},
+    {TRAINLOG_BODY_METRIC_RIGHT_FOREARM, "Avant-bras droit", "cm"},
+    {TRAINLOG_BODY_METRIC_LEFT_THIGH, "Cuisse gauche", "cm"},
+    {TRAINLOG_BODY_METRIC_RIGHT_THIGH, "Cuisse droite", "cm"},
+    {TRAINLOG_BODY_METRIC_LEFT_CALF, "Mollet gauche", "cm"},
+    {TRAINLOG_BODY_METRIC_RIGHT_CALF, "Mollet droit", "cm"}
+};
+
+static bool prompt_duration_value(
+    int row,
+    const char *label,
+    int minimum_seconds,
+    int maximum_seconds,
+    int default_seconds,
+    int *output_seconds
+)
+{
+    char buffer[64];
+    char default_text[64];
+    char decorated[192];
+
+    if (trainlog_duration_format(
+            default_seconds,
+            default_text,
+            sizeof(default_text)
+        ) != TRAINLOG_STATUS_OK) {
+        return false;
+    }
+
+    for (;;) {
+        int parsed;
+
+        (void)snprintf(
+            decorated,
+            sizeof(decorated),
+            "%s [%s]: ",
+            label,
+            default_text
+        );
+
+        if (!prompt_text(
+                row,
+                decorated,
+                buffer,
+                sizeof(buffer),
+                true
+            )) {
+            return false;
+        }
+
+        if (buffer[0] == '\0') {
+            *output_seconds = default_seconds;
+            return true;
+        }
+
+        if (trainlog_duration_parse(buffer, &parsed) ==
+                TRAINLOG_STATUS_OK &&
+            parsed >= minimum_seconds &&
+            parsed <= maximum_seconds) {
+            *output_seconds = parsed;
+            return true;
+        }
+
+        status_line(
+            "Durée invalide : 90, 90s, 1:30, 1m30, 2m.",
+            TRAINLOG_COLOR_ERROR
+        );
+        refresh();
+    }
+}
+
+static void draw_body_metric_graph(
+    int row,
+    int height,
+    const TrainlogBodyMetricPoint *points,
+    size_t count,
+    const char *unit
+)
+{
+    double minimum;
+    double maximum;
+    size_t start;
+    size_t index;
+    int width;
+
+    if (count == 0U) {
+        mvprintw(row, 4, "Aucune donnée pour cette mesure.");
+        return;
+    }
+
+    width = COLS - 14;
+    if (width < 10 || height < 3) {
+        return;
+    }
+
+    start = count > (size_t)width
+        ? count - (size_t)width
+        : 0U;
+
+    minimum = points[start].value;
+    maximum = points[start].value;
+
+    for (index = start + 1U; index < count; ++index) {
+        if (points[index].value < minimum) {
+            minimum = points[index].value;
+        }
+        if (points[index].value > maximum) {
+            maximum = points[index].value;
+        }
+    }
+
+    if (maximum == minimum) {
+        int graph_row = row + (height / 2);
+
+        mvprintw(graph_row, 2, "%.1f %s", minimum, unit);
+
+        attron(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+
+        for (index = start; index < count; ++index) {
+            int x = 12 + (int)(index - start);
+
+            if (x < COLS - 2) {
+                mvaddch(graph_row, x, (chtype)'*');
+            }
+        }
+
+        attroff(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+        return;
+    }
+
+    mvprintw(row, 2, "%.1f", maximum);
+    mvprintw(row + height - 1, 2, "%.1f", minimum);
+
+    attron(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+
+    for (index = start; index < count; ++index) {
+        double ratio =
+            (points[index].value - minimum) /
+            (maximum - minimum);
+
+        int y = row + height - 1 -
+            (int)(ratio * (double)(height - 1));
+
+        int x = 10 + (int)(index - start);
+
+        if (y < row) {
+            y = row;
+        }
+        if (y > row + height - 1) {
+            y = row + height - 1;
+        }
+
+        if (x < COLS - 2) {
+            mvaddch(y, x, (chtype)'*');
+        }
+    }
+
+    attroff(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+}
+
+static bool body_metric_pair(
+    TrainlogBodyMetric metric,
+    TrainlogBodyMetric *left,
+    TrainlogBodyMetric *right,
+    const char **label
+)
+{
+    if (left == NULL || right == NULL || label == NULL) {
+        return false;
+    }
+
+    switch (metric) {
+    case TRAINLOG_BODY_METRIC_LEFT_ARM:
+    case TRAINLOG_BODY_METRIC_RIGHT_ARM:
+        *left = TRAINLOG_BODY_METRIC_LEFT_ARM;
+        *right = TRAINLOG_BODY_METRIC_RIGHT_ARM;
+        *label = "Bras";
+        return true;
+
+    case TRAINLOG_BODY_METRIC_LEFT_FOREARM:
+    case TRAINLOG_BODY_METRIC_RIGHT_FOREARM:
+        *left = TRAINLOG_BODY_METRIC_LEFT_FOREARM;
+        *right = TRAINLOG_BODY_METRIC_RIGHT_FOREARM;
+        *label = "Avant-bras";
+        return true;
+
+    case TRAINLOG_BODY_METRIC_LEFT_THIGH:
+    case TRAINLOG_BODY_METRIC_RIGHT_THIGH:
+        *left = TRAINLOG_BODY_METRIC_LEFT_THIGH;
+        *right = TRAINLOG_BODY_METRIC_RIGHT_THIGH;
+        *label = "Cuisses";
+        return true;
+
+    case TRAINLOG_BODY_METRIC_LEFT_CALF:
+    case TRAINLOG_BODY_METRIC_RIGHT_CALF:
+        *left = TRAINLOG_BODY_METRIC_LEFT_CALF;
+        *right = TRAINLOG_BODY_METRIC_RIGHT_CALF;
+        *label = "Mollets";
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static void add_body_observation(TrainlogDatabase *database)
+{
+    TrainlogBodyObservationInput observation;
+    char id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char timestamp[TRAINLOG_TIMESTAMP_MAX + 1U];
+    int row;
+
+    (void)memset(&observation, 0, sizeof(observation));
+
+    if (trainlog_id_generate("bo", id, sizeof(id)) != TRAINLOG_STATUS_OK ||
+        trainlog_time_now_rfc3339(
+            timestamp,
+            sizeof(timestamp)
+        ) != TRAINLOG_STATUS_OK) {
+        return;
+    }
+
+    (void)snprintf(
+        observation.observation_id,
+        sizeof(observation.observation_id),
+        "%s",
+        id
+    );
+
+    (void)snprintf(
+        observation.observed_at,
+        sizeof(observation.observed_at),
+        "%s",
+        timestamp
+    );
+
+    draw_shell(
+        "Nouvelle mesure — 1/2",
+        "Laissez vide les mesures non faites aujourd'hui"
+    );
+
+    row = 4;
+
+#define BODY_PROMPT(label_, flag_, value_)                                   \
+    do {                                                                     \
+        (void)prompt_optional_double(                                        \
+            row++,                                                           \
+            (label_),                                                        \
+            &(flag_),                                                        \
+            &(value_)                                                        \
+        );                                                                   \
+    } while (0)
+
+    BODY_PROMPT(
+        "Poids kg : ",
+        observation.has_body_weight,
+        observation.body_weight_kg
+    );
+    BODY_PROMPT(
+        "Cou cm : ",
+        observation.has_neck,
+        observation.neck_cm
+    );
+    BODY_PROMPT(
+        "Épaules cm : ",
+        observation.has_shoulders,
+        observation.shoulders_cm
+    );
+    BODY_PROMPT(
+        "Poitrine cm : ",
+        observation.has_chest,
+        observation.chest_cm
+    );
+    BODY_PROMPT(
+        "Tour de taille cm : ",
+        observation.has_waist,
+        observation.waist_cm
+    );
+    BODY_PROMPT(
+        "Hanches cm : ",
+        observation.has_hips,
+        observation.hips_cm
+    );
+
+    draw_shell(
+        "Nouvelle mesure — 2/2",
+        "Laissez vide les mesures non faites aujourd'hui"
+    );
+
+    row = 4;
+
+    BODY_PROMPT(
+        "Bras gauche cm : ",
+        observation.has_left_arm,
+        observation.left_arm_cm
+    );
+    BODY_PROMPT(
+        "Bras droit cm : ",
+        observation.has_right_arm,
+        observation.right_arm_cm
+    );
+    BODY_PROMPT(
+        "Avant-bras gauche cm : ",
+        observation.has_left_forearm,
+        observation.left_forearm_cm
+    );
+    BODY_PROMPT(
+        "Avant-bras droit cm : ",
+        observation.has_right_forearm,
+        observation.right_forearm_cm
+    );
+    BODY_PROMPT(
+        "Cuisse gauche cm : ",
+        observation.has_left_thigh,
+        observation.left_thigh_cm
+    );
+    BODY_PROMPT(
+        "Cuisse droite cm : ",
+        observation.has_right_thigh,
+        observation.right_thigh_cm
+    );
+    BODY_PROMPT(
+        "Mollet gauche cm : ",
+        observation.has_left_calf,
+        observation.left_calf_cm
+    );
+    BODY_PROMPT(
+        "Mollet droit cm : ",
+        observation.has_right_calf,
+        observation.right_calf_cm
+    );
+
+#undef BODY_PROMPT
+
+    if (trainlog_database_insert_body_observation(
+            database,
+            &observation
+        ) == TRAINLOG_STATUS_OK) {
+        status_line(
+            "✓ Mesures enregistrées.",
+            TRAINLOG_COLOR_SUCCESS
+        );
+    } else {
+        status_line(
+            "Aucune mesure valide enregistrée.",
+            TRAINLOG_COLOR_WARNING
+        );
+    }
+
+    wait_key();
+}
+
 static bool build_session_exercise(
     TrainlogDatabase *database,
     TrainlogSessionExerciseInput *output,
@@ -649,19 +1021,26 @@ static bool build_session_exercise(
     TrainlogExercise exercise;
     int load_mode = 1;
     int target_sets = 3;
-    int target_metric = 10;
+    int target_metric;
     int rest_seconds = 60;
     int actual_sets;
-    size_t set_index;
     bool target_has_weight = false;
     double target_weight = 0.0;
+    size_t set_index;
 
     if (!choose_exercise(database, &exercise)) {
         return false;
     }
 
-    erase();
-    title(exercise.name);
+    target_metric =
+        exercise.tracking_mode == TRAINLOG_TRACKING_REPS
+            ? 10
+            : 45;
+
+    draw_shell(
+        exercise.name,
+        "Durées : 90, 90s, 1:30, 1m30, 2m"
+    );
 
     if (!prompt_int_value(
             4,
@@ -687,7 +1066,7 @@ static bool build_session_exercise(
 
     if (!prompt_int_value(
             6,
-            "Nombre de séries prévues",
+            "Séries prévues",
             1,
             (int)set_capacity,
             3,
@@ -696,22 +1075,33 @@ static bool build_session_exercise(
         return false;
     }
 
-    if (!prompt_int_value(
-            7,
-            exercise.tracking_mode == TRAINLOG_TRACKING_REPS
-                ? "Répétitions cibles"
-                : "Durée cible (secondes)",
-            1,
-            10000,
-            exercise.tracking_mode == TRAINLOG_TRACKING_REPS ? 10 : 45,
-            &target_metric
-        )) {
-        return false;
+    if (exercise.tracking_mode == TRAINLOG_TRACKING_REPS) {
+        if (!prompt_int_value(
+                7,
+                "Répétitions cibles",
+                1,
+                10000,
+                target_metric,
+                &target_metric
+            )) {
+            return false;
+        }
+    } else {
+        if (!prompt_duration_value(
+                7,
+                "Durée cible",
+                1,
+                86400,
+                target_metric,
+                &target_metric
+            )) {
+            return false;
+        }
     }
 
-    if (!prompt_int_value(
+    if (!prompt_duration_value(
             8,
-            "Repos prévu (secondes)",
+            "Repos prévu",
             0,
             86400,
             60,
@@ -732,28 +1122,34 @@ static bool build_session_exercise(
     }
 
     (void)memset(output, 0, sizeof(*output));
+
     (void)snprintf(
         output->exercise_id,
         sizeof(output->exercise_id),
         "%s",
         exercise.exercise_id
     );
+
     output->load_mode =
         load_mode == 1
             ? TRAINLOG_LOAD_NONE
             : (load_mode == 2
                 ? TRAINLOG_LOAD_EXTERNAL
                 : TRAINLOG_LOAD_ASSISTANCE);
+
     output->rest_seconds = rest_seconds;
     output->target_sets = target_sets;
+
     output->target_reps =
         exercise.tracking_mode == TRAINLOG_TRACKING_REPS
             ? target_metric
             : 0;
+
     output->target_duration_seconds =
         exercise.tracking_mode == TRAINLOG_TRACKING_DURATION
             ? target_metric
             : 0;
+
     output->target_has_weight = target_has_weight;
     output->target_weight_kg = target_weight;
     output->sets = set_storage;
@@ -761,78 +1157,91 @@ static bool build_session_exercise(
 
     for (set_index = 0U; set_index < output->set_count; ++set_index) {
         int actual_metric = target_metric;
-        char label[128];
 
-        (void)memset(&set_storage[set_index], 0, sizeof(set_storage[set_index]));
+        (void)memset(
+            &set_storage[set_index],
+            0,
+            sizeof(set_storage[set_index])
+        );
 
-        erase();
-        title(exercise.name);
+        draw_shell(
+            exercise.name,
+            "Durées : 90, 90s, 1:30, 1m30, 2m"
+        );
+
         mvprintw(
             3,
-            2,
+            4,
             "Série %zu / %zu",
             set_index + 1U,
             output->set_count
         );
 
-        (void)snprintf(
-            label,
-            sizeof(label),
-            "%s réalisé",
-            exercise.tracking_mode == TRAINLOG_TRACKING_REPS
-                ? "Répétitions"
-                : "Durée (secondes)"
-        );
-
-        if (!prompt_int_value(
-                5,
-                label,
-                exercise.tracking_mode == TRAINLOG_TRACKING_REPS ? 0 : 1,
-                10000,
-                target_metric,
-                &actual_metric
-            )) {
-            return false;
-        }
-
         if (exercise.tracking_mode == TRAINLOG_TRACKING_REPS) {
+            if (!prompt_int_value(
+                    5,
+                    "Répétitions réalisées",
+                    0,
+                    10000,
+                    target_metric,
+                    &actual_metric
+                )) {
+                return false;
+            }
+
             set_storage[set_index].reps = actual_metric;
         } else {
+            if (!prompt_duration_value(
+                    5,
+                    "Durée réalisée",
+                    1,
+                    86400,
+                    target_metric,
+                    &actual_metric
+                )) {
+                return false;
+            }
+
             set_storage[set_index].duration_seconds = actual_metric;
         }
 
         if (target_has_weight) {
-            bool has_weight = false;
-            double weight = target_weight;
+            char buffer[64];
             char prompt[128];
+            double actual_weight = target_weight;
 
             (void)snprintf(
                 prompt,
                 sizeof(prompt),
-                "Charge kg [%.1f, vide = cible] : ",
+                "Charge kg [%.1f] : ",
                 target_weight
             );
 
-            {
-                char buffer[64];
-                if (!prompt_text(6, prompt, buffer, sizeof(buffer), true)) {
-                    return false;
-                }
-
-                if (buffer[0] == '\0') {
-                    has_weight = true;
-                    weight = target_weight;
-                } else if (parse_double_positive(buffer, &weight)) {
-                    has_weight = true;
-                } else {
-                    status_line("Charge invalide.", TRAINLOG_COLOR_ERROR);
-                    wait_key();
-                    return false;
-                }
+            if (!prompt_text(
+                    6,
+                    prompt,
+                    buffer,
+                    sizeof(buffer),
+                    true
+                )) {
+                return false;
             }
 
-            set_storage[set_index].has_weight = has_weight;
-            set_storage[set_index].weight_kg = weight;
+            if (buffer[0] != '\0' &&
+                !parse_double_positive(
+                    buffer,
+                    &actual_weight
+                )) {
+                status_line(
+                    "Charge invalide.",
+                    TRAINLOG_COLOR_ERROR
+                );
+                wait_key();
+                return false;
+            }
+
+            set_storage[set_index].has_weight = true;
+            set_storage[set_index].weight_kg = actual_weight;
         }
     }
 
@@ -997,10 +1406,7 @@ static void screen_session_detail(
     );
 
     if (status != TRAINLOG_STATUS_OK) {
-        draw_shell(
-            "Détail séance",
-            "Une touche pour revenir"
-        );
+        draw_shell("Détail séance", "Une touche pour revenir");
         status_line(
             "Impossible de charger la séance.",
             TRAINLOG_COLOR_ERROR
@@ -1017,12 +1423,7 @@ static void screen_session_detail(
             "←→ ou ↑↓ exercice précédent/suivant  b/Échap retour"
         );
 
-        mvprintw(
-            3,
-            4,
-            "Début : %s",
-            session.started_at
-        );
+        mvprintw(3, 4, "Début : %s", session.started_at);
 
         mvprintw(
             4,
@@ -1034,20 +1435,40 @@ static void screen_session_detail(
         );
 
         if (count == 0U) {
-            mvprintw(
-                7,
-                4,
-                "Aucun exercice dans cette séance."
-            );
+            mvprintw(7, 4, "Aucun exercice dans cette séance.");
         } else {
             TrainlogPersistedExerciseDetail *exercise =
                 &exercises[selected];
 
+            char rest_text[64];
+            char target_duration_text[64];
+
+            if (trainlog_duration_format(
+                    exercise->rest_seconds,
+                    rest_text,
+                    sizeof(rest_text)
+                ) != TRAINLOG_STATUS_OK) {
+                (void)snprintf(
+                    rest_text,
+                    sizeof(rest_text),
+                    "%ds",
+                    exercise->rest_seconds
+                );
+            }
+
+            target_duration_text[0] = '\0';
+
+            if (exercise->tracking_mode == TRAINLOG_TRACKING_DURATION) {
+                (void)trainlog_duration_format(
+                    exercise->target_duration_seconds,
+                    target_duration_text,
+                    sizeof(target_duration_text)
+                );
+            }
+
             attron(
                 A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_ACCENT
-                )
+                trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
             );
 
             mvprintw(
@@ -1061,27 +1482,21 @@ static void screen_session_detail(
 
             attroff(
                 A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_ACCENT
-                )
+                trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
             );
 
             mvprintw(
                 8,
                 4,
-                "Mode : %-12s   Charge : %-10s   Repos : %ds",
-                exercise->tracking_mode ==
-                    TRAINLOG_TRACKING_REPS
+                "Mode : %-12s   Charge : %-10s   Repos : %s",
+                exercise->tracking_mode == TRAINLOG_TRACKING_REPS
                     ? "répétitions"
                     : "durée",
-                session_detail_load_label(
-                    exercise->load_mode
-                ),
-                exercise->rest_seconds
+                session_detail_load_label(exercise->load_mode),
+                rest_text
             );
 
-            if (exercise->tracking_mode ==
-                TRAINLOG_TRACKING_REPS) {
+            if (exercise->tracking_mode == TRAINLOG_TRACKING_REPS) {
                 mvprintw(
                     10,
                     4,
@@ -1093,9 +1508,9 @@ static void screen_session_detail(
                 mvprintw(
                     10,
                     4,
-                    "Cible : %d série(s) × %ds",
+                    "Cible : %d série(s) × %s",
                     exercise->target_sets,
-                    exercise->target_duration_seconds
+                    target_duration_text
                 );
             }
 
@@ -1107,18 +1522,12 @@ static void screen_session_detail(
                     exercise->target_weight_kg
                 );
             } else {
-                mvprintw(
-                    11,
-                    4,
-                    "Charge cible : —"
-                );
+                mvprintw(11, 4, "Charge cible : —");
             }
 
             attron(
                 A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_SUCCESS
-                )
+                trainlog_theme_attribute(TRAINLOG_COLOR_SUCCESS)
             );
 
             mvprintw(
@@ -1130,9 +1539,7 @@ static void screen_session_detail(
 
             attroff(
                 A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_SUCCESS
-                )
+                trainlog_theme_attribute(TRAINLOG_COLOR_SUCCESS)
             );
 
             mvprintw(
@@ -1143,24 +1550,17 @@ static void screen_session_detail(
                 exercise->actual_summary
             );
 
-            if (exercise->load_mode ==
-                TRAINLOG_LOAD_ASSISTANCE) {
+            if (exercise->load_mode == TRAINLOG_LOAD_ASSISTANCE) {
                 attron(
-                    trainlog_theme_attribute(
-                        TRAINLOG_COLOR_WARNING
-                    )
+                    trainlog_theme_attribute(TRAINLOG_COLOR_WARNING)
                 );
-
                 mvprintw(
                     17,
                     4,
                     "Assistance : plus de kg = davantage d'aide."
                 );
-
                 attroff(
-                    trainlog_theme_attribute(
-                        TRAINLOG_COLOR_WARNING
-                    )
+                    trainlog_theme_attribute(TRAINLOG_COLOR_WARNING)
                 );
             }
         }
@@ -1173,15 +1573,13 @@ static void screen_session_detail(
         }
 
         if (count > 0U &&
-            (key == KEY_RIGHT ||
-             key == KEY_DOWN)) {
+            (key == KEY_RIGHT || key == KEY_DOWN)) {
             selected =
                 selected + 1U < count
                     ? selected + 1U
                     : 0U;
         } else if (count > 0U &&
-                   (key == KEY_LEFT ||
-                    key == KEY_UP)) {
+                   (key == KEY_LEFT || key == KEY_UP)) {
             selected =
                 selected > 0U
                     ? selected - 1U
@@ -1306,52 +1704,135 @@ static void screen_history(TrainlogDatabase *database)
 
 static void screen_body(TrainlogDatabase *database)
 {
+    size_t selected = 0U;
+    const size_t metric_count =
+        sizeof(BODY_METRICS) / sizeof(BODY_METRICS[0]);
+
     for (;;) {
-        TrainlogWeightPoint points[MAX_WEIGHT_POINTS];
+        const TrainlogBodyMetricView *view =
+            &BODY_METRICS[selected];
+
+        TrainlogBodyMetricPoint points[MAX_BODY_METRIC_POINTS];
         size_t count = 0U;
         size_t start;
         size_t index;
         int key;
 
-        (void)trainlog_database_list_weight_points(
+        (void)trainlog_database_list_body_metric_points(
             database,
+            view->metric,
             points,
-            MAX_WEIGHT_POINTS,
+            MAX_BODY_METRIC_POINTS,
             &count
         );
 
         draw_shell(
             "TRAINLOG — Corps",
-            "a ajouter une mesure  b/Échap retour"
+            "←→ métrique  a ajouter des mesures  b/Échap retour"
+        );
+
+        attron(
+            A_BOLD |
+            trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
+        );
+
+        mvprintw(
+            3,
+            4,
+            "%s  [%zu/%zu]",
+            view->label,
+            selected + 1U,
+            metric_count
+        );
+
+        attroff(
+            A_BOLD |
+            trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT)
         );
 
         if (count > 0U) {
-            double latest = points[count - 1U].body_weight_kg;
-            double delta = latest - points[0].body_weight_kg;
+            double first = points[0].value;
+            double latest = points[count - 1U].value;
+            double delta = latest - first;
 
             mvprintw(
-                3,
                 4,
-                "Poids actuel : %.1f kg   évolution : %+.1f kg",
+                4,
+                "Actuel : %.1f %s   Départ : %.1f %s   Évolution : %+.1f %s",
                 latest,
-                delta
+                view->unit,
+                first,
+                view->unit,
+                delta,
+                view->unit
             );
         } else {
-            mvprintw(3, 4, "Aucune mesure de poids.");
+            mvprintw(4, 4, "Aucune valeur enregistrée.");
         }
 
-        draw_weight_sparkline(5, points, count);
+        {
+            TrainlogBodyMetric left;
+            TrainlogBodyMetric right;
+            const char *pair_label;
 
-        mvprintw(12, 4, "Dernières pesées :");
-        start = count > 5U ? count - 5U : 0U;
+            if (body_metric_pair(
+                    view->metric,
+                    &left,
+                    &right,
+                    &pair_label
+                )) {
+                TrainlogBodyPairPoint pair;
+
+                if (trainlog_database_latest_body_pair(
+                        database,
+                        left,
+                        right,
+                        &pair
+                    ) == TRAINLOG_STATUS_OK &&
+                    pair.found) {
+                    double difference =
+                        pair.right_value - pair.left_value;
+
+                    mvprintw(
+                        5,
+                        4,
+                        "%s : G %.1f cm  D %.1f cm  écart %.1f cm %s",
+                        pair_label,
+                        pair.left_value,
+                        pair.right_value,
+                        difference < 0.0
+                            ? -difference
+                            : difference,
+                        difference > 0.0
+                            ? "à droite"
+                            : (difference < 0.0
+                                ? "à gauche"
+                                : "équilibré")
+                    );
+                }
+            }
+        }
+
+        draw_body_metric_graph(
+            7,
+            5,
+            points,
+            count,
+            view->unit
+        );
+
+        mvprintw(13, 4, "Dernières valeurs :");
+
+        start = count > 3U ? count - 3U : 0U;
 
         for (index = start; index < count; ++index) {
             mvprintw(
-                13 + (int)(index - start),
+                14 + (int)(index - start),
                 6,
-                "%-25s %.1f kg",
+                "%-25s %.1f %s",
                 points[index].observed_at,
-                points[index].body_weight_kg
+                points[index].value,
+                view->unit
             );
         }
 
@@ -1362,120 +1843,18 @@ static void screen_body(TrainlogDatabase *database)
             return;
         }
 
-        if (key == 'a') {
-            TrainlogBodyObservationInput observation;
-            char id[TRAINLOG_GENERATED_ID_CAPACITY];
-            char timestamp[TRAINLOG_TIMESTAMP_MAX + 1U];
-            int row = 4;
-
-            (void)memset(&observation, 0, sizeof(observation));
-
-            if (trainlog_id_generate(
-                    "bo",
-                    id,
-                    sizeof(id)
-                ) != TRAINLOG_STATUS_OK ||
-                trainlog_time_now_rfc3339(
-                    timestamp,
-                    sizeof(timestamp)
-                ) != TRAINLOG_STATUS_OK) {
-                continue;
-            }
-
-            (void)snprintf(
-                observation.observation_id,
-                sizeof(observation.observation_id),
-                "%s",
-                id
-            );
-            (void)snprintf(
-                observation.observed_at,
-                sizeof(observation.observed_at),
-                "%s",
-                timestamp
-            );
-
-            draw_shell(
-                "Nouvelle mesure",
-                "Laissez vide les valeurs non mesurées"
-            );
-
-#define BODY_PROMPT(label_, flag_, value_)                                   \
-            do {                                                             \
-                (void)prompt_optional_double(                                \
-                    row++,                                                   \
-                    (label_),                                                \
-                    &(flag_),                                                \
-                    &(value_)                                                \
-                );                                                           \
-            } while (0)
-
-            BODY_PROMPT(
-                "Poids kg : ",
-                observation.has_body_weight,
-                observation.body_weight_kg
-            );
-            BODY_PROMPT(
-                "Tour de taille cm : ",
-                observation.has_waist,
-                observation.waist_cm
-            );
-            BODY_PROMPT(
-                "Poitrine cm : ",
-                observation.has_chest,
-                observation.chest_cm
-            );
-            BODY_PROMPT(
-                "Épaules cm : ",
-                observation.has_shoulders,
-                observation.shoulders_cm
-            );
-            BODY_PROMPT(
-                "Bras gauche cm : ",
-                observation.has_left_arm,
-                observation.left_arm_cm
-            );
-            BODY_PROMPT(
-                "Bras droit cm : ",
-                observation.has_right_arm,
-                observation.right_arm_cm
-            );
-            BODY_PROMPT(
-                "Cuisse gauche cm : ",
-                observation.has_left_thigh,
-                observation.left_thigh_cm
-            );
-            BODY_PROMPT(
-                "Cuisse droite cm : ",
-                observation.has_right_thigh,
-                observation.right_thigh_cm
-            );
-            BODY_PROMPT(
-                "Mollet gauche cm : ",
-                observation.has_left_calf,
-                observation.left_calf_cm
-            );
-            BODY_PROMPT(
-                "Mollet droit cm : ",
-                observation.has_right_calf,
-                observation.right_calf_cm
-            );
-
-#undef BODY_PROMPT
-
-            if (trainlog_database_insert_body_observation(
-                    database,
-                    &observation
-                ) == TRAINLOG_STATUS_OK) {
-                status_line("✓ Mesures enregistrées.", TRAINLOG_COLOR_SUCCESS);
-            } else {
-                status_line(
-                    "Aucune mesure valide enregistrée.",
-                    TRAINLOG_COLOR_WARNING
-                );
-            }
-
-            wait_key();
+        if (key == KEY_RIGHT) {
+            selected =
+                selected + 1U < metric_count
+                    ? selected + 1U
+                    : 0U;
+        } else if (key == KEY_LEFT) {
+            selected =
+                selected > 0U
+                    ? selected - 1U
+                    : metric_count - 1U;
+        } else if (key == 'a') {
+            add_body_observation(database);
         }
     }
 }

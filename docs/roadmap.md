@@ -51,8 +51,8 @@ Current state:
 FIRST_USABLE_TUI=PASS
 TUI_V0_2_POLISH=IMPLEMENTED
 TUI_SESSION_DETAILS=IMPLEMENTED
-TUI_DURATION_HUMAN_INPUT=NEXT
-TUI_BODY_METRIC_GRAPHS=NEXT
+TUI_DURATION_HUMAN_INPUT=IMPLEMENTED
+TUI_BODY_METRIC_GRAPHS=IMPLEMENTED
 GATE_2=IN_PROGRESS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
@@ -83,3 +83,34 @@ Next implementation slice:
 
 No incompatible change to frozen Trainlog JSON v1 is required.
 <!-- TRAINLOG_TUI_V02_ROADMAP _END -->
+
+<!-- TRAINLOG_GLOBAL_BODY_GRAPH_ROADMAP -->
+## Next TUI visualization slice
+
+Canonical state after the current checkpoint:
+
+```text
+FIRST_USABLE_TUI=PASS
+TUI_V0_2_POLISH=IMPLEMENTED
+TUI_SESSION_DETAILS=IMPLEMENTED
+TUI_DURATION_HUMAN_INPUT=IMPLEMENTED
+TUI_BODY_METRIC_GRAPHS=IMPLEMENTED
+TUI_GLOBAL_BODY_OVERLAY=NEXT
+DASHBOARD_GRAPH_V2=NEXT
+GATE_2=IN_PROGRESS
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+Next deliverables:
+1. normalized global body graph in `F4`;
+2. color + symbol identity for every overlaid metric;
+3. global percent-change summary;
+4. richer home weight graph;
+5. previous-measurement delta on dashboard;
+6. dashboard min/max weight;
+7. latest waist summary when available;
+8. compact asymmetry warning when relevant.
+
+No database schema migration is expected.
+No Trainlog JSON v1 change is expected.
+<!-- TRAINLOG_GLOBAL_BODY_GRAPH_ROADMAP _END -->

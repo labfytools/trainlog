@@ -124,4 +124,52 @@ TrainlogStatus trainlog_database_get_session_details(
     size_t *output_exercise_count
 );
 
+
+/* TRAINLOG_BODY_METRIC_HISTORY_API */
+
+typedef enum TrainlogBodyMetric {
+    TRAINLOG_BODY_METRIC_WEIGHT = 0,
+    TRAINLOG_BODY_METRIC_NECK,
+    TRAINLOG_BODY_METRIC_SHOULDERS,
+    TRAINLOG_BODY_METRIC_CHEST,
+    TRAINLOG_BODY_METRIC_WAIST,
+    TRAINLOG_BODY_METRIC_HIPS,
+    TRAINLOG_BODY_METRIC_LEFT_ARM,
+    TRAINLOG_BODY_METRIC_RIGHT_ARM,
+    TRAINLOG_BODY_METRIC_LEFT_FOREARM,
+    TRAINLOG_BODY_METRIC_RIGHT_FOREARM,
+    TRAINLOG_BODY_METRIC_LEFT_THIGH,
+    TRAINLOG_BODY_METRIC_RIGHT_THIGH,
+    TRAINLOG_BODY_METRIC_LEFT_CALF,
+    TRAINLOG_BODY_METRIC_RIGHT_CALF,
+    TRAINLOG_BODY_METRIC_COUNT
+} TrainlogBodyMetric;
+
+typedef struct TrainlogBodyMetricPoint {
+    char observed_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    double value;
+} TrainlogBodyMetricPoint;
+
+typedef struct TrainlogBodyPairPoint {
+    bool found;
+    char observed_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    double left_value;
+    double right_value;
+} TrainlogBodyPairPoint;
+
+TrainlogStatus trainlog_database_list_body_metric_points(
+    TrainlogDatabase *database,
+    TrainlogBodyMetric metric,
+    TrainlogBodyMetricPoint *output,
+    size_t capacity,
+    size_t *output_count
+);
+
+TrainlogStatus trainlog_database_latest_body_pair(
+    TrainlogDatabase *database,
+    TrainlogBodyMetric left_metric,
+    TrainlogBodyMetric right_metric,
+    TrainlogBodyPairPoint *output
+);
+
 #endif
