@@ -95,3 +95,15 @@ test(
   'catalog',
   test_catalog,
 )
+
+test_session_detail = executable(
+  'test_session_detail',
+  'tests/test_session_detail.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'session_detail',
+  test_session_detail,
+)

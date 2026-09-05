@@ -188,3 +188,203 @@ se_<random UUID v4>
 ```
 
 The database stores these identifiers as opaque stable text.
+
+<!-- TRAINLOG_TUI_V02_CURRENT_AND_NEXT -->
+## 16. Current usable TUI checkpoint
+
+The first usable ncurses interface is implemented.
+
+Current daily-use flow:
+
+```text
+Dashboard
+  -> New session
+  -> History
+  -> Exercises
+  -> Body
+```
+
+Implemented interaction:
+
+- colored centralized theme;
+- bordered screens;
+- arrow-key navigation;
+- `Enter` activation;
+- `F1` new session;
+- `F2` history;
+- `F3` exercises;
+- `F4` body;
+- `q` quit;
+- minimum terminal fallback at `72x20`.
+
+The dashboard shows:
+
+- session count;
+- exercise count;
+- latest body weight;
+- recorded weight delta;
+- terminal-native body-weight graph.
+
+A flat weight history with only one distinct value renders one centered axis
+value instead of repeating the same minimum and maximum label.
+
+## 17. Session history and detail
+
+History is navigable with the keyboard.
+
+Selecting a workout and pressing `Enter` opens a read-only detail view.
+
+For every exercise the detail view exposes:
+
+- exercise name;
+- repetition or duration tracking mode;
+- load mode;
+- planned rest;
+- planned number of sets;
+- planned repetitions or duration;
+- target load when applicable;
+- actual set count;
+- ordered performed sets and their actual loads.
+
+Example:
+
+```text
+Presse à cuisses
+
+Mode   : répétitions
+Charge : externe
+Repos  : 1 min
+
+Cible  : 4 séries × 5 reps
+Charge cible : 80.0 kg
+
+Réalisé:
+5@80.0 / 5@80.0 / 5@80.0 / 3@80.0
+```
+
+Inside one workout, left/right or up/down changes the selected exercise.
+
+Assistance remains direction-aware: more assistance kilograms mean more help,
+not greater strength.
+
+## 18. Duration input and display — next implementation slice
+
+Persistent duration and rest units remain **seconds**.
+
+No SQLite schema or Trainlog JSON v1 change is required.
+
+The TUI parser will accept these equivalent forms:
+
+```text
+90
+90s
+1:30
+1m30
+1m30s
+```
+
+All represent 90 seconds.
+
+Additional examples:
+
+```text
+2m    -> 120 seconds
+45s   -> 45 seconds
+2:05  -> 125 seconds
+```
+
+A bare integer remains seconds for fast backward-compatible entry.
+
+Canonical display formatting:
+
+```text
+45 seconds  -> 45 s
+60 seconds  -> 1 min
+90 seconds  -> 1 min 30 s
+120 seconds -> 2 min
+125 seconds -> 2 min 5 s
+```
+
+The same parser and formatter are reused for:
+
+- timed exercise targets;
+- timed actual sets;
+- planned rest.
+
+Invalid malformed forms are rejected before persistence.
+
+## 19. Body screen and measurement graphs — next implementation slice
+
+`F4 Corps` becomes a full history and visualization screen.
+
+Canonical selectable metrics:
+
+```text
+body_weight_kg
+neck_cm
+shoulders_cm
+chest_cm
+waist_cm
+hips_cm
+left_arm_cm
+right_arm_cm
+left_forearm_cm
+right_forearm_cm
+left_thigh_cm
+right_thigh_cm
+left_calf_cm
+right_calf_cm
+```
+
+The screen supports left/right navigation between metrics.
+
+For the selected metric it shows:
+
+- latest value;
+- first recorded value;
+- absolute change;
+- terminal-native history graph;
+- recent dated values.
+
+Units:
+
+```text
+body weight  -> kg
+measurements -> cm
+```
+
+Paired measurements also expose asymmetry:
+
+```text
+left arm  : 34.2 cm
+right arm : 34.8 cm
+difference: 0.6 cm right
+```
+
+Relevant pairs:
+
+- arm;
+- forearm;
+- thigh;
+- calf.
+
+The graph layer must not invent zero values when one side or one date is
+missing.
+
+## 20. TUI priority before Android
+
+Android remains intentionally deferred until the TUI is comfortable for daily
+use.
+
+Immediate order:
+
+```text
+1. session details
+2. human duration parsing/formatting
+3. full F4 measurement history and graphs
+4. exercise performance history and graphs
+5. previous-session defaults
+6. safe editing/deletion
+7. Android recorder and JSON import workflow
+```
+<!-- TRAINLOG_TUI_V02_CURRENT_AND_NEXT _END -->

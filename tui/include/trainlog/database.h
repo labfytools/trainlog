@@ -91,4 +91,37 @@ TrainlogStatus trainlog_database_list_weight_points(
     size_t *output_count
 );
 
+
+/* TRAINLOG_SESSION_DETAILS_API */
+
+#define TRAINLOG_SET_SUMMARY_MAX 1024U
+
+typedef struct TrainlogPersistedExerciseDetail {
+    char name[TRAINLOG_NAME_MAX + 1U];
+    TrainlogTrackingMode tracking_mode;
+    TrainlogLoadMode load_mode;
+    int rest_seconds;
+    int target_sets;
+    int target_reps;
+    int target_duration_seconds;
+    int has_target_weight;
+    double target_weight_kg;
+    size_t actual_set_count;
+    char actual_summary[TRAINLOG_SET_SUMMARY_MAX + 1U];
+} TrainlogPersistedExerciseDetail;
+
+/**
+ * @brief Load one session header plus ordered exercise details.
+ *
+ * The function is read-only and allocates nothing.
+ */
+TrainlogStatus trainlog_database_get_session_details(
+    TrainlogDatabase *database,
+    const char *session_id,
+    TrainlogSessionSummary *output_session,
+    TrainlogPersistedExerciseDetail *output_exercises,
+    size_t exercise_capacity,
+    size_t *output_exercise_count
+);
+
 #endif

@@ -4,106 +4,82 @@
 
 Status: PASS
 
-```text
-GATE_0=PASS
-```
-
 ## Gate 1 — Exchange format v1 freeze
 
 Status: PASS
 
 ```text
-GATE_1=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
-## Gate 2 / Weekend MVP — Usable persistence + direct entry
+## Gate 2 — Persistence + usable TUI
 
 Status: IN PROGRESS
 
-Current vertical slice:
+```text
+FIRST_USABLE_TUI=PASS
+TUI_V0_2_POLISH=IMPLEMENTED
+GATE_2=IN_PROGRESS
+```
+
+Current TUI capabilities:
+
+- direct workout entry;
+- exercise catalog;
+- body tracking;
+- weight graph;
+- colored dashboard;
+- arrow/F-key navigation;
+- navigable history;
+- Unicode anti-duplicate exercise names.
+
+Next TUI polish blocks:
+
+1. full session detail;
+2. exercise performance history and graphs;
+3. previous-session defaults;
+4. safe edit/delete flows.
+
+Android remains deferred until the TUI daily workflow is satisfactory.
+
+<!-- TRAINLOG_TUI_V02_ROADMAP -->
+## TUI v0.2 checkpoint
+
+Current state:
 
 ```text
-WEEKEND_MVP_TUI=IMPLEMENTED
+FIRST_USABLE_TUI=PASS
+TUI_V0_2_POLISH=IMPLEMENTED
+TUI_SESSION_DETAILS=IMPLEMENTED
+TUI_DURATION_HUMAN_INPUT=NEXT
+TUI_BODY_METRIC_GRAPHS=NEXT
 GATE_2=IN_PROGRESS
-DATABASE_SCHEMA_V1=DRAFT
+TRAINLOG_FORMAT_V1=FROZEN
 ```
 
-Delivered in this slice:
+Completed before this checkpoint:
 
-- SQLite persistence foundation;
-- UUIDv4 creation;
-- frozen Unicode exercise-name normalization;
-- direct exercise creation;
-- direct session creation;
-- automatic start/end timestamps;
-- reps/duration tracking;
-- none/external/assistance load modes;
-- actual set recording;
-- planned rest;
-- standalone body measurements;
-- session history;
-- dashboard;
-- colored ncursesw interface;
-- weight sparkline.
+- C17/Meson persistence core;
+- SQLite schema v1 foundation;
+- UUIDv4 generation;
+- Unicode catalog normalization;
+- direct workout recording;
+- direct body observation recording;
+- colored ncursesw dashboard;
+- keyboard navigation;
+- body-weight graph;
+- flat-series graph rendering;
+- navigable workout history;
+- full read-only session detail.
 
-Validation required before push:
+Next implementation slice:
 
-```bash
-python tools/validate_json.py
-python tools/validate_import_contract.py
+1. shared duration parser accepting seconds and minute-oriented syntax;
+2. shared human duration formatter;
+3. generic body-metric history query;
+4. F4 metric selector;
+5. graphs for weight and every body measurement;
+6. left/right asymmetry presentation.
 
-CC=clang meson setup build
-meson compile -C build
-meson test -C build --print-errorlogs
-
-CC=clang meson setup build-asan \
-  -Db_sanitize=address,undefined \
-  -Db_lundef=false
-meson compile -C build-asan
-meson test -C build-asan --print-errorlogs
-
-git diff --check
-```
-
-Next vertical slice:
-
-- Android v0.1 recorder;
-- JSON v1 export;
-- C17 JSON importer;
-- catalog reconciliation;
-- idempotent import.
-
-Gate 2 remains open until import transactions and idempotency are complete.
-
-## Gate 3 — TUI polish
-
-The minimal colored TUI has been pulled forward for the Monday usability target.
-
-Gate 3 later adds:
-
-- richer navigation;
-- session details;
-- editing;
-- more graphs;
-- advanced layout polish.
-
-## Gate 4 — Android recorder
-
-Pulled forward immediately after Weekend MVP TUI.
-
-## Gate 5 — Analytics
-
-- body-weight trends;
-- measurement trends;
-- exercise performance;
-- volume;
-- max/estimated max;
-- balance analysis.
-
-## Gate 6 — Hardening
-
-- migrations;
-- packaging;
-- broader tests;
-- first tagged release.
+No incompatible change to frozen Trainlog JSON v1 is required.
+<!-- TRAINLOG_TUI_V02_ROADMAP _END -->
