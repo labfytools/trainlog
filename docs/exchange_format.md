@@ -8,7 +8,7 @@ Current state:
 
 ```text
 TRAINLOG_FORMAT_V1=DRAFT
-GATE_0=VALIDATION_PENDING
+GATE_0=PASS
 ```
 
 Incompatible changes are allowed until the format is explicitly marked `FROZEN`.

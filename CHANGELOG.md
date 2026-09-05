@@ -22,6 +22,7 @@ The project uses a simple pre-release changelog during early development.
 
 ### Changed
 
+- Gate 0 project contract review completed successfully.
 - `ended_at` is optional for active or interrupted sessions.
 - Repetition and timed exercise modes are now mutually exclusive.
 - Exercise display-name anti-duplication semantics are defined.

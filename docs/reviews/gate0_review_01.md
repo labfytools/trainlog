@@ -3,8 +3,8 @@
 ## Status
 
 ```text
-GATE_0_REVIEW_01=IMPLEMENTED
-GATE_0=VALIDATION_PENDING
+GATE_0_REVIEW_01=PASS
+GATE_0=PASS
 TRAINLOG_FORMAT_V1=DRAFT
 ```
 
@@ -116,13 +116,44 @@ Expected result:
 - every invalid fixture reports `PASS invalid`;
 - `git diff --check` prints nothing.
 
+## Validation evidence
+
+Canonical local validation reported:
+
+```text
+python tools/validate_json.py
+PASS
+```
+
+Every positive fixture was accepted.
+
+Every negative fixture was rejected for the intended reason.
+
+`git diff --check` produced no output.
+
+Reviewed commit:
+
+```text
+bc54d6b4ce10d098916823b6a79f72b39d9c7703
+Harden Trainlog v1 exchange contract
+```
+
+The pushed GitHub mirror was read back and the review changes were verified.
+
 ## Gate decision
 
-Review #1 does not itself mark Gate 0 as PASS.
+```text
+GATE_0_REVIEW_01=PASS
+GATE_0=PASS
+```
 
-Gate 0 becomes eligible for PASS after:
+Gate 0 is closed.
 
-1. the canonical local validation succeeds;
-2. the review is committed;
-3. the commit is pushed to Forgejo and GitHub;
-4. the mirrored repository is reviewed.
+The exchange format remains deliberately unfrozen:
+
+```text
+TRAINLOG_FORMAT_V1=DRAFT
+```
+
+Gate 1 is responsible for completing the remaining format decisions and
+freezing `TRAINLOG_FORMAT_V1`.

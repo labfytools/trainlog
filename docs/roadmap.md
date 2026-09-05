@@ -2,7 +2,14 @@
 
 ## Gate 0 — Project contract
 
-Status: VALIDATION PENDING — REVIEW #1
+Status: PASS
+
+Canonical result:
+
+```text
+GATE_0=PASS
+GATE_0_REVIEW_01=PASS
+```
 
 Deliverables:
 
@@ -26,7 +33,14 @@ Exit criteria:
 - semantic invariants are documented;
 - repository clean after commit.
 
-Gate 0 is not PASS until the review #1 validation commands pass in the canonical working tree and the resulting commit is pushed.
+Gate 0 passed after:
+
+- canonical local fixture validation succeeded;
+- `git diff --check` succeeded;
+- review commit `bc54d6b4ce10d098916823b6a79f72b39d9c7703` was pushed;
+- the GitHub mirror was independently read back and reviewed.
+
+Gate 1 is now the active gate.
 
 ## Gate 1 — Exchange format v1 freeze
 
