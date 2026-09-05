@@ -1,106 +1,252 @@
 # Database
 
-## 1. Purpose
-
-SQLite is the canonical long-term data store used by the TUI.
-
-The database is not the Android exchange format.
-
-## 2. Initial entities
-
-The initial data model is expected to contain:
-
-- schema metadata;
-- exercises;
-- sessions;
-- session exercises;
-- performed sets;
-- body measurements;
-- optional maximum-performance records.
-
-The exact SQL schema will be frozen before implementation.
-
-## 3. Exercise identity
-
-The database must preserve a stable external exercise identifier.
-
-Conceptually:
+## 1. Status
 
 ```text
-exercises
-  id              internal SQLite primary key
-  exercise_id     stable Trainlog identifier
-  name            mutable display name
+GATE_2_REVIEW_01=IMPLEMENTED
+GATE_2=IN_PROGRESS
+DATABASE_SCHEMA_V1=DRAFT
 ```
 
-`exercise_id` must be unique.
+Gate 2 review #1 establishes the persistence foundation.
 
-## 4. Session identity
+The Trainlog exchange format v1 is already frozen and is not modified by this gate.
 
-`session_id` must be unique.
+## 2. Purpose
 
-This is the primary anti-duplication barrier for imported sessions.
+SQLite is the canonical long-term store used by the TUI.
 
-## 5. Foreign keys
+The SQLite database is an internal persistence format and is versioned independently from the Trainlog JSON exchange format.
 
-SQLite foreign-key enforcement must be enabled explicitly for every connection:
+## 3. Schema versioning
+
+Trainlog database schema version uses SQLite:
+
+```sql
+PRAGMA user_version;
+```
+
+Initial schema:
+
+```text
+DATABASE_SCHEMA_V1=1
+```
+
+A new database starts with `user_version = 0` and is initialized atomically to version 1.
+
+A database newer than the running binary understands is rejected.
+
+Historical migrations are not invented. They must be explicitly implemented and tested when a schema version 2 is introduced.
+
+## 4. Connection rules
+
+Every Trainlog SQLite connection must enable:
 
 ```sql
 PRAGMA foreign_keys = ON;
 ```
 
-Tests must verify that the expected constraints are actually active.
+The core also configures a bounded SQLite busy timeout.
 
-## 6. Schema versioning
+Foreign-key activation is verified by tests.
 
-The database must store an explicit schema version.
+## 5. Tables
 
-Schema changes must be classified as:
+### 5.1 `exercises`
 
-- additive and compatible;
-- migration required;
-- destructive and therefore forbidden without explicit migration logic.
+Canonical exercise catalog.
+
+Fields:
+
+```text
+id                 internal INTEGER primary key
+exercise_id        stable Trainlog identity, UNIQUE
+name               display name
+normalized_name    v1 comparison form, UNIQUE
+tracking_mode      reps | duration
+```
+
+The database does not compute Unicode normalization in review #1.
+
+The application/catalog layer will compute the frozen v1 normalized name in Gate 2 review #2.
+
+SQLite owns the final uniqueness barrier.
+
+### 5.2 `sessions`
+
+Canonical workout session header.
+
+Fields:
+
+```text
+id
+session_id         UNIQUE
+started_at
+ended_at            nullable
+notes               nullable
+```
+
+Body data is stored separately so standalone body observations can use the same representation.
+
+### 5.3 `session_exercises`
+
+One ordered exercise within a session.
+
+Fields include:
+
+```text
+session_row_id
+exercise_row_id
+position
+load_mode
+rest_seconds
+target_sets
+target_reps
+target_duration_seconds
+target_weight_kg
+notes
+```
+
+Constraints enforce:
+
+- one exercise identity at most once per session;
+- one row at each session position;
+- exactly one target metric: repetitions or duration;
+- target load presence consistent with `load_mode`.
+
+### 5.4 `performed_sets`
+
+Ordered actual sets.
+
+Fields:
+
+```text
+session_exercise_row_id
+position
+reps
+duration_seconds
+weight_kg
+```
+
+Exactly one of repetitions or duration is present.
+
+Cross-table rules such as actual-set load consistency with the owning session exercise remain application/import invariants and will be tested at the import layer.
+
+### 5.5 `body_observations`
+
+Body history is a first-class database concept and may exist with or without a workout session.
+
+Fields include:
+
+```text
+observation_id
+observed_at
+session_row_id       optional and UNIQUE
+body_weight_kg
+neck_cm
+shoulders_cm
+chest_cm
+waist_cm
+hips_cm
+left_arm_cm
+right_arm_cm
+left_forearm_cm
+right_forearm_cm
+left_thigh_cm
+right_thigh_cm
+left_calf_cm
+right_calf_cm
+notes
+```
+
+At least one body metric must be present.
+
+Imported session-associated body data will create one linked observation.
+
+Standalone TUI measurements use the same table without `session_row_id`.
+
+## 6. UUID generation
+
+Official Trainlog creators generate UUID version 4 identifiers.
+
+The C core provides generated IDs for:
+
+```text
+ex_<uuid-v4>
+se_<uuid-v4>
+bo_<uuid-v4>
+```
+
+This is creation policy.
+
+The frozen exchange parser remains able to accept other schema-valid opaque v1 identifiers.
 
 ## 7. Transactions
 
-Multi-table imports must use transactions.
+Multi-row operations are atomic.
 
-A failed import must not leave a partially inserted session.
-
-Expected behavior:
+Gate 2 provides explicit:
 
 ```text
-BEGIN
-  validate
-  insert missing exercises
-  insert session
-  insert workout rows
-  insert performed sets
+BEGIN IMMEDIATE
 COMMIT
-```
-
-On failure:
-
-```text
 ROLLBACK
 ```
 
+primitives.
+
+The future JSON import service must perform catalog reconciliation and all session inserts inside one transaction.
+
+A hard conflict or validation failure leaves the database unchanged.
+
 ## 8. Units
 
-Canonical storage units:
+Canonical persistent units remain:
 
-- body weight: kilograms;
-- load: kilograms;
-- body measurements: centimeters;
-- duration: seconds.
+- weight/load: kilograms;
+- body circumference: centimeters;
+- duration/rest: seconds.
 
-The UI may format values differently later, but persistent units remain explicit and stable.
+## 9. Gate 2 review #1 boundary
 
-## 9. Migration policy
+Review #1 intentionally does not implement:
 
-A schema migration must:
+- JSON parsing;
+- Unicode exercise-name normalization;
+- local catalog reconciliation;
+- full session insert APIs;
+- body-observation CRUD;
+- ncurses.
 
-- be deterministic;
-- preserve user data;
-- be testable from the previous supported version;
-- update the stored schema version only after success.
+Those belong to subsequent Gate 2 work.
+
+This split keeps the first compiled C change small enough to review thoroughly.
+
+## 10. Validation
+
+Normal build:
+
+```bash
+CC=clang meson setup build
+meson compile -C build
+meson test -C build --print-errorlogs
+```
+
+Sanitizer build:
+
+```bash
+CC=clang meson setup build-asan \
+  -Db_sanitize=address,undefined \
+  -Db_lundef=false
+
+meson compile -C build-asan
+meson test -C build-asan --print-errorlogs
+```
+
+Repository-level format validators remain mandatory:
+
+```bash
+python tools/validate_json.py
+python tools/validate_import_contract.py
+git diff --check
+```
