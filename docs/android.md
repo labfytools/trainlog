@@ -6,9 +6,9 @@ The Android application is a lightweight training-session recorder.
 
 Its design priority is low-friction data entry during a workout.
 
-## 2. Session flow
+It is not the canonical history or analytics application.
 
-Expected flow:
+## 2. Session flow
 
 ```text
 Start session
@@ -17,13 +17,16 @@ Start session
 record started_at
     |
     v
-add exercises and targets
+select/create exercise
+    |
+    v
+enter target + planned rest
     |
     v
 record actual sets
     |
     v
-optional body data
+optional body data / notes
     |
     v
 Finish session
@@ -32,45 +35,68 @@ Finish session
 record ended_at
     |
     v
-export Trainlog JSON
+validate + export Trainlog JSON
 ```
 
 ## 3. Exercise catalog
 
-The application maintains a local exercise catalog for selection.
+The Android application keeps a local exercise catalog so names are not retyped every session.
 
-The user must not need to retype the same exercise every session.
+Creating an exercise requires:
 
-When a new exercise is created:
+- display name;
+- tracking mode: repetitions or duration.
 
-- generate a stable `exercise_id`;
-- store the display name;
-- use that same identifier in future sessions;
-- include the exercise catalog entry in exported files as required.
+The application generates a stable `exercise_id`.
 
-## 4. Planned work
+A new exercise used in an exported session is included in the top-level session export metadata and is therefore importable by the TUI.
 
-The basic exercise form supports:
+The Android application must prevent accidental duplicate normalized names according to the Trainlog v1 contract.
 
-- number of sets;
-- repetitions or timed duration;
-- load when relevant;
-- rest duration.
+## 4. Fast exercise form
 
-Example:
+For a repetition exercise, the basic form is conceptually:
 
 ```text
-4 sets
-5 repetitions
-80 kg
-60 seconds rest
+Exercise          Presse à cuisses
+Load mode         External
+Load              80 kg
+Sets              4
+Repetitions       5
+Rest              60 s
 ```
 
-## 5. Actual work
+For a timed exercise:
 
-The UI should pre-populate performed sets from the target when convenient.
+```text
+Exercise          Gainage ventral
+Load mode         None
+Sets              3
+Duration          45 s
+Rest              60 s
+```
 
-The user only needs to edit differences.
+The application should remember practical defaults from the previous use of an exercise when that reduces typing, but remembered UI defaults are not part of the exchange-format contract.
+
+## 5. Load modes
+
+The user chooses only when relevant:
+
+- none;
+- external;
+- assistance.
+
+`external` covers free weights and machine-displayed load.
+
+`assistance` stores a positive assistance value.
+
+The UI should label assistance explicitly so it cannot be confused with added resistance.
+
+## 6. Actual work
+
+The application should pre-populate actual sets from the target.
+
+The user edits only what differs.
 
 Example target:
 
@@ -84,30 +110,71 @@ Actual:
 5 / 5 / 5 / 3
 ```
 
-The exported file must preserve both target and actual values.
+The export preserves both target and actual values.
 
-## 6. Timestamps
+Zero actual repetitions are valid for a real failed attempt.
+
+A planned exercise may also have zero actual sets if it was never started.
+
+## 7. Rest
+
+`rest_seconds` is the planned rest duration for the exercise.
+
+v1 does not require a running rest timer and does not serialize measured per-set rest.
+
+A timer can be added later as UI behavior without changing the v1 format.
+
+## 8. Timestamps
 
 `started_at` is recorded automatically when the session starts.
 
-`ended_at` is recorded automatically when the session ends.
+`ended_at` is recorded automatically when the user finishes the session.
 
-The UI may later allow explicit correction for forgotten starts or stops, but such correction must be visible to the user.
+An active/interrupted local session may exist without `ended_at`.
 
-## 7. Export
+The application must never invent an end timestamp merely to make export validation pass.
 
-The application exports valid Trainlog JSON.
+## 9. Body data
 
-It must not silently export malformed or incomplete data.
+Optional session-associated data:
 
-The application must validate required fields before final export.
+- body weight;
+- neck;
+- shoulders;
+- chest;
+- waist;
+- hips;
+- left/right arm;
+- left/right forearm;
+- left/right thigh;
+- left/right calf.
 
-## 8. Non-goals
+The Android UI does not need to force these fields during every workout.
+
+## 10. Notes
+
+Session and exercise notes are optional.
+
+The initial Android UI may omit note controls without violating v1, because the fields are optional.
+
+## 11. Export
+
+Before export, Android must enforce both:
+
+- JSON structural validity;
+- Trainlog v1 semantic validity.
+
+A malformed or semantically inconsistent file must not be exported as a completed Trainlog document.
+
+## 12. Non-goals
 
 Initial Android versions do not need:
 
-- advanced analytics;
-- complex charts;
-- a cloud account;
-- a remote database;
-- social features.
+- analytics;
+- complex graphs;
+- cloud accounts;
+- remote databases;
+- social features;
+- muscle classification;
+- distance/cardio metrics;
+- per-set rest measurement.

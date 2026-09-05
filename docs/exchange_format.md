@@ -2,32 +2,53 @@
 
 ## 1. Status
 
-This document defines the Trainlog v1 exchange contract draft.
-
-Current state:
-
 ```text
-TRAINLOG_FORMAT_V1=DRAFT
 GATE_0=PASS
+GATE_1_REVIEW_01=IMPLEMENTED
+GATE_1=VALIDATION_PENDING
+TRAINLOG_FORMAT_V1=DRAFT
 ```
 
-Incompatible changes are allowed until the format is explicitly marked `FROZEN`.
+This document defines the proposed final Trainlog v1 exchange contract.
 
-Once frozen, incompatible changes require a new format version.
+The format remains `DRAFT` until Gate 1 validation and mirror review complete.
 
-## 2. Encoding
+## 2. Design goal
 
-A Trainlog exchange document is:
+Trainlog v1 must represent the training patterns required by the initial applications without turning the Android recorder into a complex training platform.
+
+The format supports:
+
+- repetition-based exercises;
+- time-based exercises;
+- bodyweight work;
+- free-weight and machine load;
+- assistance load;
+- planned versus performed work;
+- planned rest;
+- body weight;
+- body measurements;
+- active or interrupted sessions;
+- optional notes.
+
+Distance, velocity, heart rate, per-set measured rest, supersets, and arbitrary custom metrics are outside v1.
+
+## 3. Encoding and strictness
+
+A Trainlog v1 document is:
 
 - JSON;
 - UTF-8;
-- one top-level JSON object.
+- one top-level object;
+- structurally strict.
 
-Unknown fields are rejected in v1.
+Unknown fields are rejected.
 
-This strict rule is intentional: a misspelled or unsupported field must fail validation rather than be silently ignored.
+This is intentional. A misspelled field must fail validation instead of being silently discarded.
 
-## 3. Required top-level fields
+## 4. Top-level object
+
+Required fields:
 
 ```json
 {
@@ -38,89 +59,78 @@ This strict rule is intentional: a misspelled or unsupported field must fail val
 }
 ```
 
-### `format`
+`format` must equal `trainlog`.
 
-Must equal:
+`version` must equal integer `1`.
 
-```text
-trainlog
-```
+The top-level `exercises` array contains metadata for exactly the exercises referenced by the session.
 
-### `version`
+It is not a full catalog synchronization document.
 
-Must equal integer `1`.
-
-## 4. Exercise catalog
+## 5. Exercise identity
 
 Each catalog entry contains:
 
 ```json
 {
   "exercise_id": "leg_press",
-  "name": "Presse à cuisses"
+  "name": "Presse à cuisses",
+  "tracking_mode": "reps"
 }
 ```
 
-### 4.1 Stable identity
+### 5.1 `exercise_id`
 
-`exercise_id` is the permanent machine identifier.
+`exercise_id` is the permanent machine identity.
 
 Rules:
 
-- ASCII lowercase identifier;
 - 1 to 128 characters;
-- allowed characters: `a-z`, `0-9`, `_`, `-`;
-- unique within one exchange document;
-- must not change merely because the visible name changes.
+- ASCII lowercase;
+- first character: `a-z` or `0-9`;
+- remaining characters: `a-z`, `0-9`, `_`, `-`;
+- unique inside the document;
+- unchanged when the visible name changes.
 
-The visible name is not the persistent identity.
+### 5.2 `name`
 
-### 4.2 Display-name anti-duplication rule
+`name` is the human-readable display name.
 
-Two catalog entries must not have equivalent display names.
+The display name is not the identity.
 
-For duplicate detection, implementations normalize names using this semantic algorithm:
+Two exercises in one document must not have equivalent normalized names.
+
+Normalization for comparison is:
 
 1. Unicode NFC normalization;
-2. remove leading and trailing whitespace;
-3. collapse each internal run of whitespace to one ASCII space;
+2. trim leading and trailing Unicode whitespace;
+3. collapse each internal whitespace run to one ASCII space;
 4. Unicode case folding.
 
-Example:
+The serialized name is never rewritten by this normalization rule.
+
+The future C implementation must use a Unicode implementation capable of reproducing this contract exactly; `utf8proc` or an equivalent tested implementation is acceptable.
+
+### 5.3 `tracking_mode`
+
+Every exercise has one stable tracking mode:
 
 ```text
-"Presse   à cuisses"
-" presse à cuisses "
-"PRESSE À CUISSES"
+reps
+duration
 ```
 
-are considered the same display name.
+`reps` is used for repetition-counted exercises.
 
-This rule prevents accidental duplicate exercises while still allowing an exercise to be renamed without changing `exercise_id`.
+`duration` is used for time-counted exercises such as planks.
 
-JSON Schema cannot express this normalization rule. It is mandatory semantic validation.
+The tracking mode determines the Android input control and the interpretation of all sets for that exercise.
 
-## 5. Session
+Changing the fundamental tracking mode of an existing exercise should normally create a new exercise identity rather than silently changing historical semantics.
 
-Required fields:
+## 6. Session identity
 
-- `session_id`;
-- `started_at`;
-- `exercises`.
-
-Optional fields:
-
-- `ended_at`;
-- `body_weight_kg`;
-- `measurements`.
-
-`ended_at` is optional because Trainlog may preserve an active or interrupted session.
-
-A completed Android export normally includes `ended_at`.
-
-The TUI must never invent an end timestamp for a session that does not have one.
-
-## 6. Session identifier
+A session contains a unique opaque `session_id`.
 
 Example:
 
@@ -132,18 +142,21 @@ Rules:
 
 - 1 to 128 characters;
 - starts with an ASCII alphanumeric character;
-- remaining characters are ASCII alphanumeric, `_`, or `-`;
-- treated as an opaque unique identifier.
+- remaining characters are ASCII alphanumeric, `_`, or `-`.
 
-The generation algorithm is implementation-defined in v1.
+The generation algorithm remains implementation-defined.
 
-The TUI enforces uniqueness in SQLite.
+The database uniqueness constraint is the final anti-duplication barrier.
 
-Repeated import of the same `session_id` is idempotent.
+Importing an already-known `session_id` is idempotent.
 
-## 7. Timestamps
+## 7. Session timestamps
 
-Timestamps use RFC 3339 / ISO 8601 date-time syntax with an explicit UTC offset.
+`started_at` is required.
+
+`ended_at` is optional.
+
+Both use RFC 3339 / ISO 8601 date-time syntax with an explicit UTC offset.
 
 Examples:
 
@@ -152,19 +165,32 @@ Examples:
 2026-09-05T16:34:12Z
 ```
 
-An offset-less timestamp is invalid.
+Offset-less timestamps are invalid.
 
-If `ended_at` is present, it must represent an instant strictly later than `started_at`.
+If `ended_at` exists, it must represent an instant strictly later than `started_at`.
 
-Chronological ordering is a semantic validation rule.
+An absent `ended_at` means the session is still active, interrupted, or otherwise not formally completed.
 
-## 8. Workout exercise entry
+Trainlog must not invent an end time.
 
-Example:
+## 8. Session exercise order
+
+The order of `session.exercises` is meaningful.
+
+It records the exercise order entered by the user.
+
+The order of `sets` is also meaningful and defines performed set order.
+
+No separate set number is serialized.
+
+## 9. Planned work and performed work
+
+Each session exercise contains:
 
 ```json
 {
   "exercise_id": "leg_press",
+  "load_mode": "external",
   "rest_seconds": 60,
   "target": {
     "sets": 4,
@@ -184,60 +210,123 @@ Example:
 
 `sets` describes actual performed work.
 
-The two concepts must remain distinct.
+They must remain separate.
 
-The number of actual sets is deliberately allowed to differ from `target.sets`.
+`target.sets` is the intended number of sets.
 
-This records failure, extra work, interrupted sessions, and manual corrections truthfully.
+The length of `sets` is the actual number of recorded sets and may be:
 
-## 9. Repetition mode and timed mode
+- smaller than the target;
+- equal to the target;
+- greater than the target;
+- zero.
 
-Each workout exercise has exactly one target mode:
+An empty actual-set array is valid for a planned exercise that was not performed.
 
-- repetition mode: `reps`;
-- timed mode: `duration_seconds`.
+## 10. Repetition mode
 
-A target must not contain both.
+For a `tracking_mode` of `reps`:
 
-All actual sets for that exercise must use the same mode as the target.
+- `target.reps` is required;
+- `target.duration_seconds` is forbidden;
+- each actual set contains `reps`;
+- each actual set forbids `duration_seconds`.
 
-### Repetition example
+Target repetitions must be at least 1.
 
-```json
-{
-  "target": {
-    "sets": 4,
-    "reps": 5
-  }
-}
+Actual repetitions may be 0.
+
+A zero-repetition set represents a real attempted set with no completed repetition.
+
+A skipped set should normally be omitted instead.
+
+## 11. Duration mode
+
+For a `tracking_mode` of `duration`:
+
+- `target.duration_seconds` is required;
+- `target.reps` is forbidden;
+- each actual set contains `duration_seconds`;
+- each actual set forbids `reps`.
+
+Duration values are positive integer seconds.
+
+## 12. Load model
+
+Each session exercise has exactly one `load_mode`:
+
+```text
+none
+external
+assistance
 ```
 
-### Timed example
+### 12.1 `none`
 
-```json
-{
-  "target": {
-    "sets": 3,
-    "duration_seconds": 45
-  }
-}
+Use for exercises where no separate load value is recorded.
+
+Examples:
+
+- bodyweight squat;
+- unweighted plank;
+- push-up;
+- pull-up without added or assisted load.
+
+When `load_mode` is `none`, `weight_kg` is forbidden in the target and actual sets.
+
+### 12.2 `external`
+
+Use for a positive externally applied or machine-displayed load.
+
+Examples:
+
+- barbell;
+- dumbbell;
+- cable machine;
+- leg press;
+- weighted pull-up.
+
+When `load_mode` is `external`:
+
+- `target.weight_kg` is required;
+- every actual set requires its own `weight_kg`.
+
+Actual set load is stored per set so load changes remain representable.
+
+### 12.3 `assistance`
+
+Use when the numeric load represents assistance that reduces the effective difficulty of a bodyweight movement.
+
+Example:
+
+```text
+Assisted pull-up: 20 kg assistance
 ```
 
-The schema rejects a set or target containing both `reps` and `duration_seconds`.
+When `load_mode` is `assistance`:
 
-The target/actual mode-match rule is semantic validation.
+- `target.weight_kg` is required;
+- every actual set requires its own `weight_kg`.
 
-## 10. Load
+Assistance remains a positive value.
 
-`weight_kg` represents external load in kilograms.
+Analytics must not treat increasing assistance as increasing strength.
 
-It is optional because some exercises are bodyweight or duration-only exercises.
+### 12.4 Unit and physical meaning
 
-When supplied, actual-set load is recorded per set so a session can truthfully represent load changes between sets.
+All serialized loads use kilograms.
 
-## 11. Rest
+For a machine, `weight_kg` records the load value displayed or declared by the machine/user.
 
-`rest_seconds` is the planned rest duration after sets for the workout exercise.
+Trainlog does not claim that this value equals exact mechanical force at the body.
+
+This distinction matters when comparing different machines.
+
+## 13. Rest
+
+`rest_seconds` is required for every session exercise.
+
+It stores the planned rest interval in integer seconds.
 
 Example:
 
@@ -247,93 +336,147 @@ Example:
 
 means one minute.
 
-v1 does not record measured rest duration per individual set.
+Zero is valid when no planned rest exists.
 
-That may be introduced only by an additive compatible extension before freeze or a later format version after freeze.
+v1 does not record measured rest between individual sets.
 
-## 12. Body weight
+## 14. Body weight
 
-`body_weight_kg` is optional and uses kilograms.
+`body_weight_kg` is optional.
 
-It represents body weight associated with the session.
+It is a positive kilogram value associated with the session timestamp.
 
-Standalone body-weight observations outside a workout session are a TUI/database concern and do not require this session exchange object.
+The TUI database may also support standalone body-weight observations; those records are outside this session-exchange document.
 
-## 13. Body measurements
+## 15. Body measurements
 
-Supported v1 measurements use centimeters:
+`measurements` is optional.
 
-- `waist_cm`;
-- `chest_cm`;
-- `shoulders_cm`;
-- `left_arm_cm`;
-- `right_arm_cm`;
-- `left_thigh_cm`;
-- `right_thigh_cm`;
-- `left_calf_cm`;
-- `right_calf_cm`.
+If present, it contains at least one measurement.
 
-If `measurements` is present, it must contain at least one measurement.
+All measurements are circumferences in centimeters unless the field name itself defines another interpretation.
 
-Additional measurements may still be added before v1 is frozen.
+Frozen v1 measurement names proposed by Gate 1 review #1:
 
-## 14. Catalog references
+```text
+neck_cm
+shoulders_cm
+chest_cm
+waist_cm
+hips_cm
+left_arm_cm
+right_arm_cm
+left_forearm_cm
+right_forearm_cm
+left_thigh_cm
+right_thigh_cm
+left_calf_cm
+right_calf_cm
+```
 
-Every `session.exercises[*].exercise_id` must reference an entry present in the top-level `exercises` catalog.
+`shoulders_cm` means shoulder-girdle circumference, not straight-line shoulder width.
 
-This permits Android to introduce a new exercise safely during import.
+Left/right fields are intentionally separate so asymmetry can be followed over time.
 
-An unknown reference makes the document invalid.
+## 16. Notes
 
-JSON Schema cannot express this cross-reference rule. It is mandatory semantic validation.
+Optional UTF-8 notes are supported at:
 
-## 15. Duplicate workout exercise entries
+- session level;
+- session-exercise level.
 
-A session must not contain the same `exercise_id` more than once.
+A present note must not be empty or whitespace-only.
 
-All performed sets for one exercise belong to its single workout entry.
+Session notes are limited to 4000 characters.
 
-This keeps analysis and editing deterministic.
+Exercise notes are limited to 1000 characters.
 
-## 16. Idempotent import
+Notes are user content and must be preserved exactly after validation.
 
-The TUI treats `session_id` as a uniqueness key.
+## 17. Catalog completeness
 
-If the session is already present:
+The top-level exercise catalog must contain exactly the exercise identities referenced by `session.exercises`.
 
-- do not create another session;
-- do not duplicate sets;
-- do not partially merge the repeated document;
-- report that the session already exists.
+Therefore:
 
-Database constraints are the final anti-duplication barrier.
+- every session exercise has one matching catalog entry;
+- no catalog entry is unreferenced;
+- an empty session exercise array requires an empty top-level exercise catalog.
 
-## 17. Validation layers
+This keeps each session export self-contained without silently importing unrelated Android catalog entries.
 
-A valid Trainlog v1 document must pass both:
+## 18. One workout entry per exercise
+
+A `session_id` may contain a given `exercise_id` at most once.
+
+All performed sets for that exercise belong to its single session-exercise entry.
+
+This makes editing and analytics deterministic.
+
+## 19. Existing local exercise with different display name
+
+Identity wins over display text.
+
+If the TUI already knows an `exercise_id` and an imported session carries a different display name for that same identifier:
+
+- the session may still import;
+- the existing canonical TUI identity is used;
+- the import must surface a non-fatal metadata warning;
+- the session import must not silently rename the canonical local exercise.
+
+Catalog synchronization and deliberate renaming are separate operations outside the v1 session-import transaction.
+
+## 20. Structural and semantic validation
+
+A valid v1 document passes both:
 
 1. JSON Schema validation;
 2. Trainlog semantic validation.
 
-Schema validation handles structure and primitive bounds.
+Semantic rules include:
 
-Semantic validation handles rules such as:
+- unique exercise identifiers;
+- normalized display-name uniqueness;
+- explicit timestamp offsets;
+- timestamp chronology;
+- exact catalog/reference set equality;
+- one workout entry per exercise;
+- catalog `tracking_mode` matching target and actual sets;
+- `load_mode` matching weight presence;
+- non-blank notes.
 
-- normalized exercise-name uniqueness;
-- exercise identifier uniqueness;
-- catalog-reference integrity;
-- duplicate workout exercise rejection;
-- target/actual mode consistency;
-- timestamp chronology.
+## 21. Explicit non-goals for v1
 
-Both Android export and TUI import must eventually implement the same semantic contract.
+The following are deliberately not represented by v1:
 
-## 18. Freeze policy
+- distance;
+- speed;
+- velocity;
+- heart rate;
+- calories;
+- measured per-set rest;
+- supersets/circuits as first-class objects;
+- arbitrary custom set metrics;
+- muscle-group classification;
+- machine seat/settings metadata;
+- photos;
+- cloud synchronization.
 
-`TRAINLOG_FORMAT_V1` must not be marked `FROZEN` until:
+Those features can be introduced later without corrupting the simple initial recorder.
 
-- all v1 fields are reviewed;
-- valid fixtures pass;
-- invalid fixtures fail for the intended reason;
-- Android and TUI requirements contain no format ambiguity;
-- the semantic validator contract is stable.
+## 22. Freeze criteria
+
+Gate 1 may freeze v1 only after:
+
+- canonical valid fixtures pass;
+- canonical invalid fixtures fail for the intended reason;
+- Android requirements are aligned;
+- TUI requirements are aligned;
+- the schema and semantic contract contain no known ambiguity;
+- the reviewed commit is pushed and mirrored.
+
+Until then:
+
+```text
+TRAINLOG_FORMAT_V1=DRAFT
+```

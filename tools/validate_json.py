@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Trainlog JSON documents structurally and semantically."""
+"""Validate Trainlog v1 JSON documents structurally and semantically."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ INVALID_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "invalid"
 
 
 class TrainlogSemanticError(ValueError):
-    """Raised when structurally valid JSON violates Trainlog semantics."""
+    """Raised when structurally valid JSON violates Trainlog v1 semantics."""
 
 
 def load_json(path: Path) -> Any:
@@ -39,11 +39,7 @@ def load_json(path: Path) -> Any:
 
 
 def normalize_exercise_name(name: str) -> str:
-    """Return the canonical comparison form used for duplicate-name checks.
-
-    The serialized display name is never rewritten by this function. The
-    normalized value exists only for semantic identity checks.
-    """
+    """Return the canonical comparison form for duplicate-name validation."""
     nfc = unicodedata.normalize("NFC", name)
     collapsed = " ".join(nfc.strip().split())
     return collapsed.casefold()
@@ -70,24 +66,96 @@ def parse_timestamp(value: str, field_name: str) -> datetime:
     return parsed
 
 
+def require_non_blank(value: str, field_name: str) -> None:
+    """Reject a note that contains only Unicode whitespace."""
+    if not value.strip():
+        raise TrainlogSemanticError(f"{field_name}: must not be blank")
+
+
+def validate_load_mode(
+    workout: dict[str, Any],
+    workout_index: int,
+) -> None:
+    """Validate load-mode rules for one session exercise."""
+    load_mode = workout["load_mode"]
+    target = workout["target"]
+    actual_sets = workout["sets"]
+
+    target_has_weight = "weight_kg" in target
+
+    if load_mode == "none":
+        if target_has_weight:
+            raise TrainlogSemanticError(
+                f"session.exercises[{workout_index}].target.weight_kg: "
+                "forbidden when load_mode is 'none'"
+            )
+
+        for set_index, actual_set in enumerate(actual_sets):
+            if "weight_kg" in actual_set:
+                raise TrainlogSemanticError(
+                    f"session.exercises[{workout_index}].sets[{set_index}]."
+                    "weight_kg: forbidden when load_mode is 'none'"
+                )
+        return
+
+    if not target_has_weight:
+        raise TrainlogSemanticError(
+            f"session.exercises[{workout_index}].target.weight_kg: "
+            f"required when load_mode is {load_mode!r}"
+        )
+
+    for set_index, actual_set in enumerate(actual_sets):
+        if "weight_kg" not in actual_set:
+            raise TrainlogSemanticError(
+                f"session.exercises[{workout_index}].sets[{set_index}]."
+                f"weight_kg: required when load_mode is {load_mode!r}"
+            )
+
+
+def validate_tracking_mode(
+    workout: dict[str, Any],
+    workout_index: int,
+    tracking_mode: str,
+) -> None:
+    """Validate target and actual-set metric fields against catalog mode."""
+    target = workout["target"]
+    target_mode = "reps" if "reps" in target else "duration"
+
+    if target_mode != tracking_mode:
+        raise TrainlogSemanticError(
+            f"session.exercises[{workout_index}].target: mode "
+            f"{target_mode!r} does not match catalog tracking_mode "
+            f"{tracking_mode!r}"
+        )
+
+    for set_index, actual_set in enumerate(workout["sets"]):
+        actual_mode = "reps" if "reps" in actual_set else "duration"
+        if actual_mode != tracking_mode:
+            raise TrainlogSemanticError(
+                f"session.exercises[{workout_index}].sets[{set_index}]: "
+                f"mode {actual_mode!r} does not match catalog tracking_mode "
+                f"{tracking_mode!r}"
+            )
+
+
 def validate_semantics(document: dict[str, Any]) -> None:
-    """Validate cross-field and normalized Trainlog v1 invariants."""
+    """Validate Trainlog v1 cross-field and normalized invariants."""
     catalog = document["exercises"]
     session = document["session"]
 
-    exercise_ids: set[str] = set()
+    catalog_by_id: dict[str, dict[str, Any]] = {}
     normalized_names: dict[str, str] = {}
 
     for index, exercise in enumerate(catalog):
         exercise_id = exercise["exercise_id"]
         name = exercise["name"]
 
-        if exercise_id in exercise_ids:
+        if exercise_id in catalog_by_id:
             raise TrainlogSemanticError(
                 f"exercises[{index}].exercise_id: duplicate exercise_id "
                 f"{exercise_id!r}"
             )
-        exercise_ids.add(exercise_id)
+        catalog_by_id[exercise_id] = exercise
 
         normalized = normalize_exercise_name(name)
         if not normalized:
@@ -112,12 +180,16 @@ def validate_semantics(document: dict[str, Any]) -> None:
                 "session.ended_at: must be strictly later than session.started_at"
             )
 
+    if "notes" in session:
+        require_non_blank(session["notes"], "session.notes")
+
     workout_ids: set[str] = set()
 
     for index, workout in enumerate(session["exercises"]):
         exercise_id = workout["exercise_id"]
 
-        if exercise_id not in exercise_ids:
+        catalog_entry = catalog_by_id.get(exercise_id)
+        if catalog_entry is None:
             raise TrainlogSemanticError(
                 f"session.exercises[{index}].exercise_id: unknown catalog "
                 f"reference {exercise_id!r}"
@@ -130,21 +202,31 @@ def validate_semantics(document: dict[str, Any]) -> None:
             )
         workout_ids.add(exercise_id)
 
-        target = workout["target"]
-        target_mode = (
-            "reps" if "reps" in target else "duration_seconds"
+        validate_tracking_mode(
+            workout,
+            index,
+            catalog_entry["tracking_mode"],
         )
+        validate_load_mode(workout, index)
 
-        for set_index, actual_set in enumerate(workout["sets"]):
-            actual_mode = (
-                "reps" if "reps" in actual_set else "duration_seconds"
+        if "notes" in workout:
+            require_non_blank(
+                workout["notes"],
+                f"session.exercises[{index}].notes",
             )
-            if actual_mode != target_mode:
-                raise TrainlogSemanticError(
-                    f"session.exercises[{index}].sets[{set_index}]: "
-                    f"actual mode {actual_mode!r} does not match target mode "
-                    f"{target_mode!r}"
-                )
+
+    catalog_ids = set(catalog_by_id)
+    if catalog_ids != workout_ids:
+        unreferenced = sorted(catalog_ids - workout_ids)
+        missing = sorted(workout_ids - catalog_ids)
+        details: list[str] = []
+        if unreferenced:
+            details.append(f"unreferenced catalog ids: {unreferenced}")
+        if missing:
+            details.append(f"missing catalog ids: {missing}")
+        raise TrainlogSemanticError(
+            "catalog/reference set mismatch: " + "; ".join(details)
+        )
 
 
 def structural_errors(
@@ -171,7 +253,7 @@ def validate_document(
     validator: jsonschema.Draft202012Validator,
     path: Path,
 ) -> list[str]:
-    """Return all validation errors for one Trainlog document."""
+    """Return validation errors for one Trainlog document."""
     try:
         document = load_json(path)
     except (OSError, json.JSONDecodeError) as exc:
@@ -201,6 +283,10 @@ def run_suite(validator: jsonschema.Draft202012Validator) -> int:
     """Validate all positive and negative repository fixtures."""
     valid, invalid = discover_suite()
     failed = False
+
+    if not valid:
+        print("FAIL test suite: no valid fixtures found")
+        return 1
 
     if not invalid:
         print("FAIL test suite: no invalid fixtures found")

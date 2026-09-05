@@ -1,19 +1,24 @@
 # Trainlog Format
 
-This directory contains machine-readable definitions of the Trainlog exchange format.
+This directory contains the machine-readable Trainlog exchange contract.
 
-Current draft:
+Current canonical state:
 
-- `trainlog-v1.schema.json`
+```text
+GATE_0=PASS
+GATE_1_REVIEW_01=IMPLEMENTED
+GATE_1=VALIDATION_PENDING
+TRAINLOG_FORMAT_V1=DRAFT
+```
 
-Canonical human-readable semantics live in:
+Files:
 
-- `docs/exchange_format.md`
+- `trainlog-v1.schema.json`: structural JSON Schema;
+- `../docs/exchange_format.md`: canonical semantic specification;
+- `../tools/validate_json.py`: executable structural + semantic validator.
 
-The schema is a structural validator.
+The JSON Schema alone is not the complete Trainlog contract.
 
-Semantic rules that JSON Schema cannot safely express remain documented and must be tested in application code.
+A document is valid only when it passes both structural and semantic validation.
 
-Before Trainlog v1 is frozen, schema changes are allowed.
-
-After `TRAINLOG_FORMAT_V1=FROZEN`, incompatible changes require a new version.
+After `TRAINLOG_FORMAT_V1=FROZEN`, incompatible changes require a new exchange-format version.

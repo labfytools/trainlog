@@ -4,24 +4,38 @@
   "exercises": [
     {
       "exercise_id": "leg_press",
-      "name": "Presse à cuisses"
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
     },
     {
       "exercise_id": "plank",
-      "name": "Gainage ventral"
+      "name": "Gainage ventral",
+      "tracking_mode": "duration"
     },
     {
       "exercise_id": "leg_press",
-      "name": "Autre presse"
+      "name": "Presse à cuisses",
+      "tracking_mode": "reps"
     }
   ],
   "session": {
-    "session_id": "fixture-session-1",
-    "started_at": "2026-09-05T18:00:00+02:00",
-    "ended_at": "2026-09-05T19:00:00+02:00",
+    "session_id": "invalid-base",
+    "started_at": "2026-09-05T18:34:12+02:00",
+    "ended_at": "2026-09-05T19:27:48+02:00",
+    "body_weight_kg": 82.4,
+    "measurements": {
+      "neck_cm": 39.0,
+      "chest_cm": 104.0,
+      "waist_cm": 91.0,
+      "left_arm_cm": 35.0,
+      "right_arm_cm": 35.0,
+      "left_thigh_cm": 58.0,
+      "right_thigh_cm": 57.0
+    },
     "exercises": [
       {
         "exercise_id": "leg_press",
+        "load_mode": "external",
         "rest_seconds": 60,
         "target": {
           "sets": 4,
@@ -36,6 +50,34 @@
           {
             "reps": 5,
             "weight_kg": 80
+          },
+          {
+            "reps": 5,
+            "weight_kg": 80
+          },
+          {
+            "reps": 3,
+            "weight_kg": 80
+          }
+        ]
+      },
+      {
+        "exercise_id": "plank",
+        "load_mode": "none",
+        "rest_seconds": 60,
+        "target": {
+          "sets": 3,
+          "duration_seconds": 45
+        },
+        "sets": [
+          {
+            "duration_seconds": 45
+          },
+          {
+            "duration_seconds": 45
+          },
+          {
+            "duration_seconds": 38
           }
         ]
       }

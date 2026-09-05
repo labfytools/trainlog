@@ -13,8 +13,8 @@
       "tracking_mode": "duration"
     },
     {
-      "exercise_id": "leg_press_alt",
-      "name": "  PRESSE   À CUISSES ",
+      "exercise_id": "unused",
+      "name": "Exercice inutilisé",
       "tracking_mode": "reps"
     }
   ],

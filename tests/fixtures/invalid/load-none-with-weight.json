@@ -11,11 +11,6 @@
       "exercise_id": "plank",
       "name": "Gainage ventral",
       "tracking_mode": "duration"
-    },
-    {
-      "exercise_id": "leg_press_alt",
-      "name": "  PRESSE   À CUISSES ",
-      "tracking_mode": "reps"
     }
   ],
   "session": {
@@ -35,7 +30,7 @@
     "exercises": [
       {
         "exercise_id": "leg_press",
-        "load_mode": "external",
+        "load_mode": "none",
         "rest_seconds": 60,
         "target": {
           "sets": 4,

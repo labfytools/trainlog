@@ -4,23 +4,11 @@
 
 A feature is not complete without relevant validation.
 
-The exchange-format validator is part of the executable contract during early development.
+The exchange validator is executable specification during the format gates.
 
-## 2. Validation layers
+## 2. Canonical exchange validation
 
-Trainlog uses or will use:
-
-- JSON Schema validation;
-- Trainlog semantic validation;
-- unit tests;
-- integration tests;
-- database constraint tests;
-- TUI smoke tests;
-- sanitizer builds where practical.
-
-## 3. Exchange-format validation
-
-Run the canonical suite with:
+Run:
 
 ```bash
 python tools/validate_json.py
@@ -29,83 +17,97 @@ python tools/validate_json.py
 The command validates:
 
 - `examples/session-v1.json`;
-- every file in `tests/fixtures/valid/` as valid;
-- every file in `tests/fixtures/invalid/` as invalid.
+- all `tests/fixtures/valid/*.json` as valid;
+- all `tests/fixtures/invalid/*.json` as invalid.
 
-A negative fixture passes only when validation rejects it.
+A negative fixture passes only when Trainlog rejects it.
 
-## 4. Structural versus semantic validation
+## 3. Validation layers
 
-JSON Schema validates structure and primitive bounds.
+A v1 document must pass:
 
-`tools/validate_json.py` additionally validates rules JSON Schema cannot safely express, including:
+1. JSON Schema validation;
+2. Trainlog semantic validation.
 
-- unique `exercise_id` values;
-- normalized display-name uniqueness;
-- catalog-reference integrity;
-- one workout entry per exercise;
-- target/actual mode consistency;
+Schema handles shape, enumerations, and primitive ranges.
+
+Semantic validation handles cross-object and normalized rules.
+
+## 4. Gate 1 semantic coverage
+
+The canonical validator checks:
+
+- unique `exercise_id`;
+- normalized exercise-name uniqueness;
 - explicit timestamp offsets;
-- end-time chronology.
+- end time later than start time;
+- exact catalog/reference set equality;
+- one workout entry per exercise;
+- catalog tracking mode matching target;
+- catalog tracking mode matching actual sets;
+- load-mode/weight consistency;
+- non-blank notes.
 
-Android export and TUI import must eventually implement the same semantic rules.
+## 5. Positive fixture coverage
 
-## 5. Initial invalid fixture coverage
+Gate 1 includes:
 
-The Gate 0 suite covers:
+- mixed loaded repetition + timed session;
+- active session without `ended_at`;
+- planned exercise with zero actual sets;
+- bodyweight exercise with zero-repetition failed attempt;
+- assistance load;
+- completely interrupted session with zero exercises.
 
-- duplicate exercise identifiers;
+## 6. Negative fixture coverage
+
+Gate 1 includes rejection of:
+
+- duplicate exercise IDs;
 - duplicate normalized exercise names;
-- unknown exercise references;
 - duplicate workout exercise entries;
-- end timestamp before start timestamp;
-- offset-less timestamp;
-- target/actual mode mismatch;
+- end timestamp before start;
+- missing timestamp offset;
+- target/actual tracking mismatch;
 - target containing both repetitions and duration;
-- unknown JSON field.
+- unknown exercise reference;
+- unknown JSON field;
+- catalog tracking-mode mismatch;
+- `load_mode=none` carrying weight;
+- loaded target missing weight;
+- loaded actual set missing weight;
+- unreferenced catalog entries;
+- blank session notes;
+- blank exercise notes;
+- negative actual repetitions.
 
-## 6. Database tests
+## 7. Future database validation
 
-Future tests must verify:
+Gate 2 must verify:
 
-- foreign keys are active;
-- duplicate `session_id` is rejected or handled idempotently;
-- duplicate `exercise_id` is rejected;
-- failed imports roll back completely;
-- migrations preserve data.
+- foreign keys enabled;
+- duplicate `session_id` idempotency;
+- duplicate `exercise_id` barrier;
+- transactional rollback;
+- schema migration correctness.
 
-## 7. C validation
+## 8. Future C validation
 
-Initial C validation will include:
+C implementation gates will include:
 
-```text
-normal build
-strict warning build
-ASan/UBSan build
-```
-
-Exact commands will be frozen when `meson.build` exists.
-
-## 8. TUI tests
-
-At minimum:
-
-- application starts in a supported terminal;
-- small-terminal fallback works;
-- navigation does not corrupt state;
-- UTF-8 labels render correctly;
-- color roles render correctly;
-- monochrome fallback remains understandable.
+- normal build;
+- strict-warning build;
+- ASan/UBSan build;
+- formatter check;
+- relevant unit/integration tests.
 
 ## 9. Pre-push checklist
 
-Before a meaningful push:
+Before every meaningful push:
 
-1. format code;
-2. run `python tools/validate_json.py`;
-3. build when buildable code exists;
-4. run relevant tests;
-5. run sanitizer suite when relevant;
-6. run `git diff --check`;
-7. inspect `git status --short`;
-8. update documentation.
+1. run `python tools/validate_json.py`;
+2. run relevant compiled tests when available;
+3. run sanitizers when relevant;
+4. run `git diff --check`;
+5. inspect `git status --short`;
+6. review documentation changes.

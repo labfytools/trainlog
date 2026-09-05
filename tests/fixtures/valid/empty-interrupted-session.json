@@ -1,0 +1,11 @@
+{
+  "format": "trainlog",
+  "version": 1,
+  "exercises": [],
+  "session": {
+    "session_id": "interrupted-before-first-exercise",
+    "started_at": "2026-09-05T18:00:00+02:00",
+    "notes": "Séance interrompue avant le premier exercice.",
+    "exercises": []
+  }
+}

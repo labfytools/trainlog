@@ -5,17 +5,12 @@
     {
       "exercise_id": "leg_press",
       "name": "Presse à cuisses",
-      "tracking_mode": "reps"
+      "tracking_mode": "duration"
     },
     {
       "exercise_id": "plank",
       "name": "Gainage ventral",
       "tracking_mode": "duration"
-    },
-    {
-      "exercise_id": "leg_press_alt",
-      "name": "  PRESSE   À CUISSES ",
-      "tracking_mode": "reps"
     }
   ],
   "session": {

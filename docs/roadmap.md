@@ -11,59 +11,67 @@ GATE_0=PASS
 GATE_0_REVIEW_01=PASS
 ```
 
-Deliverables:
+Gate 0 established:
 
 - repository structure;
 - development contract;
 - architecture documentation;
-- coding-style documentation;
-- exchange-format v1 draft;
-- JSON Schema draft;
-- valid example fixture;
-- semantic validator;
-- positive and negative fixture suite;
-- Gate 0 review report.
+- coding-style rules;
+- exchange-format draft;
+- structural and semantic validation;
+- positive and negative fixture strategy.
 
-Exit criteria:
+Reviewed hardening commit:
 
-- documentation reviewed;
-- JSON example validates;
-- valid fixtures are accepted;
-- invalid fixtures are rejected;
-- semantic invariants are documented;
-- repository clean after commit.
+```text
+bc54d6b4ce10d098916823b6a79f72b39d9c7703
+```
 
-Gate 0 passed after:
+Gate 0 closure commit:
 
-- canonical local fixture validation succeeded;
-- `git diff --check` succeeded;
-- review commit `bc54d6b4ce10d098916823b6a79f72b39d9c7703` was pushed;
-- the GitHub mirror was independently read back and reviewed.
-
-Gate 1 is now the active gate.
+```text
+ebd4316ed68c58598a471e567edf13455d00f92b
+```
 
 ## Gate 1 — Exchange format v1 freeze
 
-Deliverables:
+Status: VALIDATION PENDING — REVIEW #1
 
-- complete field list;
-- exercise identity rules;
-- session identity rules;
-- repetitions and timed-set representation;
-- rest representation;
+Canonical state:
+
+```text
+GATE_1_REVIEW_01=IMPLEMENTED
+GATE_1=VALIDATION_PENDING
+TRAINLOG_FORMAT_V1=DRAFT
+```
+
+Review #1 freezes the proposed model for:
+
+- exercise identity;
+- stable repetition/duration tracking mode;
+- session identity;
+- session ordering;
+- external/none/assistance load semantics;
+- planned versus actual sets;
+- zero-repetition failed attempts;
+- planned exercises with zero actual sets;
+- planned rest;
 - body weight;
-- measurement list;
-- strict unknown-field policy;
-- valid fixture suite;
-- invalid fixture suite;
-- stable semantic-validation contract.
+- final v1 body-measurement field list;
+- optional notes;
+- strict catalog completeness;
+- strict unknown-field behavior.
 
 Exit criteria:
 
-- `TRAINLOG_FORMAT_V1=FROZEN`;
-- schema tests pass;
-- semantic tests pass;
-- Android and TUI can implement against the contract without ambiguity.
+- all valid fixtures accepted;
+- all invalid fixtures rejected for the intended reason;
+- Android documentation aligned;
+- TUI documentation aligned;
+- schema and semantic validator aligned;
+- review commit pushed to Forgejo and GitHub;
+- mirrored review passes;
+- `TRAINLOG_FORMAT_V1=FROZEN`.
 
 ## Gate 2 — TUI persistence core
 

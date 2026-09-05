@@ -4,7 +4,8 @@
   "exercises": [
     {
       "exercise_id": "plank",
-      "name": "Gainage ventral"
+      "name": "Gainage ventral",
+      "tracking_mode": "duration"
     }
   ],
   "session": {
@@ -13,19 +14,13 @@
     "exercises": [
       {
         "exercise_id": "plank",
+        "load_mode": "none",
         "rest_seconds": 60,
         "target": {
           "sets": 3,
           "duration_seconds": 45
         },
-        "sets": [
-          {
-            "duration_seconds": 45
-          },
-          {
-            "duration_seconds": 38
-          }
-        ]
+        "sets": []
       }
     ]
   }

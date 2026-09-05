@@ -1,0 +1,42 @@
+{
+  "format": "trainlog",
+  "version": 1,
+  "exercises": [
+    {
+      "exercise_id": "assisted_pull_up",
+      "name": "Traction assistée",
+      "tracking_mode": "reps"
+    }
+  ],
+  "session": {
+    "session_id": "assisted-pull-up",
+    "started_at": "2026-09-05T18:00:00+02:00",
+    "ended_at": "2026-09-05T18:15:00+02:00",
+    "exercises": [
+      {
+        "exercise_id": "assisted_pull_up",
+        "load_mode": "assistance",
+        "rest_seconds": 90,
+        "target": {
+          "sets": 3,
+          "reps": 8,
+          "weight_kg": 20
+        },
+        "sets": [
+          {
+            "reps": 8,
+            "weight_kg": 20
+          },
+          {
+            "reps": 8,
+            "weight_kg": 20
+          },
+          {
+            "reps": 6,
+            "weight_kg": 20
+          }
+        ]
+      }
+    ]
+  }
+}
