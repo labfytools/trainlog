@@ -172,4 +172,39 @@ TrainlogStatus trainlog_database_latest_body_pair(
     TrainlogBodyPairPoint *output
 );
 
+
+/* TRAINLOG_EXERCISE_PERFORMANCE_API */
+
+typedef struct TrainlogExercisePerformancePoint {
+    char session_id[TRAINLOG_ID_MAX + 1U];
+    char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    TrainlogTrackingMode tracking_mode;
+    TrainlogLoadMode load_mode;
+    size_t actual_set_count;
+    int has_performance;
+    int metric_value;
+    int has_weight;
+    double weight_kg;
+} TrainlogExercisePerformancePoint;
+
+/**
+ * @brief Read newest-first per-session representative performance.
+ *
+ * Representative-set semantics:
+ *
+ * - no load: greatest successful reps/duration;
+ * - external load: greatest load, then greatest reps/duration;
+ * - assistance: lowest assistance, then greatest reps/duration.
+ *
+ * A zero-repetition failed attempt is never promoted to representative
+ * performance. This API does not create or infer a measured maximum.
+ */
+TrainlogStatus trainlog_database_list_exercise_performance(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogExercisePerformancePoint *output,
+    size_t capacity,
+    size_t *output_count
+);
+
 #endif

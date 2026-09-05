@@ -494,3 +494,33 @@ Rules:
 
 The dashboard legend keeps the last visible raw value and the percentage
 change over the visible 12-month window.
+
+## Exercise performance history
+
+`F3 Exercices` opens an exercise performance screen with `Enter`.
+
+The current slice tracks representative actual performance per workout without
+inventing a maximum.
+
+Semantics:
+
+```text
+load none
+    greatest successful reps/duration
+
+external load
+    greatest actual load
+    tie -> greatest reps/duration
+
+assistance
+    lowest actual assistance
+    tie -> greatest reps/duration
+```
+
+Assistance graphs keep kilograms as actual assistance and explicitly state that
+lower assistance is better.
+
+A recorded best set is not a measured maximum.
+
+Measured maxima, max-session scheduling and working-load percentages remain a
+separate later contract.

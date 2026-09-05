@@ -76,3 +76,11 @@ Next:
 - empty months remain visible and empty;
 - no zero fill or interpolation across missing months;
 - multiple readings in one month use the last monthly value.
+
+### Exercise performance history
+
+- added Enter-to-open exercise performance detail;
+- added mode-aware representative best-set history;
+- added terminal performance graph;
+- assistance explicitly treats lower assistance as better;
+- best recorded set remains distinct from measured max.

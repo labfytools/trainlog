@@ -1910,3 +1910,283 @@ TrainlogStatus trainlog_database_latest_body_pair(
         ? TRAINLOG_STATUS_OK
         : TRAINLOG_STATUS_DATABASE_ERROR;
 }
+
+/* TRAINLOG_EXERCISE_PERFORMANCE_IMPLEMENTATION */
+
+static TrainlogLoadMode performance_load_mode_from_sql(
+    const char *text
+)
+{
+    if (text != NULL &&
+        strcmp(text, "external") == 0) {
+        return TRAINLOG_LOAD_EXTERNAL;
+    }
+
+    if (text != NULL &&
+        strcmp(text, "assistance") == 0) {
+        return TRAINLOG_LOAD_ASSISTANCE;
+    }
+
+    return TRAINLOG_LOAD_NONE;
+}
+
+static bool performance_candidate_better(
+    const TrainlogExercisePerformancePoint *current,
+    TrainlogLoadMode load_mode,
+    int metric_value,
+    int has_weight,
+    double weight_kg
+)
+{
+    if (current == NULL ||
+        metric_value <= 0) {
+        return false;
+    }
+
+    if (current->has_performance == 0) {
+        return true;
+    }
+
+    switch (load_mode) {
+    case TRAINLOG_LOAD_EXTERNAL:
+        if (has_weight == 0) {
+            return false;
+        }
+
+        if (weight_kg > current->weight_kg) {
+            return true;
+        }
+
+        return
+            weight_kg == current->weight_kg &&
+            metric_value > current->metric_value;
+
+    case TRAINLOG_LOAD_ASSISTANCE:
+        if (has_weight == 0) {
+            return false;
+        }
+
+        if (weight_kg < current->weight_kg) {
+            return true;
+        }
+
+        return
+            weight_kg == current->weight_kg &&
+            metric_value > current->metric_value;
+
+    case TRAINLOG_LOAD_NONE:
+    default:
+        return metric_value > current->metric_value;
+    }
+}
+
+TrainlogStatus trainlog_database_list_exercise_performance(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogExercisePerformancePoint *output,
+    size_t capacity,
+    size_t *output_count
+)
+{
+    static const char *const SQL =
+        "SELECT "
+        "s.session_id, "
+        "s.started_at, "
+        "e.tracking_mode, "
+        "se.load_mode, "
+        "ps.id, "
+        "ps.reps, "
+        "ps.duration_seconds, "
+        "ps.weight_kg "
+        "FROM session_exercises AS se "
+        "JOIN sessions AS s "
+        "  ON s.id = se.session_row_id "
+        "JOIN exercises AS e "
+        "  ON e.id = se.exercise_row_id "
+        "LEFT JOIN performed_sets AS ps "
+        "  ON ps.session_exercise_row_id = se.id "
+        "WHERE e.exercise_id = ?1 "
+        "ORDER BY "
+        "s.started_at DESC, "
+        "s.id DESC, "
+        "ps.position ASC;";
+
+    sqlite3_stmt *statement = NULL;
+    TrainlogExercisePerformancePoint *current = NULL;
+    char current_session_id[TRAINLOG_ID_MAX + 1U];
+    size_t copied = 0U;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        exercise_id == NULL ||
+        exercise_id[0] == '\0' ||
+        output_count == NULL ||
+        (capacity > 0U && output == NULL)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    *output_count = 0U;
+    current_session_id[0] = '\0';
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        SQL,
+        -1,
+        &statement,
+        NULL
+    );
+
+    if (rc != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_bind_text(
+        statement,
+        1,
+        exercise_id,
+        -1,
+        SQLITE_TRANSIENT
+    );
+
+    if (rc != SQLITE_OK) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const unsigned char *session_id =
+            sqlite3_column_text(statement, 0);
+
+        const unsigned char *started_at =
+            sqlite3_column_text(statement, 1);
+
+        const unsigned char *tracking_mode =
+            sqlite3_column_text(statement, 2);
+
+        const unsigned char *load_mode =
+            sqlite3_column_text(statement, 3);
+
+        bool new_session;
+
+        if (session_id == NULL ||
+            started_at == NULL ||
+            tracking_mode == NULL ||
+            load_mode == NULL) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        new_session =
+            current_session_id[0] == '\0' ||
+            strcmp(
+                current_session_id,
+                (const char *)session_id
+            ) != 0;
+
+        if (new_session) {
+            (void)snprintf(
+                current_session_id,
+                sizeof(current_session_id),
+                "%s",
+                (const char *)session_id
+            );
+
+            current = NULL;
+
+            if (copied < capacity) {
+                current = &output[copied];
+
+                (void)memset(
+                    current,
+                    0,
+                    sizeof(*current)
+                );
+
+                (void)snprintf(
+                    current->session_id,
+                    sizeof(current->session_id),
+                    "%s",
+                    (const char *)session_id
+                );
+
+                (void)snprintf(
+                    current->started_at,
+                    sizeof(current->started_at),
+                    "%s",
+                    (const char *)started_at
+                );
+
+                current->tracking_mode =
+                    tracking_mode_from_sql(
+                        (const char *)tracking_mode
+                    );
+
+                current->load_mode =
+                    performance_load_mode_from_sql(
+                        (const char *)load_mode
+                    );
+
+                ++copied;
+            }
+        }
+
+        if (current != NULL &&
+            sqlite3_column_type(statement, 4) != SQLITE_NULL) {
+            int metric_value;
+            int has_weight;
+            double weight_kg;
+
+            ++current->actual_set_count;
+
+            if (current->tracking_mode ==
+                TRAINLOG_TRACKING_REPS) {
+                metric_value =
+                    sqlite3_column_type(statement, 5) !=
+                        SQLITE_NULL
+                        ? sqlite3_column_int(statement, 5)
+                        : 0;
+            } else {
+                metric_value =
+                    sqlite3_column_type(statement, 6) !=
+                        SQLITE_NULL
+                        ? sqlite3_column_int(statement, 6)
+                        : 0;
+            }
+
+            has_weight =
+                sqlite3_column_type(statement, 7) !=
+                    SQLITE_NULL;
+
+            weight_kg =
+                has_weight != 0
+                    ? sqlite3_column_double(statement, 7)
+                    : 0.0;
+
+            if (performance_candidate_better(
+                    current,
+                    current->load_mode,
+                    metric_value,
+                    has_weight,
+                    weight_kg
+                )) {
+                current->has_performance = 1;
+                current->metric_value = metric_value;
+                current->has_weight = has_weight;
+                current->weight_kg = weight_kg;
+            }
+        }
+    }
+
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    *output_count = copied;
+    return TRAINLOG_STATUS_OK;
+}

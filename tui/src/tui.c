@@ -238,6 +238,887 @@ static bool prompt_optional_double(
     }
 }
 
+/* TRAINLOG_EXERCISE_PERFORMANCE_TUI */
+
+#define EXERCISE_GRAPH_POINTS 12U
+
+static const char *exercise_load_mode_label(
+    TrainlogLoadMode mode
+)
+{
+    switch (mode) {
+    case TRAINLOG_LOAD_EXTERNAL:
+        return "charge externe";
+
+    case TRAINLOG_LOAD_ASSISTANCE:
+        return "assistance";
+
+    case TRAINLOG_LOAD_NONE:
+    default:
+        return "sans charge";
+    }
+}
+
+static void exercise_short_date(
+    const char *timestamp,
+    char output[11]
+)
+{
+    if (timestamp == NULL ||
+        strlen(timestamp) < 10U) {
+        (void)snprintf(
+            output,
+            11U,
+            "%s",
+            "----------"
+        );
+        return;
+    }
+
+    (void)memcpy(
+        output,
+        timestamp,
+        10U
+    );
+
+    output[10] = '\0';
+}
+
+static void exercise_format_performance(
+    const TrainlogExercisePerformancePoint *point,
+    char *output,
+    size_t output_size
+)
+{
+    if (point == NULL ||
+        output == NULL ||
+        output_size == 0U) {
+        return;
+    }
+
+    if (point->has_performance == 0) {
+        (void)snprintf(
+            output,
+            output_size,
+            "%s",
+            "aucune série réussie"
+        );
+        return;
+    }
+
+    if (point->tracking_mode ==
+        TRAINLOG_TRACKING_DURATION) {
+        char duration[64];
+
+        if (trainlog_duration_format(
+                point->metric_value,
+                duration,
+                sizeof(duration)
+            ) != TRAINLOG_STATUS_OK) {
+            (void)snprintf(
+                duration,
+                sizeof(duration),
+                "%d s",
+                point->metric_value
+            );
+        }
+
+        if (point->load_mode ==
+            TRAINLOG_LOAD_EXTERNAL) {
+            (void)snprintf(
+                output,
+                output_size,
+                "%.1f kg × %s",
+                point->weight_kg,
+                duration
+            );
+        } else if (
+            point->load_mode ==
+            TRAINLOG_LOAD_ASSISTANCE
+        ) {
+            (void)snprintf(
+                output,
+                output_size,
+                "%.1f kg aide × %s",
+                point->weight_kg,
+                duration
+            );
+        } else {
+            (void)snprintf(
+                output,
+                output_size,
+                "%s",
+                duration
+            );
+        }
+
+        return;
+    }
+
+    if (point->load_mode ==
+        TRAINLOG_LOAD_EXTERNAL) {
+        (void)snprintf(
+            output,
+            output_size,
+            "%.1f kg × %d reps",
+            point->weight_kg,
+            point->metric_value
+        );
+    } else if (
+        point->load_mode ==
+        TRAINLOG_LOAD_ASSISTANCE
+    ) {
+        (void)snprintf(
+            output,
+            output_size,
+            "%.1f kg aide × %d reps",
+            point->weight_kg,
+            point->metric_value
+        );
+    } else {
+        (void)snprintf(
+            output,
+            output_size,
+            "%d reps",
+            point->metric_value
+        );
+    }
+}
+
+static bool exercise_point_better(
+    const TrainlogExercisePerformancePoint *candidate,
+    const TrainlogExercisePerformancePoint *current
+)
+{
+    if (candidate == NULL ||
+        candidate->has_performance == 0) {
+        return false;
+    }
+
+    if (current == NULL ||
+        current->has_performance == 0) {
+        return true;
+    }
+
+    if (candidate->load_mode !=
+        current->load_mode) {
+        return false;
+    }
+
+    switch (candidate->load_mode) {
+    case TRAINLOG_LOAD_EXTERNAL:
+        if (candidate->weight_kg >
+            current->weight_kg) {
+            return true;
+        }
+
+        return
+            candidate->weight_kg ==
+                current->weight_kg &&
+            candidate->metric_value >
+                current->metric_value;
+
+    case TRAINLOG_LOAD_ASSISTANCE:
+        if (candidate->weight_kg <
+            current->weight_kg) {
+            return true;
+        }
+
+        return
+            candidate->weight_kg ==
+                current->weight_kg &&
+            candidate->metric_value >
+                current->metric_value;
+
+    case TRAINLOG_LOAD_NONE:
+    default:
+        return
+            candidate->metric_value >
+            current->metric_value;
+    }
+}
+
+static double exercise_graph_value(
+    const TrainlogExercisePerformancePoint *point
+)
+{
+    if (point->load_mode ==
+        TRAINLOG_LOAD_NONE) {
+        return (double)point->metric_value;
+    }
+
+    return point->weight_kg;
+}
+
+static void draw_exercise_performance_graph(
+    const TrainlogExercisePerformancePoint *points,
+    size_t count,
+    TrainlogLoadMode mode,
+    TrainlogTrackingMode tracking_mode,
+    int top,
+    int height
+)
+{
+    size_t indices[EXERCISE_GRAPH_POINTS];
+    size_t selected_count = 0U;
+    size_t index;
+    double minimum = 0.0;
+    double maximum = 0.0;
+    const int left = 11;
+    int width =
+        COLS - left - 4;
+
+    if (points == NULL ||
+        count == 0U ||
+        height < 3 ||
+        width < 12) {
+        return;
+    }
+
+    for (index = 0U;
+         index < count &&
+         selected_count < EXERCISE_GRAPH_POINTS;
+         ++index) {
+        if (points[index].has_performance != 0 &&
+            points[index].load_mode == mode) {
+            indices[selected_count] = index;
+            ++selected_count;
+        }
+    }
+
+    if (selected_count == 0U) {
+        mvprintw(
+            top + 1,
+            4,
+            "Aucune performance réussie pour ce mode."
+        );
+        return;
+    }
+
+    minimum =
+        exercise_graph_value(
+            &points[indices[0]]
+        );
+
+    maximum = minimum;
+
+    for (index = 1U;
+         index < selected_count;
+         ++index) {
+        double value =
+            exercise_graph_value(
+                &points[indices[index]]
+            );
+
+        if (value < minimum) {
+            minimum = value;
+        }
+
+        if (value > maximum) {
+            maximum = value;
+        }
+    }
+
+    if (maximum == minimum) {
+        minimum -= 1.0;
+        maximum += 1.0;
+    }
+
+    if (mode == TRAINLOG_LOAD_ASSISTANCE) {
+        attron(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_WARNING
+            )
+        );
+
+        mvprintw(
+            top,
+            left,
+            "Assistance (kg) — moins = mieux"
+        );
+
+        attroff(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_WARNING
+            )
+        );
+    } else if (mode ==
+               TRAINLOG_LOAD_EXTERNAL) {
+        mvprintw(
+            top,
+            left,
+            "Charge du meilleur set (kg)"
+        );
+    } else if (
+        tracking_mode ==
+        TRAINLOG_TRACKING_DURATION
+    ) {
+        mvprintw(
+            top,
+            left,
+            "Meilleure durée"
+        );
+    } else {
+        mvprintw(
+            top,
+            left,
+            "Meilleures répétitions"
+        );
+    }
+
+    mvprintw(
+        top + 1,
+        2,
+        "%.1f",
+        maximum
+    );
+
+    mvprintw(
+        top + height - 1,
+        2,
+        "%.1f",
+        minimum
+    );
+
+    attron(
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_GRAPH
+        )
+    );
+
+    {
+        int previous_x = -1;
+        int previous_y = -1;
+        size_t order;
+
+        for (order = selected_count;
+             order > 0U;
+             --order) {
+            size_t chronological =
+                selected_count - order;
+
+            const TrainlogExercisePerformancePoint *point =
+                &points[indices[order - 1U]];
+
+            double value =
+                exercise_graph_value(point);
+
+            double ratio =
+                (value - minimum) /
+                (maximum - minimum);
+
+            int x =
+                selected_count == 1U
+                    ? left + (width / 2)
+                    : left +
+                        (int)(
+                            (chronological *
+                             (size_t)(width - 1)) /
+                            (selected_count - 1U)
+                        );
+
+            int y =
+                top +
+                height -
+                1 -
+                (int)(
+                    ratio *
+                    (double)(height - 1)
+                );
+
+            if (previous_x >= 0 &&
+                x > previous_x) {
+                int line_x;
+
+                for (line_x = previous_x + 1;
+                     line_x < x;
+                     ++line_x) {
+                    int line_y =
+                        previous_y +
+                        (((y - previous_y) *
+                          (line_x - previous_x)) /
+                         (x - previous_x));
+
+                    mvaddch(
+                        line_y,
+                        line_x,
+                        (chtype)'.'
+                    );
+                }
+            }
+
+            mvaddch(
+                y,
+                x,
+                chronological + 1U ==
+                    selected_count
+                    ? (chtype)'O'
+                    : (chtype)'*'
+            );
+
+            previous_x = x;
+            previous_y = y;
+        }
+    }
+
+    attroff(
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_GRAPH
+        )
+    );
+
+    {
+        char oldest[11];
+        char newest[11];
+
+        exercise_short_date(
+            points[indices[selected_count - 1U]]
+                .started_at,
+            oldest
+        );
+
+        exercise_short_date(
+            points[indices[0]].started_at,
+            newest
+        );
+
+        mvprintw(
+            top + height,
+            left,
+            "%s",
+            oldest
+        );
+
+        mvprintw(
+            top + height,
+            left + width - 10,
+            "%s",
+            newest
+        );
+    }
+}
+
+/* TRAINLOG_EXERCISE_FRAMES */
+
+static void exercise_panel(
+    int top,
+    int left,
+    int bottom,
+    int right,
+    const char *label
+)
+{
+    WINDOW *panel;
+    int height;
+    int width;
+
+    if (top < 0 ||
+        left < 0 ||
+        bottom <= top ||
+        right <= left ||
+        bottom >= LINES ||
+        right >= COLS) {
+        return;
+    }
+
+    height = bottom - top + 1;
+    width = right - left + 1;
+
+    panel = derwin(
+        stdscr,
+        height,
+        width,
+        top,
+        left
+    );
+
+    if (panel == NULL) {
+        return;
+    }
+
+    box(panel, 0, 0);
+
+    if (label != NULL &&
+        label[0] != '\0' &&
+        width > 8) {
+        wattron(
+            panel,
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        mvwprintw(
+            panel,
+            0,
+            2,
+            " %.*s ",
+            width - 6,
+            label
+        );
+
+        wattroff(
+            panel,
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+    }
+
+    syncok(panel, TRUE);
+    wsyncup(panel);
+    delwin(panel);
+}
+
+static void screen_exercise_performance(
+    TrainlogDatabase *database,
+    const TrainlogExercise *exercise
+)
+{
+    TrainlogExercisePerformancePoint
+        points[MAX_SESSIONS];
+
+    size_t count = 0U;
+    size_t index;
+    size_t history_limit;
+
+    TrainlogLoadMode graph_mode =
+        TRAINLOG_LOAD_NONE;
+
+    const TrainlogExercisePerformancePoint *latest =
+        NULL;
+
+    const TrainlogExercisePerformancePoint *best =
+        NULL;
+
+    char latest_text[128];
+    char best_text[128];
+
+    bool framed =
+        COLS >= 100 &&
+        LINES >= 30;
+
+    int summary_top = 3;
+    int summary_bottom =
+        framed ? 9 : 8;
+
+    int graph_top =
+        framed ? 11 : 10;
+
+    int graph_bottom =
+        framed ? 20 : 18;
+
+    int history_top =
+        framed ? 22 : 19;
+
+    int history_bottom =
+        LINES - 4;
+
+    if (database == NULL ||
+        exercise == NULL) {
+        return;
+    }
+
+    if (trainlog_database_list_exercise_performance(
+            database,
+            exercise->exercise_id,
+            points,
+            MAX_SESSIONS,
+            &count
+        ) != TRAINLOG_STATUS_OK) {
+        draw_shell(
+            "Performance exercice",
+            "Une touche pour revenir"
+        );
+
+        status_line(
+            "Impossible de lire l'historique.",
+            TRAINLOG_COLOR_ERROR
+        );
+
+        wait_key();
+        return;
+    }
+
+    for (index = 0U;
+         index < count;
+         ++index) {
+        if (points[index].has_performance != 0) {
+            latest = &points[index];
+            graph_mode =
+                points[index].load_mode;
+            break;
+        }
+    }
+
+    if (latest != NULL) {
+        for (index = 0U;
+             index < count;
+             ++index) {
+            if (points[index].has_performance != 0 &&
+                points[index].load_mode ==
+                    graph_mode &&
+                exercise_point_better(
+                    &points[index],
+                    best
+                )) {
+                best = &points[index];
+            }
+        }
+    }
+
+    exercise_format_performance(
+        latest,
+        latest_text,
+        sizeof(latest_text)
+    );
+
+    exercise_format_performance(
+        best,
+        best_text,
+        sizeof(best_text)
+    );
+
+    draw_shell(
+        "TRAINLOG — Performance exercice",
+        "b/Échap retour"
+    );
+
+    if (framed) {
+        exercise_panel(
+            summary_top,
+            2,
+            summary_bottom,
+            COLS - 3,
+            "PERFORMANCE"
+        );
+
+        exercise_panel(
+            graph_top,
+            2,
+            graph_bottom,
+            COLS - 3,
+            "EVOLUTION"
+        );
+
+        if (history_bottom >
+            history_top + 2) {
+            exercise_panel(
+                history_top,
+                2,
+                history_bottom,
+                COLS - 3,
+                "HISTORIQUE"
+            );
+        }
+    }
+
+    attron(
+        A_BOLD |
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_ACCENT
+        )
+    );
+
+    mvprintw(
+        framed ? summary_top + 1 : 3,
+        framed ? 5 : 4,
+        "%s",
+        exercise->name
+    );
+
+    attroff(
+        A_BOLD |
+        trainlog_theme_attribute(
+            TRAINLOG_COLOR_ACCENT
+        )
+    );
+
+    mvprintw(
+        framed ? summary_top + 2 : 4,
+        framed ? 5 : 4,
+        "Séances enregistrées : %zu",
+        count
+    );
+
+    if (latest == NULL) {
+        mvprintw(
+            framed ? summary_top + 3 : 5,
+            framed ? 5 : 4,
+            "Aucune série réussie enregistrée."
+        );
+    } else {
+        mvprintw(
+            framed ? summary_top + 3 : 5,
+            framed ? 5 : 4,
+            "Mode suivi : %s",
+            exercise_load_mode_label(
+                graph_mode
+            )
+        );
+
+        mvprintw(
+            framed ? summary_top + 4 : 6,
+            framed ? 5 : 4,
+            "Dernier meilleur set : %.*s",
+            COLS - 30,
+            latest_text
+        );
+
+        mvprintw(
+            framed ? summary_top + 5 : 7,
+            framed ? 5 : 4,
+            "Meilleur set enregistré : %.*s",
+            COLS - 33,
+            best_text
+        );
+
+        if (graph_mode !=
+            TRAINLOG_LOAD_NONE) {
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+
+            mvprintw(
+                framed ? summary_bottom - 1 : 8,
+                framed ? 5 : 4,
+                "Meilleur set ≠ max mesuré."
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+        }
+    }
+
+    if (latest != NULL) {
+        int graph_content_top =
+            framed
+                ? graph_top + 1
+                : graph_top;
+
+        int graph_height =
+            framed
+                ? graph_bottom -
+                    graph_top -
+                    2
+                : 7;
+
+        draw_exercise_performance_graph(
+            points,
+            count,
+            graph_mode,
+            exercise->tracking_mode,
+            graph_content_top,
+            graph_height
+        );
+    }
+
+    if (framed) {
+        int history_first_row =
+            history_top + 1;
+
+        history_limit =
+            history_bottom >
+                history_first_row
+                ? (size_t)(
+                    history_bottom -
+                    history_first_row
+                )
+                : 0U;
+
+        for (index = 0U;
+             index < count &&
+             index < history_limit;
+             ++index) {
+            char date[11];
+            char summary[128];
+
+            exercise_short_date(
+                points[index].started_at,
+                date
+            );
+
+            exercise_format_performance(
+                &points[index],
+                summary,
+                sizeof(summary)
+            );
+
+            mvprintw(
+                history_first_row +
+                    (int)index,
+                5,
+                "%s  %-13s  %.*s",
+                date,
+                exercise_load_mode_label(
+                    points[index].load_mode
+                ),
+                COLS - 40,
+                summary
+            );
+        }
+    } else {
+        history_limit =
+            LINES > 12
+                ? (size_t)(LINES - 12)
+                : 0U;
+
+        mvprintw(
+            19,
+            4,
+            "Dernières séances :"
+        );
+
+        for (index = 0U;
+             index < count &&
+             index < history_limit;
+             ++index) {
+            char date[11];
+            char summary[128];
+
+            exercise_short_date(
+                points[index].started_at,
+                date
+            );
+
+            exercise_format_performance(
+                &points[index],
+                summary,
+                sizeof(summary)
+            );
+
+            mvprintw(
+                20 + (int)index,
+                6,
+                "%s  %.*s",
+                date,
+                COLS - 20,
+                summary
+            );
+        }
+    }
+
+    refresh();
+
+    for (;;) {
+        int key = getch();
+
+        if (key == 'b' ||
+            key == 27 ||
+            key == '\n' ||
+            key == KEY_ENTER) {
+            return;
+        }
+    }
+}
+
 static void screen_exercises(TrainlogDatabase *database)
 {
     TrainlogExercise exercises[MAX_EXERCISES];
@@ -247,7 +1128,23 @@ static void screen_exercises(TrainlogDatabase *database)
         size_t count = 0U;
         size_t top = 0U;
         size_t index;
-        int visible_rows = LINES - 7;
+        bool framed =
+            COLS >= 90 &&
+            LINES >= 24;
+
+        int list_top =
+            framed ? 3 : 3;
+
+        int list_bottom =
+            framed
+                ? LINES - 4
+                : LINES - 3;
+
+        int visible_rows =
+            framed
+                ? list_bottom - list_top - 1
+                : LINES - 7;
+
         int key;
 
         if (visible_rows < 1) {
@@ -263,7 +1160,8 @@ static void screen_exercises(TrainlogDatabase *database)
             return;
         }
 
-        if (count > 0U && selected >= count) {
+        if (count > 0U &&
+            selected >= count) {
             selected = count - 1U;
         }
 
@@ -277,19 +1175,40 @@ static void screen_exercises(TrainlogDatabase *database)
 
         draw_shell(
             "TRAINLOG — Exercices",
-            "↑↓ naviguer  a ajouter  b/Échap retour"
+            "↑↓ naviguer  Entrée performance  a ajouter  b/Échap retour"
         );
 
+        if (framed) {
+            exercise_panel(
+                list_top,
+                2,
+                list_bottom,
+                COLS - 3,
+                "CATALOGUE"
+            );
+        }
+
         if (count == 0U) {
-            mvprintw(4, 4, "Aucun exercice.");
+            mvprintw(
+                framed ? list_top + 2 : 4,
+                5,
+                "Aucun exercice."
+            );
         }
 
         for (index = 0U;
              index < (size_t)visible_rows &&
              top + index < count;
              ++index) {
-            size_t absolute = top + index;
-            int item_row = 3 + (int)index;
+            size_t absolute =
+                top + index;
+
+            int item_row =
+                (framed ? list_top + 1 : 3) +
+                (int)index;
+
+            int item_col =
+                framed ? 5 : 4;
 
             if (absolute == selected) {
                 attron(
@@ -302,7 +1221,7 @@ static void screen_exercises(TrainlogDatabase *database)
 
             mvprintw(
                 item_row,
-                4,
+                item_col,
                 " %-42s [%s] ",
                 exercises[absolute].name,
                 exercises[absolute].tracking_mode ==
@@ -324,21 +1243,34 @@ static void screen_exercises(TrainlogDatabase *database)
         refresh();
         key = getch();
 
-        if (key == 'b' || key == 27) {
+        if (key == 'b' ||
+            key == 27) {
             return;
         }
 
-        if (count > 0U && key == KEY_UP) {
+        if (count > 0U &&
+            key == KEY_UP) {
             selected =
                 selected > 0U
                     ? selected - 1U
                     : count - 1U;
-        } else if (count > 0U &&
-                   key == KEY_DOWN) {
+        } else if (
+            count > 0U &&
+            key == KEY_DOWN
+        ) {
             selected =
                 selected + 1U < count
                     ? selected + 1U
                     : 0U;
+        } else if (
+            count > 0U &&
+            (key == '\n' ||
+             key == KEY_ENTER)
+        ) {
+            screen_exercise_performance(
+                database,
+                &exercises[selected]
+            );
         } else if (key == 'a') {
             char name[TRAINLOG_NAME_MAX + 1U];
             int mode = 1;
@@ -381,13 +1313,15 @@ static void screen_exercises(TrainlogDatabase *database)
                     &created
                 );
 
-            if (status == TRAINLOG_STATUS_OK) {
+            if (status ==
+                TRAINLOG_STATUS_OK) {
                 status_line(
                     "✓ Exercice ajouté.",
                     TRAINLOG_COLOR_SUCCESS
                 );
             } else if (
-                status == TRAINLOG_STATUS_CONFLICT
+                status ==
+                TRAINLOG_STATUS_CONFLICT
             ) {
                 status_line(
                     "Doublon détecté.",

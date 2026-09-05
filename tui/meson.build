@@ -135,3 +135,15 @@ test_bodyviz = executable(
 )
 
 test('bodyviz', test_bodyviz)
+
+test_exercise_performance = executable(
+  'test_exercise_performance',
+  'tests/test_exercise_performance.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'exercise_performance',
+  test_exercise_performance,
+)
