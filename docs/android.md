@@ -1,556 +1,119 @@
-# Android Application
+# Android application
 
 ## 1. Purpose
 
-The Android application is a lightweight training-session recorder.
+The Android application is Trainlog's low-friction capture client.
 
-Its design priority is low-friction data entry during a workout.
+It is a native Kotlin/Jetpack Compose application with local SQLite persistence.
 
-It is not the canonical history or analytics application.
+The desktop remains the canonical long-term history and analytics store.
 
-## 2. Session flow
-
-```text
-Start session
-    |
-    v
-record started_at
-    |
-    v
-select/create exercise
-    |
-    v
-enter target + planned rest
-    |
-    v
-record actual sets
-    |
-    v
-optional body data / notes
-    |
-    v
-Finish session
-    |
-    v
-record ended_at
-    |
-    v
-validate + export Trainlog JSON
-```
-
-## 3. Exercise catalog
-
-The Android application keeps a local exercise catalog so names are not retyped every session.
-
-Creating an exercise requires:
-
-- display name;
-- tracking mode: repetitions or duration.
-
-The application generates a stable `exercise_id`.
-
-A new exercise used in an exported session is included in the top-level session export metadata and is therefore importable by the TUI.
-
-The Android application must prevent accidental duplicate normalized names according to the Trainlog v1 contract.
-
-## 4. Fast exercise form
-
-For a repetition exercise, the basic form is conceptually:
-
-```text
-Exercise          Presse à cuisses
-Load mode         External
-Load              80 kg
-Sets              4
-Repetitions       5
-Rest              60 s
-```
-
-For a timed exercise:
-
-```text
-Exercise          Gainage ventral
-Load mode         None
-Sets              3
-Duration          45 s
-Rest              60 s
-```
-
-The application should remember practical defaults from the previous use of an exercise when that reduces typing, but remembered UI defaults are not part of the exchange-format contract.
-
-## 5. Load modes
-
-The user chooses only when relevant:
-
-- none;
-- external;
-- assistance.
-
-`external` covers free weights and machine-displayed load.
-
-`assistance` stores a positive assistance value.
-
-The UI should label assistance explicitly so it cannot be confused with added resistance.
-
-## 6. Actual work
-
-The application should pre-populate actual sets from the target.
-
-The user edits only what differs.
-
-Example target:
-
-```text
-5 / 5 / 5 / 5
-```
-
-Actual:
-
-```text
-5 / 5 / 5 / 3
-```
-
-The export preserves both target and actual values.
-
-Zero actual repetitions are valid for a real failed attempt.
-
-A planned exercise may also have zero actual sets if it was never started.
-
-## 7. Rest
-
-`rest_seconds` is the planned rest duration for the exercise.
-
-v1 does not require a running rest timer and does not serialize measured per-set rest.
-
-A timer can be added later as UI behavior without changing the v1 format.
-
-## 8. Timestamps
-
-`started_at` is recorded automatically when the session starts.
-
-`ended_at` is recorded automatically when the user finishes the session.
-
-An active/interrupted local session may exist without `ended_at`.
-
-The application must never invent an end timestamp merely to make export validation pass.
-
-## 9. Body data
-
-Optional session-associated data:
-
-- body weight;
-- neck;
-- shoulders;
-- chest;
-- waist;
-- hips;
-- left/right arm;
-- left/right forearm;
-- left/right thigh;
-- left/right calf.
-
-The Android UI does not need to force these fields during every workout.
-
-## 10. Notes
-
-Session and exercise notes are optional.
-
-The initial Android UI may omit note controls without violating v1, because the fields are optional.
-
-## 11. Export
-
-Before export, Android must enforce both:
-
-- JSON structural validity;
-- Trainlog v1 semantic validity.
-
-A malformed or semantically inconsistent file must not be exported as a completed Trainlog document.
-
-## 12. Non-goals
-
-Initial Android versions do not need:
-
-- analytics;
-- complex graphs;
-- cloud accounts;
-- remote databases;
-- social features;
-- muscle classification;
-- distance/cardio metrics;
-- per-set rest measurement.
-## 13. Identifier generation
-
-When Android creates a new exercise, it generates:
-
-```text
-ex_<random UUID v4>
-```
-
-When Android creates a new session, it generates:
-
-```text
-se_<random UUID v4>
-```
-
-Display-name slugs must not be used as persistent identifiers.
-
-The visible exercise name remains independent from identity.
-
-## 14. Catalog conflict behavior
-
-Android must prevent duplicate normalized names inside its own local catalog.
-
-A valid Android export can still conflict with an independently edited TUI catalog.
-
-The TUI owns final reconciliation.
-
-Android must not assume that a matching display name means two different IDs may be silently merged.
-
-<!-- TRAINLOG_ANDROID_MTP_TRANSPORT -->
-## 15. USB file-transfer transport
-
-The initial Android/Linux integration uses standard Android **file transfer
-(MTP)** mode.
-
-The Linux TUI/core accesses the device directly with `libudev` + `libmtp`.
-Trainlog does not require a mounted Android filesystem.
-
-Validated Linux-side capabilities:
-
-```text
-USB_MTP_DETECTION=PASS
-MTP_STORAGE_ACCESS=PASS
-MTP_WRITE=PASS
-MTP_READ=PASS
-MTP_ROUNDTRIP=PASS
-```
-
-The transport foundation currently uses a root `Trainlog` folder for physical
-validation.
-
-The final JSON exchange subdirectory/naming convention is defined in the next
-slice before the Android recorder depends on it.
-
-The Android application itself will only need to produce a valid frozen
-Trainlog JSON v1 document and place it in the agreed exchange area.
-<!-- TRAINLOG_ANDROID_MTP_TRANSPORT _END -->
-
-<!-- TRAINLOG_ANDROID_NEXT_SLICE -->
-## 16. Current Android implementation cursor
-
-The Linux transport and Sync TUI foundations are complete enough to begin the
-Android client.
-
-Initial Android development uses fictitious data.
-
-First Android slice:
-
-```text
-1. application scaffold
-2. local exercise catalog
-3. create/select exercise
-4. session form
-5. actual set entry
-6. optional body measurements
-7. fictitious completed session
-```
-
-Transport/export is added only after the local recorder workflow is comfortable.
-
-The Android client must preserve stable exercise IDs so a catalog snapshot from
-the PC can normalize exercise selection on both sides.
-<!-- TRAINLOG_ANDROID_NEXT_SLICE _END -->
-
-<!-- TRAINLOG_ANDROID_PROFILE_AWARE_ENTRY -->
-## Profile-aware Android forms
-
-Android uses the same exercise metadata as the TUI:
-
-```text
-recording_mode
-tracking_mode
-data_fields
-```
-
-A continuous `Marche` configured with speed displays only:
-
-```text
-Durée
-Vitesse
-```
-
-and no set count.
-
-Creating an exercise directly inside session entry must configure this metadata
-before adding it to the catalog/session.
-<!-- TRAINLOG_ANDROID_PROFILE_AWARE_ENTRY _END -->
-
-<!-- TRAINLOG_ANDROID_PROFILE_CURSOR -->
-## Android implementation cursor
-
-Android is the next implementation area.
-
-The application must share Trainlog's visual language with the TUI.
-
-Theme direction:
-
-```text
-dark background
-cyan/teal Trainlog accent
-yellow active/focus role
-green success
-red error
-```
-
-Launcher icon:
-
-```text
-T
-```
-
-Only the letter `T`, using Trainlog theme colors.
-
-Required recording sections:
-
-```text
-Séance
-Exercice
-Mensurations
-```
-
-Session recording must allow creating a new exercise inline without leaving the
-session flow.
-
-Android forms are driven by the same profile metadata as desktop:
-
-```text
-recording_mode
-tracking_mode
-data_fields
-```
-
-Examples:
-
-```text
-SETS + REPS
-    sets / reps / load / rest
-
-SETS + DURATION
-    sets / duration / optional load / rest
-
-CONTINUOUS + DURATION + SPEED_KMH
-    duration / speed
-```
-
-The app must never infer an input form from an exercise display name.
-
-Initial development uses fictitious records. Test/development data is removed
-before normal production use starts.
-<!-- TRAINLOG_ANDROID_PROFILE_CURSOR _END -->
-
-<!-- TRAINLOG_ANDROID_SCAFFOLD_IMPLEMENTED -->
-## Android scaffold implementation
-
-The Android project now lives in:
-
-```text
-android/
-```
-
-It is a native Kotlin + Jetpack Compose application with a custom Trainlog
-visual layer rather than default Material presentation.
-
-Implemented scaffold navigation:
+## 2. Implemented navigation
 
 ```text
 Accueil
 ├── Enregistrer une séance
-│   ├── Ajouter depuis le catalogue
-│   └── Créer un nouvel exercice
-│       └── returns to session flow
 ├── Enregistrer un exercice
-└── Enregistrer des mensurations
+├── Enregistrer des mensurations
+├── Historique des séances
+└── Synchroniser avec le PC
 ```
 
-The launcher icon is a minimal themed `T`.
+## 3. Local persistence
 
-The UI reuses the Trainlog visual roles from the TUI:
+Android local database version:
 
 ```text
-background
-accent/cyan
-success/green
-warning/yellow
-error/red
-muted/blue
-graph/magenta
+3
 ```
 
-Android forms will be driven by:
+Domain tables cover:
 
 ```text
-recording_mode
-tracking_mode
-data_fields
-```
-
-The scaffold intentionally does not implement persistence or MTP yet.
-
-Next:
-
-```text
-ANDROID_LOCAL_MODEL_AND_PERSISTENCE=NEXT
-ANDROID_SESSION_FORM=AFTER
-ANDROID_MTP_SYNC=AFTER_LOCAL_WORKFLOW
-```
-<!-- TRAINLOG_ANDROID_SCAFFOLD_IMPLEMENTED _END -->
-
-<!-- TRAINLOG_ANDROID_LOCAL_CATALOG -->
-## Android local catalog checkpoint
-
-The Android application now has a persistent local exercise catalog.
-
-Implemented:
-
-```text
-Android SQLite exercise database
-profile-aware exercise model
-standalone exercise creation
-inline exercise creation from session flow
-catalog survives application restart
-session screen refreshes after inline creation
-```
-
-Android uses the same semantic axes as desktop:
-
-```text
-recording_mode
-tracking_mode
-data_fields
-```
-
-Known supplemental fields remain:
-
-```text
-SPEED_KMH
-DISTANCE_KM
-```
-
-Continuous creation forces duration tracking. Set-based creation keeps
-supplemental continuous fields disabled.
-
-The local Android schema is intentionally independent from the desktop SQLite
-schema. Synchronization later exchanges versioned domain data rather than
-copying SQLite database files.
-
-Next:
-
-```text
-ANDROID_SESSION_RECORDING=NEXT
-ANDROID_BODY_PERSISTENCE=AFTER
-MTP_SYNC=AFTER_LOCAL_WORKFLOWS
-```
-<!-- TRAINLOG_ANDROID_LOCAL_CATALOG _END -->
-
-<!-- TRAINLOG_ANDROID_SESSION_RECORDING -->
-## Android session recording checkpoint
-
-Android can now build and persist real local sessions.
-
-Flow:
-
-```text
-Session
-→ choose catalog exercise
-→ profile-aware entry form
-→ add exercise to session draft
-→ repeat for additional exercises
-→ save session
-```
-
-Profile-aware forms:
-
-```text
-SETS + REPS
-    set count
-    repetitions per set
-
-SETS + DURATION
-    set count
-    duration per set
-
-CONTINUOUS + DURATION
-    duration minutes
-    configured speed/distance fields
-```
-
-Persistence mirrors the domain split:
-
-```text
+exercises
 sessions
 session_exercises
 performed_sets
 continuous_activity
+body_observations
 ```
 
-Continuous exercises do not create fake performed sets.
+This database is Android-local. It is not copied to the PC.
 
-The Android local database version is now 2.
+## 4. Exercise catalog
 
-Next:
+Exercise creation records:
 
 ```text
-ANDROID_SESSION_HISTORY=NEXT
-ANDROID_BODY_PERSISTENCE=AFTER
-MTP_SYNC=AFTER_LOCAL_WORKFLOWS
+name
+recording_mode
+tracking_mode
+data_fields
 ```
-<!-- TRAINLOG_ANDROID_SESSION_RECORDING _END -->
 
-<!-- TRAINLOG_ANDROID_SESSION_HISTORY -->
-## Android session history checkpoint
-
-Android now exposes persisted local sessions through:
+Stable identity:
 
 ```text
-Accueil
-→ Consultation
-→ Historique des séances
-→ Détail séance
+ex_<uuid-v4>
 ```
 
-Detail rendering remains profile-aware:
+The UI rejects invalid profile combinations and local normalized-name
+collisions.
+
+An exercise may be created standalone or inline while building a session.
+
+## 5. Session recording
+
+Stable session identity:
 
 ```text
-SETS + REPS
-    one line per performed set with reps
-
-SETS + DURATION
-    one line per performed set with duration
-
-CONTINUOUS
-    duration
-    configured speed
-    configured distance
+se_<uuid-v4>
 ```
 
-The history reader uses the persisted session snapshot metadata rather than
-inferring behavior from exercise names.
+Session entry is profile-aware.
 
-Next:
+### Sets + repetitions
+
+Actual set values may be heterogeneous.
+
+Compact entry supports:
 
 ```text
-ANDROID_BODY_PERSISTENCE=NEXT
-ANDROID_LOCAL_WORKFLOWS_THEN_MTP
+5x10
+4,5,6,7,8,9,10,9,8,7,6,5,4
+4..10..4
 ```
-<!-- TRAINLOG_ANDROID_SESSION_HISTORY _END -->
 
-<!-- TRAINLOG_ANDROID_BODY_PERSISTENCE -->
-## Android body measurement checkpoint
+### Sets + duration
 
-The Android body workflow is now persistent and uses the same measurement set
-as the TUI.
+Each performed set stores its own duration.
 
-Fields:
+### Continuous + duration
+
+The form asks for duration and only the configured supplemental fields such as
+speed or distance.
+
+Continuous work does not create fake sets.
+
+## 6. Session draft editing
+
+Before a session is saved, an exercise already added to the draft can be
+removed.
+
+Removing one exercise does not alter the exercise catalog entry itself.
+
+## 7. Session history
+
+Android exposes persisted local session history and profile-aware detail.
+
+Set-based history renders ordered performed sets.
+
+Continuous history renders its one activity record with configured supplemental
+values.
+
+## 8. Body measurements
+
+Supported metrics:
 
 ```text
 weight
@@ -568,304 +131,114 @@ left/right calf
 Rules:
 
 ```text
-empty field = measurement not taken
+empty field = not measured
 at least one positive metric required
 comma or dot accepted for decimal entry
 ```
 
-Android SQLite schema version:
+Stable identity:
 
 ```text
-3
+bo_<uuid-v4>
 ```
 
-The body screen also shows the five most recent observations.
+## 9. Automatic mobile snapshot
 
-At this point the three primary Android recording workflows are locally
-functional:
-
-```text
-session recording
-exercise creation
-body measurement recording
-```
-
-Next:
-
-```text
-ANDROID_LOCAL_POLISH_AND_VALIDATION=NEXT
-MTP_SYNC=AFTER_LOCAL_CHECKPOINT
-```
-<!-- TRAINLOG_ANDROID_BODY_PERSISTENCE _END -->
-
-<!-- TRAINLOG_ANDROID_LOCAL_WORKFLOWS_PASS -->
-## Local Android workflows — validated
-
-```text
-ANDROID_SCAFFOLD=PASS
-ANDROID_THEME_PARITY=PASS
-ANDROID_EXERCISE_CREATE=PASS
-ANDROID_INLINE_EXERCISE_CREATE=PASS
-ANDROID_SESSION_RECORDING=PASS
-ANDROID_SESSION_HISTORY=PASS
-ANDROID_BODY_RECORDING=PASS
-ANDROID_LOCAL_WORKFLOWS=PASS
-```
-
-The application is now locally usable for its three primary recording flows:
-
-```text
-session
-exercise
-body measurements
-```
-
-Session and history rendering are profile-aware.
-
-The Android-local SQLite database is not a synchronization format.
-
-Next:
-
-```text
-ANDROID_MTP_SYNC=NEXT
-```
-<!-- TRAINLOG_ANDROID_LOCAL_WORKFLOWS_PASS _END -->
-
-<!-- TRAINLOG_MOBILE_EXPORT_V1 -->
-## MTP mobile export v1
-
-Android now prepares a versioned full mobile snapshot at:
+Android maintains:
 
 ```text
 Download/Trainlog/trainlog-mobile-export-v1.json
 ```
 
-The file contains:
+The snapshot is refreshed after relevant local changes, including exercise,
+session, body-observation, and PC-catalog updates.
 
-```text
-exercise profiles
-sessions
-body observations
-```
+The user does not need a separate manual export step before synchronization.
 
-It is explicitly separate from frozen `TRAINLOG_FORMAT_V1`.
+## 10. PC catalog access
 
-Desktop direct-MTP validation is available through:
+PC-created files are accessed through a persistent Storage Access Framework
+grant.
 
-```text
-./build/tui/trainlog-mtp-mobile-export-probe
-```
-
-The probe traverses:
-
-```text
-internal storage
-→ Download
-→ Trainlog
-→ trainlog-mobile-export-v1.json
-```
-
-and downloads it directly through libmtp without a mount.
-
-Next after hardware PASS:
-
-```text
-DESKTOP_MOBILE_EXPORT_IMPORT=NEXT
-PC_TO_ANDROID_CATALOG=AFTER
-```
-<!-- TRAINLOG_MOBILE_EXPORT_V1 _END -->
-
-<!-- TRAINLOG_ANDROID_SYNC_FOLDER_CHECKPOINT -->
-## Android synchronization folder
-
-PC-created synchronization artifacts are consumed through a persistent Storage
-Access Framework grant.
-
-Canonical selected folder:
+The selected folder must be:
 
 ```text
 Download/Trainlog
 ```
 
-The Sync screen always exposes the folder-selection action.
+The Sync screen always permits changing the stored folder selection.
 
-When a folder is already authorized, the action becomes:
+No application-data reset is required to fix a wrong folder choice.
 
-```text
-Changer le dossier Trainlog
-```
+## 11. Android-triggered synchronization
 
-This is required so a wrong persisted folder selection can be corrected without
-clearing the Android application database.
-
-Validated PC catalog publication:
+The Sync screen exposes:
 
 ```text
-trainlog-pc-catalog-v1.json
+Synchroniser maintenant
 ```
 
-The final Android synchronization workflow must evolve toward a single
-`Synchroniser maintenant` action backed by a PC-side synchronization agent,
-rather than manual export/import steps.
-<!-- TRAINLOG_ANDROID_SYNC_FOLDER_CHECKPOINT _END -->
-
-<!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL -->
-## Variable sets and session exercise removal checkpoint
-
-Validated functionality in this checkpoint:
+Android writes:
 
 ```text
-VARIABLE_REPETITION_SETS=PASS
-REPETITION_SHORTHAND_5x10=PASS
-REPETITION_EXPLICIT_LIST=PASS
-REPETITION_PYRAMID=PASS
-
-DESKTOP_SCHEMA_V5=PASS
-V4_TO_V5_MIGRATION_REGRESSION=PASS
-MOBILE_HETEROGENEOUS_SET_IMPORT=PASS
-MOBILE_IMPORT_IDEMPOTENCE=PASS
-NO_FAKE_UNIFORM_TARGET=PASS
-
-ANDROID_SESSION_DRAFT_EXERCISE_REMOVE=PASS
-DESKTOP_SESSION_EXERCISE_REMOVE=PASS
+trainlog-sync-request-v1.json
 ```
 
-Accepted repetition examples:
+and waits for a matching:
 
 ```text
-5x10
-4,5,6,7,8,9,10,9,8,7,6,5,4
-4..10..4
+trainlog-sync-receipt-v1.json
 ```
 
-A heterogeneous mobile session is persisted as ordered `performed_sets`.
-The desktop does not invent `target_sets`, `target_reps` or
-`target_duration_seconds` for actual-only mobile observations.
+The receipt is matched by `request_id`.
 
-On Android, an exercise already added to the current session can be removed
-before saving the session.
+On success Android then applies the latest PC catalog and displays the final
+result.
 
-On the desktop TUI, session editing already supports:
+A receipt belonging to another request is ignored as pending rather than
+misreported as the current result.
+
+## 12. Synchronization ownership
+
+Android does not initiate raw MTP operations itself.
+
+MTP is host-initiated:
 
 ```text
-d supprimer
+Android request
+    -> PC trainlog-syncd
+    -> shared desktop sync engine
+    -> receipt
 ```
 
-for removing the selected exercise from a current or persisted session draft.
-The database replacement remains transactional.
+## 13. Build
 
-`TRAINLOG_FORMAT_V1` remains frozen and unchanged.
-<!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL _END -->
+Example local configuration:
 
-<!-- TRAINLOG_SHARED_SYNC_ENGINE_V1 -->
-## Shared bidirectional synchronization v1
+```bash
+cd android
 
-Validated architecture:
+printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
 
-```text
-Android local write
-    -> automatic mobile snapshot
-
-Android "Synchroniser maintenant"
-    -> trainlog-sync-request-v1.json
-
-trainlog-syncd
-    -> shared C synchronization engine
-    -> Android → PC mobile import
-    -> PC → Android catalog publish
-    -> trainlog-sync-receipt-v1.json
-
-Android
-    -> receipt matched by request_id
-    -> PC catalog applied locally
-    -> final result displayed
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
+./gradlew assembleDebug
 ```
 
-The ncurses TUI and `trainlog-syncd` call the same
-`trainlog_sync_run()` implementation.
+Install to a connected test device:
 
-Direct libmtp remains mandatory. No filesystem mount and no SQLite-file
-synchronization are introduced.
-
-### Concurrency
-
-The shared engine owns:
-
-```text
-$XDG_DATA_HOME/trainlog/sync.lock
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-A TUI-triggered transaction waits for the lock. Daemon request polling is
-non-blocking and retries later.
+`local.properties` is local machine configuration and must not be committed.
 
-### Sync history
+## 14. Non-goals
 
-Every actual synchronization transaction creates:
+Android is not intended to own:
 
-```text
-$XDG_DATA_HOME/trainlog/sync_runs/sy_*.json
-$XDG_DATA_HOME/trainlog/sync_runs/sy_*.txt
-```
-
-and appends a compact entry to:
-
-```text
-$XDG_DATA_HOME/trainlog/sync_history.log
-```
-
-The TUI behaves like:
-
-```text
-git log
-    ↑/↓ select synchronization
-
-git show
-    Enter opens structured detail
-```
-
-Legacy three-field history entries remain readable but have no structured
-detail file.
-
-### Android request and receipt
-
-Request:
-
-```text
-format  = trainlog-sync-request
-version = 1
-```
-
-Receipt:
-
-```text
-format  = trainlog-sync-receipt
-version = 1
-```
-
-The receipt carries the originating `request_id`, a generated `sync_id`,
-status, summary and synchronization counts. Android ignores a receipt for a
-different request ID.
-
-### User service
-
-Install/refresh the user service with:
-
-```text
-bash tools/install_syncd_user.sh
-```
-
-No root privilege is required.
-
-### Status
-
-```text
-COMMON_SYNC_ENGINE=PASS
-TUI_SYNC_LOG_SHOW=PASS
-TRAINLOG_SYNCD=PASS
-ANDROID_TRIGGERED_SYNC=PASS
-ANDROID_SYNC_RECEIPT=PASS
-BIDIRECTIONAL_SYNC_V1=PASS
-```
-
-Frozen `TRAINLOG_FORMAT_V1` remains unchanged.
-<!-- TRAINLOG_SHARED_SYNC_ENGINE_V1 _END -->
+- canonical long-term analytics;
+- complex body/performance graphs;
+- cloud accounts;
+- direct SQLite-file synchronization;
+- exercise-name heuristics;
+- a mounted-filesystem dependency.

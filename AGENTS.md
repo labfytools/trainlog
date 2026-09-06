@@ -2,186 +2,257 @@
 
 ## 1. Scope
 
-Trainlog is composed of two applications sharing a versioned exchange format:
+Trainlog consists of:
 
-- a lightweight Android application for fast workout data entry;
-- a Unix/Linux TUI for storage, review, analysis, and visualization.
+- a native Android application for fast workout and body-data capture;
+- a Unix/Linux C17 ncursesw TUI for durable history, correction, analysis,
+  visualization, and manual synchronization;
+- a small user-session PC agent, `trainlog-syncd`, for Android-triggered
+  synchronization;
+- versioned JSON synchronization artifacts exchanged over direct MTP.
 
-The TUI SQLite database is the canonical long-term history.
+The desktop SQLite database is the canonical long-term history.
 
-JSON files are the exchange contract between Android and the TUI.
+Android has an independent local SQLite store for offline capture. SQLite
+database files are never synchronized directly.
 
-## 2. General development rules
+## 2. Frozen compatibility boundary
 
-Every change must respect the following rules:
-
-1. behavior is defined before implementation;
-2. code must be readable and deterministic;
-3. errors must be handled explicitly;
-4. user data must never be silently discarded;
-5. persistent formats must be versioned;
-6. importing the same data repeatedly must not create duplicates;
-7. every new feature must be documented;
-8. affected tests must be added or updated;
-9. compiler warnings are treated as defects unless explicitly justified;
-10. an undocumented or untested feature is not considered complete.
-
-## 3. TUI
-
-The TUI is implemented in C17.
-
-Planned dependencies:
-
-- ncursesw;
-- SQLite3;
-- a deliberately selected JSON library;
-- Meson;
-- Ninja.
-
-The business logic, persistence layer, and ncurses rendering layer must remain separated.
-
-SQLite calls must not be scattered through rendering code.
-
-Important business rules must not depend directly on ncurses.
-
-## 4. Android
-
-The Android application is a data-entry client.
-
-It must remain intentionally simple and must not become the primary analytics or historical store.
-
-It must support:
-
-- starting a workout session;
-- automatic recording of the start time;
-- selecting or creating an exercise;
-- entering planned sets and repetitions;
-- entering actual sets and repetitions;
-- entering load;
-- entering planned rest time;
-- entering body weight and supported measurements;
-- automatic recording of the end time;
-- exporting a valid Trainlog JSON file.
-
-## 5. Documentation
-
-Documentation is mandatory.
-
-Primary documents:
-
-- `README.md`: user-facing project overview;
-- `docs/architecture.md`: architecture and component boundaries;
-- `docs/coding_style.md`: coding and commenting conventions;
-- `docs/exchange_format.md`: JSON exchange contract;
-- `docs/database.md`: SQLite schema and migration policy;
-- `docs/tui.md`: TUI behavior and visual rules;
-- `docs/android.md`: Android behavior and scope;
-- `docs/tests.md`: validation strategy and commands;
-- `docs/roadmap.md`: implementation order and gates.
-
-A behavior change must update the relevant documentation in the same change.
-
-## 6. Code comments
-
-Comments are mandatory when code expresses:
-
-- an invariant;
-- a format constraint;
-- an architectural decision;
-- non-obvious logic;
-- special error handling;
-- a public API;
-- an important data structure;
-- an assumption required for correctness.
-
-Comments must not merely restate obvious code.
-
-Prefer explaining why a decision exists when the reason is not obvious from the code.
-
-## 7. Exchange format
-
-The Trainlog format is versioned.
-
-Each workout export must contain:
-
-- a format identifier;
-- a schema version;
-- a unique session identifier;
-- ISO 8601 timestamps including an explicit UTC offset.
-
-Exercise identifiers are stable and permanent.
-
-An exercise display name may change without changing its identifier.
-
-Imports must be idempotent.
+`TRAINLOG_FORMAT_V1` is frozen.
 
 A published format version must never receive an incompatible semantic change.
 
-## 8. TUI visual rules
+New synchronization or domain needs use separate, explicitly versioned
+artifacts. Do not overload frozen v1 through notes, fake sets, or silent data
+loss.
 
-The TUI uses color when it improves understanding.
+## 3. Exercise model
 
-Color must never be the sole carrier of information.
+Exercise behavior is metadata-driven:
 
-Important states must remain understandable in monochrome terminals.
+```text
+recording_mode = SETS | CONTINUOUS
+tracking_mode  = REPS | DURATION
+data_fields    = bounded supplemental field mask
+```
 
-Colors must be centralized in a dedicated theme module.
+Valid model-v1 combinations are:
 
-The TUI must use `ncursesw` and handle UTF-8 correctly.
+```text
+SETS + REPS
+SETS + DURATION
+CONTINUOUS + DURATION
+```
 
-Raw ANSI escape sequences are forbidden in ncurses rendering code unless explicitly documented and justified.
+`CONTINUOUS + REPS` is invalid.
 
-## 9. Database
+Continuous activity must not be represented as a fake performed set.
 
-SQLite is the canonical TUI store.
+Actual set values are independent records. Heterogeneous repetitions are valid.
 
-The database schema must be versioned.
+## 4. Identity
 
-Incompatible schema evolution requires an explicit migration.
+Stable identities use UUIDv4-based creator IDs:
 
-Integrity constraints must be used where appropriate, including:
+```text
+ex_<uuid-v4>   exercise
+se_<uuid-v4>   session
+bo_<uuid-v4>   body observation
+sy_<uuid-v4>   synchronization run
+```
 
-- foreign keys;
-- unique identifiers;
-- anti-duplication constraints.
+Display names are not identities.
 
-## 10. Validation
+Import and synchronization paths must remain idempotent by stable IDs.
+
+## 5. Desktop implementation
+
+The desktop core is C17.
+
+Current primary dependencies:
+
+- ncursesw;
+- SQLite3;
+- utf8proc;
+- libuuid;
+- libudev;
+- libmtp;
+- Meson;
+- Ninja.
+
+Business logic, persistence, transport, and rendering remain separated.
+
+SQLite operations must not be scattered through rendering code.
+
+Important business rules must not depend directly on ncurses.
+
+Strict warning policy must not be weakened to make a change compile.
+
+## 6. Android implementation
+
+Android is a Kotlin/Jetpack Compose capture client.
+
+It owns local data entry and local persistence for:
+
+- exercise catalog entries;
+- sessions;
+- performed sets;
+- continuous activities;
+- body observations.
+
+It is not the canonical analytics store.
+
+The Android UI is driven by exercise metadata, never by exercise-name
+heuristics.
+
+## 7. Synchronization architecture
+
+Desktop access to Android uses physical-device discovery with `libudev` and
+direct object access with `libmtp`.
+
+Do not introduce a mandatory GVFS/FUSE mount.
+
+Canonical exchange folder:
+
+```text
+Download/Trainlog
+```
+
+The shared desktop synchronization engine is:
+
+```text
+trainlog_sync_run()
+```
+
+Both the TUI and `trainlog-syncd` use this engine.
+
+Android-triggered synchronization uses:
+
+```text
+trainlog-sync-request-v1.json
+trainlog-sync-receipt-v1.json
+```
+
+Android -> PC data uses:
+
+```text
+trainlog-mobile-export-v1.json
+```
+
+PC -> Android catalog data uses:
+
+```text
+trainlog-pc-catalog-v1.json
+```
+
+## 8. Persistence
+
+Desktop SQLite schema is versioned with:
+
+```sql
+PRAGMA user_version;
+```
+
+The current desktop schema is v5.
+
+Every incompatible schema evolution requires an explicit migration and
+regression coverage.
+
+Foreign keys must be enabled.
+
+Multi-row mutations that represent one user operation must be transactional.
+
+## 9. Error handling
+
+Trainlog prefers explicit failure over silent corruption.
+
+Examples:
+
+- malformed exchange JSON -> reject;
+- unsupported version -> reject;
+- duplicate stable ID -> idempotent skip or explicit conflict as defined;
+- incompatible exercise profile -> reject;
+- incomplete session -> preserve explicitly;
+- failed persisted-session replacement -> rollback;
+- synchronization failure -> record a meaningful diagnostic.
+
+User-facing code must not intentionally return placeholders such as
+`error=unknown` when a specific failure can be reported.
+
+## 10. Documentation
+
+Canonical documents:
+
+- `README.md`;
+- `docs/current_state.md`;
+- `docs/architecture.md`;
+- `docs/coding_style.md`;
+- `docs/exchange_format.md`;
+- `docs/exercise_data_model.md`;
+- `docs/database.md`;
+- `docs/tui.md`;
+- `docs/android.md`;
+- `docs/sync_exchange.md`;
+- `docs/tests.md`;
+- `docs/roadmap.md`;
+- `CHANGELOG.md`.
+
+Checkpoint history belongs in Git history and `docs/reviews`; canonical
+documents describe the current state rather than accumulating obsolete
+`NEXT` sections.
+
+## 11. Validation
 
 Before every meaningful push:
 
-- build;
-- run tests;
-- verify formatting;
-- verify compiler warnings;
-- validate JSON examples against the schema;
-- verify documentation impacted by the change.
+```bash
+meson compile -C build
+meson test -C build --print-errorlogs
 
-The repository must not knowingly be pushed in a broken state.
+python tools/validate_json.py
+python tools/validate_import_contract.py
 
-## 11. Git workflow
+git diff --check
+git status --short
+```
 
-Forgejo is the primary repository.
+When Android code changes:
 
-Primary remote:
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
+```
 
-`ssh://git@git.labfytools.com:2223/fy59/trainlog.git`
+Run ASan/UBSan at meaningful C implementation checkpoints.
+
+Hardware-dependent MTP tests remain explicit manual validations and are not
+required to run in CI without a connected unlocked Android device.
+
+## 12. Git workflow
+
+Forgejo is primary:
+
+```text
+ssh://git@git.labfytools.com:2223/fy59/trainlog.git
+```
 
 GitHub is a mirror:
 
-`git@github.com:labfytools/trainlog.git`
-
-Normal development must push to Forgejo.
+```text
+git@github.com:labfytools/trainlog.git
+```
 
 Do not develop directly against the GitHub mirror.
 
-## 12. Definition of Done
+## 13. Definition of Done
 
 A task is complete only when:
 
-- the expected behavior is implemented;
-- the code builds without accepted warnings;
+- behavior is implemented;
+- the affected code builds without accepted warnings;
 - relevant tests pass;
-- new error paths are handled;
-- documentation is current;
-- examples and schemas are updated when required;
+- new error paths are explicit;
+- persistent-format changes have migrations;
+- synchronization remains idempotent where applicable;
+- documentation describes the resulting state;
 - no known regression is intentionally left behind.

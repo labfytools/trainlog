@@ -1,24 +1,51 @@
-# Trainlog synchronization exchange
+# Synchronization exchange
 
-## Status
+## 1. Status
 
 ```text
-MOBILE_EXPORT_V1=FROZEN_FOR_IMPLEMENTATION
+DIRECT_MTP_TRANSPORT=PASS
+ANDROID_TO_PC_IMPORT=PASS
+PC_TO_ANDROID_CATALOG=PASS
+COMMON_SYNC_ENGINE=PASS
+TRAINLOG_SYNCD=PASS
+ANDROID_TRIGGERED_SYNC=PASS
+ANDROID_SYNC_RECEIPT=PASS
+TUI_SYNC_LOG_SHOW=PASS
+BIDIRECTIONAL_SYNC_V1=PASS
+
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
 
-This document defines a synchronization artifact. It is not the frozen
-Trainlog session JSON v1 format.
+Synchronization artifacts are separate from the frozen Trainlog session JSON
+v1 format.
 
-## Android → PC artifact
+## 2. Exchange directory
 
-Shared-storage path:
+Canonical Android shared-storage directory:
 
 ```text
-Download/Trainlog/trainlog-mobile-export-v1.json
+Download/Trainlog
 ```
 
-Format header:
+Desktop accesses this directory through direct MTP.
+
+Android accesses PC-created artifacts through a persistent Storage Access
+Framework folder grant.
+
+## 3. Artifact table
+
+| Direction | File | Format |
+| --- | --- | --- |
+| Android -> PC | `trainlog-mobile-export-v1.json` | `trainlog-mobile-export` v1 |
+| PC -> Android | `trainlog-pc-catalog-v1.json` | `trainlog-pc-catalog` v1 |
+| Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
+| PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
+
+No SQLite file is transferred.
+
+## 4. Android -> PC mobile snapshot
+
+Header:
 
 ```json
 {
@@ -35,9 +62,7 @@ sessions
 body_observations
 ```
 
-### Exercises
-
-Each exercise contains:
+Exercise profile fields:
 
 ```text
 exercise_id
@@ -47,39 +72,27 @@ tracking_mode
 data_fields
 ```
 
-### Sessions
-
-Each session contains:
-
-```text
-session_id
-started_at
-session_type
-exercises
-```
-
-Each session exercise snapshots:
-
-```text
-exercise_id
-name
-recording_mode
-tracking_mode
-data_fields
-load_mode
-rest_seconds
-```
-
-For `SETS`:
+Set-based session exercise actuals use ordered:
 
 ```text
 sets[]
-    reps
-or
-    duration_seconds
 ```
 
-For `CONTINUOUS`:
+with either:
+
+```text
+reps
+```
+
+or:
+
+```text
+duration_seconds
+```
+
+Heterogeneous repetition values are valid.
+
+Continuous actuals use:
 
 ```text
 continuous
@@ -88,391 +101,224 @@ continuous
     distance_km optional
 ```
 
-A continuous exercise has no synthetic set.
+No synthetic set is created for continuous work.
 
-### Body observations
+## 5. Desktop mobile importer
 
-Each body observation contains:
-
-```text
-observation_id
-observed_at
-only the metrics actually measured
-```
-
-## Transport
-
-Android writes its own export into shared Downloads storage.
-
-Desktop reads the artifact through direct libmtp transport.
-
-No filesystem mount is required.
-
-No SQLite database file is transferred.
-
-## PC → Android
-
-A separate canonical catalog artifact will be defined and implemented after
-Android → PC export is validated on physical hardware.
-
-The PC → Android path must not overload frozen Trainlog JSON v1.
-
-<!-- TRAINLOG_DESKTOP_MOBILE_IMPORT_V1 -->
-## Desktop import of mobile export v1
-
-The desktop importer is:
+Reference importer:
 
 ```text
 tools/import_mobile_export.py
 ```
 
-It validates the complete mobile snapshot before opening a write transaction.
-
 Properties:
 
 ```text
-transactional
-idempotent by stable IDs
-exercise reconciliation by normalized name
-profile conflicts rejected
-unknown JSON fields rejected
-no SQLite file copying
+strict full-snapshot validation
+transactional import
+stable-ID idempotence
+catalog reconciliation
+profile conflict rejection
+heterogeneous performed-set preservation
+targetless schema-v5 import when no true target exists
+continuous activity kept separate
 ```
 
-For mobile `SETS` v1, the Android form records one uniform set metric. The
-desktop importer derives:
+The importer never invents a uniform target merely to fit desktop persistence.
+
+## 6. PC -> Android catalog
+
+The desktop publishes:
 
 ```text
-target_sets = number of logged sets
-target_reps or target_duration = uniform logged value
+trainlog-pc-catalog-v1.json
 ```
 
-and preserves all performed sets separately.
+It is a canonical exercise catalog snapshot containing stable profile metadata.
 
-A v1 mobile session with heterogeneous set metrics or `0 reps` is rejected
-rather than inventing a desktop target.
+Android reconciles the received catalog into its local exercise catalog.
 
-Continuous activities remain target-less and are imported only into
-`continuous_activity`.
+This direction does not overload frozen Trainlog session JSON v1.
 
-Recommended validation sequence:
+## 7. Android sync request
 
-```bash
-python tools/import_mobile_export.py   /tmp/trainlog-mobile-export-v1.json   --dry-run
-
-python tools/import_mobile_export.py   /tmp/trainlog-mobile-export-v1.json
-```
-
-Running the real import a second time must import nothing new and report the
-existing IDs as skipped.
-<!-- TRAINLOG_DESKTOP_MOBILE_IMPORT_V1 _END -->
-
-<!-- TRAINLOG_BIDIRECTIONAL_SYNC_V1 -->
-## Bidirectional synchronization v1
-
-One desktop Sync action now performs both directions:
+Android writes:
 
 ```text
-Android → PC
-    direct-MTP download
-    strict transactional import
-
-PC → Android
-    canonical PC exercise catalog export
-    direct-MTP publication
+trainlog-sync-request-v1.json
 ```
 
-The Android app obtains one persistent Storage Access Framework grant for:
+Header:
+
+```json
+{
+  "format": "trainlog-sync-request",
+  "version": 1
+}
+```
+
+Required synchronization identity:
 
 ```text
-Download/Trainlog
+request_id = sr_<uuid-v4>
 ```
 
-After this one-time grant, Android can import the PC-created catalog without
-broad storage permissions.
+The artifact also carries the request timestamp.
 
-The Sync page displays persistent synchronization history instead of remote
-snapshot counts. A snapshot remaining present is not a pending queue item and
-must not be shown as a "candidate".
+A new `request_id` represents a new synchronization request.
 
-User-facing session history timestamps are displayed as:
+## 8. PC sync receipt
+
+After processing an Android request, the PC publishes:
 
 ```text
-DD/MM/YYYY HH:MM
+trainlog-sync-receipt-v1.json
 ```
 
-Canonical RFC3339 storage remains unchanged.
-<!-- TRAINLOG_BIDIRECTIONAL_SYNC_V1 _END -->
+Header:
 
-<!-- TRAINLOG_ANDROID_AUTO_OUTBOX_REQUEST -->
-## Automatic Android outbox and sync request
+```json
+{
+  "format": "trainlog-sync-receipt",
+  "version": 1
+}
+```
 
-Android no longer requires a manual export action.
-
-The mobile snapshot is refreshed automatically on:
+The receipt contains:
 
 ```text
-application start
-exercise save
-session save
-body observation save
-PC catalog apply
+request_id
+sync_id
+status
+summary
+Android -> PC counts
+PC -> Android catalog count
 ```
 
-The Android Sync screen exposes:
+Android accepts a receipt only when its `request_id` matches the pending
+request.
+
+## 9. Shared desktop engine
+
+Canonical implementation:
 
 ```text
-Synchroniser maintenant
+trainlog_sync_run()
 ```
 
-This writes:
+TUI path:
 
 ```text
-Download/Trainlog/trainlog-sync-request-v1.json
+TUI
+-> shared engine
 ```
 
-with a stable request ID and timestamp.
-
-The next PC-agent slice consumes this request and writes a sync receipt.
-<!-- TRAINLOG_ANDROID_AUTO_OUTBOX_REQUEST _END -->
-
-<!-- TRAINLOG_BIDIRECTIONAL_VALIDATED_CHECKPOINT -->
-## Validated bidirectional transport checkpoint
-
-Validated on the physical Samsung device:
+Android-triggered path:
 
 ```text
-ANDROID_TO_PC_MTP=PASS
-DESKTOP_MOBILE_IMPORT_V1=PASS
-DESKTOP_MOBILE_IMPORT_IDEMPOTENT=PASS
-
-PC_CATALOG_EXPORT_V1=PASS
-PC_TO_ANDROID_MTP_PUBLISH=PASS
+Android request
+-> trainlog-syncd
+-> shared engine
+-> receipt
 ```
 
-Artifacts:
+One synchronization transaction performs:
 
 ```text
-Android → PC
-    Download/Trainlog/trainlog-mobile-export-v1.json
-
-PC → Android
-    Download/Trainlog/trainlog-pc-catalog-v1.json
+mobile snapshot download
+-> mobile import
+-> PC catalog export
+-> PC catalog MTP publication
+-> optional receipt publication
+-> structured run history
 ```
 
-Both are synchronization artifacts and remain separate from frozen
-`TRAINLOG_FORMAT_V1`.
+## 10. Concurrency and request consumption
 
-The Android Storage Access Framework folder grant must target:
-
-```text
-Download/Trainlog
-```
-
-and the UI must permit changing the stored folder selection.
-
-Remaining synchronization work:
-
-```text
-persistent structured sync history
-selectable sync detail
-common sync engine
-trainlog-syncd
-Android-triggered request/receipt workflow
-automatic mobile snapshot maintenance
-```
-<!-- TRAINLOG_BIDIRECTIONAL_VALIDATED_CHECKPOINT _END -->
-
-<!-- TRAINLOG_VARIABLE_SET_REPS_V1 -->
-## Variable repetition sets
-
-Trainlog preserves each performed set independently.
-
-Accepted repetition input:
-
-```text
-5x10
-4,5,6,7,8,9,10,9,8,7,6,5,4
-4..10..4
-```
-
-`4..10..4` expands to:
-
-```text
-4,5,6,7,8,9,10,9,8,7,6,5,4
-```
-
-Desktop schema v5 permits targetless `SETS` rows for actual-only mobile
-observations. Synchronization therefore does not invent a uniform target when
-performed sets are heterogeneous.
-
-`performed_sets` remains the source of truth for actual per-set values.
-
-Existing planned desktop sessions may still carry explicit target sets/reps or
-target durations.
-
-`trainlog-mobile-export` v1 keeps ordered heterogeneous `sets[]`.
-
-Frozen `TRAINLOG_FORMAT_V1` is unchanged.
-<!-- TRAINLOG_VARIABLE_SET_REPS_V1 _END -->
-
-<!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL -->
-## Variable sets and session exercise removal checkpoint
-
-Validated functionality in this checkpoint:
-
-```text
-VARIABLE_REPETITION_SETS=PASS
-REPETITION_SHORTHAND_5x10=PASS
-REPETITION_EXPLICIT_LIST=PASS
-REPETITION_PYRAMID=PASS
-
-DESKTOP_SCHEMA_V5=PASS
-V4_TO_V5_MIGRATION_REGRESSION=PASS
-MOBILE_HETEROGENEOUS_SET_IMPORT=PASS
-MOBILE_IMPORT_IDEMPOTENCE=PASS
-NO_FAKE_UNIFORM_TARGET=PASS
-
-ANDROID_SESSION_DRAFT_EXERCISE_REMOVE=PASS
-DESKTOP_SESSION_EXERCISE_REMOVE=PASS
-```
-
-Accepted repetition examples:
-
-```text
-5x10
-4,5,6,7,8,9,10,9,8,7,6,5,4
-4..10..4
-```
-
-A heterogeneous mobile session is persisted as ordered `performed_sets`.
-The desktop does not invent `target_sets`, `target_reps` or
-`target_duration_seconds` for actual-only mobile observations.
-
-On Android, an exercise already added to the current session can be removed
-before saving the session.
-
-On the desktop TUI, session editing already supports:
-
-```text
-d supprimer
-```
-
-for removing the selected exercise from a current or persisted session draft.
-The database replacement remains transactional.
-
-`TRAINLOG_FORMAT_V1` remains frozen and unchanged.
-<!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL _END -->
-
-<!-- TRAINLOG_SHARED_SYNC_ENGINE_V1 -->
-## Shared bidirectional synchronization v1
-
-Validated architecture:
-
-```text
-Android local write
-    -> automatic mobile snapshot
-
-Android "Synchroniser maintenant"
-    -> trainlog-sync-request-v1.json
-
-trainlog-syncd
-    -> shared C synchronization engine
-    -> Android → PC mobile import
-    -> PC → Android catalog publish
-    -> trainlog-sync-receipt-v1.json
-
-Android
-    -> receipt matched by request_id
-    -> PC catalog applied locally
-    -> final result displayed
-```
-
-The ncurses TUI and `trainlog-syncd` call the same
-`trainlog_sync_run()` implementation.
-
-Direct libmtp remains mandatory. No filesystem mount and no SQLite-file
-synchronization are introduced.
-
-### Concurrency
-
-The shared engine owns:
+Synchronization owns:
 
 ```text
 $XDG_DATA_HOME/trainlog/sync.lock
 ```
 
-A TUI-triggered transaction waits for the lock. Daemon request polling is
-non-blocking and retries later.
+The daemon uses non-blocking acquisition while polling.
 
-### Sync history
+The TUI manual action waits for the active synchronization lock.
 
-Every actual synchronization transaction creates:
+After a request is completed and its receipt is published, the request ID is
+recorded locally so the same request is not processed as a new request again.
+
+## 11. Structured sync history
+
+Every real run has:
+
+```text
+sy_<uuid-v4>
+```
+
+Artifacts:
 
 ```text
 $XDG_DATA_HOME/trainlog/sync_runs/sy_*.json
 $XDG_DATA_HOME/trainlog/sync_runs/sy_*.txt
-```
-
-and appends a compact entry to:
-
-```text
 $XDG_DATA_HOME/trainlog/sync_history.log
 ```
 
-The TUI behaves like:
+The TUI presents newest runs in a selectable list and opens the detail file with
+`Enter`.
 
-```text
-git log
-    ↑/↓ select synchronization
+Legacy history rows without a `sync_id` remain readable as list entries but
+cannot have structured detail.
 
-git show
-    Enter opens structured detail
-```
+## 12. PC user service
 
-Legacy three-field history entries remain readable but have no structured
-detail file.
+Install or refresh:
 
-### Android request and receipt
-
-Request:
-
-```text
-format  = trainlog-sync-request
-version = 1
-```
-
-Receipt:
-
-```text
-format  = trainlog-sync-receipt
-version = 1
-```
-
-The receipt carries the originating `request_id`, a generated `sync_id`,
-status, summary and synchronization counts. Android ignores a receipt for a
-different request ID.
-
-### User service
-
-Install/refresh the user service with:
-
-```text
+```bash
 bash tools/install_syncd_user.sh
+```
+
+Check:
+
+```bash
+systemctl --user is-active trainlog-syncd.service
+systemctl --user --no-pager --full status trainlog-syncd.service
+```
+
+Daemon log:
+
+```bash
+tail -f ~/.local/state/trainlog/syncd.log
 ```
 
 No root privilege is required.
 
-### Status
+## 13. Transport invariants
+
+Do not regress to:
 
 ```text
-COMMON_SYNC_ENGINE=PASS
-TUI_SYNC_LOG_SHOW=PASS
-TRAINLOG_SYNCD=PASS
-ANDROID_TRIGGERED_SYNC=PASS
-ANDROID_SYNC_RECEIPT=PASS
-BIDIRECTIONAL_SYNC_V1=PASS
+SQLite database copying
+mandatory GVFS/FUSE mounts
+exercise-name identity heuristics
+fake sets for continuous activity
+fake uniform targets for heterogeneous actual sets
+overloading frozen Trainlog JSON v1
 ```
 
-Frozen `TRAINLOG_FORMAT_V1` remains unchanged.
-<!-- TRAINLOG_SHARED_SYNC_ENGINE_V1 _END -->
+## 14. Hardware validation
+
+Validated on the physical Android device:
+
+```text
+MTP device discovery PASS
+storage access PASS
+read/write/list/delete PASS
+Android mobile snapshot download PASS
+desktop idempotent import PASS
+PC catalog publication PASS
+Android request detection PASS
+trainlog-syncd processing PASS
+receipt publication/readback PASS
+multiple distinct Android request IDs PASS
+```

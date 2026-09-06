@@ -1,12 +1,13 @@
-# Tests and Validation
+# Tests and validation
 
 ## 1. Principle
 
-A feature is not complete without relevant validation.
+A Trainlog feature is not complete without relevant validation.
 
-The exchange validator is executable specification during the format gates.
+Frozen formats, persistence migrations, synchronization semantics, and user-data
+mutations require executable coverage where practical.
 
-## 2. Canonical exchange validation
+## 2. Frozen Trainlog JSON v1
 
 Run:
 
@@ -14,123 +15,30 @@ Run:
 python tools/validate_json.py
 ```
 
-The command validates:
+It validates:
 
 - `examples/session-v1.json`;
-- all `tests/fixtures/valid/*.json` as valid;
-- all `tests/fixtures/invalid/*.json` as invalid.
+- all positive fixtures;
+- all negative fixtures.
 
 A negative fixture passes only when Trainlog rejects it.
 
-## 3. Validation layers
-
-A v1 document must pass:
-
-1. JSON Schema validation;
-2. Trainlog semantic validation.
-
-Schema handles shape, enumerations, and primitive ranges.
-
-Semantic validation handles cross-object and normalized rules.
-
-## 4. Gate 1 semantic coverage
-
-The canonical validator checks:
-
-- unique `exercise_id`;
-- normalized exercise-name uniqueness;
-- explicit timestamp offsets;
-- end time later than start time;
-- exact catalog/reference set equality;
-- one workout entry per exercise;
-- catalog tracking mode matching target;
-- catalog tracking mode matching actual sets;
-- load-mode/weight consistency;
-- non-blank notes.
-
-## 5. Positive fixture coverage
-
-Gate 1 includes:
-
-- mixed loaded repetition + timed session;
-- active session without `ended_at`;
-- planned exercise with zero actual sets;
-- bodyweight exercise with zero-repetition failed attempt;
-- assistance load;
-- completely interrupted session with zero exercises.
-
-## 6. Negative fixture coverage
-
-Gate 1 includes rejection of:
-
-- duplicate exercise IDs;
-- duplicate normalized exercise names;
-- duplicate workout exercise entries;
-- end timestamp before start;
-- missing timestamp offset;
-- target/actual tracking mismatch;
-- target containing both repetitions and duration;
-- unknown exercise reference;
-- unknown JSON field;
-- catalog tracking-mode mismatch;
-- `load_mode=none` carrying weight;
-- loaded target missing weight;
-- loaded actual set missing weight;
-- unreferenced catalog entries;
-- blank session notes;
-- blank exercise notes;
-- negative actual repetitions.
-
-## 7. Gate 2 compiled validation
-
-The normal Meson suite currently covers:
+Semantic validation includes:
 
 ```text
-database
-catalog
-session_detail
-duration
-body_metrics
-bodyviz
-exercise_performance
-session_type_schema
-session_edit
-body_observation_edit
+stable-ID uniqueness
+normalized exercise-name uniqueness
+timestamp offsets
+end > start
+catalog/reference equality
+tracking-mode consistency
+load-mode/weight consistency
+unknown-field rejection
+non-blank notes
+zero actual repetitions allowed
 ```
 
-The session-edit test verifies transactional child replacement without changing
-the parent session identity. The body-observation edit test verifies stable
-observation identity while metric values and notes are updated.
-
-Schema validation includes the v1 -> v2 `session_type` migration.
-
-## 8. C validation
-
-Current pre-push validation includes:
-
-- normal strict-warning build;
-- the complete Meson test suite;
-- `git diff --check`;
-- frozen JSON v1 validators.
-
-ASan/UBSan is run for meaningful implementation checkpoints before declaring a
-gate complete.
-
-## 9. Pre-push checklist
-
-Before every meaningful push:
-
-1. run `python tools/validate_json.py`;
-2. run `python tools/validate_import_contract.py`;
-3. run `meson compile -C build`;
-4. run `meson test -C build --print-errorlogs`;
-5. run sanitizers when relevant;
-6. run `git diff --check`;
-7. inspect `git status --short`;
-8. review documentation changes.
-## 10. Catalog reconciliation contract
-
-Before the C17 importer exists, Gate 1 defines local catalog merge behavior through an executable Python specification.
+## 3. Import reconciliation contract
 
 Run:
 
@@ -138,87 +46,171 @@ Run:
 python tools/validate_import_contract.py
 ```
 
-Canonical cases cover:
-
-- exact existing exercise reuse;
-- same identity with renamed display text;
-- same identity with incompatible tracking mode;
-- different identities with equivalent normalized names;
-- new unique exercise creation.
-
-The full Gate 1 validation command is:
-
-```bash
-python tools/validate_json.py
-python tools/validate_import_contract.py
-git diff --check
-```
-
-<!-- TRAINLOG_MTP_VALIDATION -->
-## 11. USB/MTP transport validation
-
-The compiled suite now contains:
+Coverage includes:
 
 ```text
-usb
-mtp
+same ID + same name/profile -> reuse
+same ID + renamed display text -> controlled reuse/warning
+same ID + incompatible mode -> reject
+different ID + equivalent normalized name -> reject
+new unique identity -> create
 ```
 
-The `usb` test covers API validation, physical-device enumeration invariants,
-and rejection of duplicated USB interface children.
+## 4. Desktop Meson suite
 
-The `mtp` test covers bounded API argument validation for storage, folder,
-upload, listing, and download entry points.
+Current normal suite:
 
-Hardware probes additionally validate the real device path:
+```text
+ 1  database
+ 2  catalog
+ 3  session_detail
+ 4  duration
+ 5  body_metrics
+ 6  bodyviz
+ 7  exercise_performance
+ 8  session_type_schema
+ 9  session_edit
+10  body_observation_edit
+11  mtp
+12  continuous_session
+13  continuous_detail
+14  reps
+15  exercise_profile_schema
+16  usb
+17  variable_sets
+18  schema_v5_migration
+19  mobile_import_variable_sets
+```
+
+Validated checkpoint:
+
+```text
+19/19 PASS
+```
+
+Notable regression coverage:
+
+- transactional persisted-session replacement;
+- exercise removal from a session;
+- body-observation stable-identity editing;
+- profile-aware exercise constraints;
+- continuous activity without fake sets;
+- repetition shorthand/list/pyramid parsing;
+- direct v4 -> v5 database migration;
+- heterogeneous mobile-set import;
+- targetless mobile SETS persistence;
+- mobile-import idempotence.
+
+## 5. Build
+
+```bash
+meson setup --reconfigure build
+meson compile -C build
+meson test -C build --print-errorlogs
+```
+
+Strict warning flags remain active. Do not weaken warnings to make a change pass.
+
+## 6. Android build
+
+When Android code changes:
+
+```bash
+cd android
+
+printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
+
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
+./gradlew assembleDebug
+```
+
+Install to the connected device when hardware behavior changes:
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+## 7. Hardware MTP validation
+
+Hardware probes and real synchronization are separate from the normal automated
+suite because a test runner cannot assume an unlocked MTP phone.
+
+Available probe binaries include:
 
 ```text
 trainlog-usb-probe
 trainlog-mtp-probe
 trainlog-mtp-exchange-probe
 trainlog-mtp-roundtrip-probe
+trainlog-mtp-mobile-export-probe
 ```
 
-Physical checkpoint result:
+Current physical baseline:
 
 ```text
-MTP devices: 1
-ROUNDTRIP=PASS Trainlog/trainlog-probe.txt
+USB_MTP_DETECTION=PASS
+MTP_STORAGE_ACCESS=PASS
+MTP_WRITE=PASS
+MTP_LIST_FOLDER=PASS
+MTP_READ=PASS
+MTP_ROUNDTRIP=PASS
 ```
 
-The hardware probe is intentionally separate from the normal automated test
-suite because CI is not expected to have a connected unlocked Android MTP
-device.
-<!-- TRAINLOG_MTP_VALIDATION _END -->
+## 8. Bidirectional synchronization validation
 
-<!-- TRAINLOG_CONTINUOUS_TEST_CHECKPOINT -->
-## Profile-aware / continuous validation
-
-Expected normal test suite after this checkpoint:
+Validated workflow:
 
 ```text
-15 tests
+Android
+-> Synchroniser maintenant
+-> unique sr_ request
+-> trainlog-syncd
+-> shared engine
+-> Android -> PC import
+-> PC -> Android catalog
+-> sy_ structured run
+-> matching receipt
+-> Android final status
 ```
 
-Coverage added around:
+Multiple distinct Android request IDs were processed successfully without
+reprocessing one request as a new one.
 
-```text
-exercise profile schema
-profiled catalog creation
-schema migration
-continuous session persistence
-continuous session detail loading
+The TUI also invokes the same engine manually and exposes structured run
+details.
+
+## 9. Sanitizers
+
+For meaningful C checkpoints:
+
+```bash
+CC=clang meson setup build-asan \
+  -Db_sanitize=address,undefined \
+  -Db_lundef=false
+
+meson compile -C build-asan
+meson test -C build-asan --print-errorlogs
 ```
 
-Manual TUI validation includes:
+## 10. Pre-push checklist
 
-```text
-Marche configured CONTINUOUS + DURATION + SPEED_KMH
-entry asks duration minutes + speed
-no sets/rest/load prompts
-continuous_activity row persisted
-performed_sets count remains zero
-history reopens as continuous
-duration and speed render correctly
+```bash
+meson compile -C build
+meson test -C build --print-errorlogs
+
+python tools/validate_json.py
+python tools/validate_import_contract.py
+
+git diff --check
+git status --short
 ```
-<!-- TRAINLOG_CONTINUOUS_TEST_CHECKPOINT _END -->
+
+When Android changed, add:
+
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
+```
+
+Documentation must describe the resulting state, not retain contradictory old
+`NEXT` checkpoints.

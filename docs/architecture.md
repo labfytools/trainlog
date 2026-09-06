@@ -1,199 +1,287 @@
 # Architecture
 
-## 1. Purpose
+## 1. System boundary
 
-Trainlog separates capture from analysis.
+Trainlog separates capture, durable history, transport, and presentation.
 
-The Android application is optimized for fast data entry during training.
+```text
+Android capture client
+        |
+        | local SQLite
+        |
+        +-- automatic mobile snapshot
+                    |
+                    v
+             Android shared storage
+             Download/Trainlog
+                    |
+                    | direct MTP
+                    v
+            shared desktop sync engine
+               /               \
+              /                 \
+     desktop SQLite       PC catalog artifact
+          |                      |
+          v                      v
+      desktop TUI             Android
+```
 
-The TUI is optimized for durable storage, inspection, statistics, and visualization.
+The desktop SQLite database is the canonical long-term history.
+
+Android local SQLite is a capture store, not a synchronization format.
 
 ## 2. Components
 
-### Android client
+### Android application
 
 Responsibilities:
 
-- start a session;
-- record the session start timestamp;
-- select an existing exercise;
-- create a new exercise;
-- record workout targets;
-- record actual performed sets;
-- record rest duration;
-- record body data;
-- record the session end timestamp;
-- export one valid Trainlog JSON document.
+- exercise catalog entry;
+- workout-session recording;
+- performed set entry;
+- continuous-activity entry;
+- body measurement entry;
+- local history/detail;
+- automatic mobile snapshot generation;
+- PC catalog application;
+- synchronization request creation;
+- synchronization receipt display.
 
-Non-responsibilities:
+Android is not responsible for canonical long-term analytics.
 
-- long-term analytics;
-- canonical history;
-- complex graphing;
-- cloud synchronization.
+### Desktop core
 
-### Exchange format
+The C17 core owns:
 
-The exchange format is the compatibility boundary between Android and the TUI.
-
-It is:
-
-- JSON;
-- UTF-8;
-- versioned;
-- self-contained enough to import newly created exercises;
-- designed for idempotent import.
+- desktop SQLite persistence;
+- exercise/catalog rules;
+- profile-aware session data;
+- body data;
+- ID and time helpers;
+- USB discovery;
+- direct MTP operations;
+- the shared bidirectional synchronization engine.
 
 ### TUI
 
-Responsibilities:
+The ncursesw layer owns interaction and rendering.
 
-- import Trainlog JSON;
-- reject malformed or incompatible input cleanly;
-- deduplicate sessions;
-- maintain the canonical exercise catalog;
-- create workouts directly from the terminal;
-- maintain SQLite history;
-- calculate progress metrics;
-- render graphs and summaries;
-- export data when needed.
+It consumes core services for:
 
-### SQLite store
+- session entry/editing;
+- history;
+- exercise performance;
+- body tracking;
+- graphs;
+- manual synchronization;
+- synchronization log/detail display.
 
-SQLite is the canonical local history.
+### `trainlog-syncd`
 
-The database must use:
+`trainlog-syncd` is a small user-session agent.
 
-- foreign keys;
-- uniqueness constraints;
-- schema versioning;
-- explicit migration rules.
+It polls for a new Android request and invokes the same shared C synchronization
+engine used by the TUI.
 
-## 3. Data flow
+It does not implement a second synchronization algorithm.
+
+## 3. Exercise model
+
+Trainlog is metadata-driven:
 
 ```text
-Android
-  |
-  | export
-  v
-Trainlog JSON
-  |
-  | import + validation
-  v
-TUI application
-  |
-  | persistence
-  v
-SQLite
+recording_mode = SETS | CONTINUOUS
+tracking_mode  = REPS | DURATION
+data_fields    = SPEED_KMH | DISTANCE_KM
 ```
 
-## 4. Identity rules
-
-Exercises have:
-
-- a stable machine identifier: `exercise_id`;
-- a mutable display name: `name`.
-
-The display name is not the identity.
-
-Sessions have:
-
-- a globally unique `session_id`.
-
-A second import of the same `session_id` must not duplicate the session.
-
-## 5. Separation rules for the TUI
-
-The C17 TUI will be split into layers:
+Valid model-v1 combinations:
 
 ```text
-ncursesw rendering
-       |
-       v
-TUI state / navigation
-       |
-       v
-application services
-       |
-       +---- exchange-format parser
-       |
-       +---- analytics
-       |
-       v
-SQLite persistence
+SETS + REPS
+SETS + DURATION
+CONTINUOUS + DURATION
 ```
 
-The rendering layer must not own business rules.
-
-The persistence layer must not depend on ncurses.
-
-## 6. Error philosophy
-
-Trainlog must prefer explicit failure over silent corruption.
-
-Examples:
-
-- malformed JSON: reject import with a precise error;
-- unsupported format version: reject import;
-- duplicate session: report already imported, do not duplicate;
-- unknown exercise: import it when valid catalog data is present;
-- incomplete active session: preserve it explicitly rather than silently inventing an end time.
-
-<!-- TRAINLOG_DIRECT_MTP_ARCHITECTURE -->
-## 7. Direct Android USB/MTP transport
-
-The Linux side does not require the Android device to be mounted as a normal
-filesystem.
-
-Transport layering is:
+Load mode is session-specific:
 
 ```text
-Android USB file-transfer mode
+none
+external
+assistance
+```
+
+Continuous work is persisted separately from performed sets.
+
+## 4. Persistence ownership
+
+### Desktop
+
+Desktop SQLite schema v5 is canonical long-term history.
+
+Main tables:
+
+```text
+exercises
+sessions
+session_exercises
+performed_sets
+continuous_activity
+body_observations
+```
+
+### Android
+
+Android has an independent local SQLite schema.
+
+It mirrors domain concepts needed for capture, but its schema version is not
+coupled to the desktop schema.
+
+Synchronization exchanges domain artifacts rather than database files.
+
+## 5. Compatibility boundaries
+
+### Frozen Trainlog JSON v1
+
+`TRAINLOG_FORMAT_V1` is frozen and remains a compatibility boundary for its
+existing set-based session contract.
+
+### Synchronization artifacts
+
+Synchronization uses separate formats:
+
+```text
+trainlog-mobile-export v1
+trainlog-pc-catalog v1
+trainlog-sync-request v1
+trainlog-sync-receipt v1
+```
+
+A new domain requirement must not be forced into frozen v1 by using notes,
+synthetic sets, or data loss.
+
+## 6. Direct MTP transport
+
+Linux transport:
+
+```text
+physical Android USB device
         |
         v
-libudev physical-device discovery
+libudev discovery
         |
-        | bus number + device number
+        | bus + device number
         v
-libmtp exact raw-device open
+libmtp exact raw-device access
         |
         v
-Android internal MTP storage
+Android internal storage
 ```
 
-This avoids GVFS/FUSE mount state and manual mount/unmount lifecycle management.
+No GVFS/FUSE mount is required.
 
-`libudev` owns physical-device discovery. `libmtp` owns storage and object
-operations. The JSON exchange layer remains above both and stays independent
-from USB/MTP backend details.
-
-Current transport foundation supports folder creation, file upload, folder
-listing, file download, and verified byte-for-byte roundtrip.
-<!-- TRAINLOG_DIRECT_MTP_ARCHITECTURE _END -->
-
-<!-- TRAINLOG_PROFILE_AWARE_ARCHITECTURE -->
-## Profile-aware activity architecture
-
-Trainlog has two distinct actual-work persistence paths:
+Canonical exchange directory:
 
 ```text
-SET-based exercise
-    session_exercises
-        |
-        +--> performed_sets [0..N]
-
-CONTINUOUS exercise
-    session_exercises
-        |
-        +--> continuous_activity [exactly 1]
+Download/Trainlog
 ```
 
-The two paths must remain semantically distinct.
+## 7. Shared synchronization engine
 
-Catalog metadata determines future entry forms.
+Both user-trigger paths call:
 
-Session-exercise snapshot metadata determines historical rendering/editing.
+```text
+trainlog_sync_run()
+```
 
-The Android client must consume the same catalog profile metadata rather than
-maintaining an independent exercise-type system.
-<!-- TRAINLOG_PROFILE_AWARE_ARCHITECTURE _END -->
+Manual path:
+
+```text
+TUI -> trainlog_sync_run()
+```
+
+Android-triggered path:
+
+```text
+Android request
+    -> trainlog-syncd
+    -> trainlog_sync_run()
+    -> receipt
+```
+
+The engine performs:
+
+```text
+1. direct-MTP device/storage discovery
+2. exchange-folder resolution
+3. mobile snapshot download
+4. strict transactional Android -> PC import
+5. PC catalog export
+6. direct-MTP PC catalog publication
+7. optional request receipt publication
+8. structured run-history recording
+```
+
+## 8. Synchronization concurrency
+
+The shared engine serializes synchronization with:
+
+```text
+$XDG_DATA_HOME/trainlog/sync.lock
+```
+
+The TUI waits for an active transaction.
+
+Daemon polling uses non-blocking acquisition and retries later.
+
+A request ID already successfully consumed is not processed as a new request.
+
+## 9. Synchronization history
+
+Every actual run gets a stable:
+
+```text
+sy_<uuid-v4>
+```
+
+Structured history is stored under:
+
+```text
+$XDG_DATA_HOME/trainlog/sync_runs/
+```
+
+The TUI exposes list/detail semantics comparable to:
+
+```text
+git log
+git show
+```
+
+## 10. Error philosophy
+
+Trainlog prefers explicit failure over silent corruption.
+
+Hard validation or persistence failure aborts the relevant transaction.
+
+The synchronization layer records useful failure detail rather than masking
+known errors with generic placeholders.
+
+## 11. Layering rule
+
+```text
+ncurses / Compose rendering
+          |
+          v
+application workflow
+          |
+          +-- domain model
+          +-- synchronization
+          +-- validation
+          |
+          v
+persistence / MTP transport
+```
+
+Rendering does not own persistence rules.
+
+Persistence and MTP code do not depend on ncurses rendering.

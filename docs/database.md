@@ -1,122 +1,90 @@
-# Database
+# Desktop database
 
 ## 1. Status
 
 ```text
-GATE_2=IN_PROGRESS
-DATABASE_SCHEMA_V2=IMPLEMENTED
-SESSION_TYPE_PERSISTENCE=IMPLEMENTED
-SESSION_EDIT_PERSISTENCE=IMPLEMENTED
-BODY_OBSERVATION_EDIT=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=5
+DATABASE_SCHEMA_V5=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
-Gate 2 review #1 establishes the persistence foundation.
+The desktop SQLite database is the canonical long-term Trainlog history.
 
-The Trainlog exchange format v1 is already frozen and is not modified by this gate.
+Its schema evolves independently from all JSON exchange-format versions.
 
-## 2. Purpose
+## 2. Versioning
 
-SQLite is the canonical long-term store used by the TUI.
-
-The SQLite database is an internal persistence format and is versioned independently from the Trainlog JSON exchange format.
-
-## 3. Schema versioning
-
-Trainlog database schema version uses SQLite:
+Schema version uses:
 
 ```sql
 PRAGMA user_version;
 ```
 
-Current schema:
+Current value:
 
 ```text
-DATABASE_SCHEMA_V2=2
+5
 ```
 
-A new database starts with `user_version = 0` and is initialized atomically to
-the current schema.
+Supported historical databases are migrated explicitly through the implemented
+migration chain. A database newer than the running binary understands is
+rejected.
 
-The implemented historical path is:
+A schema fixture must represent the real historical structure. Rewriting only
+`user_version` is not an acceptable migration test.
 
-```text
-0 -> 2  fresh initialization
-1 -> 2  transactional migration
-```
+## 3. Connection invariants
 
-Schema v2 adds local session classification while leaving the frozen Trainlog
-JSON v1 exchange contract unchanged.
-
-A database newer than the running binary understands is rejected.
-
-Every future schema change requires an explicit migration and dedicated
-coverage; metadata-only version rewriting is not an accepted migration.
-
-## 4. Connection rules
-
-Every Trainlog SQLite connection must enable:
+Every connection enables:
 
 ```sql
 PRAGMA foreign_keys = ON;
 ```
 
-The core also configures a bounded SQLite busy timeout.
+A bounded SQLite busy timeout is configured by the core.
 
-Foreign-key activation is verified by tests.
+## 4. Tables
 
-## 5. Tables
+### `exercises`
 
-### 5.1 `exercises`
-
-Canonical exercise catalog.
-
-Fields:
-
-```text
-id                 internal INTEGER primary key
-exercise_id        stable Trainlog identity, UNIQUE
-name               display name
-normalized_name    v1 comparison form, UNIQUE
-tracking_mode      reps | duration
-```
-
-The database does not compute Unicode normalization in review #1.
-
-The application/catalog layer will compute the frozen v1 normalized name in Gate 2 review #2.
-
-SQLite owns the final uniqueness barrier.
-
-### 5.2 `sessions`
-
-Canonical workout session header.
-
-Fields:
+Canonical desktop exercise catalog.
 
 ```text
 id
-session_id         UNIQUE
-started_at
-ended_at            nullable
-session_type       training | max_test
-notes               nullable
+exercise_id          UNIQUE stable identity
+name
+normalized_name      UNIQUE normalized display form
+tracking_mode        reps | duration
+recording_mode       sets | continuous
+data_fields          bounded bit mask
 ```
 
-`session_type` is a local SQLite concern in schema v2. Existing schema-v1 rows
-migrate to `training`; no historical workout is retroactively inferred to be a
-max test.
+Rules include:
 
-Body data is stored separately so standalone body observations can use the same representation.
+- continuous implies duration tracking;
+- unknown supplemental field bits are rejected;
+- normalized names remain unique.
 
-### 5.3 `session_exercises`
+### `sessions`
 
-One ordered exercise within a session.
+```text
+id
+session_id           UNIQUE stable identity
+started_at
+ended_at             nullable
+session_type         training | max_test
+notes                nullable
+```
 
-Fields include:
+### `session_exercises`
+
+Ordered exercise occurrence inside one session.
 
 ```text
 session_row_id
 exercise_row_id
+recording_mode
+data_fields
 position
 load_mode
 rest_seconds
@@ -127,41 +95,77 @@ target_weight_kg
 notes
 ```
 
-Constraints enforce:
+Current desktop history snapshots `recording_mode` and `data_fields` in the
+session row. `tracking_mode` remains associated with the referenced exercise
+catalog identity.
 
-- one exercise identity at most once per session;
-- one row at each session position;
-- exactly one target metric: repetitions or duration;
-- target load presence consistent with `load_mode`.
+`SETS` rows support two target shapes in schema v5:
 
-### 5.4 `performed_sets`
+```text
+explicit planned target
+    target_sets + exactly one target metric
 
-Ordered actual sets.
+actual-only mobile observation
+    target_sets = NULL
+    target_reps = NULL
+    target_duration_seconds = NULL
+```
 
-Fields:
+This v5 rule is what permits heterogeneous mobile performed sets without
+inventing a fake uniform target.
+
+`CONTINUOUS` rows are targetless and require:
+
+```text
+load_mode = none
+rest_seconds = 0
+target_weight_kg = NULL
+```
+
+### `performed_sets`
+
+Ordered actual set records.
 
 ```text
 session_exercise_row_id
 position
-reps
-duration_seconds
-weight_kg
+reps                 nullable
+duration_seconds     nullable
+weight_kg            nullable
 ```
 
-Exactly one of repetitions or duration is present.
-
-Cross-table rules such as actual-set load consistency with the owning session exercise remain application/import invariants and will be tested at the import layer.
-
-### 5.5 `body_observations`
-
-Body history is a first-class database concept and may exist with or without a workout session.
-
-Fields include:
+Exactly one primary actual metric is present:
 
 ```text
-observation_id
+reps
+or
+duration_seconds
+```
+
+Actual repetitions may be zero.
+
+Each row is independent; heterogeneous repetition sequences are first-class
+data.
+
+### `continuous_activity`
+
+One-to-one actual record for a continuous session exercise.
+
+```text
+session_exercise_row_id  UNIQUE
+duration_seconds
+speed_kmh                nullable
+distance_km              nullable
+```
+
+Continuous activity never creates a fake performed set.
+
+### `body_observations`
+
+```text
+observation_id       UNIQUE
 observed_at
-session_row_id       optional and UNIQUE
+session_row_id       optional UNIQUE link
 body_weight_kg
 neck_cm
 shoulders_cm
@@ -181,180 +185,94 @@ notes
 
 At least one body metric must be present.
 
-Imported session-associated body data will create one linked observation.
+## 5. Identifier generation
 
-Standalone TUI measurements use the same table without `session_row_id`.
-
-## 6. UUID generation
-
-Official Trainlog creators generate UUID version 4 identifiers.
-
-The C core provides generated IDs for:
+Official desktop creator prefixes:
 
 ```text
-ex_<uuid-v4>
-se_<uuid-v4>
-bo_<uuid-v4>
+ex_   exercise
+se_   session
+bo_   body observation
+sy_   synchronization run
 ```
 
-This is creation policy.
+All use random UUIDv4 values.
 
-The frozen exchange parser remains able to accept other schema-valid opaque v1 identifiers.
+Exchange parsers may accept other schema-valid opaque identities where their
+contract explicitly permits it.
 
-## 7. Transactions
+## 6. Transactions
 
-Multi-row operations are atomic.
+Multi-row user operations are atomic.
 
-Gate 2 provides explicit:
+Persisted session correction replaces session child rows transactionally while
+preserving the parent:
 
 ```text
-BEGIN IMMEDIATE
-COMMIT
-ROLLBACK
+session_id
+started_at
+ended_at
+session_type
+session notes
+linked body observation
 ```
 
-primitives.
+Removing an exercise from a persisted session is therefore a transactional
+replacement of the remaining child set.
 
-The JSON import service must perform catalog reconciliation and all session inserts inside one transaction.
+A failed replacement rolls back to the previously persisted session.
 
-Persisted session correction also uses an explicit transaction. Editing a
-session replaces only its `session_exercises` / `performed_sets` children and
-preserves the parent session row, stable `session_id`, timestamps,
-`session_type`, session notes, and any linked body observation.
+Body-observation editing preserves its stable identity, timestamp, and optional
+session link.
 
-Body-observation correction preserves observation identity, timestamp, and
-optional session link.
+## 7. Mobile import semantics
 
-A hard conflict or validation failure leaves the database unchanged.
+`tools/import_mobile_export.py` validates the complete mobile snapshot before
+committing database changes.
+
+Properties:
+
+```text
+schema-v5 aware
+transactional
+idempotent by stable IDs
+profile-aware catalog reconciliation
+heterogeneous performed sets preserved
+no fake target generated
+continuous activity kept separate
+```
 
 ## 8. Units
 
-Canonical persistent units remain:
+Canonical desktop persistence:
 
-- weight/load: kilograms;
-- body circumference: centimeters;
-- duration/rest: seconds.
+```text
+weight/load          kg
+body circumference   cm
+duration/rest         seconds
+speed                 km/h
+distance              km
+```
 
-## 9. Current Gate 2 persistence boundary
+## 9. Android database
 
-Implemented persistence includes:
+The Android SQLite database is independent.
 
-- SQLite schema v2;
-- transactional schema migration v1 -> v2;
-- Unicode-aware canonical exercise catalog support;
-- complete session insertion;
-- session detail loading;
-- exact bounded editable-session loading;
-- transactional replacement of session exercise/set children;
-- body-observation creation, listing, exact lookup, and update;
-- stable local identifiers for exercises, sessions, and body observations.
+Desktop and Android schema versions are not required to match.
 
-The database remains independent from ncurses rendering.
-
-The frozen Trainlog JSON v1 format remains a separate compatibility boundary
-and is not version-coupled to SQLite schema v2.
+Do not synchronize SQLite database files.
 
 ## 10. Validation
 
-Normal build:
-
 ```bash
-CC=clang meson setup build
 meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-Sanitizer build:
-
-```bash
-CC=clang meson setup build-asan \
-  -Db_sanitize=address,undefined \
-  -Db_lundef=false
-
-meson compile -C build-asan
-meson test -C build-asan --print-errorlogs
-```
-
-Repository-level format validators remain mandatory:
-
-```bash
-python tools/validate_json.py
-python tools/validate_import_contract.py
-git diff --check
-```
-
-<!-- TRAINLOG_EXERCISE_DATA_MODEL_V1 -->
-## Exercise recording metadata — schema v3 direction
-
-The next SQLite migration adds:
+Migration-specific regression coverage includes:
 
 ```text
-recording_mode = sets | continuous
-data_fields    = bounded bit mask
+schema_v5_migration
 ```
 
-Existing `tracking_mode = reps | duration` remains stable.
-
-Every `session_exercises` row snapshots this metadata so later catalog changes
-do not reinterpret historical sessions.
-
-Migration v2 -> v3 defaults all existing rows to `sets` with `data_fields = 0`.
-No name-based migration is allowed.
-
-Continuous actual activity data is stored separately from `performed_sets`;
-Trainlog will not manufacture a fake one-set workout.
-<!-- TRAINLOG_EXERCISE_DATA_MODEL_V1 _END -->
-
-<!-- TRAINLOG_SCHEMA_V4_CONTINUOUS -->
-## Schema v4 — continuous exercise persistence
-
-Current database schema:
-
-```text
-TRAINLOG_DATABASE_SCHEMA_VERSION = 4
-PRAGMA user_version = 4
-```
-
-Relevant profile metadata is stored in both:
-
-```text
-exercises
-session_exercises
-```
-
-`session_exercises` snapshots:
-
-```text
-recording_mode
-data_fields
-```
-
-Continuous actual activity data is stored one-to-one in:
-
-```text
-continuous_activity
-```
-
-Columns:
-
-```text
-session_exercise_row_id
-duration_seconds
-speed_kmh     nullable
-distance_km   nullable
-```
-
-For a valid continuous activity:
-
-```text
-target_sets             NULL
-target_reps             NULL
-target_duration_seconds NULL
-load_mode               none
-rest_seconds            0
-target_weight_kg        NULL
-performed_sets          none
-```
-
-Schema migration never infers profile information from exercise names.
-<!-- TRAINLOG_SCHEMA_V4_CONTINUOUS _END -->
+The current normal suite contains 19 tests.
