@@ -1,7 +1,6 @@
 package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -9,13 +8,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +46,9 @@ fun TrainlogScreen(
     Column(
         modifier =
             Modifier
-                .background(colors.background)
+                .background(
+                    colors.background
+                )
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
@@ -56,7 +58,7 @@ fun TrainlogScreen(
                 .padding(
                     PaddingValues(
                         horizontal = 16.dp,
-                        vertical = 18.dp,
+                        vertical = 14.dp,
                     )
                 ),
     ) {
@@ -80,7 +82,7 @@ private fun TrainlogBanner(
             Modifier
                 .fillMaxWidth()
                 .padding(
-                    bottom = 18.dp
+                    bottom = 22.dp
                 )
     ) {
         val wide =
@@ -90,7 +92,7 @@ private fun TrainlogBanner(
             modifier =
                 Modifier.fillMaxWidth(),
             horizontalAlignment =
-                Alignment.CenterHorizontally,
+                Alignment.Start,
         ) {
             BasicText(
                 text =
@@ -105,22 +107,24 @@ private fun TrainlogBanner(
                         fontWeight = FontWeight.Bold,
                         fontSize =
                             if (wide) {
-                                16.sp
+                                15.sp
                             } else {
-                                24.sp
+                                22.sp
                             },
                     ),
             )
 
             BasicText(
-                text = ":: $subtitle ::",
+                text = subtitle,
                 modifier =
                     Modifier.padding(
                         top = 6.dp
                     ),
                 style =
-                    TrainlogTypography.normal.copy(
+                    TrainlogTypography.small.copy(
                         color = colors.muted,
+                        fontWeight =
+                            FontWeight.Bold,
                     ),
             )
         }
@@ -137,7 +141,7 @@ fun TrainlogFrame(
     val colors =
         LocalTrainlogColors.current
 
-    val borderColor =
+    val accent =
         if (active) {
             colors.warning
         } else {
@@ -149,28 +153,29 @@ fun TrainlogFrame(
             modifier
                 .fillMaxWidth()
                 .padding(
-                    bottom = 14.dp
-                )
-                .border(
-                    width = 1.dp,
-                    color = borderColor,
-                )
-                .padding(
-                    horizontal = 14.dp,
-                    vertical = 12.dp,
+                    bottom = 20.dp
                 )
     ) {
         BasicText(
             text = title.uppercase(),
-            modifier =
-                Modifier.padding(
-                    bottom = 12.dp
-                ),
             style =
-                TrainlogTypography.normal.copy(
-                    color = borderColor,
-                    fontWeight = FontWeight.Bold,
+                TrainlogTypography.small.copy(
+                    color = accent,
+                    fontWeight =
+                        FontWeight.Bold,
                 ),
+        )
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        top = 7.dp,
+                        bottom = 10.dp,
+                    )
+                    .height(1.dp)
+                    .background(accent)
         )
 
         content()
@@ -196,11 +201,7 @@ fun TrainlogAction(
             modifier
                 .fillMaxWidth()
                 .padding(
-                    vertical = 5.dp
-                )
-                .border(
-                    width = 1.dp,
-                    color = colors.surfaceAlt,
+                    vertical = 4.dp
                 )
                 .background(
                     colors.surface
@@ -210,7 +211,7 @@ fun TrainlogAction(
                 )
                 .padding(
                     horizontal = 14.dp,
-                    vertical = 14.dp,
+                    vertical = 12.dp,
                 )
     ) {
         Column {
@@ -219,21 +220,24 @@ fun TrainlogAction(
                 style =
                     TrainlogTypography.normal.copy(
                         color = actualAccent,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight =
+                            FontWeight.Bold,
                     ),
             )
 
-            BasicText(
-                text = description,
-                modifier =
-                    Modifier.padding(
-                        top = 4.dp
-                    ),
-                style =
-                    TrainlogTypography.small.copy(
-                        color = colors.text,
-                    ),
-            )
+            if (description.isNotEmpty()) {
+                BasicText(
+                    text = description,
+                    modifier =
+                        Modifier.padding(
+                            top = 3.dp
+                        ),
+                    style =
+                        TrainlogTypography.small.copy(
+                            color = colors.text,
+                        ),
+                )
+            }
         }
     }
 }
@@ -250,7 +254,7 @@ fun TrainlogInfo(
         text = text,
         modifier =
             Modifier.padding(
-                vertical = 4.dp
+                vertical = 3.dp
             ),
         style =
             TrainlogTypography.normal.copy(
