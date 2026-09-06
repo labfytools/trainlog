@@ -85,7 +85,7 @@ Current normal suite:
 Validated checkpoint:
 
 ```text
-20/20 PASS
+21/21 PASS
 ```
 
 Notable regression coverage:
@@ -238,5 +238,30 @@ Coverage proves:
 Current normal baseline:
 
 ```text
-20/20 PASS
+21/21 PASS
+```
+
+## 12. Body analytics regression
+
+The Meson suite adds:
+
+```text
+body_analytics
+```
+
+Coverage includes:
+
+- male circumference-formula branch;
+- female circumference-formula branch;
+- estimated fat and lean mass from real body weight;
+- waist/hip, shoulder/waist, and chest/waist ratios;
+- left/right asymmetry;
+- profile-independent analytics without a configured estimation profile;
+- missing required circumference handling;
+- invalid estimation-profile rejection.
+
+Current normal baseline:
+
+```text
+21/21 PASS
 ```

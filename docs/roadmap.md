@@ -181,3 +181,22 @@ The next product feature remains intentionally unfrozen:
 ```text
 NEXT_FEATURE=UNFROZEN
 ```
+
+## Body analytics v1
+
+```text
+BODY_ANALYTICS_V1=PASS
+BODY_ANALYTICS_TUI_ONLY=PASS
+BODY_COMPOSITION_ESTIMATE=PASS
+BODY_PROPORTION_RATIOS=PASS
+BODY_SYMMETRY_ANALYTICS=PASS
+NO_ESTIMATE_PERSISTENCE=PASS
+DESKTOP_TESTS=21/21 PASS
+```
+
+No Android feature, database schema migration, or frozen JSON v1 change was
+required.
+
+```text
+NEXT_FEATURE=UNFROZEN
+```

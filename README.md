@@ -29,7 +29,7 @@ ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
-DESKTOP_TESTS=20/20 PASS
+DESKTOP_TESTS=21/21 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -206,4 +206,25 @@ Android can explicitly save a session as `Entraînement` or `Test max`.
 MEASURED_MAX_V1=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ANDROID_MAX_TEST_SESSION=PASS
+```
+
+## Body analytics
+
+Body analytics are desktop-only. Android remains a capture client.
+
+The TUI derives descriptive ratios, left/right asymmetry, and an optional
+circumference-based body-fat estimate from real body observations.
+
+The estimate requires a local desktop-only analytics profile containing the
+formula branch and height. Estimated fat mass and lean mass are calculated only
+when a real body weight is present.
+
+Estimated values are never persisted as direct measurements.
+
+```text
+BODY_ANALYTICS_V1=PASS
+BODY_COMPOSITION_ESTIMATE=PASS
+BODY_PROPORTION_RATIOS=PASS
+BODY_SYMMETRY_ANALYTICS=PASS
+DESKTOP_TESTS=21/21 PASS
 ```

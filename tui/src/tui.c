@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <wchar.h>
 #include <unistd.h>
@@ -21,6 +22,7 @@
 #include <curses.h>
 
 #include "trainlog/bodyviz.h"
+#include "trainlog/body_analytics.h"
 #include "trainlog/catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/id.h"
@@ -8733,6 +8735,1072 @@ static void screen_body_observation_detail(
     }
 }
 
+/* TRAINLOG_BODY_ANALYTICS_TUI_V1 */
+
+static bool body_analytics_profile_path(
+    char *output,
+    size_t output_size,
+    bool ensure_directory
+)
+{
+    const char *config_home =
+        getenv(
+            "XDG_CONFIG_HOME"
+        );
+
+    const char *home =
+        getenv(
+            "HOME"
+        );
+
+    char base[
+        PATH_MAX + 1U
+    ];
+
+    char directory[
+        PATH_MAX + 1U
+    ];
+
+    int written;
+
+    if (
+        output == NULL ||
+        output_size == 0U
+    ) {
+        return false;
+    }
+
+    if (
+        config_home != NULL &&
+        config_home[0] != '\0'
+    ) {
+        written =
+            snprintf(
+                base,
+                sizeof(base),
+                "%s",
+                config_home
+            );
+    } else if (
+        home != NULL &&
+        home[0] != '\0'
+    ) {
+        written =
+            snprintf(
+                base,
+                sizeof(base),
+                "%s/.config",
+                home
+            );
+
+        if (
+            written >= 0 &&
+            (size_t)written <
+                sizeof(base) &&
+            ensure_directory
+        ) {
+            (void)mkdir(
+                base,
+                0700
+            );
+        }
+    } else {
+        return false;
+    }
+
+    if (
+        written < 0 ||
+        (size_t)written >=
+            sizeof(base)
+    ) {
+        return false;
+    }
+
+    written =
+        snprintf(
+            directory,
+            sizeof(directory),
+            "%s/trainlog",
+            base
+        );
+
+    if (
+        written < 0 ||
+        (size_t)written >=
+            sizeof(directory)
+    ) {
+        return false;
+    }
+
+    if (ensure_directory) {
+        (void)mkdir(
+            directory,
+            0700
+        );
+    }
+
+    written =
+        snprintf(
+            output,
+            output_size,
+            "%s/body_analytics.conf",
+            directory
+        );
+
+    return
+        written >= 0 &&
+        (size_t)written <
+            output_size;
+}
+
+static bool body_analytics_profile_load(
+    TrainlogBodyAnalyticsProfile *output
+)
+{
+    char path[
+        PATH_MAX + 1U
+    ];
+
+    char line[128];
+    int version = 0;
+    int formula = -1;
+    double height_cm = 0.0;
+    FILE *file;
+
+    if (
+        output == NULL ||
+        !body_analytics_profile_path(
+            path,
+            sizeof(path),
+            false
+        )
+    ) {
+        return false;
+    }
+
+    file =
+        fopen(
+            path,
+            "rb"
+        );
+
+    if (file == NULL) {
+        return false;
+    }
+
+    while (
+        fgets(
+            line,
+            sizeof(line),
+            file
+        ) != NULL
+    ) {
+        if (
+            sscanf(
+                line,
+                "version=%d",
+                &version
+            ) == 1
+        ) {
+            continue;
+        }
+
+        if (
+            strcmp(
+                line,
+                "formula=male\n"
+            ) == 0 ||
+            strcmp(
+                line,
+                "formula=male"
+            ) == 0
+        ) {
+            formula =
+                (int)
+                TRAINLOG_BODY_ANALYTICS_FORMULA_MALE;
+
+            continue;
+        }
+
+        if (
+            strcmp(
+                line,
+                "formula=female\n"
+            ) == 0 ||
+            strcmp(
+                line,
+                "formula=female"
+            ) == 0
+        ) {
+            formula =
+                (int)
+                TRAINLOG_BODY_ANALYTICS_FORMULA_FEMALE;
+
+            continue;
+        }
+
+        (void)sscanf(
+            line,
+            "height_cm=%lf",
+            &height_cm
+        );
+    }
+
+    (void)fclose(
+        file
+    );
+
+    if (
+        version != 1 ||
+        formula < 0
+    ) {
+        return false;
+    }
+
+    output->formula =
+        (TrainlogBodyAnalyticsFormula)
+        formula;
+
+    output->height_cm =
+        height_cm;
+
+    return
+        trainlog_body_analytics_profile_valid(
+            output
+        );
+}
+
+static bool body_analytics_profile_save(
+    const TrainlogBodyAnalyticsProfile *profile
+)
+{
+    char path[
+        PATH_MAX + 1U
+    ];
+
+    FILE *file;
+
+    if (
+        !trainlog_body_analytics_profile_valid(
+            profile
+        ) ||
+        !body_analytics_profile_path(
+            path,
+            sizeof(path),
+            true
+        )
+    ) {
+        return false;
+    }
+
+    file =
+        fopen(
+            path,
+            "wb"
+        );
+
+    if (file == NULL) {
+        return false;
+    }
+
+    if (
+        fprintf(
+            file,
+            "version=1\n"
+            "formula=%s\n"
+            "height_cm=%.2f\n",
+            profile->formula ==
+                TRAINLOG_BODY_ANALYTICS_FORMULA_FEMALE
+                ? "female"
+                : "male",
+            profile->height_cm
+        ) < 0
+    ) {
+        (void)fclose(
+            file
+        );
+
+        return false;
+    }
+
+    return
+        fclose(
+            file
+        ) == 0;
+}
+
+static bool body_analytics_profile_prompt(
+    TrainlogBodyAnalyticsProfile *profile
+)
+{
+    char height_text[64];
+    int formula;
+    double height_cm;
+
+    if (profile == NULL) {
+        return false;
+    }
+
+    formula =
+        trainlog_body_analytics_profile_valid(
+            profile
+        )
+            ? (
+                profile->formula ==
+                    TRAINLOG_BODY_ANALYTICS_FORMULA_FEMALE
+                    ? 2
+                    : 1
+            )
+            : 1;
+
+    height_cm =
+        trainlog_body_analytics_profile_valid(
+            profile
+        )
+            ? profile->height_cm
+            : 170.0;
+
+    draw_shell(
+        "TRAINLOG — Profil d'estimation",
+        "Entrée valide · Échap annule"
+    );
+
+    if (
+        !prompt_int_value(
+            4,
+            "Formule 1=homme 2=femme",
+            1,
+            2,
+            formula,
+            &formula
+        )
+    ) {
+        return false;
+    }
+
+    for (;;) {
+        char label[128];
+
+        (void)snprintf(
+            label,
+            sizeof(label),
+            "Taille cm [%.1f] : ",
+            height_cm
+        );
+
+        if (
+            !prompt_text(
+                6,
+                label,
+                height_text,
+                sizeof(height_text),
+                true
+            )
+        ) {
+            return false;
+        }
+
+        if (
+            height_text[0] == '\0'
+        ) {
+            break;
+        }
+
+        if (
+            parse_double_positive(
+                height_text,
+                &height_cm
+            ) &&
+            height_cm >= 100.0 &&
+            height_cm <= 250.0
+        ) {
+            break;
+        }
+
+        status_line(
+            "Taille attendue entre 100 et 250 cm.",
+            TRAINLOG_COLOR_ERROR
+        );
+
+        refresh();
+    }
+
+    profile->formula =
+        formula == 2
+            ? TRAINLOG_BODY_ANALYTICS_FORMULA_FEMALE
+            : TRAINLOG_BODY_ANALYTICS_FORMULA_MALE;
+
+    profile->height_cm =
+        height_cm;
+
+    return
+        body_analytics_profile_save(
+            profile
+        );
+}
+
+static const TrainlogBodyObservationRecord *
+body_analytics_oldest_weight(
+    const TrainlogBodyObservationRecord *records,
+    size_t count
+)
+{
+    size_t index;
+
+    if (
+        records == NULL ||
+        count == 0U
+    ) {
+        return NULL;
+    }
+
+    for (
+        index = count;
+        index > 0U;
+        --index
+    ) {
+        if (
+            records[index - 1U]
+                .has_body_weight
+        ) {
+            return
+                &records[index - 1U];
+        }
+    }
+
+    return NULL;
+}
+
+static const TrainlogBodyObservationRecord *
+body_analytics_oldest_waist(
+    const TrainlogBodyObservationRecord *records,
+    size_t count
+)
+{
+    size_t index;
+
+    if (
+        records == NULL ||
+        count == 0U
+    ) {
+        return NULL;
+    }
+
+    for (
+        index = count;
+        index > 0U;
+        --index
+    ) {
+        if (
+            records[index - 1U]
+                .has_waist
+        ) {
+            return
+                &records[index - 1U];
+        }
+    }
+
+    return NULL;
+}
+
+static bool body_analytics_oldest_estimate(
+    const TrainlogBodyAnalyticsProfile *profile,
+    const TrainlogBodyObservationRecord *records,
+    size_t count,
+    TrainlogBodyAnalyticsResult *output
+)
+{
+    size_t index;
+
+    if (
+        profile == NULL ||
+        records == NULL ||
+        output == NULL
+    ) {
+        return false;
+    }
+
+    for (
+        index = count;
+        index > 0U;
+        --index
+    ) {
+        TrainlogBodyAnalyticsResult
+            candidate;
+
+        if (
+            trainlog_body_analytics_calculate(
+                profile,
+                &records[index - 1U],
+                &candidate
+            ) ==
+                TRAINLOG_STATUS_OK &&
+            candidate
+                .has_body_fat_estimate
+        ) {
+            *output =
+                candidate;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void body_analytics_value(
+    int row,
+    const char *label,
+    bool present,
+    double value,
+    const char *suffix
+)
+{
+    if (present) {
+        mvprintw(
+            row,
+            6,
+            "%-25s %8.2f %s",
+            label,
+            value,
+            suffix != NULL
+                ? suffix
+                : ""
+        );
+    } else {
+        mvprintw(
+            row,
+            6,
+            "%-25s %8s",
+            label,
+            "—"
+        );
+    }
+}
+
+static void screen_body_analytics(
+    TrainlogDatabase *database
+)
+{
+    TrainlogBodyObservationRecord
+        records[MAX_BODY_OBSERVATIONS];
+
+    size_t count = 0U;
+    int page = 0;
+
+    TrainlogBodyAnalyticsProfile profile;
+
+    bool has_profile =
+        body_analytics_profile_load(
+            &profile
+        );
+
+    if (
+        database == NULL ||
+        trainlog_database_list_body_observations(
+            database,
+            records,
+            MAX_BODY_OBSERVATIONS,
+            &count
+        ) != TRAINLOG_STATUS_OK
+    ) {
+        return;
+    }
+
+    for (;;) {
+        TrainlogBodyAnalyticsResult
+            current;
+
+        TrainlogBodyAnalyticsResult
+            oldest_estimate;
+
+        const TrainlogBodyObservationRecord *latest =
+            count > 0U
+                ? &records[0]
+                : NULL;
+
+        const TrainlogBodyObservationRecord *oldest_weight =
+            body_analytics_oldest_weight(
+                records,
+                count
+            );
+
+        const TrainlogBodyObservationRecord *oldest_waist =
+            body_analytics_oldest_waist(
+                records,
+                count
+            );
+
+        bool has_current =
+            latest != NULL &&
+            trainlog_body_analytics_calculate(
+                has_profile
+                    ? &profile
+                    : NULL,
+                latest,
+                &current
+            ) ==
+                TRAINLOG_STATUS_OK;
+
+        bool has_oldest_estimate =
+            has_profile &&
+            body_analytics_oldest_estimate(
+                &profile,
+                records,
+                count,
+                &oldest_estimate
+            );
+
+        bool decorated =
+            COLS >= 100 &&
+            LINES >= 30;
+
+        int panel_top =
+            decorated ? 8 : 3;
+
+        int panel_bottom =
+            LINES - 4;
+
+        int key;
+
+        erase();
+        box(
+            stdscr,
+            0,
+            0
+        );
+
+        if (decorated) {
+            section_ascii_header(
+                ":: A N A L Y S E   C O R P O R E L L E ::"
+            );
+
+            focused_panel(
+                panel_top,
+                2,
+                panel_bottom,
+                COLS - 3,
+                page == 0
+                    ? "COMPOSITION ET TENDANCE"
+                    : "PROPORTIONS ET SYMETRIE",
+                true
+            );
+        } else {
+            draw_shell(
+                "TRAINLOG — Analyse corporelle",
+                "←→ page  p profil  b/Échap retour"
+            );
+
+            body_panel(
+                panel_top,
+                2,
+                panel_bottom,
+                COLS - 3,
+                page == 0
+                    ? "COMPOSITION"
+                    : "PROPORTIONS"
+            );
+        }
+
+        attron(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        mvprintw(
+            LINES - 2,
+            2,
+            "%.*s",
+            COLS - 4,
+            "←→ page  p profil estimation  b/Échap retour"
+        );
+
+        attroff(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        if (count == 0U) {
+            mvprintw(
+                panel_top + 2,
+                6,
+                "Aucun relevé corporel."
+            );
+
+            mvprintw(
+                panel_top + 4,
+                6,
+                "Ajoutez d'abord un relevé réel."
+            );
+        } else if (page == 0) {
+            char date[9];
+
+            body_short_date(
+                latest->observed_at,
+                date
+            );
+
+            attron(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+
+            mvprintw(
+                panel_top + 2,
+                6,
+                "Dernier relevé : %s",
+                date
+            );
+
+            attroff(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+
+            if (has_profile) {
+                mvprintw(
+                    panel_top + 4,
+                    6,
+                    "Profil estimation : %s · %.1f cm",
+                    profile.formula ==
+                        TRAINLOG_BODY_ANALYTICS_FORMULA_FEMALE
+                        ? "formule femme"
+                        : "formule homme",
+                    profile.height_cm
+                );
+            } else {
+                attron(
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_WARNING
+                    )
+                );
+
+                mvprintw(
+                    panel_top + 4,
+                    6,
+                    "Profil estimation non configuré · p pour configurer."
+                );
+
+                attroff(
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_WARNING
+                    )
+                );
+            }
+
+            body_analytics_value(
+                panel_top + 6,
+                "Graisse estimée",
+                has_current &&
+                    current
+                        .has_body_fat_estimate,
+                has_current
+                    ? current
+                        .body_fat_percent
+                    : 0.0,
+                "%"
+            );
+
+            body_analytics_value(
+                panel_top + 7,
+                "Masse grasse estimée",
+                has_current &&
+                    current
+                        .has_fat_mass_estimate,
+                has_current
+                    ? current
+                        .fat_mass_kg
+                    : 0.0,
+                "kg"
+            );
+
+            body_analytics_value(
+                panel_top + 8,
+                "Masse maigre estimée",
+                has_current &&
+                    current
+                        .has_lean_mass_estimate,
+                has_current
+                    ? current
+                        .lean_mass_kg
+                    : 0.0,
+                "kg"
+            );
+
+            if (
+                latest->has_body_weight
+            ) {
+                double delta =
+                    oldest_weight != NULL
+                        ? latest->body_weight_kg -
+                            oldest_weight
+                                ->body_weight_kg
+                        : 0.0;
+
+                mvprintw(
+                    panel_top + 10,
+                    6,
+                    "Poids : %.1f kg  · variation depuis 1er poids : %+.1f kg",
+                    latest->body_weight_kg,
+                    delta
+                );
+            } else {
+                mvprintw(
+                    panel_top + 10,
+                    6,
+                    "Poids : —"
+                );
+            }
+
+            if (
+                latest->has_waist
+            ) {
+                double delta =
+                    oldest_waist != NULL
+                        ? latest->waist_cm -
+                            oldest_waist
+                                ->waist_cm
+                        : 0.0;
+
+                mvprintw(
+                    panel_top + 11,
+                    6,
+                    "Tour de taille : %.1f cm  · variation : %+.1f cm",
+                    latest->waist_cm,
+                    delta
+                );
+            } else {
+                mvprintw(
+                    panel_top + 11,
+                    6,
+                    "Tour de taille : —"
+                );
+            }
+
+            if (
+                has_current &&
+                current
+                    .has_body_fat_estimate &&
+                has_oldest_estimate
+            ) {
+                mvprintw(
+                    panel_top + 12,
+                    6,
+                    "Variation graisse estimée : %+.2f point(s)",
+                    current
+                        .body_fat_percent -
+                    oldest_estimate
+                        .body_fat_percent
+                );
+            }
+
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_WARNING
+                )
+            );
+
+            mvprintw(
+                panel_top + 14,
+                6,
+                "%.*s",
+                COLS - 14,
+                "Estimation anthropométrique : tendance utile, pas mesure directe de composition."
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_WARNING
+                )
+            );
+        } else {
+            body_analytics_value(
+                panel_top + 3,
+                "Taille / hanches",
+                has_current &&
+                    current
+                        .has_waist_hip_ratio,
+                has_current
+                    ? current
+                        .waist_hip_ratio
+                    : 0.0,
+                ""
+            );
+
+            body_analytics_value(
+                panel_top + 4,
+                "Épaules / taille",
+                has_current &&
+                    current
+                        .has_shoulder_waist_ratio,
+                has_current
+                    ? current
+                        .shoulder_waist_ratio
+                    : 0.0,
+                ""
+            );
+
+            body_analytics_value(
+                panel_top + 5,
+                "Poitrine / taille",
+                has_current &&
+                    current
+                        .has_chest_waist_ratio,
+                has_current
+                    ? current
+                        .chest_waist_ratio
+                    : 0.0,
+                ""
+            );
+
+            mvprintw(
+                panel_top + 8,
+                6,
+                "ASYMETRIE GAUCHE / DROITE"
+            );
+
+            body_analytics_value(
+                panel_top + 10,
+                "Bras",
+                has_current &&
+                    current
+                        .has_arm_asymmetry,
+                has_current
+                    ? current
+                        .arm_asymmetry_percent
+                    : 0.0,
+                "%"
+            );
+
+            body_analytics_value(
+                panel_top + 11,
+                "Avant-bras",
+                has_current &&
+                    current
+                        .has_forearm_asymmetry,
+                has_current
+                    ? current
+                        .forearm_asymmetry_percent
+                    : 0.0,
+                "%"
+            );
+
+            body_analytics_value(
+                panel_top + 12,
+                "Cuisses",
+                has_current &&
+                    current
+                        .has_thigh_asymmetry,
+                has_current
+                    ? current
+                        .thigh_asymmetry_percent
+                    : 0.0,
+                "%"
+            );
+
+            body_analytics_value(
+                panel_top + 13,
+                "Mollets",
+                has_current &&
+                    current
+                        .has_calf_asymmetry,
+                has_current
+                    ? current
+                        .calf_asymmetry_percent
+                    : 0.0,
+                "%"
+            );
+
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+
+            mvprintw(
+                panel_top + 16,
+                6,
+                "%.*s",
+                COLS - 14,
+                "Ratios et asymétries sont descriptifs : Trainlog ne les transforme pas en diagnostic."
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+        }
+
+        refresh();
+        key = getch();
+
+        if (
+            key == 'b' ||
+            key == 'B' ||
+            key == 27
+        ) {
+            return;
+        }
+
+        if (
+            key == KEY_LEFT ||
+            key == KEY_RIGHT
+        ) {
+            page =
+                page == 0
+                    ? 1
+                    : 0;
+
+            continue;
+        }
+
+        if (
+            key == 'p' ||
+            key == 'P'
+        ) {
+            TrainlogBodyAnalyticsProfile
+                edited;
+
+            if (has_profile) {
+                edited =
+                    profile;
+            } else {
+                edited.formula =
+                    TRAINLOG_BODY_ANALYTICS_FORMULA_MALE;
+
+                edited.height_cm =
+                    170.0;
+            }
+
+            if (
+                body_analytics_profile_prompt(
+                    &edited
+                )
+            ) {
+                profile =
+                    edited;
+
+                has_profile = true;
+
+                status_line(
+                    "✓ Profil d'estimation enregistré localement.",
+                    TRAINLOG_COLOR_SUCCESS
+                );
+
+                refresh();
+                (void)getch();
+            }
+        }
+    }
+}
+
 static void screen_body(
     TrainlogDatabase *database
 )
@@ -8839,7 +9907,7 @@ static void screen_body(
                 2,
                 "%.*s",
                 COLS - 4,
-                "Tab zone  ↑↓/PgUp/PgDn relevés  ←→ menu  Entrée détail  e Modifier  a ajouter  g vue globale  0/Home accueil  F1-F4 direct"
+                "Tab zone  ↑↓/PgUp/PgDn relevés  ←→ menu  Entrée détail  e Modifier  a ajouter  v analyse  g vue globale  0/Home accueil  F1-F4 direct"
             );
 
             attroff(
@@ -8850,7 +9918,7 @@ static void screen_body(
         } else {
             draw_shell(
                 "TRAINLOG — Corps",
-                "↑↓ choisir  Entrée détail  e Modifier  a ajouter  g vue globale  b/Échap retour"
+                "↑↓ choisir  Entrée détail  e Modifier  a ajouter  v analyse  g vue globale  b/Échap retour"
             );
         }
 
@@ -9093,6 +10161,15 @@ static void screen_body(
             key == 'A') {
             add_body_observation(database);
             selected = 0U;
+            continue;
+        }
+
+        if (key == 'v' ||
+            key == 'V') {
+            screen_body_analytics(
+                database
+            );
+
             continue;
         }
 

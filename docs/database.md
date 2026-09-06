@@ -311,3 +311,25 @@ The current measured result is the newest successful max-test point. The record
 is the best max-test point using the same load mode.
 
 No extra maximum row is persisted; results are derived from canonical history.
+
+## 12. Body analytics persistence rule
+
+Body analytics require no schema v6.
+
+Canonical persistence continues to contain only measurements actually entered
+by the user.
+
+These values remain derived at display time and are not persisted:
+
+```text
+body-fat estimate
+estimated fat mass
+estimated lean mass
+waist/hip ratio
+shoulder/waist ratio
+chest/waist ratio
+left/right asymmetry percentages
+```
+
+The optional estimation profile is desktop configuration, not database
+history.

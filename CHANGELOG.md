@@ -100,3 +100,19 @@ Added:
 - measured-max regression coverage.
 
 No estimated 1RM, schema v6, or frozen Trainlog JSON v1 change was introduced.
+
+### Body analytics v1
+
+Added:
+
+- desktop-only body analytics view;
+- local height/formula estimation profile;
+- circumference-based body-fat estimate;
+- estimated fat and lean mass when real weight is available;
+- waist/hip, shoulder/waist, and chest/waist ratios;
+- arm, forearm, thigh, and calf left/right asymmetry percentages;
+- weight, waist, and estimated-body-fat trend deltas;
+- body analytics regression test.
+
+Estimated analytics remain derived display values and are never persisted as
+direct measurements. Android remains capture-only for this feature.

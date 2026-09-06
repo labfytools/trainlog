@@ -285,3 +285,34 @@ persistence / MTP transport
 Rendering does not own persistence rules.
 
 Persistence and MTP code do not depend on ncurses rendering.
+
+## 12. Body analytics boundary
+
+Body analytics belong to the desktop analysis layer.
+
+```text
+Android
+    real measurements only
+        |
+        v
+desktop body_observations
+        |
+        v
+pure derived analytics
+        |
+        v
+TUI display
+```
+
+The analytics layer does not modify canonical observations.
+
+A desktop-only configuration file stores the estimation profile:
+
+```text
+$XDG_CONFIG_HOME/trainlog/body_analytics.conf
+```
+
+with `~/.config` fallback.
+
+This profile is not synchronized to Android and does not require a SQLite
+schema change.

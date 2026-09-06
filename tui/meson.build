@@ -28,6 +28,7 @@ strict_c_args = [
 
 trainlog_core_sources = files(
   'src/bodyviz.c',
+  'src/body_analytics.c',
   'src/catalog.c',
   'src/database.c',
   'src/duration.c',
@@ -353,4 +354,16 @@ test_measured_max = executable(
 test(
   'measured_max',
   test_measured_max,
+)
+
+test_body_analytics = executable(
+  'test_body_analytics',
+  'tests/test_body_analytics.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'body_analytics',
+  test_body_analytics,
 )

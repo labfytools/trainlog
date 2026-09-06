@@ -31,7 +31,7 @@ ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
-DESKTOP_TESTS=20/20 PASS
+DESKTOP_TESTS=21/21 PASS
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=PASS
 ```
@@ -120,7 +120,7 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-20/20 Meson tests PASS
+21/21 Meson tests PASS
 frozen JSON validator PASS
 import-contract validator PASS
 git diff --check PASS
@@ -156,7 +156,7 @@ MEASURED_MAX_ONLY_FROM_MAX_TEST=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
-DESKTOP_TESTS=20/20 PASS
+DESKTOP_TESTS=21/21 PASS
 ```
 
 A measured maximum is derived only from explicit `max_test` sessions. Ordinary
@@ -167,3 +167,24 @@ record compares max tests using the same load mode.
 
 External-load working percentages are pure calculations from the current
 measured load; they are not persisted and no estimated 1RM is introduced.
+
+## Body analytics v1
+
+```text
+BODY_ANALYTICS_V1=PASS
+BODY_ANALYTICS_TUI_ONLY=PASS
+BODY_COMPOSITION_ESTIMATE=PASS
+BODY_PROPORTION_RATIOS=PASS
+BODY_SYMMETRY_ANALYTICS=PASS
+NO_ESTIMATE_PERSISTENCE=PASS
+DESKTOP_TESTS=21/21 PASS
+```
+
+Android remains capture-only for this feature.
+
+The TUI derives analytics from canonical body observations. A local
+desktop-only profile provides height and the circumference-formula branch
+needed for the optional body-fat estimate.
+
+No estimated body-fat, fat-mass, lean-mass, ratio, or asymmetry value is stored
+as if it were a real measurement.

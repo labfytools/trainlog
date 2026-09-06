@@ -304,3 +304,40 @@ less assistance = better
 
 No percentage-of-max working load is produced for assistance or no-load
 performance.
+
+## 16. Body analytics
+
+`4 Corps` adds:
+
+```text
+v   analyse corporelle
+```
+
+The analytics view has two pages:
+
+```text
+Composition et tendance
+Proportions et symétrie
+```
+
+`p` configures a desktop-only estimation profile containing height and the
+circumference-formula branch.
+
+Composition can display:
+
+- circumference-based body-fat estimate;
+- estimated fat mass when body weight is present;
+- estimated lean mass when body weight is present;
+- weight change from the oldest available weight;
+- waist change from the oldest available waist;
+- body-fat estimate change when comparable observations exist.
+
+Proportions can display:
+
+- waist/hip ratio;
+- shoulder/waist ratio;
+- chest/waist ratio;
+- left/right asymmetry for arms, forearms, thighs, and calves.
+
+All estimates are explicitly labeled as estimates. No result is converted into
+a medical or diagnostic classification.
