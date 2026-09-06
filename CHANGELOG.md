@@ -91,3 +91,35 @@ Next:
 - added transactional SQLite schema migration v1 -> v2;
 - preserved migrated sessions as `training`;
 - kept Trainlog JSON v1 frozen and unchanged.
+
+### Transaction-safe session editing foundation
+
+- added exact bounded loading of persisted exercise/set values;
+- added atomic replacement of recorded session exercise/set rows;
+- preserved the parent session row and linked body observations;
+- added rollback coverage for failed replacements.
+
+### Body observation history and correction
+
+- redesigned `F4 Corps` around recorded measurement dates;
+- added a framed trend graph above the newest-first record list;
+- added PageUp/PageDown and a visual ncurses scrollbar;
+- added two-page detail views with `e Modifier` on every page;
+- added correction of existing observations without changing their timestamp or
+  session link;
+- added `-` to clear one erroneous measurement and Escape to cancel the edit.
+
+<!-- TRAINLOG_EDITABILITY_NAV_CHANGELOG -->
+### TUI editability and navigation checkpoint
+
+- added local `training` / `max_test` selection to the session workflow;
+- added safe persisted-session editing while preserving parent session identity;
+- added newest-first body-observation history, detail pages, and editing;
+- added immediate Escape cancellation to text/numeric entry paths;
+- added a shared top navigation bar with `0 Accueil`, `1-4`, and `F1-F4`;
+- added Tab/Shift+Tab focus on multi-zone screens;
+- focused frames use a yellow border/title without recoloring content;
+- added consistent ASCII banners and ncurses frames to secondary detail views;
+- added direct exercise creation from the in-session exercise chooser;
+- kept the final rolling 12-month `MM/YY` dashboard label inside its frame.
+<!-- TRAINLOG_EDITABILITY_NAV_CHANGELOG _END -->

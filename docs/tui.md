@@ -232,7 +232,7 @@ value instead of repeating the same minimum and maximum label.
 
 History is navigable with the keyboard.
 
-Selecting a workout and pressing `Enter` opens a read-only detail view.
+Selecting a workout and pressing `Enter` opens its detail view.
 
 For every exercise the detail view exposes:
 
@@ -262,7 +262,7 @@ Réalisé:
 5@80.0 / 5@80.0 / 5@80.0 / 3@80.0
 ```
 
-Inside one workout, left/right or up/down changes the selected exercise.
+Inside one workout, left/right or up/down changes the selected exercise. `e` opens the persisted session editor without replacing the parent session identity or timestamps.
 
 Assistance remains direction-aware: more assistance kilograms mean more help,
 not greater strength.
@@ -313,11 +313,42 @@ The same parser and formatter are reused for:
 
 Invalid malformed forms are rejected before persistence.
 
-## 19. Body screen and measurement graphs — implemented
+## 19. Body screen and measurement history — implemented
 
-`F4 Corps` becomes a full history and visualization screen.
+`F4 Corps` is record-oriented.
 
-Canonical selectable metrics:
+The primary body screen shows:
+
+- the weight evolution graph;
+- recorded body observations newest first;
+- a compact summary per observation;
+- a visual scrollbar when the history is longer than the visible area.
+
+Controls:
+
+```text
+↑↓ / PgUp / PgDn  select a recorded observation
+Enter              open observation detail
+e                  edit the selected observation
+a                  add an observation
+g                  open the normalized global overlay
+b / Esc            return
+```
+
+Each observation detail is split into two framed pages:
+
+```text
+GENERAL
+MEMBRES
+```
+
+Left/right changes page and `e` edits the observation.
+
+Editing preserves the observation identity, timestamp, and optional session
+link. Enter keeps the existing value, `-` clears a metric, and Escape cancels
+the complete edit without persistence.
+
+Canonical persisted metrics remain:
 
 ```text
 body_weight_kg
@@ -336,57 +367,26 @@ left_calf_cm
 right_calf_cm
 ```
 
-The screen supports left/right navigation between metrics.
+Missing observations are never invented as zero values.
 
-For the selected metric it shows:
+## 20. Current priority before Android
 
-- latest value;
-- first recorded value;
-- absolute change;
-- terminal-native history graph;
-- recent dated values.
+The TUI editability checkpoint is complete enough to move toward the Android
+input workflow.
 
-Units:
+Current order:
 
 ```text
-body weight  -> kg
-measurements -> cm
+1. finish visual/navigation consistency
+2. keep persisted session/body editing safe
+3. detect an Android phone over USB/ADB
+4. build the minimal Android recorder
+5. transfer/import through the frozen Trainlog JSON v1 contract
 ```
 
-Paired measurements also expose asymmetry:
+Measured-max analytics remain separate from ordinary best-set performance and
+are not required for the Android transport milestone.
 
-```text
-left arm  : 34.2 cm
-right arm : 34.8 cm
-difference: 0.6 cm right
-```
-
-Relevant pairs:
-
-- arm;
-- forearm;
-- thigh;
-- calf.
-
-The graph layer must not invent zero values when one side or one date is
-missing.
-
-## 20. TUI priority before Android
-
-Android remains intentionally deferred until the TUI is comfortable for daily
-use.
-
-Immediate order:
-
-```text
-1. session details
-2. human duration parsing/formatting
-3. full F4 measurement history and graphs
-4. exercise performance history and graphs
-5. previous-session defaults
-6. safe editing/deletion
-7. Android recorder and JSON import workflow
-```
 <!-- TRAINLOG_TUI_V02_CURRENT_AND_NEXT _END -->
 
 <!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT -->
@@ -422,8 +422,7 @@ Rules:
 - normalization is display-only;
 - canonical SQLite values remain untouched.
 
-The global view is toggled from `F4 Corps` with `g`.
-Per-metric navigation remains left/right.
+The global view is toggled from `F4 Corps` with `g`. The normal `F4 Corps` screen remains a newest-first observation history; left/right navigation is used inside observation detail pages.
 
 The global view also shows a compact percentage summary from first to latest
 recorded value for each available metric.
@@ -445,17 +444,27 @@ It will show:
 The dashboard remains intentionally compact.
 The complete multi-metric overlay belongs to `F4 Corps`.
 
-## 23. Immediate TUI implementation order
+## 23. Current implementation cursor
 
 ```text
 TUI_DURATION_HUMAN_INPUT=IMPLEMENTED
 TUI_BODY_METRIC_GRAPHS=IMPLEMENTED
-TUI_GLOBAL_BODY_OVERLAY=NEXT
-DASHBOARD_GRAPH_V2=NEXT
-EXERCISE_PERFORMANCE_GRAPHS=AFTER
+TUI_GLOBAL_BODY_OVERLAY=IMPLEMENTED
+DASHBOARD_GRAPH_V2=IMPLEMENTED
+DASHBOARD_12_MONTHS=IMPLEMENTED
+TUI_EXERCISE_PERFORMANCE=IMPLEMENTED
+DATABASE_SCHEMA_V2=IMPLEMENTED
+SESSION_TYPE_PERSISTENCE=IMPLEMENTED
+SESSION_TYPE_TUI=IMPLEMENTED
+TUI_SESSION_EDIT=IMPLEMENTED
+TUI_BODY_OBSERVATION_EDIT=IMPLEMENTED
+TUI_PRIMARY_NAVIGATION=IMPLEMENTED
+TUI_SECONDARY_VIEW_POLISH=IMPLEMENTED
+ANDROID_USB_DETECTION=NEXT
 ```
 
-Android remains deferred until these TUI daily-use views are satisfactory.
+The frozen Trainlog JSON v1 contract remains unchanged.
+
 <!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT _END -->
 
 ## Dashboard graph-only layout
@@ -524,3 +533,53 @@ A recorded best set is not a measured maximum.
 
 Measured maxima, max-session scheduling and working-load percentages remain a
 separate later contract.
+
+<!-- TRAINLOG_TUI_EDITABILITY_NAV_CHECKPOINT -->
+## Current navigation and editability checkpoint
+
+Primary large-layout screens share the same visual identity:
+
+```text
+TRAINLOG ASCII banner
+top navigation bar
+framed page content
+footer shortcuts
+```
+
+The top navigation is:
+
+```text
+0 Accueil   1 Séance   2 Historique   3 Exercices   4 Corps
+```
+
+Direct shortcuts keep `1`-`4` / `F1`-`F4`; `0` or `Home` returns to the
+dashboard. On multi-zone pages, `Tab` / `Shift+Tab` changes focus. Only the
+border and title of the focused frame use the warning/yellow role; content
+colors are unchanged.
+
+Large-layout framed/bannnered views include:
+
+- dashboard;
+- history;
+- exercise catalog;
+- body history;
+- new-session type selection;
+- in-progress session review;
+- session detail;
+- exercise performance;
+- body-observation detail;
+- exercise selection during session entry.
+
+Session entry can create a missing exercise directly from the exercise chooser
+with `a`, then return to the chooser.
+
+Text prompts treat Escape as immediate cancellation. A cancelled draft or edit
+does not persist partial state.
+
+Persisted session replacement edits only session children. The parent session
+row, stable ID, timestamps, session type, notes, and body-observation links are
+preserved.
+
+The dashboard rolling 12-month axis clamps the final `MM/YY` label inside the
+dashboard frame so the current-month label does not overwrite the right border.
+<!-- TRAINLOG_TUI_EDITABILITY_NAV_CHECKPOINT _END -->

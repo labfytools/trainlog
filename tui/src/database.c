@@ -647,6 +647,66 @@ static TrainlogStatus lookup_exercise_row_id(
         : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
+static TrainlogStatus lookup_session_row_id(
+    TrainlogDatabase *database,
+    const char *session_id,
+    sqlite3_int64 *output_row_id
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        session_id == NULL ||
+        session_id[0] == '\0' ||
+        output_row_id == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        "SELECT id FROM sessions WHERE session_id = ?1;",
+        -1,
+        &statement,
+        NULL
+    );
+    if (rc != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_bind_text(
+        statement,
+        1,
+        session_id,
+        -1,
+        SQLITE_TRANSIENT
+    );
+    if (rc != SQLITE_OK) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_step(statement);
+
+    if (rc == SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    if (rc != SQLITE_ROW) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    *output_row_id =
+        sqlite3_column_int64(statement, 0);
+
+    return sqlite3_finalize(statement) == SQLITE_OK
+        ? TRAINLOG_STATUS_OK
+        : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
 static TrainlogStatus insert_session_header(
     TrainlogDatabase *database,
     const TrainlogSessionInput *session,
@@ -948,42 +1008,30 @@ static TrainlogStatus insert_performed_set(
         : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
-TrainlogStatus trainlog_database_insert_session(
+static TrainlogStatus insert_session_children(
     TrainlogDatabase *database,
-    const TrainlogSessionInput *session
+    sqlite3_int64 session_row_id,
+    const TrainlogSessionExerciseInput *exercises,
+    size_t exercise_count
 )
 {
-    sqlite3_int64 session_row_id;
     size_t exercise_index;
-    TrainlogStatus status;
 
     if (database == NULL ||
         database->connection == NULL ||
-        session == NULL ||
-        session->session_id[0] == '\0' ||
-        session->started_at[0] == '\0' ||
-        (session->exercise_count > 0U && session->exercises == NULL)) {
+        (exercise_count > 0U && exercises == NULL)) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
-    status = trainlog_database_begin(database);
-    if (status != TRAINLOG_STATUS_OK) {
-        return status;
-    }
-
-    status = insert_session_header(database, session, &session_row_id);
-    if (status != TRAINLOG_STATUS_OK) {
-        (void)trainlog_database_rollback(database);
-        return status;
-    }
-
     for (exercise_index = 0U;
-         exercise_index < session->exercise_count;
+         exercise_index < exercise_count;
          ++exercise_index) {
         const TrainlogSessionExerciseInput *exercise =
-            &session->exercises[exercise_index];
+            &exercises[exercise_index];
+
         sqlite3_int64 session_exercise_row_id;
         size_t set_index;
+        TrainlogStatus status;
 
         status = insert_session_exercise(
             database,
@@ -992,26 +1040,170 @@ TrainlogStatus trainlog_database_insert_session(
             exercise,
             &session_exercise_row_id
         );
+
         if (status != TRAINLOG_STATUS_OK) {
-            (void)trainlog_database_rollback(database);
             return status;
         }
 
-        for (set_index = 0U; set_index < exercise->set_count; ++set_index) {
+        for (set_index = 0U;
+             set_index < exercise->set_count;
+             ++set_index) {
+            if (exercise->sets == NULL) {
+                return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
+
             status = insert_performed_set(
                 database,
                 session_exercise_row_id,
                 set_index,
                 &exercise->sets[set_index]
             );
+
             if (status != TRAINLOG_STATUS_OK) {
-                (void)trainlog_database_rollback(database);
                 return status;
             }
         }
     }
 
+    return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_insert_session(
+    TrainlogDatabase *database,
+    const TrainlogSessionInput *session
+)
+{
+    sqlite3_int64 session_row_id;
+    TrainlogStatus status;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        session == NULL ||
+        session->session_id[0] == '\0' ||
+        session->started_at[0] == '\0' ||
+        (session->exercise_count > 0U &&
+         session->exercises == NULL)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = trainlog_database_begin(database);
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    status = insert_session_header(
+        database,
+        session,
+        &session_row_id
+    );
+
+    if (status == TRAINLOG_STATUS_OK) {
+        status = insert_session_children(
+            database,
+            session_row_id,
+            session->exercises,
+            session->exercise_count
+        );
+    }
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)trainlog_database_rollback(database);
+        return status;
+    }
+
     status = trainlog_database_commit(database);
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)trainlog_database_rollback(database);
+    }
+
+    return status;
+}
+
+TrainlogStatus trainlog_database_replace_session_exercises(
+    TrainlogDatabase *database,
+    const char *session_id,
+    const TrainlogSessionExerciseInput *exercises,
+    size_t exercise_count
+)
+{
+    sqlite3_int64 session_row_id;
+    sqlite3_stmt *statement = NULL;
+    TrainlogStatus status;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        session_id == NULL ||
+        session_id[0] == '\0' ||
+        (exercise_count > 0U && exercises == NULL)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = trainlog_database_begin(database);
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    status = lookup_session_row_id(
+        database,
+        session_id,
+        &session_row_id
+    );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)trainlog_database_rollback(database);
+        return status;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        "DELETE FROM session_exercises "
+        "WHERE session_row_id = ?1;",
+        -1,
+        &statement,
+        NULL
+    );
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_int64(
+            statement,
+            1,
+            session_row_id
+        );
+    }
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_step(statement);
+    }
+
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    statement = NULL;
+
+    status = insert_session_children(
+        database,
+        session_row_id,
+        exercises,
+        exercise_count
+    );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)trainlog_database_rollback(database);
+        return status;
+    }
+
+    status = trainlog_database_commit(database);
+
     if (status != TRAINLOG_STATUS_OK) {
         (void)trainlog_database_rollback(database);
     }
@@ -2365,4 +2557,1047 @@ TrainlogStatus trainlog_database_list_exercise_performance(
 
     *output_count = copied;
     return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_load_session_editable(
+    TrainlogDatabase *database,
+    const char *session_id,
+    TrainlogSessionSummary *output_session,
+    TrainlogEditableExerciseRecord *output_exercises,
+    size_t exercise_capacity,
+    size_t *output_exercise_count,
+    TrainlogSetInput *output_sets,
+    size_t set_capacity,
+    size_t *output_set_count
+)
+{
+    static const char *const HEADER_SQL =
+        "SELECT "
+        "started_at, "
+        "COALESCE(ended_at, ''), "
+        "session_type "
+        "FROM sessions "
+        "WHERE session_id = ?1;";
+
+    static const char *const EXERCISE_SQL =
+        "SELECT "
+        "se.id, "
+        "e.exercise_id, "
+        "e.name, "
+        "e.tracking_mode, "
+        "se.load_mode, "
+        "se.rest_seconds, "
+        "se.target_sets, "
+        "COALESCE(se.target_reps, 0), "
+        "COALESCE(se.target_duration_seconds, 0), "
+        "se.target_weight_kg, "
+        "COALESCE(se.notes, '') "
+        "FROM session_exercises AS se "
+        "JOIN sessions AS s "
+        "ON s.id = se.session_row_id "
+        "JOIN exercises AS e "
+        "ON e.id = se.exercise_row_id "
+        "WHERE s.session_id = ?1 "
+        "ORDER BY se.position ASC;";
+
+    static const char *const SET_SQL =
+        "SELECT reps, duration_seconds, weight_kg "
+        "FROM performed_sets "
+        "WHERE session_exercise_row_id = ?1 "
+        "ORDER BY position ASC;";
+
+    sqlite3_stmt *header = NULL;
+    sqlite3_stmt *exercise_statement = NULL;
+    sqlite3_stmt *set_statement = NULL;
+    size_t exercise_count = 0U;
+    size_t set_count = 0U;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        session_id == NULL ||
+        session_id[0] == '\0' ||
+        output_session == NULL ||
+        output_exercise_count == NULL ||
+        output_set_count == NULL ||
+        (exercise_capacity > 0U &&
+         output_exercises == NULL) ||
+        (set_capacity > 0U &&
+         output_sets == NULL)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    *output_exercise_count = 0U;
+    *output_set_count = 0U;
+    (void)memset(
+        output_session,
+        0,
+        sizeof(*output_session)
+    );
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        HEADER_SQL,
+        -1,
+        &header,
+        NULL
+    );
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(
+            header,
+            1,
+            session_id,
+            -1,
+            SQLITE_TRANSIENT
+        );
+    }
+
+    if (rc != SQLITE_OK) {
+        (void)sqlite3_finalize(header);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_step(header);
+
+    if (rc == SQLITE_DONE) {
+        (void)sqlite3_finalize(header);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    if (rc != SQLITE_ROW) {
+        (void)sqlite3_finalize(header);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    {
+        const unsigned char *started =
+            sqlite3_column_text(header, 0);
+
+        const unsigned char *ended =
+            sqlite3_column_text(header, 1);
+
+        const unsigned char *session_type =
+            sqlite3_column_text(header, 2);
+
+        if (started == NULL ||
+            ended == NULL ||
+            session_type == NULL) {
+            (void)sqlite3_finalize(header);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        (void)snprintf(
+            output_session->session_id,
+            sizeof(output_session->session_id),
+            "%s",
+            session_id
+        );
+
+        (void)snprintf(
+            output_session->started_at,
+            sizeof(output_session->started_at),
+            "%s",
+            (const char *)started
+        );
+
+        (void)snprintf(
+            output_session->ended_at,
+            sizeof(output_session->ended_at),
+            "%s",
+            (const char *)ended
+        );
+
+        if (!session_type_from_sql(
+                (const char *)session_type,
+                &output_session->session_type
+            )) {
+            (void)sqlite3_finalize(header);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+    }
+
+    if (sqlite3_finalize(header) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    header = NULL;
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        EXERCISE_SQL,
+        -1,
+        &exercise_statement,
+        NULL
+    );
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(
+            exercise_statement,
+            1,
+            session_id,
+            -1,
+            SQLITE_TRANSIENT
+        );
+    }
+
+    if (rc != SQLITE_OK) {
+        (void)sqlite3_finalize(exercise_statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    while ((rc = sqlite3_step(exercise_statement)) == SQLITE_ROW) {
+        TrainlogEditableExerciseRecord *record;
+        sqlite3_int64 session_exercise_row_id;
+        const unsigned char *exercise_id;
+        const unsigned char *name;
+        const unsigned char *tracking;
+        const unsigned char *load;
+        const unsigned char *notes;
+        int note_bytes;
+
+        if (exercise_count >= exercise_capacity) {
+            (void)sqlite3_finalize(exercise_statement);
+            return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
+
+        record =
+            &output_exercises[exercise_count];
+
+        session_exercise_row_id =
+            sqlite3_column_int64(
+                exercise_statement,
+                0
+            );
+
+        exercise_id =
+            sqlite3_column_text(
+                exercise_statement,
+                1
+            );
+
+        name =
+            sqlite3_column_text(
+                exercise_statement,
+                2
+            );
+
+        tracking =
+            sqlite3_column_text(
+                exercise_statement,
+                3
+            );
+
+        load =
+            sqlite3_column_text(
+                exercise_statement,
+                4
+            );
+
+        notes =
+            sqlite3_column_text(
+                exercise_statement,
+                10
+            );
+
+        note_bytes =
+            sqlite3_column_bytes(
+                exercise_statement,
+                10
+            );
+
+        if (exercise_id == NULL ||
+            name == NULL ||
+            tracking == NULL ||
+            load == NULL ||
+            notes == NULL ||
+            note_bytes < 0 ||
+            (size_t)note_bytes >
+                TRAINLOG_NOTE_MAX) {
+            (void)sqlite3_finalize(exercise_statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        (void)memset(
+            record,
+            0,
+            sizeof(*record)
+        );
+
+        (void)snprintf(
+            record->exercise_id,
+            sizeof(record->exercise_id),
+            "%s",
+            (const char *)exercise_id
+        );
+
+        (void)snprintf(
+            record->name,
+            sizeof(record->name),
+            "%s",
+            (const char *)name
+        );
+
+        record->tracking_mode =
+            tracking_mode_from_sql(
+                (const char *)tracking
+            );
+
+        record->load_mode =
+            detail_load_mode_from_text(
+                (const char *)load
+            );
+
+        record->rest_seconds =
+            sqlite3_column_int(
+                exercise_statement,
+                5
+            );
+
+        record->target_sets =
+            sqlite3_column_int(
+                exercise_statement,
+                6
+            );
+
+        record->target_reps =
+            sqlite3_column_int(
+                exercise_statement,
+                7
+            );
+
+        record->target_duration_seconds =
+            sqlite3_column_int(
+                exercise_statement,
+                8
+            );
+
+        record->has_target_weight =
+            sqlite3_column_type(
+                exercise_statement,
+                9
+            ) != SQLITE_NULL;
+
+        record->target_weight_kg =
+            record->has_target_weight != 0
+                ? sqlite3_column_double(
+                    exercise_statement,
+                    9
+                )
+                : 0.0;
+
+        (void)snprintf(
+            record->notes,
+            sizeof(record->notes),
+            "%s",
+            (const char *)notes
+        );
+
+        record->set_offset = set_count;
+
+        rc = sqlite3_prepare_v2(
+            database->connection,
+            SET_SQL,
+            -1,
+            &set_statement,
+            NULL
+        );
+
+        if (rc == SQLITE_OK) {
+            rc = sqlite3_bind_int64(
+                set_statement,
+                1,
+                session_exercise_row_id
+            );
+        }
+
+        if (rc != SQLITE_OK) {
+            (void)sqlite3_finalize(set_statement);
+            (void)sqlite3_finalize(exercise_statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        while ((rc = sqlite3_step(set_statement)) == SQLITE_ROW) {
+            TrainlogSetInput *set;
+            int has_reps;
+            int has_duration;
+
+            if (set_count >= set_capacity) {
+                (void)sqlite3_finalize(set_statement);
+                (void)sqlite3_finalize(exercise_statement);
+                return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
+
+            set = &output_sets[set_count];
+
+            has_reps =
+                sqlite3_column_type(
+                    set_statement,
+                    0
+                ) != SQLITE_NULL;
+
+            has_duration =
+                sqlite3_column_type(
+                    set_statement,
+                    1
+                ) != SQLITE_NULL;
+
+            if (has_reps == has_duration) {
+                (void)sqlite3_finalize(set_statement);
+                (void)sqlite3_finalize(exercise_statement);
+                return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+
+            (void)memset(
+                set,
+                0,
+                sizeof(*set)
+            );
+
+            if (has_reps != 0) {
+                set->reps =
+                    sqlite3_column_int(
+                        set_statement,
+                        0
+                    );
+            } else {
+                set->duration_seconds =
+                    sqlite3_column_int(
+                        set_statement,
+                        1
+                    );
+            }
+
+            set->has_weight =
+                sqlite3_column_type(
+                    set_statement,
+                    2
+                ) != SQLITE_NULL;
+
+            set->weight_kg =
+                set->has_weight
+                    ? sqlite3_column_double(
+                        set_statement,
+                        2
+                    )
+                    : 0.0;
+
+            ++set_count;
+            ++record->set_count;
+        }
+
+        if (rc != SQLITE_DONE) {
+            (void)sqlite3_finalize(set_statement);
+            (void)sqlite3_finalize(exercise_statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        if (sqlite3_finalize(set_statement) != SQLITE_OK) {
+            (void)sqlite3_finalize(exercise_statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        set_statement = NULL;
+        ++exercise_count;
+    }
+
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(exercise_statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (sqlite3_finalize(exercise_statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    output_session->exercise_count =
+        exercise_count;
+
+    *output_exercise_count =
+        exercise_count;
+
+    *output_set_count =
+        set_count;
+
+    return TRAINLOG_STATUS_OK;
+}
+
+/* TRAINLOG_BODY_OBSERVATION_RECORD_IMPLEMENTATION */
+
+static bool body_record_fill(
+    sqlite3_stmt *statement,
+    TrainlogBodyObservationRecord *record
+)
+{
+    const unsigned char *observation_id;
+    const unsigned char *observed_at;
+    const unsigned char *session_id;
+    const unsigned char *notes;
+    int note_bytes;
+
+    if (statement == NULL ||
+        record == NULL) {
+        return false;
+    }
+
+    observation_id =
+        sqlite3_column_text(statement, 0);
+
+    observed_at =
+        sqlite3_column_text(statement, 1);
+
+    session_id =
+        sqlite3_column_text(statement, 2);
+
+    notes =
+        sqlite3_column_text(statement, 17);
+
+    note_bytes =
+        sqlite3_column_bytes(statement, 17);
+
+    if (observation_id == NULL ||
+        observed_at == NULL ||
+        session_id == NULL ||
+        notes == NULL ||
+        note_bytes < 0 ||
+        (size_t)note_bytes > TRAINLOG_NOTE_MAX) {
+        return false;
+    }
+
+    (void)memset(
+        record,
+        0,
+        sizeof(*record)
+    );
+
+    (void)snprintf(
+        record->observation_id,
+        sizeof(record->observation_id),
+        "%s",
+        (const char *)observation_id
+    );
+
+    (void)snprintf(
+        record->observed_at,
+        sizeof(record->observed_at),
+        "%s",
+        (const char *)observed_at
+    );
+
+    (void)snprintf(
+        record->session_id,
+        sizeof(record->session_id),
+        "%s",
+        (const char *)session_id
+    );
+
+#define READ_BODY_VALUE(column_, flag_, value_)                              \
+    do {                                                                     \
+        (flag_) =                                                            \
+            sqlite3_column_type(                                             \
+                statement,                                                   \
+                (column_)                                                    \
+            ) != SQLITE_NULL;                                                \
+        (value_) =                                                           \
+            (flag_)                                                          \
+                ? sqlite3_column_double(                                     \
+                    statement,                                               \
+                    (column_)                                                \
+                )                                                            \
+                : 0.0;                                                       \
+    } while (0)
+
+    READ_BODY_VALUE(
+        3,
+        record->has_body_weight,
+        record->body_weight_kg
+    );
+
+    READ_BODY_VALUE(
+        4,
+        record->has_neck,
+        record->neck_cm
+    );
+
+    READ_BODY_VALUE(
+        5,
+        record->has_shoulders,
+        record->shoulders_cm
+    );
+
+    READ_BODY_VALUE(
+        6,
+        record->has_chest,
+        record->chest_cm
+    );
+
+    READ_BODY_VALUE(
+        7,
+        record->has_waist,
+        record->waist_cm
+    );
+
+    READ_BODY_VALUE(
+        8,
+        record->has_hips,
+        record->hips_cm
+    );
+
+    READ_BODY_VALUE(
+        9,
+        record->has_left_arm,
+        record->left_arm_cm
+    );
+
+    READ_BODY_VALUE(
+        10,
+        record->has_right_arm,
+        record->right_arm_cm
+    );
+
+    READ_BODY_VALUE(
+        11,
+        record->has_left_forearm,
+        record->left_forearm_cm
+    );
+
+    READ_BODY_VALUE(
+        12,
+        record->has_right_forearm,
+        record->right_forearm_cm
+    );
+
+    READ_BODY_VALUE(
+        13,
+        record->has_left_thigh,
+        record->left_thigh_cm
+    );
+
+    READ_BODY_VALUE(
+        14,
+        record->has_right_thigh,
+        record->right_thigh_cm
+    );
+
+    READ_BODY_VALUE(
+        15,
+        record->has_left_calf,
+        record->left_calf_cm
+    );
+
+    READ_BODY_VALUE(
+        16,
+        record->has_right_calf,
+        record->right_calf_cm
+    );
+
+#undef READ_BODY_VALUE
+
+    (void)snprintf(
+        record->notes,
+        sizeof(record->notes),
+        "%s",
+        (const char *)notes
+    );
+
+    return true;
+}
+
+static const char *const BODY_RECORD_SELECT =
+    "SELECT "
+    "bo.observation_id, "
+    "bo.observed_at, "
+    "COALESCE(s.session_id, ''), "
+    "bo.body_weight_kg, "
+    "bo.neck_cm, "
+    "bo.shoulders_cm, "
+    "bo.chest_cm, "
+    "bo.waist_cm, "
+    "bo.hips_cm, "
+    "bo.left_arm_cm, "
+    "bo.right_arm_cm, "
+    "bo.left_forearm_cm, "
+    "bo.right_forearm_cm, "
+    "bo.left_thigh_cm, "
+    "bo.right_thigh_cm, "
+    "bo.left_calf_cm, "
+    "bo.right_calf_cm, "
+    "COALESCE(bo.notes, '') "
+    "FROM body_observations AS bo "
+    "LEFT JOIN sessions AS s "
+    "ON s.id = bo.session_row_id ";
+
+TrainlogStatus trainlog_database_list_body_observations(
+    TrainlogDatabase *database,
+    TrainlogBodyObservationRecord *output,
+    size_t capacity,
+    size_t *output_count
+)
+{
+    char sql[1024];
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    int written;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        output_count == NULL ||
+        (capacity > 0U && output == NULL)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "%s"
+        "ORDER BY bo.observed_at DESC, bo.id DESC;",
+        BODY_RECORD_SELECT
+    );
+
+    if (written < 0 ||
+        (size_t)written >= sizeof(sql)) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        sql,
+        -1,
+        &statement,
+        NULL
+    );
+
+    if (rc != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        if (count < capacity) {
+            if (!body_record_fill(
+                    statement,
+                    &output[count]
+                )) {
+                (void)sqlite3_finalize(statement);
+                return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+        }
+
+        ++count;
+    }
+
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    *output_count =
+        count < capacity
+            ? count
+            : capacity;
+
+    return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_get_body_observation(
+    TrainlogDatabase *database,
+    const char *observation_id,
+    TrainlogBodyObservationRecord *output
+)
+{
+    char sql[1024];
+    sqlite3_stmt *statement = NULL;
+    int written;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        observation_id == NULL ||
+        observation_id[0] == '\0' ||
+        output == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    written = snprintf(
+        sql,
+        sizeof(sql),
+        "%s"
+        "WHERE bo.observation_id = ?1;",
+        BODY_RECORD_SELECT
+    );
+
+    if (written < 0 ||
+        (size_t)written >= sizeof(sql)) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        sql,
+        -1,
+        &statement,
+        NULL
+    );
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(
+            statement,
+            1,
+            observation_id,
+            -1,
+            SQLITE_TRANSIENT
+        );
+    }
+
+    if (rc != SQLITE_OK) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_step(statement);
+
+    if (rc == SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    if (rc != SQLITE_ROW) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (!body_record_fill(
+            statement,
+            output
+        )) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    return sqlite3_finalize(statement) == SQLITE_OK
+        ? TRAINLOG_STATUS_OK
+        : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_update_body_observation(
+    TrainlogDatabase *database,
+    const TrainlogBodyObservationInput *observation
+)
+{
+    static const char *const SQL =
+        "UPDATE body_observations SET "
+        "body_weight_kg = ?1, "
+        "neck_cm = ?2, "
+        "shoulders_cm = ?3, "
+        "chest_cm = ?4, "
+        "waist_cm = ?5, "
+        "hips_cm = ?6, "
+        "left_arm_cm = ?7, "
+        "right_arm_cm = ?8, "
+        "left_forearm_cm = ?9, "
+        "right_forearm_cm = ?10, "
+        "left_thigh_cm = ?11, "
+        "right_thigh_cm = ?12, "
+        "left_calf_cm = ?13, "
+        "right_calf_cm = ?14, "
+        "notes = ?15 "
+        "WHERE observation_id = ?16;";
+
+    sqlite3_stmt *statement = NULL;
+    bool any_metric;
+    int rc;
+
+    if (database == NULL ||
+        database->connection == NULL ||
+        observation == NULL ||
+        observation->observation_id[0] == '\0') {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    any_metric =
+        observation->has_body_weight ||
+        observation->has_neck ||
+        observation->has_shoulders ||
+        observation->has_chest ||
+        observation->has_waist ||
+        observation->has_hips ||
+        observation->has_left_arm ||
+        observation->has_right_arm ||
+        observation->has_left_forearm ||
+        observation->has_right_forearm ||
+        observation->has_left_thigh ||
+        observation->has_right_thigh ||
+        observation->has_left_calf ||
+        observation->has_right_calf;
+
+    if (!any_metric) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        SQL,
+        -1,
+        &statement,
+        NULL
+    );
+
+    if (rc != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+#define UPDATE_BODY_VALUE(index_, flag_, value_)                             \
+    do {                                                                     \
+        if (rc == SQLITE_OK) {                                               \
+            rc = bind_optional_double(                                       \
+                statement,                                                   \
+                (index_),                                                    \
+                (flag_),                                                     \
+                (value_)                                                     \
+            );                                                               \
+        }                                                                    \
+    } while (0)
+
+    UPDATE_BODY_VALUE(
+        1,
+        observation->has_body_weight,
+        observation->body_weight_kg
+    );
+
+    UPDATE_BODY_VALUE(
+        2,
+        observation->has_neck,
+        observation->neck_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        3,
+        observation->has_shoulders,
+        observation->shoulders_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        4,
+        observation->has_chest,
+        observation->chest_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        5,
+        observation->has_waist,
+        observation->waist_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        6,
+        observation->has_hips,
+        observation->hips_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        7,
+        observation->has_left_arm,
+        observation->left_arm_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        8,
+        observation->has_right_arm,
+        observation->right_arm_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        9,
+        observation->has_left_forearm,
+        observation->left_forearm_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        10,
+        observation->has_right_forearm,
+        observation->right_forearm_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        11,
+        observation->has_left_thigh,
+        observation->left_thigh_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        12,
+        observation->has_right_thigh,
+        observation->right_thigh_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        13,
+        observation->has_left_calf,
+        observation->left_calf_cm
+    );
+
+    UPDATE_BODY_VALUE(
+        14,
+        observation->has_right_calf,
+        observation->right_calf_cm
+    );
+
+#undef UPDATE_BODY_VALUE
+
+    if (rc == SQLITE_OK) {
+        rc =
+            observation->notes != NULL &&
+            observation->notes[0] != '\0'
+                ? sqlite3_bind_text(
+                    statement,
+                    15,
+                    observation->notes,
+                    -1,
+                    SQLITE_TRANSIENT
+                )
+                : sqlite3_bind_null(
+                    statement,
+                    15
+                );
+    }
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(
+            statement,
+            16,
+            observation->observation_id,
+            -1,
+            SQLITE_TRANSIENT
+        );
+    }
+
+    if (rc != SQLITE_OK) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    rc = sqlite3_step(statement);
+
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+
+        return rc == SQLITE_CONSTRAINT
+            ? TRAINLOG_STATUS_CONFLICT
+            : TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (sqlite3_changes(
+            database->connection
+        ) != 1) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    return sqlite3_finalize(statement) == SQLITE_OK
+        ? TRAINLOG_STATUS_OK
+        : TRAINLOG_STATUS_DATABASE_ERROR;
 }

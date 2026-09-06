@@ -81,36 +81,53 @@ Gate 1 includes rejection of:
 - blank exercise notes;
 - negative actual repetitions.
 
-## 7. Future database validation
+## 7. Gate 2 compiled validation
 
-Gate 2 must verify:
+The normal Meson suite currently covers:
 
-- foreign keys enabled;
-- duplicate `session_id` idempotency;
-- duplicate `exercise_id` barrier;
-- transactional rollback;
-- schema migration correctness.
+```text
+database
+catalog
+session_detail
+duration
+body_metrics
+bodyviz
+exercise_performance
+session_type_schema
+session_edit
+body_observation_edit
+```
 
-## 8. Future C validation
+The session-edit test verifies transactional child replacement without changing
+the parent session identity. The body-observation edit test verifies stable
+observation identity while metric values and notes are updated.
 
-C implementation gates will include:
+Schema validation includes the v1 -> v2 `session_type` migration.
 
-- normal build;
-- strict-warning build;
-- ASan/UBSan build;
-- formatter check;
-- relevant unit/integration tests.
+## 8. C validation
+
+Current pre-push validation includes:
+
+- normal strict-warning build;
+- the complete Meson test suite;
+- `git diff --check`;
+- frozen JSON v1 validators.
+
+ASan/UBSan is run for meaningful implementation checkpoints before declaring a
+gate complete.
 
 ## 9. Pre-push checklist
 
 Before every meaningful push:
 
 1. run `python tools/validate_json.py`;
-2. run relevant compiled tests when available;
-3. run sanitizers when relevant;
-4. run `git diff --check`;
-5. inspect `git status --short`;
-6. review documentation changes.
+2. run `python tools/validate_import_contract.py`;
+3. run `meson compile -C build`;
+4. run `meson test -C build --print-errorlogs`;
+5. run sanitizers when relevant;
+6. run `git diff --check`;
+7. inspect `git status --short`;
+8. review documentation changes.
 ## 10. Catalog reconciliation contract
 
 Before the C17 importer exists, Gate 1 defines local catalog merge behavior through an executable Python specification.

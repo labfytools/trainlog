@@ -159,3 +159,27 @@ test(
   'session_type_schema',
   test_session_type_schema,
 )
+
+test_session_edit = executable(
+  'test_session_edit',
+  'tests/test_session_edit.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'session_edit',
+  test_session_edit,
+)
+
+test_body_observation_edit = executable(
+  'test_body_observation_edit',
+  'tests/test_body_observation_edit.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'body_observation_edit',
+  test_body_observation_edit,
+)

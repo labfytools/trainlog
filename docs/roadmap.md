@@ -33,14 +33,15 @@ Current TUI capabilities:
 - navigable history;
 - Unicode anti-duplicate exercise names.
 
-Next TUI polish blocks:
+Current remaining Gate 2 direction:
 
-1. full session detail;
-2. exercise performance history and graphs;
-3. previous-session defaults;
-4. safe edit/delete flows.
+1. finish the current visual/navigation checkpoint;
+2. validate persisted editing on the real database;
+3. detect Android over USB/ADB;
+4. build the minimal Android recorder;
+5. exercise frozen JSON v1 import/export end to end.
 
-Android remains deferred until the TUI daily workflow is satisfactory.
+Measured-max semantics remain a later independent analytics contract.
 
 <!-- TRAINLOG_TUI_V02_ROADMAP -->
 ## TUI v0.2 checkpoint
@@ -130,11 +131,65 @@ PREVIOUS_SESSION_DEFAULTS=AFTER
 ```text
 DATABASE_SCHEMA_V2=IMPLEMENTED
 SESSION_TYPE_PERSISTENCE=IMPLEMENTED
-SESSION_TYPE_TUI=NEXT
-MEASURED_MAX_TRACKING=AFTER
+SESSION_TYPE_TUI=IMPLEMENTED
+TUI_SESSION_EDIT=IMPLEMENTED
+TUI_BODY_OBSERVATION_EDIT=IMPLEMENTED
+TUI_PRIMARY_NAVIGATION=IMPLEMENTED
+TUI_SECONDARY_VIEW_POLISH=IMPLEMENTED
+ANDROID_USB_DETECTION=NEXT
+MEASURED_MAX_TRACKING=LATER
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
 SQLite schema v2 adds `sessions.session_type` with `training` and `max_test`.
 Existing v1 rows migrate to `training`. No existing session is retroactively
 classified as a max test.
+
+## Editable session data
+
+```text
+SESSION_EDIT_PERSISTENCE=IMPLEMENTED
+SESSION_EDIT_TUI=NEXT
+BODY_OBSERVATION_EDIT=AFTER
+USB_PHONE_DETECTION=AFTER_EDITING
+```
+
+Recorded session exercise/set correction uses atomic replacement of child rows
+while preserving the parent session row and linked body observations.
+
+## Body observation record workflow
+
+```text
+BODY_OBSERVATION_HISTORY_UI=IMPLEMENTED
+BODY_OBSERVATION_EDIT=IMPLEMENTED
+BODY_OBSERVATION_SCROLLBAR=IMPLEMENTED
+USB_PHONE_DETECTION=NEXT
+```
+
+`F4 Corps` now uses newest-first observation records with detail/edit views
+instead of making individual metrics the primary navigation model.
+
+<!-- TRAINLOG_EDITABILITY_ROADMAP -->
+## Editability/navigation checkpoint
+
+Completed:
+
+- local schema v2 migration with `training` / `max_test`;
+- session-type selection and persistence;
+- persisted session editing with stable parent identity;
+- body-observation history, detail, and editing;
+- Escape-safe prompt cancellation;
+- framed ASCII-banner primary and secondary views;
+- top `Accueil / Séance / Historique / Exercices / Corps` navigation;
+- Tab focus with yellow border-only focus indication;
+- direct exercise creation while building a session;
+- 12-month dashboard axis kept inside its frame.
+
+Next implementation cursor:
+
+```text
+ANDROID_USB_DETECTION=NEXT
+ANDROID_MINIMAL_RECORDER=AFTER
+JSON_V1_USB_IMPORT_EXPORT=AFTER
+```
+<!-- TRAINLOG_EDITABILITY_ROADMAP _END -->
