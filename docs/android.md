@@ -347,3 +347,286 @@ The app must never infer an input form from an exercise display name.
 Initial development uses fictitious records. Test/development data is removed
 before normal production use starts.
 <!-- TRAINLOG_ANDROID_PROFILE_CURSOR _END -->
+
+<!-- TRAINLOG_ANDROID_SCAFFOLD_IMPLEMENTED -->
+## Android scaffold implementation
+
+The Android project now lives in:
+
+```text
+android/
+```
+
+It is a native Kotlin + Jetpack Compose application with a custom Trainlog
+visual layer rather than default Material presentation.
+
+Implemented scaffold navigation:
+
+```text
+Accueil
+├── Enregistrer une séance
+│   ├── Ajouter depuis le catalogue
+│   └── Créer un nouvel exercice
+│       └── returns to session flow
+├── Enregistrer un exercice
+└── Enregistrer des mensurations
+```
+
+The launcher icon is a minimal themed `T`.
+
+The UI reuses the Trainlog visual roles from the TUI:
+
+```text
+background
+accent/cyan
+success/green
+warning/yellow
+error/red
+muted/blue
+graph/magenta
+```
+
+Android forms will be driven by:
+
+```text
+recording_mode
+tracking_mode
+data_fields
+```
+
+The scaffold intentionally does not implement persistence or MTP yet.
+
+Next:
+
+```text
+ANDROID_LOCAL_MODEL_AND_PERSISTENCE=NEXT
+ANDROID_SESSION_FORM=AFTER
+ANDROID_MTP_SYNC=AFTER_LOCAL_WORKFLOW
+```
+<!-- TRAINLOG_ANDROID_SCAFFOLD_IMPLEMENTED _END -->
+
+<!-- TRAINLOG_ANDROID_LOCAL_CATALOG -->
+## Android local catalog checkpoint
+
+The Android application now has a persistent local exercise catalog.
+
+Implemented:
+
+```text
+Android SQLite exercise database
+profile-aware exercise model
+standalone exercise creation
+inline exercise creation from session flow
+catalog survives application restart
+session screen refreshes after inline creation
+```
+
+Android uses the same semantic axes as desktop:
+
+```text
+recording_mode
+tracking_mode
+data_fields
+```
+
+Known supplemental fields remain:
+
+```text
+SPEED_KMH
+DISTANCE_KM
+```
+
+Continuous creation forces duration tracking. Set-based creation keeps
+supplemental continuous fields disabled.
+
+The local Android schema is intentionally independent from the desktop SQLite
+schema. Synchronization later exchanges versioned domain data rather than
+copying SQLite database files.
+
+Next:
+
+```text
+ANDROID_SESSION_RECORDING=NEXT
+ANDROID_BODY_PERSISTENCE=AFTER
+MTP_SYNC=AFTER_LOCAL_WORKFLOWS
+```
+<!-- TRAINLOG_ANDROID_LOCAL_CATALOG _END -->
+
+<!-- TRAINLOG_ANDROID_SESSION_RECORDING -->
+## Android session recording checkpoint
+
+Android can now build and persist real local sessions.
+
+Flow:
+
+```text
+Session
+→ choose catalog exercise
+→ profile-aware entry form
+→ add exercise to session draft
+→ repeat for additional exercises
+→ save session
+```
+
+Profile-aware forms:
+
+```text
+SETS + REPS
+    set count
+    repetitions per set
+
+SETS + DURATION
+    set count
+    duration per set
+
+CONTINUOUS + DURATION
+    duration minutes
+    configured speed/distance fields
+```
+
+Persistence mirrors the domain split:
+
+```text
+sessions
+session_exercises
+performed_sets
+continuous_activity
+```
+
+Continuous exercises do not create fake performed sets.
+
+The Android local database version is now 2.
+
+Next:
+
+```text
+ANDROID_SESSION_HISTORY=NEXT
+ANDROID_BODY_PERSISTENCE=AFTER
+MTP_SYNC=AFTER_LOCAL_WORKFLOWS
+```
+<!-- TRAINLOG_ANDROID_SESSION_RECORDING _END -->
+
+<!-- TRAINLOG_ANDROID_SESSION_HISTORY -->
+## Android session history checkpoint
+
+Android now exposes persisted local sessions through:
+
+```text
+Accueil
+→ Consultation
+→ Historique des séances
+→ Détail séance
+```
+
+Detail rendering remains profile-aware:
+
+```text
+SETS + REPS
+    one line per performed set with reps
+
+SETS + DURATION
+    one line per performed set with duration
+
+CONTINUOUS
+    duration
+    configured speed
+    configured distance
+```
+
+The history reader uses the persisted session snapshot metadata rather than
+inferring behavior from exercise names.
+
+Next:
+
+```text
+ANDROID_BODY_PERSISTENCE=NEXT
+ANDROID_LOCAL_WORKFLOWS_THEN_MTP
+```
+<!-- TRAINLOG_ANDROID_SESSION_HISTORY _END -->
+
+<!-- TRAINLOG_ANDROID_BODY_PERSISTENCE -->
+## Android body measurement checkpoint
+
+The Android body workflow is now persistent and uses the same measurement set
+as the TUI.
+
+Fields:
+
+```text
+weight
+neck
+shoulders
+chest
+waist
+hips
+left/right arm
+left/right forearm
+left/right thigh
+left/right calf
+```
+
+Rules:
+
+```text
+empty field = measurement not taken
+at least one positive metric required
+comma or dot accepted for decimal entry
+```
+
+Android SQLite schema version:
+
+```text
+3
+```
+
+The body screen also shows the five most recent observations.
+
+At this point the three primary Android recording workflows are locally
+functional:
+
+```text
+session recording
+exercise creation
+body measurement recording
+```
+
+Next:
+
+```text
+ANDROID_LOCAL_POLISH_AND_VALIDATION=NEXT
+MTP_SYNC=AFTER_LOCAL_CHECKPOINT
+```
+<!-- TRAINLOG_ANDROID_BODY_PERSISTENCE _END -->
+
+<!-- TRAINLOG_ANDROID_LOCAL_WORKFLOWS_PASS -->
+## Local Android workflows — validated
+
+```text
+ANDROID_SCAFFOLD=PASS
+ANDROID_THEME_PARITY=PASS
+ANDROID_EXERCISE_CREATE=PASS
+ANDROID_INLINE_EXERCISE_CREATE=PASS
+ANDROID_SESSION_RECORDING=PASS
+ANDROID_SESSION_HISTORY=PASS
+ANDROID_BODY_RECORDING=PASS
+ANDROID_LOCAL_WORKFLOWS=PASS
+```
+
+The application is now locally usable for its three primary recording flows:
+
+```text
+session
+exercise
+body measurements
+```
+
+Session and history rendering are profile-aware.
+
+The Android-local SQLite database is not a synchronization format.
+
+Next:
+
+```text
+ANDROID_MTP_SYNC=NEXT
+```
+<!-- TRAINLOG_ANDROID_LOCAL_WORKFLOWS_PASS _END -->

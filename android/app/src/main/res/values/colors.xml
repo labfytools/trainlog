@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="trainlog_background">#1E1E2E</color>
+    <color name="trainlog_surface">#181825</color>
+    <color name="trainlog_surface_alt">#313244</color>
+
+    <color name="trainlog_text">#CDD6F4</color>
+    <color name="trainlog_accent">#94E2D5</color>
+    <color name="trainlog_success">#A6E3A1</color>
+    <color name="trainlog_warning">#F9E2AF</color>
+    <color name="trainlog_error">#F38BA8</color>
+    <color name="trainlog_muted">#89B4FA</color>
+    <color name="trainlog_graph">#F5C2E7</color>
+</resources>

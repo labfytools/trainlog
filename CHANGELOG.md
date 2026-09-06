@@ -170,3 +170,18 @@ Next:
 - made continuous TUI duration entry explicitly minute-based;
 - preserved frozen session JSON v1 unchanged.
 <!-- TRAINLOG_PROFILE_AWARE_CHANGELOG _END -->
+
+<!-- TRAINLOG_ANDROID_LOCAL_CHANGELOG -->
+### Android local client
+
+- added native Kotlin/Jetpack Compose Android client;
+- matched Trainlog TUI visual language;
+- added minimal themed `T` launcher icon;
+- added exercise catalog and profile-aware exercise creation;
+- added inline exercise creation from session recording;
+- added persistent local session recording;
+- preserved SETS versus CONTINUOUS persistence semantics;
+- added local session history and detail views;
+- added persistent body measurement recording;
+- validated the application on a real Samsung device through ADB.
+<!-- TRAINLOG_ANDROID_LOCAL_CHANGELOG _END -->

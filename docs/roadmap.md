@@ -349,3 +349,30 @@ Next Android slice:
 Do not revert continuous activities to performed sets.
 Do not modify JSON v1 to accommodate continuous metrics.
 <!-- TRAINLOG_PROFILE_AWARE_ROADMAP_FINAL _END -->
+
+<!-- TRAINLOG_ANDROID_LOCAL_CHECKPOINT -->
+## Android local checkpoint
+
+```text
+ANDROID_PROJECT=PASS
+ANDROID_THEME=PASS
+ANDROID_EXERCISE_CATALOG=PASS
+ANDROID_SESSION_RECORDING=PASS
+ANDROID_SESSION_HISTORY=PASS
+ANDROID_BODY_RECORDING=PASS
+
+ANDROID_MTP_SYNC=NEXT
+```
+
+The next implementation cursor is synchronization between the Android client
+and the desktop TUI over the existing direct-MTP transport architecture.
+
+Constraints remain:
+
+```text
+no GVFS/FUSE dependency
+no SQLite-file synchronization
+TRAINLOG_FORMAT_V1 remains frozen
+profile-aware data must not be forced into v1
+```
+<!-- TRAINLOG_ANDROID_LOCAL_CHECKPOINT _END -->
