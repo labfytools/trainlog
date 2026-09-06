@@ -147,3 +147,15 @@ test(
   'exercise_performance',
   test_exercise_performance,
 )
+
+test_session_type_schema = executable(
+  'test_session_type_schema',
+  'tests/test_session_type_schema.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'session_type_schema',
+  test_session_type_schema,
+)

@@ -25,6 +25,11 @@ typedef enum TrainlogLoadMode {
     TRAINLOG_LOAD_ASSISTANCE
 } TrainlogLoadMode;
 
+typedef enum TrainlogSessionType {
+    TRAINLOG_SESSION_TRAINING = 0,
+    TRAINLOG_SESSION_MAX_TEST
+} TrainlogSessionType;
+
 typedef struct TrainlogExercise {
     char exercise_id[TRAINLOG_ID_MAX + 1U];
     char name[TRAINLOG_NAME_MAX + 1U];
@@ -56,6 +61,7 @@ typedef struct TrainlogSessionInput {
     char session_id[TRAINLOG_ID_MAX + 1U];
     char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
     char ended_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    TrainlogSessionType session_type;
     const char *notes;
     const TrainlogSessionExerciseInput *exercises;
     size_t exercise_count;
@@ -65,6 +71,7 @@ typedef struct TrainlogSessionSummary {
     char session_id[TRAINLOG_ID_MAX + 1U];
     char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
     char ended_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    TrainlogSessionType session_type;
     size_t exercise_count;
 } TrainlogSessionSummary;
 

@@ -3708,6 +3708,224 @@ static bool build_session_exercise(
     return true;
 }
 
+/* TRAINLOG_SESSION_TYPE_TUI */
+
+static const char *session_type_label(
+    TrainlogSessionType type
+)
+{
+    switch (type) {
+    case TRAINLOG_SESSION_MAX_TEST:
+        return "Test de max";
+
+    case TRAINLOG_SESSION_TRAINING:
+    default:
+        return "Entraînement";
+    }
+}
+
+static const char *session_type_history_label(
+    TrainlogSessionType type
+)
+{
+    return type == TRAINLOG_SESSION_MAX_TEST
+        ? "[MAX]"
+        : "[ENTRAINEMENT]";
+}
+
+static bool choose_session_type(
+    TrainlogSessionType *output
+)
+{
+    int selected = 0;
+
+    if (output == NULL) {
+        return false;
+    }
+
+    for (;;) {
+        WINDOW *panel;
+        int key;
+        int panel_width =
+            COLS - 8;
+
+        if (panel_width < 40) {
+            panel_width = 40;
+        }
+
+        draw_shell(
+            "TRAINLOG — Nouvelle séance",
+            "↑↓ choisir  Entrée valider  Échap annuler"
+        );
+
+        panel = derwin(
+            stdscr,
+            9,
+            panel_width,
+            3,
+            4
+        );
+
+        if (panel == NULL) {
+            return false;
+        }
+
+        box(panel, 0, 0);
+
+        wattron(
+            panel,
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        mvwprintw(
+            panel,
+            0,
+            2,
+            " TYPE DE SEANCE "
+        );
+
+        wattroff(
+            panel,
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        if (selected == 0) {
+            wattron(
+                panel,
+                A_REVERSE |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+        }
+
+        mvwprintw(
+            panel,
+            2,
+            3,
+            " Entraînement "
+        );
+
+        if (selected == 0) {
+            wattroff(
+                panel,
+                A_REVERSE |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+        }
+
+        wattron(
+            panel,
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        mvwprintw(
+            panel,
+            3,
+            5,
+            "Séance normale : progression, volume, travail courant."
+        );
+
+        wattroff(
+            panel,
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        if (selected == 1) {
+            wattron(
+                panel,
+                A_REVERSE |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+        }
+
+        mvwprintw(
+            panel,
+            5,
+            3,
+            " Test de max "
+        );
+
+        if (selected == 1) {
+            wattroff(
+                panel,
+                A_REVERSE |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_ACCENT
+                )
+            );
+        }
+
+        wattron(
+            panel,
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        mvwprintw(
+            panel,
+            6,
+            5,
+            "Séance explicitement dédiée aux mesures de max."
+        );
+
+        wattroff(
+            panel,
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        syncok(panel, TRUE);
+        wsyncup(panel);
+        delwin(panel);
+
+        refresh();
+        key = getch();
+
+        switch (key) {
+        case KEY_UP:
+        case KEY_LEFT:
+        case KEY_DOWN:
+        case KEY_RIGHT:
+            selected =
+                selected == 0
+                    ? 1
+                    : 0;
+            break;
+
+        case '\n':
+        case KEY_ENTER:
+            *output =
+                selected == 0
+                    ? TRAINLOG_SESSION_TRAINING
+                    : TRAINLOG_SESSION_MAX_TEST;
+            return true;
+
+        case 27:
+            return false;
+
+        default:
+            break;
+        }
+    }
+}
+
 static void screen_new_session(TrainlogDatabase *database)
 {
     TrainlogSessionExerciseInput exercise_inputs[MAX_SESSION_EXERCISES];
@@ -3716,6 +3934,8 @@ static void screen_new_session(TrainlogDatabase *database)
     char session_id[TRAINLOG_GENERATED_ID_CAPACITY];
     char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
     char ended_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    TrainlogSessionType session_type =
+        TRAINLOG_SESSION_TRAINING;
     size_t exercise_count = 0U;
     int another = 1;
     TrainlogStatus status;
@@ -3739,6 +3959,12 @@ static void screen_new_session(TrainlogDatabase *database)
     }
 
     exercise_count = 0U;
+
+    if (!choose_session_type(
+            &session_type
+        )) {
+        return;
+    }
 
     if (trainlog_id_generate(
             "se",
@@ -3788,6 +4014,9 @@ static void screen_new_session(TrainlogDatabase *database)
     }
 
     (void)memset(&session, 0, sizeof(session));
+    session.session_type =
+        session_type;
+
     (void)snprintf(
         session.session_id,
         sizeof(session.session_id),
@@ -3819,7 +4048,13 @@ static void screen_new_session(TrainlogDatabase *database)
         attroff(trainlog_theme_attribute(TRAINLOG_COLOR_SUCCESS));
         mvprintw(6, 2, "Début : %s", started_at);
         mvprintw(7, 2, "Fin   : %s", ended_at);
-        mvprintw(8, 2, "Exercices : %zu", exercise_count);
+        mvprintw(
+            8,
+            2,
+            "Type  : %s",
+            session_type_label(session_type)
+        );
+        mvprintw(9, 2, "Exercices : %zu", exercise_count);
     } else {
         status_line(
             "Échec lors de l'enregistrement de la séance.",
@@ -3892,6 +4127,15 @@ static void screen_session_detail(
             session.ended_at[0] != '\0'
                 ? session.ended_at
                 : "séance ouverte"
+        );
+
+        mvprintw(
+            5,
+            4,
+            "Type  : %s",
+            session_type_label(
+                session.session_type
+            )
         );
 
         if (count == 0U) {
@@ -4120,8 +4364,11 @@ static void screen_history(TrainlogDatabase *database)
             mvprintw(
                 item_row,
                 4,
-                " %-25s  %2zu exercice(s) ",
+                " %-25s  %-14s  %2zu exercice(s) ",
                 sessions[absolute].started_at,
+                session_type_history_label(
+                    sessions[absolute].session_type
+                ),
                 sessions[absolute].exercise_count
             );
 

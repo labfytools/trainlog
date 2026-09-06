@@ -84,3 +84,10 @@ Next:
 - added terminal performance graph;
 - assistance explicitly treats lower assistance as better;
 - best recorded set remains distinct from measured max.
+
+### Session type schema v2
+
+- added local `training` / `max_test` session classification;
+- added transactional SQLite schema migration v1 -> v2;
+- preserved migrated sessions as `training`;
+- kept Trainlog JSON v1 frozen and unchanged.

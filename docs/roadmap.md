@@ -124,3 +124,17 @@ TUI_EXERCISE_PERFORMANCE=IMPLEMENTED
 MEASURED_MAX_TRACKING=NEXT
 PREVIOUS_SESSION_DEFAULTS=AFTER
 ```
+
+## Session type / measured max foundation
+
+```text
+DATABASE_SCHEMA_V2=IMPLEMENTED
+SESSION_TYPE_PERSISTENCE=IMPLEMENTED
+SESSION_TYPE_TUI=NEXT
+MEASURED_MAX_TRACKING=AFTER
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+SQLite schema v2 adds `sessions.session_type` with `training` and `max_test`.
+Existing v1 rows migrate to `training`. No existing session is retroactively
+classified as a max test.

@@ -17,7 +17,7 @@ struct TrainlogDatabase {
     sqlite3 *connection;
 };
 
-static const char *const SCHEMA_V1_SQL =
+static const char *const SCHEMA_V2_SQL =
     "BEGIN IMMEDIATE;"
 
     "CREATE TABLE IF NOT EXISTS exercises ("
@@ -34,6 +34,8 @@ static const char *const SCHEMA_V1_SQL =
     "  session_id TEXT NOT NULL UNIQUE,"
     "  started_at TEXT NOT NULL,"
     "  ended_at TEXT,"
+    "  session_type TEXT NOT NULL DEFAULT 'training'"
+    "    CHECK (session_type IN ('training', 'max_test')),"
     "  notes TEXT"
     ");"
 
@@ -116,7 +118,15 @@ static const char *const SCHEMA_V1_SQL =
     "  )"
     ");"
 
-    "PRAGMA user_version = 1;"
+    "PRAGMA user_version = 2;"
+    "COMMIT;";
+
+static const char *const MIGRATE_V1_TO_V2_SQL =
+    "BEGIN IMMEDIATE;"
+    "ALTER TABLE sessions "
+    "ADD COLUMN session_type TEXT NOT NULL DEFAULT 'training' "
+    "CHECK (session_type IN ('training', 'max_test'));"
+    "PRAGMA user_version = 2;"
     "COMMIT;";
 
 static TrainlogStatus execute_sql(
@@ -177,7 +187,10 @@ static TrainlogStatus initialize_or_validate_schema(
     int version = 0;
     TrainlogStatus status;
 
-    status = trainlog_database_schema_version(database, &version);
+    status = trainlog_database_schema_version(
+        database,
+        &version
+    );
     if (status != TRAINLOG_STATUS_OK) {
         return status;
     }
@@ -190,13 +203,28 @@ static TrainlogStatus initialize_or_validate_schema(
         return TRAINLOG_STATUS_OK;
     }
 
-    if (version != 0) {
+    if (version == 0) {
+        status = execute_sql(
+            database,
+            SCHEMA_V2_SQL
+        );
+    } else if (version == 1) {
+        status = execute_sql(
+            database,
+            MIGRATE_V1_TO_V2_SQL
+        );
+    } else {
         return TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
     }
 
-    status = execute_sql(database, SCHEMA_V1_SQL);
     if (status != TRAINLOG_STATUS_OK) {
-        (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+        (void)sqlite3_exec(
+            database->connection,
+            "ROLLBACK;",
+            NULL,
+            NULL,
+            NULL
+        );
     }
 
     return status;
@@ -327,6 +355,22 @@ static const char *load_mode_to_sql(TrainlogLoadMode mode)
         return "external";
     case TRAINLOG_LOAD_ASSISTANCE:
         return "assistance";
+    default:
+        return NULL;
+    }
+}
+
+static const char *session_type_to_sql(
+    TrainlogSessionType type
+)
+{
+    switch (type) {
+    case TRAINLOG_SESSION_TRAINING:
+        return "training";
+
+    case TRAINLOG_SESSION_MAX_TEST:
+        return "max_test";
+
     default:
         return NULL;
     }
@@ -464,6 +508,29 @@ static TrainlogTrackingMode tracking_mode_from_sql(const char *text)
         : TRAINLOG_TRACKING_REPS;
 }
 
+static bool session_type_from_sql(
+    const char *text,
+    TrainlogSessionType *output
+)
+{
+    if (text == NULL ||
+        output == NULL) {
+        return false;
+    }
+
+    if (strcmp(text, "training") == 0) {
+        *output = TRAINLOG_SESSION_TRAINING;
+        return true;
+    }
+
+    if (strcmp(text, "max_test") == 0) {
+        *output = TRAINLOG_SESSION_MAX_TEST;
+        return true;
+    }
+
+    return false;
+}
+
 TrainlogStatus trainlog_database_list_exercises(
     TrainlogDatabase *database,
     TrainlogExercise *output,
@@ -586,13 +653,27 @@ static TrainlogStatus insert_session_header(
     sqlite3_int64 *output_row_id
 )
 {
+    static const char *const SQL =
+        "INSERT INTO sessions("
+        "session_id, started_at, ended_at, session_type, notes"
+        ") VALUES(?1, ?2, ?3, ?4, ?5);";
+
     sqlite3_stmt *statement = NULL;
+    const char *session_type;
     int rc;
+
+    session_type =
+        session_type_to_sql(
+            session->session_type
+        );
+
+    if (session_type == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
 
     rc = sqlite3_prepare_v2(
         database->connection,
-        "INSERT INTO sessions(session_id, started_at, ended_at, notes) "
-        "VALUES(?1, ?2, ?3, ?4);",
+        SQL,
         -1,
         &statement,
         NULL
@@ -601,43 +682,79 @@ static TrainlogStatus insert_session_header(
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
-    if (sqlite3_bind_text(statement, 1, session->session_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-        sqlite3_bind_text(statement, 2, session->started_at, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-        (void)sqlite3_finalize(statement);
-        return TRAINLOG_STATUS_DATABASE_ERROR;
-    }
+    rc = sqlite3_bind_text(
+        statement,
+        1,
+        session->session_id,
+        -1,
+        SQLITE_TRANSIENT
+    );
 
-    if (session->ended_at[0] != '\0') {
+    if (rc == SQLITE_OK) {
         rc = sqlite3_bind_text(
             statement,
-            3,
-            session->ended_at,
+            2,
+            session->started_at,
             -1,
             SQLITE_TRANSIENT
         );
-    } else {
-        rc = sqlite3_bind_null(statement, 3);
-    }
-    if (rc != SQLITE_OK) {
-        (void)sqlite3_finalize(statement);
-        return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
-    if (session->notes != NULL && session->notes[0] != '\0') {
-        rc = sqlite3_bind_text(statement, 4, session->notes, -1, SQLITE_TRANSIENT);
-    } else {
-        rc = sqlite3_bind_null(statement, 4);
+    if (rc == SQLITE_OK) {
+        rc =
+            session->ended_at[0] != '\0'
+                ? sqlite3_bind_text(
+                    statement,
+                    3,
+                    session->ended_at,
+                    -1,
+                    SQLITE_TRANSIENT
+                )
+                : sqlite3_bind_null(
+                    statement,
+                    3
+                );
     }
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(
+            statement,
+            4,
+            session_type,
+            -1,
+            SQLITE_STATIC
+        );
+    }
+
+    if (rc == SQLITE_OK) {
+        rc =
+            session->notes != NULL &&
+            session->notes[0] != '\0'
+                ? sqlite3_bind_text(
+                    statement,
+                    5,
+                    session->notes,
+                    -1,
+                    SQLITE_TRANSIENT
+                )
+                : sqlite3_bind_null(
+                    statement,
+                    5
+                );
+    }
+
     if (rc != SQLITE_OK) {
         (void)sqlite3_finalize(statement);
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
     rc = sqlite3_step(statement);
+
     if (rc == SQLITE_CONSTRAINT) {
         (void)sqlite3_finalize(statement);
         return TRAINLOG_STATUS_CONFLICT;
     }
+
     if (rc != SQLITE_DONE) {
         (void)sqlite3_finalize(statement);
         return TRAINLOG_STATUS_DATABASE_ERROR;
@@ -647,7 +764,11 @@ static TrainlogStatus insert_session_header(
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
-    *output_row_id = sqlite3_last_insert_rowid(database->connection);
+    *output_row_id =
+        sqlite3_last_insert_rowid(
+            database->connection
+        );
+
     return TRAINLOG_STATUS_OK;
 }
 
@@ -906,12 +1027,18 @@ TrainlogStatus trainlog_database_list_sessions(
 )
 {
     static const char *const SQL =
-        "SELECT s.session_id, s.started_at, COALESCE(s.ended_at, ''), "
+        "SELECT "
+        "s.session_id, "
+        "s.started_at, "
+        "COALESCE(s.ended_at, ''), "
+        "s.session_type, "
         "COUNT(se.id) "
         "FROM sessions AS s "
-        "LEFT JOIN session_exercises AS se ON se.session_row_id = s.id "
+        "LEFT JOIN session_exercises AS se "
+        "ON se.session_row_id = s.id "
         "GROUP BY s.id "
         "ORDER BY s.started_at DESC, s.id DESC;";
+
     sqlite3_stmt *statement = NULL;
     size_t count = 0U;
     int rc;
@@ -923,19 +1050,38 @@ TrainlogStatus trainlog_database_list_sessions(
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
-    rc = sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL);
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        SQL,
+        -1,
+        &statement,
+        NULL
+    );
     if (rc != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
         if (count < capacity) {
-            const unsigned char *id = sqlite3_column_text(statement, 0);
-            const unsigned char *started = sqlite3_column_text(statement, 1);
-            const unsigned char *ended = sqlite3_column_text(statement, 2);
-            sqlite3_int64 exercise_count = sqlite3_column_int64(statement, 3);
+            const unsigned char *id =
+                sqlite3_column_text(statement, 0);
 
-            if (id == NULL || started == NULL || ended == NULL ||
+            const unsigned char *started =
+                sqlite3_column_text(statement, 1);
+
+            const unsigned char *ended =
+                sqlite3_column_text(statement, 2);
+
+            const unsigned char *session_type =
+                sqlite3_column_text(statement, 3);
+
+            sqlite3_int64 exercise_count =
+                sqlite3_column_int64(statement, 4);
+
+            if (id == NULL ||
+                started == NULL ||
+                ended == NULL ||
+                session_type == NULL ||
                 exercise_count < 0) {
                 (void)sqlite3_finalize(statement);
                 return TRAINLOG_STATUS_DATABASE_ERROR;
@@ -947,20 +1093,33 @@ TrainlogStatus trainlog_database_list_sessions(
                 "%s",
                 (const char *)id
             );
+
             (void)snprintf(
                 output[count].started_at,
                 sizeof(output[count].started_at),
                 "%s",
                 (const char *)started
             );
+
             (void)snprintf(
                 output[count].ended_at,
                 sizeof(output[count].ended_at),
                 "%s",
                 (const char *)ended
             );
-            output[count].exercise_count = (size_t)exercise_count;
+
+            if (!session_type_from_sql(
+                    (const char *)session_type,
+                    &output[count].session_type
+                )) {
+                (void)sqlite3_finalize(statement);
+                return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+
+            output[count].exercise_count =
+                (size_t)exercise_count;
         }
+
         ++count;
     }
 
@@ -973,7 +1132,11 @@ TrainlogStatus trainlog_database_list_sessions(
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
-    *output_count = count < capacity ? count : capacity;
+    *output_count =
+        count < capacity
+            ? count
+            : capacity;
+
     return TRAINLOG_STATUS_OK;
 }
 
@@ -1440,7 +1603,7 @@ TrainlogStatus trainlog_database_get_session_details(
 )
 {
     static const char *const HEADER_SQL =
-        "SELECT started_at, COALESCE(ended_at, '') "
+        "SELECT started_at, COALESCE(ended_at, ''), session_type "
         "FROM sessions "
         "WHERE session_id = ?1;";
 
@@ -1514,7 +1677,12 @@ TrainlogStatus trainlog_database_get_session_details(
         const unsigned char *ended =
             sqlite3_column_text(header, 1);
 
-        if (started == NULL || ended == NULL) {
+        const unsigned char *session_type =
+            sqlite3_column_text(header, 2);
+
+        if (started == NULL ||
+            ended == NULL ||
+            session_type == NULL) {
             (void)sqlite3_finalize(header);
             return TRAINLOG_STATUS_DATABASE_ERROR;
         }
@@ -1539,6 +1707,14 @@ TrainlogStatus trainlog_database_get_session_details(
             "%s",
             (const char *)ended
         );
+
+        if (!session_type_from_sql(
+                (const char *)session_type,
+                &output_session->session_type
+            )) {
+            (void)sqlite3_finalize(header);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
     }
 
     if (sqlite3_finalize(header) != SQLITE_OK) {
