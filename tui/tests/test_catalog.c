@@ -72,6 +72,100 @@ static bool test_blank_rejected(void)
     return true;
 }
 
+static bool test_profiled_creation(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogExercise walk;
+    TrainlogExercise exercises[4];
+    size_t count = 0U;
+    size_t index;
+    bool found = false;
+
+    CHECK(
+        trainlog_database_open(
+            ":memory:",
+            &database
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(
+        trainlog_catalog_create_exercise_profiled(
+            database,
+            "Marche",
+            TRAINLOG_TRACKING_DURATION,
+            TRAINLOG_RECORDING_CONTINUOUS,
+            TRAINLOG_EXERCISE_DATA_SPEED_KMH,
+            &walk
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(
+        walk.recording_mode ==
+        TRAINLOG_RECORDING_CONTINUOUS
+    );
+
+    CHECK(
+        walk.tracking_mode ==
+        TRAINLOG_TRACKING_DURATION
+    );
+
+    CHECK(
+        walk.data_fields ==
+        TRAINLOG_EXERCISE_DATA_SPEED_KMH
+    );
+
+    CHECK(
+        trainlog_catalog_create_exercise_profiled(
+            database,
+            "Profil invalide",
+            TRAINLOG_TRACKING_REPS,
+            TRAINLOG_RECORDING_CONTINUOUS,
+            0U,
+            &walk
+        ) == TRAINLOG_STATUS_INVALID_ARGUMENT
+    );
+
+    CHECK(
+        trainlog_database_list_exercises(
+            database,
+            exercises,
+            4U,
+            &count
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(count == 1U);
+
+    for (index = 0U; index < count; ++index) {
+        if (strcmp(
+                exercises[index].name,
+                "Marche"
+            ) == 0) {
+            CHECK(
+                exercises[index].recording_mode ==
+                TRAINLOG_RECORDING_CONTINUOUS
+            );
+
+            CHECK(
+                exercises[index].tracking_mode ==
+                TRAINLOG_TRACKING_DURATION
+            );
+
+            CHECK(
+                exercises[index].data_fields ==
+                TRAINLOG_EXERCISE_DATA_SPEED_KMH
+            );
+
+            found = true;
+        }
+    }
+
+    CHECK(found);
+
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void)
 {
     CHECK(test_normalization());
@@ -79,6 +173,9 @@ int main(void)
 
     CHECK(test_blank_rejected());
     (void)printf("PASS blank_rejected\n");
+
+    CHECK(test_profiled_creation());
+    (void)printf("PASS profiled_creation\n");
 
     return 0;
 }

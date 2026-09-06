@@ -260,3 +260,27 @@ Transport/export is added only after the local recorder workflow is comfortable.
 The Android client must preserve stable exercise IDs so a catalog snapshot from
 the PC can normalize exercise selection on both sides.
 <!-- TRAINLOG_ANDROID_NEXT_SLICE _END -->
+
+<!-- TRAINLOG_ANDROID_PROFILE_AWARE_ENTRY -->
+## Profile-aware Android forms
+
+Android uses the same exercise metadata as the TUI:
+
+```text
+recording_mode
+tracking_mode
+data_fields
+```
+
+A continuous `Marche` configured with speed displays only:
+
+```text
+Durée
+Vitesse
+```
+
+and no set count.
+
+Creating an exercise directly inside session entry must configure this metadata
+before adding it to the catalog/session.
+<!-- TRAINLOG_ANDROID_PROFILE_AWARE_ENTRY _END -->

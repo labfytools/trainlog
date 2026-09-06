@@ -282,3 +282,25 @@ python tools/validate_json.py
 python tools/validate_import_contract.py
 git diff --check
 ```
+
+<!-- TRAINLOG_EXERCISE_DATA_MODEL_V1 -->
+## Exercise recording metadata — schema v3 direction
+
+The next SQLite migration adds:
+
+```text
+recording_mode = sets | continuous
+data_fields    = bounded bit mask
+```
+
+Existing `tracking_mode = reps | duration` remains stable.
+
+Every `session_exercises` row snapshots this metadata so later catalog changes
+do not reinterpret historical sessions.
+
+Migration v2 -> v3 defaults all existing rows to `sets` with `data_fields = 0`.
+No name-based migration is allowed.
+
+Continuous actual activity data is stored separately from `performed_sets`;
+Trainlog will not manufacture a fake one-set workout.
+<!-- TRAINLOG_EXERCISE_DATA_MODEL_V1 _END -->

@@ -243,3 +243,39 @@ trainlog_mtp_roundtrip_probe = executable(
   dependencies: trainlog_core_dep,
   c_args: strict_c_args,
 )
+
+test_exercise_profile_schema = executable(
+  'test_exercise_profile_schema',
+  'tests/test_exercise_profile_schema.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'exercise_profile_schema',
+  test_exercise_profile_schema,
+)
+
+test_continuous_session = executable(
+  'test_continuous_session',
+  'tests/test_continuous_session.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'continuous_session',
+  test_continuous_session,
+)
+
+test_continuous_detail = executable(
+  'test_continuous_detail',
+  'tests/test_continuous_detail.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'continuous_detail',
+  test_continuous_detail,
+)

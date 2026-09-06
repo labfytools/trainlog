@@ -40,4 +40,13 @@ TrainlogStatus trainlog_catalog_create_exercise(
     TrainlogExercise *output_exercise
 );
 
+TrainlogStatus trainlog_catalog_create_exercise_profiled(
+    TrainlogDatabase *database,
+    const char *name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields,
+    TrainlogExercise *output_exercise
+);
+
 #endif

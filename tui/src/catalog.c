@@ -131,10 +131,12 @@ TrainlogStatus trainlog_catalog_normalize_name(
     return TRAINLOG_STATUS_OK;
 }
 
-TrainlogStatus trainlog_catalog_create_exercise(
+TrainlogStatus trainlog_catalog_create_exercise_profiled(
     TrainlogDatabase *database,
     const char *name,
     TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields,
     TrainlogExercise *output_exercise
 )
 {
@@ -154,6 +156,7 @@ TrainlogStatus trainlog_catalog_create_exercise(
         normalized,
         sizeof(normalized)
     );
+
     if (status != TRAINLOG_STATUS_OK) {
         return status;
     }
@@ -163,35 +166,65 @@ TrainlogStatus trainlog_catalog_create_exercise(
         exercise_id,
         sizeof(exercise_id)
     );
+
     if (status != TRAINLOG_STATUS_OK) {
         return status;
     }
 
-    status = trainlog_database_insert_exercise(
+    status = trainlog_database_insert_exercise_profiled(
         database,
         exercise_id,
         name,
         normalized,
-        tracking_mode
+        tracking_mode,
+        recording_mode,
+        data_fields
     );
+
     if (status != TRAINLOG_STATUS_OK) {
         return status;
     }
 
-    (void)memset(output_exercise, 0, sizeof(*output_exercise));
+    (void)memset(
+        output_exercise,
+        0,
+        sizeof(*output_exercise)
+    );
+
     (void)snprintf(
         output_exercise->exercise_id,
         sizeof(output_exercise->exercise_id),
         "%s",
         exercise_id
     );
+
     (void)snprintf(
         output_exercise->name,
         sizeof(output_exercise->name),
         "%s",
         name
     );
+
     output_exercise->tracking_mode = tracking_mode;
+    output_exercise->recording_mode = recording_mode;
+    output_exercise->data_fields = data_fields;
 
     return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_catalog_create_exercise(
+    TrainlogDatabase *database,
+    const char *name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogExercise *output_exercise
+)
+{
+    return trainlog_catalog_create_exercise_profiled(
+        database,
+        name,
+        tracking_mode,
+        TRAINLOG_RECORDING_SETS,
+        0U,
+        output_exercise
+    );
 }

@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #define TRAINLOG_ID_MAX 128U
 #define TRAINLOG_NAME_MAX 200U
@@ -18,6 +19,19 @@ typedef enum TrainlogTrackingMode {
     TRAINLOG_TRACKING_REPS = 0,
     TRAINLOG_TRACKING_DURATION
 } TrainlogTrackingMode;
+
+typedef enum TrainlogRecordingMode {
+    TRAINLOG_RECORDING_SETS = 0,
+    TRAINLOG_RECORDING_CONTINUOUS
+} TrainlogRecordingMode;
+
+typedef uint32_t TrainlogExerciseDataFields;
+
+#define TRAINLOG_EXERCISE_DATA_SPEED_KMH UINT32_C(1)
+#define TRAINLOG_EXERCISE_DATA_DISTANCE_KM UINT32_C(2)
+#define TRAINLOG_EXERCISE_DATA_KNOWN_MASK \
+    (TRAINLOG_EXERCISE_DATA_SPEED_KMH | \
+     TRAINLOG_EXERCISE_DATA_DISTANCE_KM)
 
 typedef enum TrainlogLoadMode {
     TRAINLOG_LOAD_NONE = 0,
@@ -34,6 +48,8 @@ typedef struct TrainlogExercise {
     char exercise_id[TRAINLOG_ID_MAX + 1U];
     char name[TRAINLOG_NAME_MAX + 1U];
     TrainlogTrackingMode tracking_mode;
+    TrainlogRecordingMode recording_mode;
+    TrainlogExerciseDataFields data_fields;
 } TrainlogExercise;
 
 typedef struct TrainlogSetInput {
@@ -45,6 +61,8 @@ typedef struct TrainlogSetInput {
 
 typedef struct TrainlogSessionExerciseInput {
     char exercise_id[TRAINLOG_ID_MAX + 1U];
+    TrainlogRecordingMode recording_mode;
+    TrainlogExerciseDataFields data_fields;
     TrainlogLoadMode load_mode;
     int rest_seconds;
     int target_sets;
@@ -52,6 +70,13 @@ typedef struct TrainlogSessionExerciseInput {
     int target_duration_seconds;
     bool target_has_weight;
     double target_weight_kg;
+
+    int continuous_duration_seconds;
+    bool continuous_has_speed;
+    double continuous_speed_kmh;
+    bool continuous_has_distance;
+    double continuous_distance_km;
+
     const char *notes;
     const TrainlogSetInput *sets;
     size_t set_count;

@@ -285,3 +285,27 @@ Fictitious sessions, exercises, and body observations are used during Android
 development and synchronization testing. The development database will be
 purged before normal production use begins.
 <!-- TRAINLOG_SYNC_FINAL_ROADMAP _END -->
+
+<!-- TRAINLOG_EXERCISE_DATA_MODEL_ROADMAP -->
+## Exercise data-model checkpoint
+
+```text
+EXERCISE_DATA_MODEL_V1=FROZEN_FOR_IMPLEMENTATION
+DATABASE_SCHEMA_V3=NEXT
+PROFILE_AWARE_C_MODEL=AFTER_SCHEMA
+PROFILE_AWARE_TUI=AFTER
+ANDROID_PROFILE_AWARE_UI=AFTER
+SESSION_EXCHANGE_V2=DESIGN_LATER
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+The model separates:
+
+```text
+recording organization: SETS | CONTINUOUS
+primary metric:         REPS | DURATION
+supplemental fields:    SPEED_KMH | DISTANCE_KM
+```
+
+Existing schema-v2 data migrates conservatively to `SETS`.
+<!-- TRAINLOG_EXERCISE_DATA_MODEL_ROADMAP _END -->

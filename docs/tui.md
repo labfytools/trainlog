@@ -674,3 +674,25 @@ PC -> Android
 The session exchange remains frozen Trainlog JSON v1.
 Catalog synchronization is a separate versioned contract.
 <!-- TRAINLOG_SYNC_FINAL_CHECKPOINT _END -->
+
+<!-- TRAINLOG_PROFILE_AWARE_ENTRY -->
+## Profile-aware exercise entry
+
+The TUI form is driven by exercise metadata.
+
+```text
+SETS + REPS
+    series, reps, optional load, rest
+
+SETS + DURATION
+    series, duration, optional load, rest
+
+CONTINUOUS + DURATION + SPEED_KMH
+    duration, speed
+```
+
+Continuous exercises do not display a set count.
+
+`Marche` will use the continuous form only after its catalog metadata is
+explicitly changed; behavior is never inferred from its name.
+<!-- TRAINLOG_PROFILE_AWARE_ENTRY _END -->

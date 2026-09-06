@@ -11,7 +11,7 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 2
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 4
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
@@ -48,6 +48,16 @@ TrainlogStatus trainlog_database_insert_exercise(
     const char *name,
     const char *normalized_name,
     TrainlogTrackingMode tracking_mode
+);
+
+TrainlogStatus trainlog_database_insert_exercise_profiled(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const char *name,
+    const char *normalized_name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields
 );
 
 TrainlogStatus trainlog_database_exercise_count(
@@ -99,6 +109,8 @@ TrainlogStatus trainlog_database_list_weight_points(
 typedef struct TrainlogPersistedExerciseDetail {
     char name[TRAINLOG_NAME_MAX + 1U];
     TrainlogTrackingMode tracking_mode;
+    TrainlogRecordingMode recording_mode;
+    TrainlogExerciseDataFields data_fields;
     TrainlogLoadMode load_mode;
     int rest_seconds;
     int target_sets;
@@ -106,6 +118,13 @@ typedef struct TrainlogPersistedExerciseDetail {
     int target_duration_seconds;
     int has_target_weight;
     double target_weight_kg;
+
+    int continuous_duration_seconds;
+    int has_continuous_speed;
+    double continuous_speed_kmh;
+    int has_continuous_distance;
+    double continuous_distance_km;
+
     size_t actual_set_count;
     char actual_summary[TRAINLOG_SET_SUMMARY_MAX + 1U];
 } TrainlogPersistedExerciseDetail;
