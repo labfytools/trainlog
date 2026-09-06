@@ -1,13 +1,20 @@
 package com.labfytools.trainlog.ui
 
+/* TRAINLOG_PC_CATALOG_AUTO_APPLY */
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.data.SyncExporter
+import com.labfytools.trainlog.data.CatalogInboxResult
+import com.labfytools.trainlog.data.SyncCatalogInbox
+import com.labfytools.trainlog.data.SyncRequestOutbox
 
 private enum class TrainlogScreenId {
     HOME,
@@ -16,11 +23,15 @@ private enum class TrainlogScreenId {
     BODY,
     HISTORY,
     SESSION_DETAIL,
+    SYNC,
 }
 
 @Composable
 fun TrainlogApp(
     repository: TrainlogRepository,
+    exporter: SyncExporter,
+    inbox: SyncCatalogInbox,
+    requestOutbox: SyncRequestOutbox,
 ) {
     var screen by
         remember {
@@ -47,6 +58,26 @@ fun TrainlogApp(
                 null
             )
         }
+
+    LaunchedEffect(Unit) {
+        when (
+            inbox.importPcCatalog()
+        ) {
+            is CatalogInboxResult.Imported -> {
+                catalogRevision += 1
+            }
+
+            CatalogInboxResult.FolderNotAuthorized,
+            CatalogInboxResult.FileNotFound,
+            is CatalogInboxResult.Error -> {
+                /* Nothing to import yet. */
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        exporter.exportMobileBundle()
+    }
 
     if (
         screen !=
@@ -89,6 +120,10 @@ fun TrainlogApp(
                     screen =
                         TrainlogScreenId.HISTORY
                 },
+                onSync = {
+                    screen =
+                        TrainlogScreenId.SYNC
+                },
             )
 
         TrainlogScreenId.SESSION ->
@@ -107,6 +142,9 @@ fun TrainlogApp(
                     screen =
                         TrainlogScreenId.EXERCISE
                 },
+                onSessionSaved = {
+                    exporter.exportMobileBundle()
+                },
             )
 
         TrainlogScreenId.EXERCISE ->
@@ -120,6 +158,8 @@ fun TrainlogApp(
                         exerciseReturnTarget
                 },
                 onSaved = {
+                    exporter.exportMobileBundle()
+
                     catalogRevision += 1
 
                     screen =
@@ -130,6 +170,9 @@ fun TrainlogApp(
         TrainlogScreenId.BODY ->
             BodyScreen(
                 repository = repository,
+                onBodySaved = {
+                    exporter.exportMobileBundle()
+                },
                 onBack = {
                     screen =
                         TrainlogScreenId.HOME
@@ -161,6 +204,22 @@ fun TrainlogApp(
                 onBack = {
                     screen =
                         TrainlogScreenId.HISTORY
+                },
+            )
+
+        TrainlogScreenId.SYNC ->
+            SyncScreen(
+                inbox = inbox,
+                requestOutbox =
+                    requestOutbox,
+                onCatalogChanged = {
+                    exporter.exportMobileBundle()
+
+                    catalogRevision += 1
+                },
+                onBack = {
+                    screen =
+                        TrainlogScreenId.HOME
                 },
             )
     }

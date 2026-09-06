@@ -630,3 +630,81 @@ Next:
 ANDROID_MTP_SYNC=NEXT
 ```
 <!-- TRAINLOG_ANDROID_LOCAL_WORKFLOWS_PASS _END -->
+
+<!-- TRAINLOG_MOBILE_EXPORT_V1 -->
+## MTP mobile export v1
+
+Android now prepares a versioned full mobile snapshot at:
+
+```text
+Download/Trainlog/trainlog-mobile-export-v1.json
+```
+
+The file contains:
+
+```text
+exercise profiles
+sessions
+body observations
+```
+
+It is explicitly separate from frozen `TRAINLOG_FORMAT_V1`.
+
+Desktop direct-MTP validation is available through:
+
+```text
+./build/tui/trainlog-mtp-mobile-export-probe
+```
+
+The probe traverses:
+
+```text
+internal storage
+→ Download
+→ Trainlog
+→ trainlog-mobile-export-v1.json
+```
+
+and downloads it directly through libmtp without a mount.
+
+Next after hardware PASS:
+
+```text
+DESKTOP_MOBILE_EXPORT_IMPORT=NEXT
+PC_TO_ANDROID_CATALOG=AFTER
+```
+<!-- TRAINLOG_MOBILE_EXPORT_V1 _END -->
+
+<!-- TRAINLOG_ANDROID_SYNC_FOLDER_CHECKPOINT -->
+## Android synchronization folder
+
+PC-created synchronization artifacts are consumed through a persistent Storage
+Access Framework grant.
+
+Canonical selected folder:
+
+```text
+Download/Trainlog
+```
+
+The Sync screen always exposes the folder-selection action.
+
+When a folder is already authorized, the action becomes:
+
+```text
+Changer le dossier Trainlog
+```
+
+This is required so a wrong persisted folder selection can be corrected without
+clearing the Android application database.
+
+Validated PC catalog publication:
+
+```text
+trainlog-pc-catalog-v1.json
+```
+
+The final Android synchronization workflow must evolve toward a single
+`Synchroniser maintenant` action backed by a PC-side synchronization agent,
+rather than manual export/import steps.
+<!-- TRAINLOG_ANDROID_SYNC_FOLDER_CHECKPOINT _END -->

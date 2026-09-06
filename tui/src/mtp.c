@@ -777,3 +777,46 @@ TrainlogStatus trainlog_mtp_receive_file(
     return
         TRAINLOG_STATUS_OK;
 }
+
+TrainlogStatus trainlog_mtp_delete_object(
+    unsigned int bus_number,
+    unsigned int device_number,
+    uint32_t item_id
+)
+{
+    LIBMTP_mtpdevice_t *device = NULL;
+    TrainlogStatus status;
+    int rc;
+
+    if (item_id == 0U) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status =
+        mtp_open_exact_device(
+            bus_number,
+            device_number,
+            &device
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    rc =
+        LIBMTP_Delete_Object(
+            device,
+            item_id
+        );
+
+    if (rc != 0) {
+        LIBMTP_Clear_Errorstack(device);
+        LIBMTP_Release_Device(device);
+
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    LIBMTP_Release_Device(device);
+
+    return TRAINLOG_STATUS_OK;
+}

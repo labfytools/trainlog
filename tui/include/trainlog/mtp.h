@@ -104,4 +104,10 @@ TrainlogStatus trainlog_mtp_receive_file(
     const char *local_path
 );
 
+TrainlogStatus trainlog_mtp_delete_object(
+    unsigned int bus_number,
+    unsigned int device_number,
+    uint32_t item_id
+);
+
 #endif

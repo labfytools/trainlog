@@ -8,6 +8,7 @@ fun HomeScreen(
     onExercise: () -> Unit,
     onBody: () -> Unit,
     onHistory: () -> Unit,
+    onSync: () -> Unit,
 ) {
     TrainlogScreen(
         subtitle = "A C C U E I L"
@@ -49,6 +50,16 @@ fun HomeScreen(
                 description =
                     "Consulter les séances enregistrées et leur détail.",
                 onClick = onHistory,
+            )
+        }
+
+        TrainlogFrame(
+            title = "SYNCHRONISATION"
+        ) {
+            TrainlogAction(
+                label = "Synchroniser avec le PC",
+                description = "Préparer les données pour le transport MTP.",
+                onClick = onSync,
             )
         }
 

@@ -36,6 +36,7 @@ fun SessionScreen(
     catalogRevision: Int,
     onBack: () -> Unit,
     onCreateExercise: () -> Unit,
+    onSessionSaved: () -> Unit,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -240,6 +241,8 @@ fun SessionScreen(
 
                             message =
                                 "Séance enregistrée."
+
+                            onSessionSaved()
                         }
 
                         SaveSessionResult.Invalid -> {

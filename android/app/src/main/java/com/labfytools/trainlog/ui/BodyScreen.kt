@@ -31,6 +31,7 @@ import com.labfytools.trainlog.ui.theme.TrainlogTypography
 @Composable
 fun BodyScreen(
     repository: TrainlogRepository,
+    onBodySaved: () -> Unit,
     onBack: () -> Unit,
 ) {
     val colors =
@@ -415,6 +416,8 @@ fun BodyScreen(
                                 revision += 1
                                 message =
                                     "Mensurations enregistrées."
+
+                                onBodySaved()
                             }
 
                             SaveBodyObservationResult.Invalid -> {

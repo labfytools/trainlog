@@ -376,3 +376,130 @@ TRAINLOG_FORMAT_V1 remains frozen
 profile-aware data must not be forced into v1
 ```
 <!-- TRAINLOG_ANDROID_LOCAL_CHECKPOINT _END -->
+
+<!-- TRAINLOG_MOBILE_EXPORT_V1 -->
+## MTP mobile export v1
+
+Android now prepares a versioned full mobile snapshot at:
+
+```text
+Download/Trainlog/trainlog-mobile-export-v1.json
+```
+
+The file contains:
+
+```text
+exercise profiles
+sessions
+body observations
+```
+
+It is explicitly separate from frozen `TRAINLOG_FORMAT_V1`.
+
+Desktop direct-MTP validation is available through:
+
+```text
+./build/tui/trainlog-mtp-mobile-export-probe
+```
+
+The probe traverses:
+
+```text
+internal storage
+→ Download
+→ Trainlog
+→ trainlog-mobile-export-v1.json
+```
+
+and downloads it directly through libmtp without a mount.
+
+Next after hardware PASS:
+
+```text
+DESKTOP_MOBILE_EXPORT_IMPORT=NEXT
+PC_TO_ANDROID_CATALOG=AFTER
+```
+<!-- TRAINLOG_MOBILE_EXPORT_V1 _END -->
+
+<!-- TRAINLOG_DESKTOP_MOBILE_IMPORT_CURSOR -->
+## Mobile import cursor
+
+```text
+MOBILE_EXPORT_MTP=PASS
+DESKTOP_MOBILE_IMPORT_V1=IMPLEMENTED
+TUI_SYNC_ACTION=NEXT
+PC_TO_ANDROID_CATALOG=AFTER
+```
+
+The CLI importer is the reference import engine for the next TUI Sync action.
+<!-- TRAINLOG_DESKTOP_MOBILE_IMPORT_CURSOR _END -->
+
+<!-- TRAINLOG_TUI_MOBILE_SYNC_CURSOR -->
+## Sync implementation cursor
+
+```text
+MOBILE_EXPORT_MTP=PASS
+DESKTOP_MOBILE_IMPORT_V1=PASS
+TUI_ANDROID_TO_PC_SYNC_ACTION=IMPLEMENTED
+TUI_ANDROID_TO_PC_SYNC_HARDWARE_VALIDATION=NEXT
+PC_TO_ANDROID_CATALOG=AFTER
+```
+<!-- TRAINLOG_TUI_MOBILE_SYNC_CURSOR _END -->
+
+<!-- TRAINLOG_BIDIRECTIONAL_SYNC_CURSOR -->
+## Bidirectional sync cursor
+
+```text
+ANDROID_TO_PC_MTP=PASS
+DESKTOP_MOBILE_IMPORT=PASS
+PC_TO_ANDROID_CATALOG=IMPLEMENTED
+SYNC_HISTORY_UI=IMPLEMENTED
+BIDIRECTIONAL_HARDWARE_VALIDATION=NEXT
+```
+<!-- TRAINLOG_BIDIRECTIONAL_SYNC_CURSOR _END -->
+
+<!-- TRAINLOG_SYNC_AGENT_CURSOR -->
+## Sync agent cursor
+
+```text
+ANDROID_AUTO_OUTBOX=IMPLEMENTED
+ANDROID_SYNC_REQUEST=IMPLEMENTED
+
+TRAINLOG_SYNCD=NEXT
+ANDROID_SYNC_RECEIPT=AFTER
+TUI_SYNC_LOG_SHOW=AFTER_AGENT_FOUNDATION
+```
+<!-- TRAINLOG_SYNC_AGENT_CURSOR _END -->
+
+<!-- TRAINLOG_SYNC_VALIDATED_ROADMAP -->
+## Synchronization cursor
+
+```text
+ANDROID_LOCAL_WORKFLOWS=PASS
+
+ANDROID_TO_PC_MTP=PASS
+DESKTOP_MOBILE_IMPORT_V1=PASS
+DESKTOP_MOBILE_IMPORT_IDEMPOTENT=PASS
+
+PC_CATALOG_EXPORT_V1=PASS
+PC_TO_ANDROID_MTP_PUBLISH=PASS
+
+ANDROID_SAF_FOLDER_CHANGE=PASS
+
+SYNC_HISTORY_GIT_LIKE=NEXT
+COMMON_SYNC_ENGINE=NEXT
+TRAINLOG_SYNCD=NEXT
+ANDROID_REQUEST_RECEIPT=AFTER
+AUTO_OUTBOX=AFTER_AGENT_FOUNDATION
+```
+
+Do not regress to:
+
+```text
+SQLite file synchronization
+filesystem mounts
+exercise-name heuristics
+manual fake sets for continuous activities
+overloading frozen Trainlog JSON v1
+```
+<!-- TRAINLOG_SYNC_VALIDATED_ROADMAP _END -->

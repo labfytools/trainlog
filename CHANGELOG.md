@@ -185,3 +185,17 @@ Next:
 - added persistent body measurement recording;
 - validated the application on a real Samsung device through ADB.
 <!-- TRAINLOG_ANDROID_LOCAL_CHANGELOG _END -->
+
+<!-- TRAINLOG_SYNC_FOUNDATION_CHANGELOG -->
+### Bidirectional synchronization foundation
+
+- validated Android-to-PC domain snapshot transfer through direct MTP;
+- added strict transactional and idempotent desktop mobile import;
+- added canonical PC exercise-catalog export;
+- validated PC-to-Android catalog publication through direct MTP;
+- added Android Storage Access Framework access for PC-created catalog files;
+- made the Android synchronization folder selection recoverable/changeable;
+- kept synchronization artifacts separate from frozen Trainlog session JSON v1;
+- documented the next synchronization architecture: structured history,
+  detailed sync inspection, common sync engine and PC-side `trainlog-syncd`.
+<!-- TRAINLOG_SYNC_FOUNDATION_CHANGELOG _END -->

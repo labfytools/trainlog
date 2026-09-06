@@ -763,3 +763,76 @@ Réalisé : activité continue
 
 Do not render set-oriented labels for a valid continuous activity.
 <!-- TRAINLOG_CONTINUOUS_TUI_IMPLEMENTED _END -->
+
+<!-- TRAINLOG_TUI_MOBILE_SYNC_ACTION -->
+## Android → PC synchronization action
+
+The Sync page now exposes:
+
+```text
+s synchroniser
+```
+
+The action performs the complete validated chain:
+
+```text
+detect exact MTP device
+→ locate Download/Trainlog/trainlog-mobile-export-v1.json
+→ direct libmtp download
+→ transactional mobile-export importer
+→ refresh desktop overview
+```
+
+No mount is used.
+
+The TUI resolves the reference importer relative to `/proc/self/exe`. In the
+development layout this means:
+
+```text
+build/tui/trainlog
+→ ../../tools/import_mobile_export.py
+```
+
+and therefore also works when `trainlog` is launched through the user's
+`~/.local/bin/trainlog` symlink.
+<!-- TRAINLOG_TUI_MOBILE_SYNC_ACTION _END -->
+
+<!-- TRAINLOG_TUI_SYNC_FOUNDATION_CHECKPOINT -->
+## Sync foundation checkpoint
+
+The desktop Sync backend has validated physical transport in both directions:
+
+```text
+Android → PC mobile snapshot import
+PC → Android canonical exercise catalog publication
+```
+
+Direct libmtp remains mandatory; no mount is introduced.
+
+The current category/count presentation is transitional.
+
+A persistent mobile snapshot is not a pending item, so a displayed
+`JSON candidate count` must not be treated as the final synchronization model.
+
+Next TUI design:
+
+```text
+HISTORIQUE DES SYNCHRONISATIONS
+
+↑/↓ select
+Enter detail
+s synchronize
+r refresh
+```
+
+The history/detail interaction should follow the conceptual model of
+`git log` / `git show`.
+
+User-facing session timestamps should be normalized to:
+
+```text
+DD/MM/YYYY HH:MM
+```
+
+while stored timestamps remain RFC3339.
+<!-- TRAINLOG_TUI_SYNC_FOUNDATION_CHECKPOINT _END -->

@@ -279,3 +279,11 @@ test(
   'continuous_detail',
   test_continuous_detail,
 )
+
+trainlog_mtp_mobile_export_probe = executable(
+  'trainlog-mtp-mobile-export-probe',
+  'tools/mtp_mobile_export_probe.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+

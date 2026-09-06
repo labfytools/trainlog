@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/wait.h>
 #include <wchar.h>
 #include <unistd.h>
 
@@ -39,6 +40,11 @@
 
 /* TRAINLOG_TUI_V02_POLISH */
 /* TRAINLOG_TUI_PROFILED_EXERCISE_CREATION */
+/* TRAINLOG_SYNC_RESPONSIVE_CACHE */
+/* TRAINLOG_SYNC_LARGE_LAYOUT_S_FIX */
+/* TRAINLOG_SYNC_HISTORY_BIDIRECTIONAL_V1 */
+/* TRAINLOG_SYNC_PC_TO_ANDROID_DIAGNOSTICS */
+/* TRAINLOG_SYNC_FULL_MTP_SILENCE */
 
 typedef enum DashboardAction {
     DASHBOARD_NEW_SESSION = 0,
@@ -96,6 +102,11 @@ static bool primary_top_nav_activate(int selected_page);
 
 static void section_ascii_header(const char *subtitle);
 
+
+static void session_history_datetime(
+    const char *timestamp,
+    char output[17]
+);
 
 
 static void draw_shell(const char *heading, const char *footer)
@@ -7052,16 +7063,25 @@ static void screen_history(
                     );
                 }
 
-                mvprintw(
-                    item_row,
-                    item_col,
-                    " %-25s  %-14s  %2zu exercice(s) ",
-                    sessions[absolute].started_at,
-                    session_type_history_label(
-                        sessions[absolute].session_type
-                    ),
-                    sessions[absolute].exercise_count
-                );
+                {
+                    char display_date[17];
+
+                    session_history_datetime(
+                        sessions[absolute].started_at,
+                        display_date
+                    );
+
+                    mvprintw(
+                        item_row,
+                        item_col,
+                        " %-16s  %-14s  %2zu exercice(s) ",
+                        display_date,
+                        session_type_history_label(
+                            sessions[absolute].session_type
+                        ),
+                        sessions[absolute].exercise_count
+                    );
+                }
 
                 if (focus == 1 &&
                     absolute == selected) {
@@ -8573,6 +8593,638 @@ static double sync_bytes_to_gib(
         (1024.0 * 1024.0 * 1024.0);
 }
 
+typedef struct TrainlogMobileImportReport {
+    size_t exercises_imported;
+    size_t exercises_reconciled;
+    size_t exercises_skipped;
+    size_t sessions_imported;
+    size_t sessions_skipped;
+    size_t body_imported;
+    size_t body_skipped;
+    size_t catalog_published;
+} TrainlogMobileImportReport;
+
+static TrainlogStatus sync_find_mtp_child(
+    const TrainlogUsbDevice *device,
+    uint32_t storage_id,
+    uint32_t parent_id,
+    const char *name,
+    bool folder,
+    uint32_t *output_id,
+    uint64_t *output_size
+)
+{
+    TrainlogMtpEntry entries[SYNC_ENTRY_CAPACITY];
+    size_t count = 0U;
+    size_t index;
+    TrainlogStatus status;
+
+    if (device == NULL ||
+        name == NULL ||
+        output_id == NULL ||
+        output_size == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    *output_id = 0U;
+    *output_size = 0U;
+
+    status =
+        trainlog_mtp_list_folder(
+            device->bus_number,
+            device->device_number,
+            storage_id,
+            parent_id,
+            entries,
+            SYNC_ENTRY_CAPACITY,
+            &count
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    for (index = 0U;
+         index < count;
+         ++index) {
+        if (entries[index].folder == folder &&
+            strcmp(
+                entries[index].name,
+                name
+            ) == 0) {
+            *output_id =
+                entries[index].item_id;
+
+            *output_size =
+                entries[index].size_bytes;
+
+            return TRAINLOG_STATUS_OK;
+        }
+    }
+
+    return TRAINLOG_STATUS_NOT_FOUND;
+}
+
+static TrainlogStatus sync_find_mobile_export(
+    const TrainlogSyncOverview *overview,
+    uint32_t *output_item_id,
+    uint64_t *output_size
+)
+{
+    uint32_t download_id = 0U;
+    uint32_t trainlog_id = 0U;
+    uint64_t ignored_size = 0U;
+    TrainlogStatus status;
+
+    if (overview == NULL ||
+        output_item_id == NULL ||
+        output_size == NULL ||
+        !overview->connected ||
+        !overview->storage_ready) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status =
+        sync_find_mtp_child(
+            &overview->device,
+            overview->storage.storage_id,
+            UINT32_MAX,
+            "Download",
+            true,
+            &download_id,
+            &ignored_size
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    status =
+        sync_find_mtp_child(
+            &overview->device,
+            overview->storage.storage_id,
+            download_id,
+            "Trainlog",
+            true,
+            &trainlog_id,
+            &ignored_size
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    return
+        sync_find_mtp_child(
+            &overview->device,
+            overview->storage.storage_id,
+            trainlog_id,
+            "trainlog-mobile-export-v1.json",
+            false,
+            output_item_id,
+            output_size
+        );
+}
+
+static TrainlogStatus sync_silenced_mobile_export_download(
+    const TrainlogSyncOverview *overview,
+    const char *local_path,
+    uint64_t *output_size
+)
+{
+    int saved_stdout = -1;
+    int saved_stderr = -1;
+    int null_fd = -1;
+    uint32_t item_id = 0U;
+    uint64_t size_bytes = 0U;
+    TrainlogStatus status;
+
+    if (overview == NULL ||
+        local_path == NULL ||
+        local_path[0] == '\0' ||
+        output_size == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    saved_stdout =
+        dup(STDOUT_FILENO);
+
+    saved_stderr =
+        dup(STDERR_FILENO);
+
+    null_fd =
+        open(
+            "/dev/null",
+            O_WRONLY
+        );
+
+    if (saved_stdout < 0 ||
+        saved_stderr < 0 ||
+        null_fd < 0) {
+        if (saved_stdout >= 0) {
+            (void)close(saved_stdout);
+        }
+
+        if (saved_stderr >= 0) {
+            (void)close(saved_stderr);
+        }
+
+        if (null_fd >= 0) {
+            (void)close(null_fd);
+        }
+
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    (void)fflush(stdout);
+    (void)fflush(stderr);
+
+    if (dup2(
+            null_fd,
+            STDOUT_FILENO
+        ) < 0 ||
+        dup2(
+            null_fd,
+            STDERR_FILENO
+        ) < 0) {
+        (void)dup2(
+            saved_stdout,
+            STDOUT_FILENO
+        );
+
+        (void)dup2(
+            saved_stderr,
+            STDERR_FILENO
+        );
+
+        (void)close(saved_stdout);
+        (void)close(saved_stderr);
+        (void)close(null_fd);
+
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    status =
+        sync_find_mobile_export(
+            overview,
+            &item_id,
+            &size_bytes
+        );
+
+    if (status == TRAINLOG_STATUS_OK) {
+        status =
+            trainlog_mtp_receive_file(
+                overview->device.bus_number,
+                overview->device.device_number,
+                item_id,
+                local_path
+            );
+    }
+
+    (void)fflush(stdout);
+    (void)fflush(stderr);
+
+    (void)dup2(
+        saved_stdout,
+        STDOUT_FILENO
+    );
+
+    (void)dup2(
+        saved_stderr,
+        STDERR_FILENO
+    );
+
+    (void)close(saved_stdout);
+    (void)close(saved_stderr);
+    (void)close(null_fd);
+
+    if (status ==
+        TRAINLOG_STATUS_OK) {
+        *output_size =
+            size_bytes;
+    }
+
+    return status;
+}
+
+static bool sync_resolve_importer_path(
+    char *output,
+    size_t output_size
+)
+{
+    char executable[PATH_MAX + 1U];
+    ssize_t length;
+    int level;
+    char *slash;
+    int written;
+
+    if (output == NULL ||
+        output_size == 0U) {
+        return false;
+    }
+
+    length =
+        readlink(
+            "/proc/self/exe",
+            executable,
+            PATH_MAX
+        );
+
+    if (length <= 0 ||
+        (size_t)length >=
+            sizeof(executable)) {
+        return false;
+    }
+
+    executable[(size_t)length] =
+        '\0';
+
+    for (level = 0;
+         level < 3;
+         ++level) {
+        slash =
+            strrchr(
+                executable,
+                '/'
+            );
+
+        if (slash == NULL ||
+            slash == executable) {
+            return false;
+        }
+
+        *slash = '\0';
+    }
+
+    written =
+        snprintf(
+            output,
+            output_size,
+            "%s/tools/import_mobile_export.py",
+            executable
+        );
+
+    if (written < 0 ||
+        (size_t)written >=
+            output_size) {
+        return false;
+    }
+
+    return
+        access(
+            output,
+            R_OK
+        ) == 0;
+}
+
+static size_t sync_report_value(
+    const char *text,
+    const char *name
+)
+{
+    const char *position;
+    char *end = NULL;
+    unsigned long long value;
+
+    if (text == NULL ||
+        name == NULL) {
+        return 0U;
+    }
+
+    position =
+        strstr(
+            text,
+            name
+        );
+
+    if (position == NULL) {
+        return 0U;
+    }
+
+    position +=
+        strlen(name);
+
+    if (*position != '=') {
+        return 0U;
+    }
+
+    ++position;
+
+    value =
+        strtoull(
+            position,
+            &end,
+            10
+        );
+
+    if (end == position ||
+        value >
+            (unsigned long long)
+                SIZE_MAX) {
+        return 0U;
+    }
+
+    return (size_t)value;
+}
+
+static bool sync_read_import_report(
+    const char *path,
+    TrainlogMobileImportReport *report,
+    char *raw_output,
+    size_t raw_output_size
+)
+{
+    FILE *file;
+    size_t used;
+
+    if (path == NULL ||
+        report == NULL ||
+        raw_output == NULL ||
+        raw_output_size < 2U) {
+        return false;
+    }
+
+    file =
+        fopen(
+            path,
+            "rb"
+        );
+
+    if (file == NULL) {
+        return false;
+    }
+
+    used =
+        fread(
+            raw_output,
+            1U,
+            raw_output_size - 1U,
+            file
+        );
+
+    if (ferror(file) != 0) {
+        (void)fclose(file);
+        return false;
+    }
+
+    raw_output[used] =
+        '\0';
+
+    if (fclose(file) != 0) {
+        return false;
+    }
+
+    if (strstr(
+            raw_output,
+            "MOBILE_IMPORT=PASS"
+        ) == NULL) {
+        return false;
+    }
+
+    (void)memset(
+        report,
+        0,
+        sizeof(*report)
+    );
+
+    report->exercises_imported =
+        sync_report_value(
+            raw_output,
+            "exercises_imported"
+        );
+
+    report->exercises_reconciled =
+        sync_report_value(
+            raw_output,
+            "exercises_reconciled"
+        );
+
+    report->exercises_skipped =
+        sync_report_value(
+            raw_output,
+            "exercises_skipped"
+        );
+
+    report->sessions_imported =
+        sync_report_value(
+            raw_output,
+            "sessions_imported"
+        );
+
+    report->sessions_skipped =
+        sync_report_value(
+            raw_output,
+            "sessions_skipped"
+        );
+
+    report->body_imported =
+        sync_report_value(
+            raw_output,
+            "body_imported"
+        );
+
+    report->body_skipped =
+        sync_report_value(
+            raw_output,
+            "body_skipped"
+        );
+
+    return true;
+}
+
+static TrainlogStatus sync_run_mobile_importer(
+    TrainlogMobileImportReport *report,
+    char *raw_output,
+    size_t raw_output_size
+)
+{
+    static const char *const LOCAL_EXPORT =
+        "/tmp/trainlog-mobile-export-v1.json";
+
+    static const char *const RESULT_PATH =
+        "/tmp/trainlog-mobile-import-result.txt";
+
+    char importer[PATH_MAX + 1U];
+    pid_t child;
+    int child_status;
+    int result_fd;
+
+    if (report == NULL ||
+        raw_output == NULL ||
+        raw_output_size == 0U) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (!sync_resolve_importer_path(
+            importer,
+            sizeof(importer)
+        )) {
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    result_fd =
+        open(
+            RESULT_PATH,
+            O_WRONLY |
+                O_CREAT |
+                O_TRUNC,
+            0600
+        );
+
+    if (result_fd < 0) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    child =
+        fork();
+
+    if (child < (pid_t)0) {
+        (void)close(result_fd);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    if (child == (pid_t)0) {
+        if (dup2(
+                result_fd,
+                STDOUT_FILENO
+            ) < 0 ||
+            dup2(
+                result_fd,
+                STDERR_FILENO
+            ) < 0) {
+            _exit(126);
+        }
+
+        (void)close(result_fd);
+
+        execlp(
+            "python3",
+            "python3",
+            importer,
+            LOCAL_EXPORT,
+            (char *)NULL
+        );
+
+        _exit(127);
+    }
+
+    (void)close(result_fd);
+
+    if (waitpid(
+            child,
+            &child_status,
+            0
+        ) < (pid_t)0) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    if (!WIFEXITED(
+            child_status
+        ) ||
+        WEXITSTATUS(
+            child_status
+        ) != 0) {
+        (void)sync_read_import_report(
+            RESULT_PATH,
+            report,
+            raw_output,
+            raw_output_size
+        );
+
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (!sync_read_import_report(
+            RESULT_PATH,
+            report,
+            raw_output,
+            raw_output_size
+        )) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    return TRAINLOG_STATUS_OK;
+}
+
+static TrainlogStatus sync_import_mobile_export(
+    const TrainlogSyncOverview *overview,
+    TrainlogMobileImportReport *report,
+    char *raw_output,
+    size_t raw_output_size,
+    uint64_t *output_download_size
+)
+{
+    static const char *const LOCAL_EXPORT =
+        "/tmp/trainlog-mobile-export-v1.json";
+
+    TrainlogStatus status;
+
+    if (overview == NULL ||
+        report == NULL ||
+        raw_output == NULL ||
+        output_download_size == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status =
+        sync_silenced_mobile_export_download(
+            overview,
+            LOCAL_EXPORT,
+            output_download_size
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    return
+        sync_run_mobile_importer(
+            report,
+            raw_output,
+            raw_output_size
+        );
+}
+
 static void sync_load_overview(
     TrainlogDatabase *database,
     TrainlogSyncOverview *overview
@@ -8669,6 +9321,939 @@ static void sync_load_overview(
             ++overview->remote_json_count;
         }
     }
+
+    if (overview->connected &&
+        overview->storage_ready) {
+        uint32_t mobile_item_id = 0U;
+        uint64_t mobile_size = 0U;
+
+        if (sync_find_mobile_export(
+                overview,
+                &mobile_item_id,
+                &mobile_size
+            ) == TRAINLOG_STATUS_OK) {
+            ++overview->remote_json_count;
+        }
+    }
+}
+
+#define SYNC_HISTORY_CAPACITY 32U
+#define SYNC_HISTORY_TEXT_MAX 191U
+
+typedef struct TrainlogSyncHistoryEntry {
+    char timestamp[17];
+    bool success;
+    char summary[
+        SYNC_HISTORY_TEXT_MAX + 1U
+    ];
+} TrainlogSyncHistoryEntry;
+
+static void session_history_datetime(
+    const char *timestamp,
+    char output[17]
+)
+{
+    if (
+        timestamp == NULL ||
+        strlen(timestamp) < 16U
+    ) {
+        (void)snprintf(
+            output,
+            17U,
+            "%s",
+            "--/--/---- --:--"
+        );
+
+        return;
+    }
+
+    (void)snprintf(
+        output,
+        17U,
+        "%c%c/%c%c/%c%c%c%c %c%c:%c%c",
+        timestamp[8],
+        timestamp[9],
+        timestamp[5],
+        timestamp[6],
+        timestamp[0],
+        timestamp[1],
+        timestamp[2],
+        timestamp[3],
+        timestamp[11],
+        timestamp[12],
+        timestamp[14],
+        timestamp[15]
+    );
+}
+
+static bool sync_history_path(
+    char *output,
+    size_t output_size
+)
+{
+    const char *data_home =
+        getenv("XDG_DATA_HOME");
+
+    const char *home =
+        getenv("HOME");
+
+    int written;
+
+    if (
+        output == NULL ||
+        output_size == 0U
+    ) {
+        return false;
+    }
+
+    if (
+        data_home != NULL &&
+        data_home[0] != '\0'
+    ) {
+        written =
+            snprintf(
+                output,
+                output_size,
+                "%s/trainlog/sync_history.log",
+                data_home
+            );
+    } else if (
+        home != NULL &&
+        home[0] != '\0'
+    ) {
+        written =
+            snprintf(
+                output,
+                output_size,
+                "%s/.local/share/trainlog/sync_history.log",
+                home
+            );
+    } else {
+        return false;
+    }
+
+    return
+        written >= 0 &&
+        (size_t)written <
+            output_size;
+}
+
+static void sync_history_append(
+    bool success,
+    const char *summary
+)
+{
+    char path[
+        PATH_MAX + 1U
+    ];
+
+    char timestamp[17];
+    time_t now;
+    struct tm local_time;
+    FILE *file;
+
+    if (
+        summary == NULL ||
+        !sync_history_path(
+            path,
+            sizeof(path)
+        )
+    ) {
+        return;
+    }
+
+    now = time(NULL);
+
+    if (
+        now == (time_t)-1 ||
+        localtime_r(
+            &now,
+            &local_time
+        ) == NULL
+    ) {
+        return;
+    }
+
+    if (
+        strftime(
+            timestamp,
+            sizeof(timestamp),
+            "%d/%m/%Y %H:%M",
+            &local_time
+        ) == 0U
+    ) {
+        return;
+    }
+
+    file =
+        fopen(
+            path,
+            "ab"
+        );
+
+    if (file == NULL) {
+        return;
+    }
+
+    (void)fprintf(
+        file,
+        "%s\t%d\t%.*s\n",
+        timestamp,
+        success
+            ? 1
+            : 0,
+        (int)SYNC_HISTORY_TEXT_MAX,
+        summary
+    );
+
+    (void)fclose(file);
+}
+
+static void sync_history_load(
+    TrainlogSyncHistoryEntry *output,
+    size_t capacity,
+    size_t *output_count
+)
+{
+    char path[
+        PATH_MAX + 1U
+    ];
+
+    TrainlogSyncHistoryEntry
+        ring[SYNC_HISTORY_CAPACITY];
+
+    size_t count = 0U;
+    size_t next = 0U;
+    size_t copied;
+    FILE *file;
+    char line[512];
+
+    if (
+        output_count == NULL ||
+        (
+            capacity > 0U &&
+            output == NULL
+        )
+    ) {
+        return;
+    }
+
+    *output_count = 0U;
+
+    if (
+        !sync_history_path(
+            path,
+            sizeof(path)
+        )
+    ) {
+        return;
+    }
+
+    file =
+        fopen(
+            path,
+            "rb"
+        );
+
+    if (file == NULL) {
+        return;
+    }
+
+    (void)memset(
+        ring,
+        0,
+        sizeof(ring)
+    );
+
+    while (
+        fgets(
+            line,
+            sizeof(line),
+            file
+        ) != NULL
+    ) {
+        char *first_tab;
+        char *second_tab;
+        char *newline;
+        TrainlogSyncHistoryEntry *entry;
+
+        first_tab =
+            strchr(
+                line,
+                '\t'
+            );
+
+        if (first_tab == NULL) {
+            continue;
+        }
+
+        *first_tab = '\0';
+
+        second_tab =
+            strchr(
+                first_tab + 1,
+                '\t'
+            );
+
+        if (second_tab == NULL) {
+            continue;
+        }
+
+        *second_tab = '\0';
+
+        newline =
+            strchr(
+                second_tab + 1,
+                '\n'
+            );
+
+        if (newline != NULL) {
+            *newline = '\0';
+        }
+
+        entry =
+            &ring[next];
+
+        (void)snprintf(
+            entry->timestamp,
+            sizeof(entry->timestamp),
+            "%s",
+            line
+        );
+
+        entry->success =
+            strcmp(
+                first_tab + 1,
+                "1"
+            ) == 0;
+
+        (void)snprintf(
+            entry->summary,
+            sizeof(entry->summary),
+            "%s",
+            second_tab + 1
+        );
+
+        next =
+            (
+                next + 1U
+            ) %
+            SYNC_HISTORY_CAPACITY;
+
+        if (
+            count <
+            SYNC_HISTORY_CAPACITY
+        ) {
+            ++count;
+        }
+    }
+
+    (void)fclose(file);
+
+    copied =
+        count < capacity
+            ? count
+            : capacity;
+
+    for (
+        size_t index = 0U;
+        index < copied;
+        ++index
+    ) {
+        size_t source =
+            (
+                next +
+                SYNC_HISTORY_CAPACITY -
+                1U -
+                index
+            ) %
+            SYNC_HISTORY_CAPACITY;
+
+        output[index] =
+            ring[source];
+    }
+
+    *output_count =
+        copied;
+}
+
+static void sync_load_overview_silenced(
+    TrainlogDatabase *database,
+    TrainlogSyncOverview *overview
+)
+{
+    int saved_stdout =
+        dup(STDOUT_FILENO);
+
+    int saved_stderr =
+        dup(STDERR_FILENO);
+
+    int null_fd =
+        open(
+            "/dev/null",
+            O_WRONLY |
+                O_CLOEXEC
+        );
+
+    (void)fflush(stdout);
+    (void)fflush(stderr);
+
+    if (
+        saved_stdout >= 0 &&
+        saved_stderr >= 0 &&
+        null_fd >= 0
+    ) {
+        (void)dup2(
+            null_fd,
+            STDOUT_FILENO
+        );
+
+        (void)dup2(
+            null_fd,
+            STDERR_FILENO
+        );
+    }
+
+    sync_load_overview(
+        database,
+        overview
+    );
+
+    (void)fflush(stdout);
+    (void)fflush(stderr);
+
+    if (saved_stdout >= 0) {
+        (void)dup2(
+            saved_stdout,
+            STDOUT_FILENO
+        );
+
+        (void)close(
+            saved_stdout
+        );
+    }
+
+    if (saved_stderr >= 0) {
+        (void)dup2(
+            saved_stderr,
+            STDERR_FILENO
+        );
+
+        (void)close(
+            saved_stderr
+        );
+    }
+
+    if (null_fd >= 0) {
+        (void)close(
+            null_fd
+        );
+    }
+}
+
+static bool sync_resolve_repo_tool(
+    const char *tool_name,
+    char *output,
+    size_t output_size
+)
+{
+    char executable[
+        PATH_MAX + 1U
+    ];
+
+    ssize_t length;
+    int level;
+    char *slash;
+    int written;
+
+    if (
+        tool_name == NULL ||
+        output == NULL ||
+        output_size == 0U
+    ) {
+        return false;
+    }
+
+    length =
+        readlink(
+            "/proc/self/exe",
+            executable,
+            PATH_MAX
+        );
+
+    if (
+        length <= 0 ||
+        (size_t)length >=
+            sizeof(executable)
+    ) {
+        return false;
+    }
+
+    executable[
+        (size_t)length
+    ] = '\0';
+
+    for (
+        level = 0;
+        level < 3;
+        ++level
+    ) {
+        slash =
+            strrchr(
+                executable,
+                '/'
+            );
+
+        if (
+            slash == NULL ||
+            slash == executable
+        ) {
+            return false;
+        }
+
+        *slash = '\0';
+    }
+
+    written =
+        snprintf(
+            output,
+            output_size,
+            "%s/tools/%s",
+            executable,
+            tool_name
+        );
+
+    return
+        written >= 0 &&
+        (size_t)written <
+            output_size &&
+        access(
+            output,
+            R_OK
+        ) == 0;
+}
+
+static TrainlogStatus sync_run_pc_catalog_export(
+    size_t *output_count
+)
+{
+    static const char *const
+        OUTPUT_PATH =
+            "/tmp/trainlog-pc-catalog-v1.json";
+
+    static const char *const
+        RESULT_PATH =
+            "/tmp/trainlog-pc-catalog-result.txt";
+
+    char tool[
+        PATH_MAX + 1U
+    ];
+
+    char result[512];
+    int result_fd;
+    pid_t child;
+    int child_status;
+    FILE *file;
+    size_t used;
+
+    if (output_count == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    *output_count = 0U;
+
+    if (
+        !sync_resolve_repo_tool(
+            "export_pc_catalog.py",
+            tool,
+            sizeof(tool)
+        )
+    ) {
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    result_fd =
+        open(
+            RESULT_PATH,
+            O_WRONLY |
+                O_CREAT |
+                O_TRUNC,
+            0600
+        );
+
+    if (result_fd < 0) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    child = fork();
+
+    if (child < (pid_t)0) {
+        (void)close(result_fd);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    if (child == (pid_t)0) {
+        if (
+            dup2(
+                result_fd,
+                STDOUT_FILENO
+            ) < 0 ||
+            dup2(
+                result_fd,
+                STDERR_FILENO
+            ) < 0
+        ) {
+            _exit(126);
+        }
+
+        (void)close(result_fd);
+
+        execlp(
+            "python3",
+            "python3",
+            tool,
+            OUTPUT_PATH,
+            (char *)NULL
+        );
+
+        _exit(127);
+    }
+
+    (void)close(result_fd);
+
+    if (
+        waitpid(
+            child,
+            &child_status,
+            0
+        ) < (pid_t)0 ||
+        !WIFEXITED(
+            child_status
+        ) ||
+        WEXITSTATUS(
+            child_status
+        ) != 0
+    ) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    file =
+        fopen(
+            RESULT_PATH,
+            "rb"
+        );
+
+    if (file == NULL) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    used =
+        fread(
+            result,
+            1U,
+            sizeof(result) - 1U,
+            file
+        );
+
+    result[used] = '\0';
+
+    (void)fclose(file);
+
+    if (
+        strstr(
+            result,
+            "PC_CATALOG_EXPORT=PASS"
+        ) == NULL
+    ) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    *output_count =
+        sync_report_value(
+            result,
+            "exercises"
+        );
+
+    return TRAINLOG_STATUS_OK;
+}
+
+static TrainlogStatus sync_publish_pc_catalog(
+    const TrainlogSyncOverview *overview,
+    size_t *output_count,
+    char *error_text,
+    size_t error_text_size
+)
+{
+    static const char *const LOCAL_PATH =
+        "/tmp/trainlog-pc-catalog-v1.json";
+
+    uint32_t download_id = 0U;
+    uint32_t trainlog_id = 0U;
+    uint32_t existing_id = 0U;
+    uint32_t uploaded_id = 0U;
+    uint64_t ignored_size = 0U;
+    TrainlogStatus status;
+
+    if (overview == NULL ||
+        output_count == NULL ||
+        error_text == NULL ||
+        error_text_size == 0U ||
+        !overview->connected ||
+        !overview->storage_ready) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    error_text[0] = '\0';
+
+    status =
+        sync_run_pc_catalog_export(
+            output_count
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(
+            error_text,
+            error_text_size,
+            "%s",
+            "PC → Android : export catalogue échoué"
+        );
+
+        return status;
+    }
+
+    status =
+        sync_find_mtp_child(
+            &overview->device,
+            overview->storage.storage_id,
+            UINT32_MAX,
+            "Download",
+            true,
+            &download_id,
+            &ignored_size
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(
+            error_text,
+            error_text_size,
+            "%s",
+            "PC → Android : dossier Download introuvable"
+        );
+
+        return status;
+    }
+
+    status =
+        sync_find_mtp_child(
+            &overview->device,
+            overview->storage.storage_id,
+            download_id,
+            "Trainlog",
+            true,
+            &trainlog_id,
+            &ignored_size
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(
+            error_text,
+            error_text_size,
+            "%s",
+            "PC → Android : dossier Download/Trainlog introuvable"
+        );
+
+        return status;
+    }
+
+    status =
+        sync_find_mtp_child(
+            &overview->device,
+            overview->storage.storage_id,
+            trainlog_id,
+            "trainlog-pc-catalog-v1.json",
+            false,
+            &existing_id,
+            &ignored_size
+        );
+
+    if (status == TRAINLOG_STATUS_OK) {
+        status =
+            trainlog_mtp_delete_object(
+                overview->device.bus_number,
+                overview->device.device_number,
+                existing_id
+            );
+
+        if (status != TRAINLOG_STATUS_OK) {
+            (void)snprintf(
+                error_text,
+                error_text_size,
+                "%s",
+                "PC → Android : suppression ancien catalogue échouée"
+            );
+
+            return status;
+        }
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(
+            error_text,
+            error_text_size,
+            "%s",
+            "PC → Android : lecture du dossier Trainlog échouée"
+        );
+
+        return status;
+    }
+
+    status =
+        trainlog_mtp_send_text_file(
+            overview->device.bus_number,
+            overview->device.device_number,
+            overview->storage.storage_id,
+            trainlog_id,
+            LOCAL_PATH,
+            "trainlog-pc-catalog-v1.json",
+            &uploaded_id
+        );
+
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(
+            error_text,
+            error_text_size,
+            "%s",
+            "PC → Android : envoi MTP du catalogue échoué"
+        );
+
+        return status;
+    }
+
+    return TRAINLOG_STATUS_OK;
+}
+
+static TrainlogStatus sync_bidirectional(
+    const TrainlogSyncOverview *overview,
+    TrainlogMobileImportReport *report,
+    char *raw_output,
+    size_t raw_output_size,
+    uint64_t *output_download_size
+)
+{
+    TrainlogStatus status;
+    size_t published = 0U;
+    char pc_error[256];
+    int saved_stdout = -1;
+    int saved_stderr = -1;
+    int null_fd = -1;
+
+    if (report == NULL ||
+        raw_output == NULL ||
+        raw_output_size == 0U) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    pc_error[0] = '\0';
+
+    (void)fflush(stdout);
+    (void)fflush(stderr);
+
+    saved_stdout =
+        dup(STDOUT_FILENO);
+
+    saved_stderr =
+        dup(STDERR_FILENO);
+
+    null_fd =
+        open(
+            "/dev/null",
+            O_WRONLY | O_CLOEXEC
+        );
+
+    if (saved_stdout >= 0 &&
+        saved_stderr >= 0 &&
+        null_fd >= 0) {
+        (void)dup2(
+            null_fd,
+            STDOUT_FILENO
+        );
+
+        (void)dup2(
+            null_fd,
+            STDERR_FILENO
+        );
+    }
+
+    status =
+        sync_import_mobile_export(
+            overview,
+            report,
+            raw_output,
+            raw_output_size,
+            output_download_size
+        );
+
+    if (status == TRAINLOG_STATUS_OK) {
+        raw_output[0] = '\0';
+
+        status =
+            sync_publish_pc_catalog(
+                overview,
+                &published,
+                pc_error,
+                sizeof(pc_error)
+            );
+
+        if (status == TRAINLOG_STATUS_OK) {
+            report->catalog_published =
+                published;
+        } else {
+            (void)snprintf(
+                raw_output,
+                raw_output_size,
+                "%s",
+                pc_error[0] != '\0'
+                    ? pc_error
+                    : "PC → Android : échec inconnu"
+            );
+        }
+    }
+
+    (void)fflush(stdout);
+    (void)fflush(stderr);
+
+    if (saved_stdout >= 0) {
+        (void)dup2(
+            saved_stdout,
+            STDOUT_FILENO
+        );
+
+        (void)close(
+            saved_stdout
+        );
+    }
+
+    if (saved_stderr >= 0) {
+        (void)dup2(
+            saved_stderr,
+            STDERR_FILENO
+        );
+
+        (void)close(
+            saved_stderr
+        );
+    }
+
+    if (null_fd >= 0) {
+        (void)close(
+            null_fd
+        );
+    }
+
+    clearok(
+        stdscr,
+        TRUE
+    );
+
+    return status;
 }
 
 static void screen_sync(
@@ -8678,490 +10263,418 @@ static void screen_sync(
     size_t selected = 0U;
     int nav_selected = 5;
     int focus = 1;
+    TrainlogSyncOverview overview;
+    bool refresh_overview = true;
+
+    (void)memset(
+        &overview,
+        0,
+        sizeof(overview)
+    );
 
     for (;;) {
-        TrainlogSyncOverview overview;
+        TrainlogSyncHistoryEntry
+            history[SYNC_HISTORY_CAPACITY];
+
+        size_t history_count = 0U;
         bool large_layout =
             COLS >= 100 &&
             LINES >= 30;
 
-        const size_t item_count = 4U;
-        size_t top = 0U;
-        size_t index;
-        int list_top;
-        int list_bottom;
-        int first_row;
-        int visible_rows;
         int key;
 
-        int saved_stdout = -1;
-        int saved_stderr = -1;
-        int null_fd = -1;
-
-        /*
-         * libmtp may print raw-device identification directly to stdout or
-         * stderr. Redirect both temporarily so backend diagnostics cannot
-         * corrupt ncurses' physical-screen state.
-         */
-        (void)fflush(stdout);
-        (void)fflush(stderr);
-
-        saved_stdout =
-            dup(STDOUT_FILENO);
-
-        saved_stderr =
-            dup(STDERR_FILENO);
-
-        null_fd =
-            open(
-                "/dev/null",
-                O_WRONLY | O_CLOEXEC
+        if (refresh_overview) {
+            sync_load_overview_silenced(
+                database,
+                &overview
             );
 
-        if (saved_stdout >= 0 &&
-            saved_stderr >= 0 &&
-            null_fd >= 0) {
-            (void)dup2(
-                null_fd,
-                STDOUT_FILENO
-            );
-
-            (void)dup2(
-                null_fd,
-                STDERR_FILENO
-            );
+            refresh_overview = false;
         }
 
-        sync_load_overview(
-            database,
-            &overview
+        sync_history_load(
+            history,
+            SYNC_HISTORY_CAPACITY,
+            &history_count
         );
 
-        (void)fflush(stdout);
-        (void)fflush(stderr);
-
-        if (saved_stdout >= 0) {
-            (void)dup2(
-                saved_stdout,
-                STDOUT_FILENO
-            );
-
-            (void)close(
-                saved_stdout
-            );
+        if (
+            history_count > 0U &&
+            selected >= history_count
+        ) {
+            selected =
+                history_count - 1U;
         }
 
-        if (saved_stderr >= 0) {
-            (void)dup2(
-                saved_stderr,
-                STDERR_FILENO
+        erase();
+        box(stdscr, 0, 0);
+
+        if (large_layout) {
+            size_t index;
+            size_t top = 0U;
+            int history_top = 18;
+            int history_bottom =
+                LINES - 4;
+
+            int visible_rows =
+                history_bottom -
+                history_top -
+                2;
+
+            section_ascii_header(
+                ":: S Y N C ::"
             );
 
-            (void)close(
-                saved_stderr
+            primary_top_navbar(
+                5,
+                nav_selected,
+                focus == 0
             );
-        }
 
-        if (null_fd >= 0) {
-            (void)close(
-                null_fd
+            focused_panel(
+                11,
+                2,
+                16,
+                COLS - 3,
+                "APPAREIL CONNECTE",
+                false
             );
-        }
 
-        /*
-         * Force a complete physical redraw. This also protects the page if a
-         * backend writes directly to the terminal despite stdio redirection.
-         */
-        clear();
-        clearok(
-            stdscr,
-            TRUE
-        );
+            if (overview.connected) {
+                mvprintw(
+                    12,
+                    5,
+                    "✓ MTP direct connecté"
+                );
 
-        if (!large_layout) {
+                mvprintw(
+                    13,
+                    5,
+                    "%s %s",
+                    overview.device.vendor,
+                    overview.device.model
+                );
+
+                if (
+                    overview.storage_ready
+                ) {
+                    mvprintw(
+                        14,
+                        5,
+                        "Stockage interne : %.2f GiB libres / %.2f GiB",
+                        sync_bytes_to_gib(
+                            overview.storage.free_space_bytes
+                        ),
+                        sync_bytes_to_gib(
+                            overview.storage.max_capacity_bytes
+                        )
+                    );
+                }
+            } else {
+                mvprintw(
+                    13,
+                    5,
+                    "Aucun appareil MTP Trainlog détecté."
+                );
+            }
+
+            focused_panel(
+                history_top,
+                2,
+                history_bottom,
+                COLS - 3,
+                "HISTORIQUE DES SYNCHRONISATIONS",
+                focus == 1
+            );
+
+            if (history_count == 0U) {
+                mvprintw(
+                    history_top + 2,
+                    5,
+                    "Aucune synchronisation enregistrée."
+                );
+            } else {
+                if (visible_rows < 1) {
+                    visible_rows = 1;
+                }
+
+                if (
+                    selected >=
+                    (size_t)visible_rows
+                ) {
+                    top =
+                        selected -
+                        (size_t)visible_rows +
+                        1U;
+                }
+
+                for (
+                    index = 0U;
+                    index < (size_t)visible_rows &&
+                    top + index < history_count;
+                    ++index
+                ) {
+                    size_t absolute =
+                        top + index;
+
+                    int row =
+                        history_top +
+                        2 +
+                        (int)index;
+
+                    if (
+                        focus == 1 &&
+                        absolute == selected
+                    ) {
+                        attron(
+                            A_REVERSE |
+                            trainlog_theme_attribute(
+                                TRAINLOG_COLOR_ACCENT
+                            )
+                        );
+                    }
+
+                    mvprintw(
+                        row,
+                        5,
+                        " %-16s  %c  %-*.*s ",
+                        history[absolute].timestamp,
+                        history[absolute].success
+                            ? '+'
+                            : '!',
+                        COLS - 28,
+                        COLS - 28,
+                        history[absolute].summary
+                    );
+
+                    if (
+                        focus == 1 &&
+                        absolute == selected
+                    ) {
+                        attroff(
+                            A_REVERSE |
+                            trainlog_theme_attribute(
+                                TRAINLOG_COLOR_ACCENT
+                            )
+                        );
+                    }
+                }
+            }
+
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+
+            mvprintw(
+                LINES - 2,
+                2,
+                "%.*s",
+                COLS - 4,
+                "Tab zone  ←→ menu  ↑↓ historique  s synchroniser les 2 sens  r actualiser  b/Échap retour"
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+        } else {
             draw_shell(
                 "TRAINLOG — Sync",
-                "↑↓ parcourir  r actualiser  b/Échap retour"
+                "s synchroniser les 2 sens  r actualiser  b/Échap retour"
             );
 
-            if (!overview.connected) {
+            if (overview.connected) {
                 mvprintw(
                     4,
                     4,
-                    "Aucun appareil Android MTP connecté."
+                    "✓ %s %s",
+                    overview.device.vendor,
+                    overview.device.model
                 );
             } else {
                 mvprintw(
                     4,
                     4,
-                    "Appareil : %.*s",
-                    COLS - 16,
-                    overview.device.model
+                    "Aucun appareil MTP."
                 );
+            }
 
-                mvprintw(
-                    6,
-                    4,
-                    "Séances : %zu JSON candidat(s)",
-                    overview.remote_json_count
-                );
-
+            if (history_count == 0U) {
                 mvprintw(
                     7,
                     4,
-                    "Catalogue PC : %zu exercice(s)",
-                    overview.local_exercise_count
+                    "Aucune synchronisation."
                 );
-            }
+            } else {
+                size_t index;
+                size_t limit =
+                    history_count < 8U
+                        ? history_count
+                        : 8U;
 
-            refresh();
-            key = getch();
-
-            if (key == 'b' ||
-                key == 'B' ||
-                key == 27) {
-                return;
-            }
-
-            continue;
-        }
-
-        list_top = 17;
-        list_bottom = LINES - 4;
-        first_row = list_top + 2;
-        visible_rows =
-            list_bottom -
-            first_row;
-
-        if (visible_rows < 1) {
-            return;
-        }
-
-        if (selected >= item_count) {
-            selected =
-                item_count - 1U;
-        }
-
-        if (selected >=
-            (size_t)visible_rows) {
-            top =
-                selected -
-                (size_t)visible_rows +
-                1U;
-        }
-
-        box(
-            stdscr,
-            0,
-            0
-        );
-
-        section_ascii_header(
-            ":: S Y N C ::"
-        );
-
-        primary_top_navbar(
-            5,
-            nav_selected,
-            focus == 0
-        );
-
-        dashboard_panel(
-            11,
-            2,
-            16,
-            COLS - 3,
-            "APPAREIL CONNECTE"
-        );
-
-        focused_panel(
-            list_top,
-            2,
-            list_bottom,
-            COLS - 3,
-            "SYNCHRONISATION",
-            focus == 1
-        );
-
-        if (!overview.connected) {
-            attron(
-                A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_WARNING
-                )
-            );
-
-            mvprintw(
-                13,
-                5,
-                "Aucun appareil Android en mode partage de fichiers."
-            );
-
-            attroff(
-                A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_WARNING
-                )
-            );
-
-            mvprintw(
-                14,
-                5,
-                "%.*s",
-                COLS - 10,
-                "Branchez et déverrouillez le téléphone puis choisissez Transfert de fichiers."
-            );
-        } else {
-            attron(
-                A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_SUCCESS
-                )
-            );
-
-            mvprintw(
-                12,
-                5,
-                "✓ MTP direct connecté"
-            );
-
-            attroff(
-                A_BOLD |
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_SUCCESS
-                )
-            );
-
-            mvprintw(
-                13,
-                5,
-                "%.*s",
-                COLS - 10,
-                overview.device.model[0] != '\0'
-                    ? overview.device.model
-                    : overview.device.vendor
-            );
-
-            mvprintw(
-                14,
-                5,
-                "USB %03u:%03u   %04x:%04x   série %.*s",
-                overview.device.bus_number,
-                overview.device.device_number,
-                overview.device.vendor_id,
-                overview.device.product_id,
-                COLS - 48,
-                overview.device.serial[0] != '\0'
-                    ? overview.device.serial
-                    : "—"
-            );
-
-            if (overview.storage_ready) {
-                mvprintw(
-                    15,
-                    5,
-                    "%.*s · %.2f GiB libres / %.2f GiB",
-                    24,
-                    overview.storage.description[0] != '\0'
-                        ? overview.storage.description
-                        : "Stockage MTP",
-                    sync_bytes_to_gib(
-                        overview.storage.free_space_bytes
-                    ),
-                    sync_bytes_to_gib(
-                        overview.storage.max_capacity_bytes
-                    )
-                );
+                for (
+                    index = 0U;
+                    index < limit;
+                    ++index
+                ) {
+                    mvprintw(
+                        7 + (int)index,
+                        4,
+                        "%-16s %c %.*s",
+                        history[index].timestamp,
+                        history[index].success
+                            ? '+'
+                            : '!',
+                        COLS - 25,
+                        history[index].summary
+                    );
+                }
             }
         }
-
-        for (index = 0U;
-             index < (size_t)visible_rows &&
-             top + index < item_count;
-             ++index) {
-            size_t absolute =
-                top + index;
-
-            int row =
-                first_row +
-                (int)index;
-
-            const char *direction;
-            const char *category;
-            char status[128];
-
-            switch (absolute) {
-            case 0U:
-                direction = "↓";
-                category =
-                    "Séances Android -> PC";
-
-                (void)snprintf(
-                    status,
-                    sizeof(status),
-                    "%zu JSON candidat(s) à analyser",
-                    overview.remote_json_count
-                );
-                break;
-
-            case 1U:
-                direction = "↓";
-                category =
-                    "Exercices Android -> PC";
-
-                (void)snprintf(
-                    status,
-                    sizeof(status),
-                    "%s",
-                    "import automatique avec séance valide"
-                );
-                break;
-
-            case 2U:
-                direction = "↓";
-                category =
-                    "Mensurations Android -> PC";
-
-                (void)snprintf(
-                    status,
-                    sizeof(status),
-                    "%s",
-                    "import automatique avec séance valide"
-                );
-                break;
-
-            case 3U:
-            default:
-                direction = "↑";
-                category =
-                    "Catalogue PC -> Android";
-
-                (void)snprintf(
-                    status,
-                    sizeof(status),
-                    "%zu exercice(s) locaux à publier",
-                    overview.local_exercise_count
-                );
-                break;
-            }
-
-            if (focus == 1 &&
-                absolute == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
-                        TRAINLOG_COLOR_ACCENT
-                    )
-                );
-            }
-
-            mvprintw(
-                row,
-                5,
-                " %s %-30.30s  %-.*s ",
-                direction,
-                category,
-                COLS - 45,
-                status
-            );
-
-            if (focus == 1 &&
-                absolute == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
-                        TRAINLOG_COLOR_ACCENT
-                    )
-                );
-            }
-        }
-
-        if (overview.exchange_ready &&
-            LINES > 31) {
-            attron(
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_MUTED
-                )
-            );
-
-            mvprintw(
-                list_bottom - 2,
-                5,
-                "Zone Trainlog : %zu objet(s) · JSON séance v1 gelé · snapshot catalogue séparé",
-                overview.remote_entry_count
-            );
-
-            attroff(
-                trainlog_theme_attribute(
-                    TRAINLOG_COLOR_MUTED
-                )
-            );
-        }
-
-        section_scrollbar(
-            first_row,
-            list_bottom - 1,
-            COLS - 5,
-            selected,
-            item_count,
-            (size_t)visible_rows
-        );
-
-        attron(
-            trainlog_theme_attribute(
-                TRAINLOG_COLOR_MUTED
-            )
-        );
-
-        mvprintw(
-            LINES - 2,
-            2,
-            "%.*s",
-            COLS - 4,
-            "Tab zone  ←→ menu  ↑↓/PgUp/PgDn parcourir  Entrée ouvrir  r actualiser  0-5/F1-F5 direct  b/Échap retour"
-        );
-
-        attroff(
-            trainlog_theme_attribute(
-                TRAINLOG_COLOR_MUTED
-            )
-        );
-
-        touchwin(
-            stdscr
-        );
 
         refresh();
         key = getch();
 
-        if (key == '\t' ||
-            key == KEY_BTAB) {
+        if (
+            key == 's' ||
+            key == 'S'
+        ) {
+            TrainlogMobileImportReport report;
+            char import_output[2048];
+            char message[256];
+            uint64_t download_size = 0U;
+            TrainlogStatus status;
+
+            (void)memset(
+                &report,
+                0,
+                sizeof(report)
+            );
+
+            (void)memset(
+                import_output,
+                0,
+                sizeof(import_output)
+            );
+
+            status_line(
+                "Synchronisation bidirectionnelle en cours...",
+                TRAINLOG_COLOR_WARNING
+            );
+
+            refresh();
+
+            status =
+                sync_bidirectional(
+                    &overview,
+                    &report,
+                    import_output,
+                    sizeof(import_output),
+                    &download_size
+                );
+
+            if (
+                status ==
+                TRAINLOG_STATUS_OK
+            ) {
+                (void)snprintf(
+                    message,
+                    sizeof(message),
+                    "Android→PC +%zu séance(s), +%zu exercice(s), +%zu mesure(s) · PC→Android catalogue %zu exercice(s)",
+                    report.sessions_imported,
+                    report.exercises_imported +
+                        report.exercises_reconciled,
+                    report.body_imported,
+                    report.catalog_published
+                );
+
+                sync_history_append(
+                    true,
+                    message
+                );
+
+                status_line(
+                    message,
+                    TRAINLOG_COLOR_SUCCESS
+                );
+            } else {
+                const char *failure =
+                    import_output[0] != '\0'
+                        ? import_output
+                        : "Synchronisation bidirectionnelle échouée.";
+
+                sync_history_append(
+                    false,
+                    failure
+                );
+
+                (void)snprintf(
+                    message,
+                    sizeof(message),
+                    "%.*s",
+                    (int)sizeof(message) - 1,
+                    failure
+                );
+
+                status_line(
+                    message,
+                    TRAINLOG_COLOR_ERROR
+                );
+            }
+
+            refresh();
+            (void)getch();
+
+            refresh_overview = true;
+            continue;
+        }
+
+        if (
+            key == 'r' ||
+            key == 'R'
+        ) {
+            refresh_overview = true;
+            continue;
+        }
+
+        if (
+            key == 'b' ||
+            key == 'B' ||
+            key == 27
+        ) {
+            return;
+        }
+
+        if (
+            large_layout &&
+            (
+                key == '\t' ||
+                key == KEY_BTAB
+            )
+        ) {
             focus =
                 focus == 0
                     ? 1
                     : 0;
+
             continue;
         }
 
-        if (primary_top_nav_forward(
-                key
-            )) {
-            return;
-        }
-
-        if (key == 'b' ||
-            key == 'B' ||
-            key == 27) {
-            return;
-        }
-
-        if (focus == 0) {
+        if (
+            large_layout &&
+            focus == 0
+        ) {
             if (key == KEY_LEFT) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
                         : 5;
-            } else if (key == KEY_RIGHT) {
+            } else if (
+                key == KEY_RIGHT
+            ) {
                 nav_selected =
                     nav_selected < 5
                         ? nav_selected + 1
@@ -9170,7 +10683,9 @@ static void screen_sync(
                 key == '\n' ||
                 key == KEY_ENTER
             ) {
-                if (nav_selected == 5) {
+                if (
+                    nav_selected == 5
+                ) {
                     focus = 1;
                 } else if (
                     primary_top_nav_activate(
@@ -9184,48 +10699,46 @@ static void screen_sync(
             continue;
         }
 
-        if (key == KEY_UP) {
+        if (
+            key == KEY_UP &&
+            history_count > 0U
+        ) {
             selected =
                 selected > 0U
                     ? selected - 1U
-                    : 0U;
-            continue;
-        }
-
-        if (key == KEY_DOWN) {
+                    : history_count - 1U;
+        } else if (
+            key == KEY_DOWN &&
+            history_count > 0U
+        ) {
             selected =
-                selected + 1U < item_count
+                selected + 1U <
+                    history_count
                     ? selected + 1U
-                    : item_count - 1U;
-            continue;
-        }
-
-        if (key == KEY_PPAGE) {
-            size_t jump =
-                (size_t)visible_rows;
-
-            selected =
-                selected > jump
-                    ? selected - jump
                     : 0U;
-            continue;
+        } else if (
+            key == '0' ||
+            key == KEY_HOME
+        ) {
+            return;
+        } else if (
+            key == '1' ||
+            key == KEY_F(1) ||
+            key == '2' ||
+            key == KEY_F(2) ||
+            key == '3' ||
+            key == KEY_F(3) ||
+            key == '4' ||
+            key == KEY_F(4)
+        ) {
+            if (
+                primary_top_nav_forward(
+                    key
+                )
+            ) {
+                return;
+            }
         }
-
-        if (key == KEY_NPAGE) {
-            size_t jump =
-                (size_t)visible_rows;
-
-            selected =
-                selected + jump < item_count
-                    ? selected + jump
-                    : item_count - 1U;
-            continue;
-        }
-
-        /*
-         * 'r' intentionally reaches the next loop iteration. Every iteration
-         * performs a fresh USB/MTP scan before repainting the page.
-         */
     }
 }
 
