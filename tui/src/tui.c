@@ -25,6 +25,7 @@
 #include "trainlog/duration.h"
 #include "trainlog/id.h"
 #include "trainlog/mtp.h"
+#include "trainlog/reps.h"
 #include "trainlog/theme.h"
 #include "trainlog/timeutil.h"
 #include "trainlog/usb.h"
@@ -40,6 +41,7 @@
 
 /* TRAINLOG_TUI_V02_POLISH */
 /* TRAINLOG_TUI_PROFILED_EXERCISE_CREATION */
+/* TRAINLOG_VARIABLE_SET_REPS_V1 */
 /* TRAINLOG_SYNC_RESPONSIVE_CACHE */
 /* TRAINLOG_SYNC_LARGE_LAYOUT_S_FIX */
 /* TRAINLOG_SYNC_HISTORY_BIDIRECTIONAL_V1 */
@@ -4493,7 +4495,10 @@ static bool build_session_exercise(
     int target_sets = 3;
     int target_metric;
     int rest_seconds = 60;
-    int actual_sets;
+    int actual_sets = 0;
+    int rep_values[MAX_SETS_PER_EXERCISE];
+    size_t rep_count = 0U;
+    char rep_sequence[512];
     bool target_has_weight = false;
     double target_weight = 0.0;
     size_t set_index;
@@ -4689,15 +4694,51 @@ static bool build_session_exercise(
         return false;
     }
 
-    if (!prompt_int_value(
-            9,
-            "Séries réellement faites",
-            0,
-            (int)set_capacity,
-            target_sets,
-            &actual_sets
-        )) {
-        return false;
+    if (
+        exercise.tracking_mode ==
+        TRAINLOG_TRACKING_REPS
+    ) {
+        for (;;) {
+            if (!prompt_text(
+                    9,
+                    "Séries réalisées (5x10 | 4,5,6,... | 4..10..4) : ",
+                    rep_sequence,
+                    sizeof(rep_sequence),
+                    false
+                )) {
+                return false;
+            }
+
+            if (
+                trainlog_reps_parse_sequence(
+                    rep_sequence,
+                    rep_values,
+                    set_capacity,
+                    &rep_count
+                ) ==
+                TRAINLOG_STATUS_OK
+            ) {
+                break;
+            }
+
+            status_line(
+                "Séries invalides. Exemples : 5x10 · 4,5,6,7 · 4..10..4",
+                TRAINLOG_COLOR_ERROR
+            );
+
+            refresh();
+        }
+    } else {
+        if (!prompt_int_value(
+                9,
+                "Séries réellement faites",
+                0,
+                (int)set_capacity,
+                target_sets,
+                &actual_sets
+            )) {
+            return false;
+        }
     }
 
     output->load_mode =
@@ -4732,7 +4773,10 @@ static bool build_session_exercise(
 
     output->sets = set_storage;
     output->set_count =
-        (size_t)actual_sets;
+        exercise.tracking_mode ==
+            TRAINLOG_TRACKING_REPS
+            ? rep_count
+            : (size_t)actual_sets;
 
     for (set_index = 0U;
          set_index < output->set_count;
@@ -4746,31 +4790,31 @@ static bool build_session_exercise(
             sizeof(set_storage[set_index])
         );
 
-        draw_shell(
-            exercise.name,
-            "Échap annuler · Durées : 90, 90s, 1:30, 1m30, 2m"
-        );
+        if (
+            exercise.tracking_mode ==
+                TRAINLOG_TRACKING_DURATION ||
+            target_has_weight
+        ) {
+            draw_shell(
+                exercise.name,
+                "Échap annuler · Durées : 90, 90s, 1:30, 1m30, 2m"
+            );
 
-        mvprintw(
-            3,
-            4,
-            "Série %zu / %zu",
-            set_index + 1U,
-            output->set_count
-        );
+            mvprintw(
+                3,
+                4,
+                "Série %zu / %zu",
+                set_index + 1U,
+                output->set_count
+            );
+        }
 
-        if (exercise.tracking_mode ==
-            TRAINLOG_TRACKING_REPS) {
-            if (!prompt_int_value(
-                    5,
-                    "Répétitions réalisées",
-                    0,
-                    10000,
-                    target_metric,
-                    &actual_metric
-                )) {
-                return false;
-            }
+        if (
+            exercise.tracking_mode ==
+            TRAINLOG_TRACKING_REPS
+        ) {
+            actual_metric =
+                rep_values[set_index];
 
             set_storage[set_index].reps =
                 actual_metric;
@@ -6612,8 +6656,18 @@ static void screen_session_detail(
                     rest_text
                 );
 
-                if (exercise->tracking_mode ==
-                    TRAINLOG_TRACKING_REPS) {
+                if (
+                    exercise->target_sets <= 0
+                ) {
+                    mvprintw(
+                        target_row,
+                        decorated ? 5 : 4,
+                        "Cible : non renseignée"
+                    );
+                } else if (
+                    exercise->tracking_mode ==
+                    TRAINLOG_TRACKING_REPS
+                ) {
                     mvprintw(
                         target_row,
                         decorated ? 5 : 4,

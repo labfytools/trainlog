@@ -61,7 +61,7 @@ def main():
             "PRAGMA user_version;"
         ).fetchone()[0]
 
-        if version != 4:
+        if version != 5:
             raise SystemExit(
                 "PC_CATALOG_EXPORT=FAIL "
                 f"schema={version}"

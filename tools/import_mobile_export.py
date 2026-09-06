@@ -491,28 +491,11 @@ def validate_session_exercise(
             f"{label}.sets: tableau non vide attendu"
         )
 
-    metric_values = []
-
     for set_index, set_item in enumerate(sets):
-        _, metric = validate_set_item(
+        validate_set_item(
             set_item,
             tracking_mode,
             f"{label}.sets[{set_index}]",
-        )
-
-        metric_values.append(metric)
-
-    if len(set(metric_values)) != 1:
-        raise ImportFailure(
-            f"{label}: mobile export v1 exige des séries uniformes"
-        )
-
-    if (
-        tracking_mode == "reps"
-        and metric_values[0] < 1
-    ):
-        raise ImportFailure(
-            f"{label}: mobile export v1 ne peut pas dériver une cible depuis 0 reps"
         )
 
 
@@ -659,14 +642,14 @@ def validate_payload(payload):
     validate_body(payload)
 
 
-def require_schema_v4(connection):
+def require_schema_v5(connection):
     version = connection.execute(
         "PRAGMA user_version;"
     ).fetchone()[0]
 
-    if version != 4:
+    if version != 5:
         raise ImportFailure(
-            f"base desktop schema v4 attendue, version trouvée: {version}"
+            f"base desktop schema v5 attendue, version trouvée: {version}"
         )
 
 
@@ -856,26 +839,6 @@ def import_set_session_exercise(
 ):
     sets = item["sets"]
     tracking = item["tracking_mode"]
-    metric_values = []
-
-    for set_item in sets:
-        if tracking == "reps":
-            metric_values.append(
-                set_item["reps"]
-            )
-        else:
-            metric_values.append(
-                set_item["duration_seconds"]
-            )
-
-    target_metric = metric_values[0]
-
-    if tracking == "reps":
-        target_reps = target_metric
-        target_duration = None
-    else:
-        target_reps = None
-        target_duration = target_metric
 
     cursor = connection.execute(
         """
@@ -894,7 +857,7 @@ def import_set_session_exercise(
             notes
         ) VALUES(
             ?, ?, 'sets', ?, ?, 'none', 0,
-            ?, ?, ?, NULL, NULL
+            NULL, NULL, NULL, NULL, NULL
         );
         """,
         (
@@ -902,9 +865,6 @@ def import_set_session_exercise(
             exercise_row,
             item["data_fields"],
             position,
-            len(sets),
-            target_reps,
-            target_duration,
         ),
     )
 
@@ -939,7 +899,6 @@ def import_set_session_exercise(
                 duration,
             ),
         )
-
 
 def import_continuous_session_exercise(
     connection,
@@ -1205,7 +1164,7 @@ def run_import(
             "PRAGMA foreign_keys = ON;"
         )
 
-        require_schema_v4(
+        require_schema_v5(
             connection
         )
 

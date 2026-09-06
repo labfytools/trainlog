@@ -35,6 +35,7 @@ trainlog_core_sources = files(
   'src/timeutil.c',
   'src/usb.c',
   'src/mtp.c',
+  'src/reps.c',
 )
 
 trainlog_core = static_library(
@@ -287,3 +288,48 @@ trainlog_mtp_mobile_export_probe = executable(
   c_args: strict_c_args,
 )
 
+test_reps = executable(
+  'test_reps',
+  'tests/test_reps.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'reps',
+  test_reps,
+)
+
+test_variable_sets = executable(
+  'test_variable_sets',
+  'tests/test_variable_sets.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'variable_sets',
+  test_variable_sets,
+)
+
+test_schema_v5_migration = executable(
+  'test_schema_v5_migration',
+  'tests/test_schema_v5_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'schema_v5_migration',
+  test_schema_v5_migration,
+)
+
+python3_trainlog_tests = find_program('python3')
+
+test(
+  'mobile_import_variable_sets',
+  python3_trainlog_tests,
+  args: [
+    meson.project_source_root() / 'tests/test_mobile_import_variable_sets.py',
+  ],
+)

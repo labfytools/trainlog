@@ -1,5 +1,9 @@
 package com.labfytools.trainlog.ui
 
+/* TRAINLOG_ANDROID_SESSION_REMOVE */
+
+/* TRAINLOG_VARIABLE_SET_REPS_V1 */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -112,6 +116,30 @@ fun SessionScreen(
                                     ),
                             color =
                                 colors.text,
+                        )
+
+                        TrainlogAction(
+                            label =
+                                "Retirer ${draft.exercise.name}",
+                            description =
+                                "Supprimer cet exercice de la séance en cours.",
+                            accent =
+                                colors.error,
+                            onClick = {
+                                draftExercises =
+                                    draftExercises
+                                        .filterIndexed {
+                                                itemIndex,
+                                                _ ->
+                                            itemIndex !=
+                                                index
+                                        }
+
+                                sessionRevision += 1
+
+                                message =
+                                    "Exercice retiré de la séance."
+                            },
                         )
                     }
             }
@@ -269,7 +297,9 @@ fun SessionScreen(
                             message ==
                             "Séance enregistrée." ||
                             message ==
-                            "Exercice ajouté à la séance."
+                            "Exercice ajouté à la séance." ||
+                            message ==
+                            "Exercice retiré de la séance."
                         ) {
                             colors.success
                         } else {
@@ -382,7 +412,7 @@ private fun SessionExerciseForm(
 
     var repsText by
         remember(key) {
-            mutableStateOf("10")
+            mutableStateOf("3x10")
         }
 
     var durationText by
@@ -423,24 +453,13 @@ private fun SessionExerciseForm(
             exercise.recordingMode ==
             RecordingMode.SETS
         ) {
-            SessionNumberField(
-                label =
-                    "Nombre de séries",
-                value =
-                    setCountText,
-                onValueChange = {
-                    setCountText = it
-                    error = null
-                },
-            )
-
             if (
                 exercise.trackingMode ==
                 TrackingMode.REPS
             ) {
                 SessionNumberField(
                     label =
-                        "Répétitions par série",
+                        "Séries / répétitions",
                     value =
                         repsText,
                     onValueChange = {
@@ -448,7 +467,25 @@ private fun SessionExerciseForm(
                         error = null
                     },
                 )
+
+                TrainlogInfo(
+                    text =
+                        "Formats : 5x10 · 4,5,6,7 · 4..10..4",
+                    color =
+                        colors.muted,
+                )
             } else {
+                SessionNumberField(
+                    label =
+                        "Nombre de séries",
+                    value =
+                        setCountText,
+                    onValueChange = {
+                        setCountText = it
+                        error = null
+                    },
+                )
+
                 SessionNumberField(
                     label =
                         "Durée par série (secondes)",
@@ -624,6 +661,160 @@ private fun SessionNumberField(
     }
 }
 
+private const val MAX_SESSION_SETS = 64
+private const val MAX_REPS_PER_SET = 10000
+
+private fun parseRepSequence(
+    text: String,
+): List<Int>? {
+    val normalized =
+        text.trim()
+            .lowercase()
+            .replace(
+                '×',
+                'x'
+            )
+
+    if (normalized.isEmpty()) {
+        return null
+    }
+
+    val repeated =
+        Regex(
+            """^(\d+)\s*x\s*(\d+)$"""
+        ).matchEntire(
+            normalized
+        )
+
+    if (repeated != null) {
+        val count =
+            repeated.groupValues[1]
+                .toIntOrNull()
+
+        val reps =
+            repeated.groupValues[2]
+                .toIntOrNull()
+
+        if (
+            count == null ||
+            reps == null ||
+            count !in 1..MAX_SESSION_SETS ||
+            reps !in 0..MAX_REPS_PER_SET
+        ) {
+            return null
+        }
+
+        return List(count) {
+            reps
+        }
+    }
+
+    val pyramid =
+        Regex(
+            """^(\d+)\s*\.\.\s*(\d+)\s*\.\.\s*(\d+)$"""
+        ).matchEntire(
+            normalized
+        )
+
+    if (pyramid != null) {
+        val start =
+            pyramid.groupValues[1]
+                .toIntOrNull()
+
+        val peak =
+            pyramid.groupValues[2]
+                .toIntOrNull()
+
+        val end =
+            pyramid.groupValues[3]
+                .toIntOrNull()
+
+        if (
+            start == null ||
+            peak == null ||
+            end == null ||
+            start !in 0..MAX_REPS_PER_SET ||
+            peak !in 0..MAX_REPS_PER_SET ||
+            end !in 0..MAX_REPS_PER_SET ||
+            start > peak ||
+            end > peak
+        ) {
+            return null
+        }
+
+        val values =
+            mutableListOf<Int>()
+
+        for (value in start..peak) {
+            values += value
+
+            if (
+                values.size >
+                MAX_SESSION_SETS
+            ) {
+                return null
+            }
+        }
+
+        if (peak > end) {
+            for (
+                value in
+                    (peak - 1) downTo end
+            ) {
+                values += value
+
+                if (
+                    values.size >
+                    MAX_SESSION_SETS
+                ) {
+                    return null
+                }
+            }
+        }
+
+        return values
+    }
+
+    val parts =
+        normalized
+            .split(
+                Regex(
+                    """[\s,;]+"""
+                )
+            )
+            .filter {
+                it.isNotEmpty()
+            }
+
+    if (
+        parts.isEmpty() ||
+        parts.size >
+        MAX_SESSION_SETS
+    ) {
+        return null
+    }
+
+    val values =
+        mutableListOf<Int>()
+
+    for (part in parts) {
+        val reps =
+            part.toIntOrNull()
+                ?: return null
+
+        if (
+            reps !in
+            0..MAX_REPS_PER_SET
+        ) {
+            return null
+        }
+
+        values += reps
+    }
+
+    return values
+}
+
 private fun buildSessionExerciseDraft(
     exercise: ExerciseProfile,
     setCountText: String,
@@ -637,8 +828,7 @@ private fun buildSessionExerciseDraft(
         RecordingMode.CONTINUOUS
     ) {
         val minutes =
-            durationText
-                .toIntOrNull()
+            durationText.toIntOrNull()
 
         if (
             minutes == null ||
@@ -649,35 +839,25 @@ private fun buildSessionExerciseDraft(
         } else {
             val wantsSpeed =
                 exercise.dataFields and
-                    ExerciseDataFields
-                        .SPEED_KMH != 0
+                    ExerciseDataFields.SPEED_KMH != 0
 
             val wantsDistance =
                 exercise.dataFields and
-                    ExerciseDataFields
-                        .DISTANCE_KM != 0
+                    ExerciseDataFields.DISTANCE_KM != 0
 
             val speed =
                 if (wantsSpeed) {
                     speedText
-                        .replace(
-                            ',',
-                            '.'
-                        )
+                        .replace(',', '.')
                         .toDoubleOrNull()
                 } else {
                     null
                 }
 
             val distance =
-                if (
-                    wantsDistance
-                ) {
+                if (wantsDistance) {
                     distanceText
-                        .replace(
-                            ',',
-                            '.'
-                        )
+                        .replace(',', '.')
                         .toDoubleOrNull()
                 } else {
                     null
@@ -686,152 +866,148 @@ private fun buildSessionExerciseDraft(
             if (
                 (
                     wantsSpeed &&
-                        (
-                            speed == null ||
-                            speed <= 0.0
-                        )
+                    (
+                        speed == null ||
+                        speed <= 0.0
+                    )
                 ) ||
                 (
                     wantsDistance &&
-                        (
-                            distance == null ||
-                            distance <= 0.0
-                        )
+                    (
+                        distance == null ||
+                        distance <= 0.0
+                    )
                 )
             ) {
                 null
             } else {
                 SessionExerciseDraft(
-                    exercise =
-                        exercise,
+                    exercise = exercise,
                     continuousDurationSeconds =
                         minutes * 60,
-                    speedKmh =
-                        speed,
-                    distanceKm =
-                        distance,
+                    speedKmh = speed,
+                    distanceKm = distance,
                 )
             }
         }
+    } else if (
+        exercise.trackingMode ==
+        TrackingMode.REPS
+    ) {
+        val reps =
+            parseRepSequence(
+                repsText
+            ) ?: return null
+
+        SessionExerciseDraft(
+            exercise = exercise,
+            sets =
+                reps.map {
+                    SessionSetDraft(
+                        reps = it
+                    )
+                },
+        )
     } else {
         val count =
-            setCountText
-                .toIntOrNull()
+            setCountText.toIntOrNull()
+
+        val seconds =
+            durationText.toIntOrNull()
 
         if (
             count == null ||
             count <= 0 ||
-            count > 64
+            count > MAX_SESSION_SETS ||
+            seconds == null ||
+            seconds <= 0 ||
+            seconds > 86400
         ) {
             null
-        } else if (
-            exercise.trackingMode ==
-            TrackingMode.REPS
-        ) {
-            val reps =
-                repsText
-                    .toIntOrNull()
-
-            if (
-                reps == null ||
-                reps < 0 ||
-                reps > 10000
-            ) {
-                null
-            } else {
-                SessionExerciseDraft(
-                    exercise =
-                        exercise,
-                    sets =
-                        List(count) {
-                            SessionSetDraft(
-                                reps = reps
-                            )
-                        },
-                )
-            }
         } else {
-            val seconds =
-                durationText
-                    .toIntOrNull()
-
-            if (
-                seconds == null ||
-                seconds <= 0 ||
-                seconds > 86400
-            ) {
-                null
-            } else {
-                SessionExerciseDraft(
-                    exercise =
-                        exercise,
-                    sets =
-                        List(count) {
-                            SessionSetDraft(
-                                durationSeconds =
-                                    seconds
-                            )
-                        },
-                )
-            }
+            SessionExerciseDraft(
+                exercise = exercise,
+                sets =
+                    List(count) {
+                        SessionSetDraft(
+                            durationSeconds =
+                                seconds
+                        )
+                    },
+            )
         }
     }
 }
 
 private fun draftSummary(
-    draft:
-        SessionExerciseDraft,
+    draft: SessionExerciseDraft,
 ): String {
-    val exercise =
-        draft.exercise
-
     return if (
-        exercise.recordingMode ==
+        draft.exercise.recordingMode ==
         RecordingMode.CONTINUOUS
     ) {
         buildString {
             append(
-                exercise.name
+                draft.exercise.name
             )
-
-            append(" · ")
 
             append(
-                draft
-                    .continuousDurationSeconds /
-                    60
+                " · ${draft.continuousDurationSeconds / 60} min"
             )
 
-            append(" min")
-
-            draft.speedKmh
-                ?.let {
-                    append(
-                        " · %.1f km/h"
-                            .format(it)
-                    )
-                }
-
-            draft.distanceKm
-                ?.let {
-                    append(
-                        " · %.2f km"
-                            .format(it)
-                    )
-                }
-        }
-    } else {
-        val metric =
-            if (
-                exercise.trackingMode ==
-                TrackingMode.REPS
-            ) {
-                "${draft.sets.firstOrNull()?.reps ?: 0} reps"
-            } else {
-                "${draft.sets.firstOrNull()?.durationSeconds ?: 0} s"
+            draft.speedKmh?.let {
+                append(
+                    " · %.1f km/h"
+                        .format(it)
+                )
             }
 
-        "${exercise.name} · ${draft.sets.size} × $metric"
+            draft.distanceKm?.let {
+                append(
+                    " · %.2f km"
+                        .format(it)
+                )
+            }
+        }
+    } else if (
+        draft.exercise.trackingMode ==
+        TrackingMode.REPS
+    ) {
+        val reps =
+            draft.sets.map {
+                it.reps
+            }
+
+        if (
+            reps.isNotEmpty() &&
+            reps.all {
+                it == reps.first()
+            }
+        ) {
+            (
+                "${draft.exercise.name} · " +
+                "${reps.size} × " +
+                "${reps.first()} reps"
+            )
+        } else {
+            (
+                "${draft.exercise.name} · " +
+                "${reps.size} séries · " +
+                reps.joinToString(
+                    separator = ","
+                ) +
+                " reps"
+            )
+        }
+    } else {
+        val first =
+            draft.sets.firstOrNull()
+
+        (
+            "${draft.exercise.name} · " +
+                "${draft.sets.size} × " +
+                "${first?.durationSeconds ?: 0} s"
+        )
     }
 }
 

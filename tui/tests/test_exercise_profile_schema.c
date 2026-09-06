@@ -130,7 +130,7 @@ static bool test_profile_roundtrip(void)
     return true;
 }
 
-static bool test_v2_to_v3_migration(void)
+static bool test_v2_to_current_migration(void)
 {
     char path[] =
         "/tmp/trainlog-schema-v2-profile-XXXXXX";
@@ -206,7 +206,10 @@ static bool test_v2_to_v3_migration(void)
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(version == 3);
+    CHECK(
+        version ==
+        TRAINLOG_DATABASE_SCHEMA_VERSION
+    );
 
     trainlog_database_close(database);
     database = NULL;
@@ -281,7 +284,7 @@ static bool test_v2_to_v3_migration(void)
 int main(void)
 {
     CHECK(test_profile_roundtrip());
-    CHECK(test_v2_to_v3_migration());
+    CHECK(test_v2_to_current_migration());
 
     (void)printf("PASS exercise_profile_schema\n");
     return 0;

@@ -17,7 +17,7 @@ struct TrainlogDatabase {
     sqlite3 *connection;
 };
 
-static const char *const SCHEMA_V4_SQL_A =
+static const char *const SCHEMA_V5_SQL_A =
     "BEGIN IMMEDIATE;"
 
     "CREATE TABLE IF NOT EXISTS exercises ("
@@ -69,11 +69,16 @@ static const char *const SCHEMA_V4_SQL_A =
     "  UNIQUE (session_row_id, exercise_row_id),"
     "  CHECK ("
     "    (recording_mode = 'sets' AND"
-    "     target_sets IS NOT NULL AND"
-    "     ((target_reps IS NOT NULL AND"
-    "       target_duration_seconds IS NULL) OR"
-    "      (target_reps IS NULL AND"
-    "       target_duration_seconds IS NOT NULL))) OR"
+    "     ("
+    "       (target_sets IS NULL AND"
+    "        target_reps IS NULL AND"
+    "        target_duration_seconds IS NULL) OR"
+    "       (target_sets IS NOT NULL AND"
+    "        ((target_reps IS NOT NULL AND"
+    "          target_duration_seconds IS NULL) OR"
+    "         (target_reps IS NULL AND"
+    "          target_duration_seconds IS NOT NULL)))"
+    "     )) OR"
     "    (recording_mode = 'continuous' AND"
     "     target_sets IS NULL AND"
     "     target_reps IS NULL AND"
@@ -104,7 +109,7 @@ static const char *const SCHEMA_V4_SQL_A =
     "  )"
     ");";
 
-static const char *const SCHEMA_V4_SQL_B =
+static const char *const SCHEMA_V5_SQL_B =
     "CREATE TABLE IF NOT EXISTS continuous_activity ("
     "  id INTEGER PRIMARY KEY,"
     "  session_exercise_row_id INTEGER NOT NULL UNIQUE"
@@ -147,7 +152,7 @@ static const char *const SCHEMA_V4_SQL_B =
     "  )"
     ");"
 
-    "PRAGMA user_version = 4;"
+    "PRAGMA user_version = 5;"
     "COMMIT;";
 
 static const char *const MIGRATE_V1_TO_V3_SQL =
@@ -315,6 +320,123 @@ static const char *const MIGRATE_V3_TO_V4_SQL_B =
     "PRAGMA user_version = 4;"
     "COMMIT;";
 
+static const char *const MIGRATE_V4_TO_V5_SQL_A =
+    "BEGIN IMMEDIATE;"
+
+    "CREATE TABLE session_exercises_v5 ("
+    "  id INTEGER PRIMARY KEY,"
+    "  session_row_id INTEGER NOT NULL"
+    "    REFERENCES sessions(id) ON DELETE CASCADE,"
+    "  exercise_row_id INTEGER NOT NULL"
+    "    REFERENCES exercises(id) ON DELETE RESTRICT,"
+    "  recording_mode TEXT NOT NULL DEFAULT 'sets'"
+    "    CHECK (recording_mode IN ('sets', 'continuous')),"
+    "  data_fields INTEGER NOT NULL DEFAULT 0"
+    "    CHECK (data_fields >= 0 AND (data_fields & ~3) = 0),"
+    "  position INTEGER NOT NULL CHECK (position >= 0),"
+    "  load_mode TEXT NOT NULL"
+    "    CHECK (load_mode IN ('none', 'external', 'assistance')),"
+    "  rest_seconds INTEGER NOT NULL CHECK (rest_seconds >= 0),"
+    "  target_sets INTEGER CHECK (target_sets > 0),"
+    "  target_reps INTEGER CHECK (target_reps >= 1),"
+    "  target_duration_seconds INTEGER"
+    "    CHECK (target_duration_seconds > 0),"
+    "  target_weight_kg REAL CHECK (target_weight_kg > 0.0),"
+    "  notes TEXT,"
+    "  UNIQUE (session_row_id, position),"
+    "  UNIQUE (session_row_id, exercise_row_id),"
+    "  CHECK ("
+    "    (recording_mode = 'sets' AND"
+    "     ("
+    "       (target_sets IS NULL AND"
+    "        target_reps IS NULL AND"
+    "        target_duration_seconds IS NULL) OR"
+    "       (target_sets IS NOT NULL AND"
+    "        ((target_reps IS NOT NULL AND"
+    "          target_duration_seconds IS NULL) OR"
+    "         (target_reps IS NULL AND"
+    "          target_duration_seconds IS NOT NULL)))"
+    "     )) OR"
+    "    (recording_mode = 'continuous' AND"
+    "     target_sets IS NULL AND"
+    "     target_reps IS NULL AND"
+    "     target_duration_seconds IS NULL AND"
+    "     load_mode = 'none' AND"
+    "     rest_seconds = 0 AND"
+    "     target_weight_kg IS NULL)"
+    "  ),"
+    "  CHECK ("
+    "    (load_mode = 'none' AND target_weight_kg IS NULL) OR"
+    "    (load_mode IN ('external', 'assistance') AND"
+    "     target_weight_kg IS NOT NULL)"
+    "  )"
+    ");"
+
+    "INSERT INTO session_exercises_v5("
+    "id, session_row_id, exercise_row_id, recording_mode, data_fields,"
+    "position, load_mode, rest_seconds, target_sets, target_reps,"
+    "target_duration_seconds, target_weight_kg, notes"
+    ") SELECT "
+    "id, session_row_id, exercise_row_id, recording_mode, data_fields,"
+    "position, load_mode, rest_seconds, target_sets, target_reps,"
+    "target_duration_seconds, target_weight_kg, notes "
+    "FROM session_exercises;"
+
+    "CREATE TABLE performed_sets_v5 ("
+    "  id INTEGER PRIMARY KEY,"
+    "  session_exercise_row_id INTEGER NOT NULL"
+    "    REFERENCES session_exercises_v5(id) ON DELETE CASCADE,"
+    "  position INTEGER NOT NULL CHECK (position >= 0),"
+    "  reps INTEGER CHECK (reps >= 0),"
+    "  duration_seconds INTEGER CHECK (duration_seconds > 0),"
+    "  weight_kg REAL CHECK (weight_kg > 0.0),"
+    "  UNIQUE (session_exercise_row_id, position),"
+    "  CHECK ("
+    "    (reps IS NOT NULL AND duration_seconds IS NULL) OR"
+    "    (reps IS NULL AND duration_seconds IS NOT NULL)"
+    "  )"
+    ");"
+
+    "INSERT INTO performed_sets_v5("
+    "id, session_exercise_row_id, position, reps,"
+    "duration_seconds, weight_kg"
+    ") SELECT "
+    "id, session_exercise_row_id, position, reps,"
+    "duration_seconds, weight_kg "
+    "FROM performed_sets;";
+
+static const char *const MIGRATE_V4_TO_V5_SQL_B =
+    "CREATE TABLE continuous_activity_v5 ("
+    "  id INTEGER PRIMARY KEY,"
+    "  session_exercise_row_id INTEGER NOT NULL UNIQUE"
+    "    REFERENCES session_exercises_v5(id) ON DELETE CASCADE,"
+    "  duration_seconds INTEGER NOT NULL CHECK (duration_seconds > 0),"
+    "  speed_kmh REAL CHECK (speed_kmh > 0.0),"
+    "  distance_km REAL CHECK (distance_km > 0.0)"
+    ");"
+
+    "INSERT INTO continuous_activity_v5("
+    "id, session_exercise_row_id, duration_seconds,"
+    "speed_kmh, distance_km"
+    ") SELECT "
+    "id, session_exercise_row_id, duration_seconds,"
+    "speed_kmh, distance_km "
+    "FROM continuous_activity;"
+
+    "DROP TABLE continuous_activity;"
+    "DROP TABLE performed_sets;"
+    "DROP TABLE session_exercises;"
+
+    "ALTER TABLE session_exercises_v5"
+    " RENAME TO session_exercises;"
+    "ALTER TABLE performed_sets_v5"
+    " RENAME TO performed_sets;"
+    "ALTER TABLE continuous_activity_v5"
+    " RENAME TO continuous_activity;"
+
+    "PRAGMA user_version = 5;"
+    "COMMIT;";
+
 static TrainlogStatus execute_sql(
     TrainlogDatabase *database,
     const char *sql
@@ -373,90 +495,160 @@ static TrainlogStatus initialize_or_validate_schema(
     int version = 0;
     TrainlogStatus status;
 
-    status = trainlog_database_schema_version(
-        database,
-        &version
-    );
+    status =
+        trainlog_database_schema_version(
+            database,
+            &version
+        );
 
-    if (status != TRAINLOG_STATUS_OK) {
+    if (
+        status !=
+        TRAINLOG_STATUS_OK
+    ) {
         return status;
     }
 
-    if (version > TRAINLOG_DATABASE_SCHEMA_VERSION) {
-        return TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
+    if (
+        version >
+        TRAINLOG_DATABASE_SCHEMA_VERSION
+    ) {
+        return
+            TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
     }
 
-    if (version == TRAINLOG_DATABASE_SCHEMA_VERSION) {
+    if (
+        version ==
+        TRAINLOG_DATABASE_SCHEMA_VERSION
+    ) {
         return TRAINLOG_STATUS_OK;
     }
 
     if (version == 0) {
-        status = execute_sql(
-            database,
-            SCHEMA_V4_SQL_A
-        );
-
-        if (status == TRAINLOG_STATUS_OK) {
-            status = execute_sql(
+        status =
+            execute_sql(
                 database,
-                SCHEMA_V4_SQL_B
+                SCHEMA_V5_SQL_A
             );
-        }
-    } else if (version == 1) {
-        status = execute_sql(
-            database,
-            MIGRATE_V1_TO_V3_SQL
-        );
 
-        if (status == TRAINLOG_STATUS_OK) {
-            status = execute_sql(
-                database,
-                MIGRATE_V3_TO_V4_SQL_A
-            );
-        }
-
-        if (status == TRAINLOG_STATUS_OK) {
-            status = execute_sql(
-                database,
-                MIGRATE_V3_TO_V4_SQL_B
-            );
-        }
-    } else if (version == 2) {
-        status = execute_sql(
-            database,
-            MIGRATE_V2_TO_V3_SQL
-        );
-
-        if (status == TRAINLOG_STATUS_OK) {
-            status = execute_sql(
-                database,
-                MIGRATE_V3_TO_V4_SQL_A
-            );
-        }
-
-        if (status == TRAINLOG_STATUS_OK) {
-            status = execute_sql(
-                database,
-                MIGRATE_V3_TO_V4_SQL_B
-            );
-        }
-    } else if (version == 3) {
-        status = execute_sql(
-            database,
-            MIGRATE_V3_TO_V4_SQL_A
-        );
-
-        if (status == TRAINLOG_STATUS_OK) {
-            status = execute_sql(
-                database,
-                MIGRATE_V3_TO_V4_SQL_B
-            );
+        if (
+            status ==
+            TRAINLOG_STATUS_OK
+        ) {
+            status =
+                execute_sql(
+                    database,
+                    SCHEMA_V5_SQL_B
+                );
         }
     } else {
-        return TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
+        if (version == 1) {
+            status =
+                execute_sql(
+                    database,
+                    MIGRATE_V1_TO_V3_SQL
+                );
+
+            if (
+                status ==
+                TRAINLOG_STATUS_OK
+            ) {
+                status =
+                    execute_sql(
+                        database,
+                        MIGRATE_V3_TO_V4_SQL_A
+                    );
+            }
+
+            if (
+                status ==
+                TRAINLOG_STATUS_OK
+            ) {
+                status =
+                    execute_sql(
+                        database,
+                        MIGRATE_V3_TO_V4_SQL_B
+                    );
+            }
+        } else if (version == 2) {
+            status =
+                execute_sql(
+                    database,
+                    MIGRATE_V2_TO_V3_SQL
+                );
+
+            if (
+                status ==
+                TRAINLOG_STATUS_OK
+            ) {
+                status =
+                    execute_sql(
+                        database,
+                        MIGRATE_V3_TO_V4_SQL_A
+                    );
+            }
+
+            if (
+                status ==
+                TRAINLOG_STATUS_OK
+            ) {
+                status =
+                    execute_sql(
+                        database,
+                        MIGRATE_V3_TO_V4_SQL_B
+                    );
+            }
+        } else if (version == 3) {
+            status =
+                execute_sql(
+                    database,
+                    MIGRATE_V3_TO_V4_SQL_A
+                );
+
+            if (
+                status ==
+                TRAINLOG_STATUS_OK
+            ) {
+                status =
+                    execute_sql(
+                        database,
+                        MIGRATE_V3_TO_V4_SQL_B
+                    );
+            }
+        } else if (version == 4) {
+            status =
+                TRAINLOG_STATUS_OK;
+        } else {
+            return
+                TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
+        }
+
+        if (
+            status ==
+            TRAINLOG_STATUS_OK
+        ) {
+            status =
+                execute_sql(
+                    database,
+                    MIGRATE_V4_TO_V5_SQL_A
+                );
+        }
+
+        if (
+            status ==
+            TRAINLOG_STATUS_OK
+        ) {
+            status =
+                execute_sql(
+                    database,
+                    MIGRATE_V4_TO_V5_SQL_B
+                );
+        }
     }
 
-    if (status != TRAINLOG_STATUS_OK) {
+    if (
+        status !=
+        TRAINLOG_STATUS_OK
+    ) {
         (void)sqlite3_exec(
             database->connection,
             "ROLLBACK;",
@@ -1278,10 +1470,39 @@ static TrainlogStatus insert_session_exercise(
         input->recording_mode ==
         TRAINLOG_RECORDING_SETS
     ) {
-        if (input->target_sets <= 0 ||
+        bool has_target_sets =
+            input->target_sets > 0;
+
+        bool has_target_reps =
+            input->target_reps > 0;
+
+        bool has_target_duration =
+            input->target_duration_seconds > 0;
+
+        bool any_target =
+            has_target_sets ||
+            has_target_reps ||
+            has_target_duration;
+
+        bool target_valid =
+            !any_target ||
+            (
+                has_target_sets &&
+                (
+                    has_target_reps !=
+                    has_target_duration
+                )
+            );
+
+        if (
+            input->target_sets < 0 ||
+            input->target_reps < 0 ||
+            input->target_duration_seconds < 0 ||
+            !target_valid ||
             input->continuous_duration_seconds != 0 ||
             input->continuous_has_speed ||
-            input->continuous_has_distance) {
+            input->continuous_has_distance
+        ) {
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
         }
     } else {

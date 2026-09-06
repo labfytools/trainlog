@@ -352,9 +352,156 @@ static bool test_load_replace_and_rollback(void)
     return true;
 }
 
+static bool test_remove_exercise_from_session(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogSessionExerciseInput exercises[2];
+    TrainlogSessionExerciseInput replacement;
+    TrainlogSetInput press_sets[2];
+    TrainlogSetInput plank_sets[1];
+    TrainlogSessionInput session;
+    TrainlogSessionSummary loaded_session;
+    TrainlogEditableExerciseRecord loaded_exercises[4];
+    TrainlogSetInput loaded_sets[16];
+    size_t exercise_count = 0U;
+    size_t set_count = 0U;
+
+    CHECK(
+        trainlog_database_open(
+            ":memory:",
+            &database
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(add_exercises(database));
+
+    bind_reps_exercise(
+        &exercises[0],
+        press_sets,
+        2U,
+        80.0
+    );
+
+    (void)memset(
+        &exercises[1],
+        0,
+        sizeof(exercises[1])
+    );
+
+    (void)memset(
+        plank_sets,
+        0,
+        sizeof(plank_sets)
+    );
+
+    (void)snprintf(
+        exercises[1].exercise_id,
+        sizeof(exercises[1].exercise_id),
+        "%s",
+        "ex_plank"
+    );
+
+    exercises[1].recording_mode =
+        TRAINLOG_RECORDING_SETS;
+
+    exercises[1].load_mode =
+        TRAINLOG_LOAD_NONE;
+
+    exercises[1].rest_seconds = 30;
+    exercises[1].target_sets = 1;
+    exercises[1].target_duration_seconds = 60;
+    exercises[1].sets = plank_sets;
+    exercises[1].set_count = 1U;
+
+    plank_sets[0].duration_seconds = 55;
+
+    (void)memset(
+        &session,
+        0,
+        sizeof(session)
+    );
+
+    (void)snprintf(
+        session.session_id,
+        sizeof(session.session_id),
+        "%s",
+        "se_remove_exercise"
+    );
+
+    (void)snprintf(
+        session.started_at,
+        sizeof(session.started_at),
+        "%s",
+        "2026-09-06T14:00:00+02:00"
+    );
+
+    (void)snprintf(
+        session.ended_at,
+        sizeof(session.ended_at),
+        "%s",
+        "2026-09-06T14:30:00+02:00"
+    );
+
+    session.session_type =
+        TRAINLOG_SESSION_TRAINING;
+
+    session.exercises = exercises;
+    session.exercise_count = 2U;
+
+    CHECK(
+        trainlog_database_insert_session(
+            database,
+            &session
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    replacement = exercises[0];
+
+    CHECK(
+        trainlog_database_replace_session_exercises(
+            database,
+            "se_remove_exercise",
+            &replacement,
+            1U
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(
+        trainlog_database_load_session_editable(
+            database,
+            "se_remove_exercise",
+            &loaded_session,
+            loaded_exercises,
+            4U,
+            &exercise_count,
+            loaded_sets,
+            16U,
+            &set_count
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(exercise_count == 1U);
+
+    CHECK(
+        strcmp(
+            loaded_exercises[0].exercise_id,
+            "ex_press"
+        ) == 0
+    );
+
+    CHECK(set_count == 2U);
+
+    trainlog_database_close(
+        database
+    );
+
+    return true;
+}
+
 int main(void)
 {
     CHECK(test_load_replace_and_rollback());
+    CHECK(test_remove_exercise_from_session());
 
     (void)printf(
         "PASS session_edit\n"

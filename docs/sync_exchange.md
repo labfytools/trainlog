@@ -282,3 +282,84 @@ Android-triggered request/receipt workflow
 automatic mobile snapshot maintenance
 ```
 <!-- TRAINLOG_BIDIRECTIONAL_VALIDATED_CHECKPOINT _END -->
+
+<!-- TRAINLOG_VARIABLE_SET_REPS_V1 -->
+## Variable repetition sets
+
+Trainlog preserves each performed set independently.
+
+Accepted repetition input:
+
+```text
+5x10
+4,5,6,7,8,9,10,9,8,7,6,5,4
+4..10..4
+```
+
+`4..10..4` expands to:
+
+```text
+4,5,6,7,8,9,10,9,8,7,6,5,4
+```
+
+Desktop schema v5 permits targetless `SETS` rows for actual-only mobile
+observations. Synchronization therefore does not invent a uniform target when
+performed sets are heterogeneous.
+
+`performed_sets` remains the source of truth for actual per-set values.
+
+Existing planned desktop sessions may still carry explicit target sets/reps or
+target durations.
+
+`trainlog-mobile-export` v1 keeps ordered heterogeneous `sets[]`.
+
+Frozen `TRAINLOG_FORMAT_V1` is unchanged.
+<!-- TRAINLOG_VARIABLE_SET_REPS_V1 _END -->
+
+<!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL -->
+## Variable sets and session exercise removal checkpoint
+
+Validated functionality in this checkpoint:
+
+```text
+VARIABLE_REPETITION_SETS=PASS
+REPETITION_SHORTHAND_5x10=PASS
+REPETITION_EXPLICIT_LIST=PASS
+REPETITION_PYRAMID=PASS
+
+DESKTOP_SCHEMA_V5=PASS
+V4_TO_V5_MIGRATION_REGRESSION=PASS
+MOBILE_HETEROGENEOUS_SET_IMPORT=PASS
+MOBILE_IMPORT_IDEMPOTENCE=PASS
+NO_FAKE_UNIFORM_TARGET=PASS
+
+ANDROID_SESSION_DRAFT_EXERCISE_REMOVE=PASS
+DESKTOP_SESSION_EXERCISE_REMOVE=PASS
+```
+
+Accepted repetition examples:
+
+```text
+5x10
+4,5,6,7,8,9,10,9,8,7,6,5,4
+4..10..4
+```
+
+A heterogeneous mobile session is persisted as ordered `performed_sets`.
+The desktop does not invent `target_sets`, `target_reps` or
+`target_duration_seconds` for actual-only mobile observations.
+
+On Android, an exercise already added to the current session can be removed
+before saving the session.
+
+On the desktop TUI, session editing already supports:
+
+```text
+d supprimer
+```
+
+for removing the selected exercise from a current or persisted session draft.
+The database replacement remains transactional.
+
+`TRAINLOG_FORMAT_V1` remains frozen and unchanged.
+<!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL _END -->
