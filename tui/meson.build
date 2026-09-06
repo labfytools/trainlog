@@ -36,6 +36,7 @@ trainlog_core_sources = files(
   'src/usb.c',
   'src/mtp.c',
   'src/reps.c',
+  'src/sync.c',
 )
 
 trainlog_core = static_library(
@@ -332,4 +333,11 @@ test(
   args: [
     meson.project_source_root() / 'tests/test_mobile_import_variable_sets.py',
   ],
+)
+
+trainlog_sync_once = executable(
+  'trainlog-sync-once',
+  'tools/sync_once.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
 )

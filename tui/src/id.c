@@ -20,7 +20,8 @@ static bool prefix_is_supported(const char *prefix)
      */
     return strcmp(prefix, "ex") == 0 ||
            strcmp(prefix, "se") == 0 ||
-           strcmp(prefix, "bo") == 0;
+           strcmp(prefix, "bo") == 0 ||
+           strcmp(prefix, "sy") == 0;
 }
 
 TrainlogStatus trainlog_id_generate(

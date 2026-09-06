@@ -363,3 +363,116 @@ The database replacement remains transactional.
 
 `TRAINLOG_FORMAT_V1` remains frozen and unchanged.
 <!-- TRAINLOG_VARIABLE_SETS_CHECKPOINT_FINAL _END -->
+
+<!-- TRAINLOG_SHARED_SYNC_ENGINE_V1 -->
+## Shared bidirectional synchronization v1
+
+Validated architecture:
+
+```text
+Android local write
+    -> automatic mobile snapshot
+
+Android "Synchroniser maintenant"
+    -> trainlog-sync-request-v1.json
+
+trainlog-syncd
+    -> shared C synchronization engine
+    -> Android → PC mobile import
+    -> PC → Android catalog publish
+    -> trainlog-sync-receipt-v1.json
+
+Android
+    -> receipt matched by request_id
+    -> PC catalog applied locally
+    -> final result displayed
+```
+
+The ncurses TUI and `trainlog-syncd` call the same
+`trainlog_sync_run()` implementation.
+
+Direct libmtp remains mandatory. No filesystem mount and no SQLite-file
+synchronization are introduced.
+
+### Concurrency
+
+The shared engine owns:
+
+```text
+$XDG_DATA_HOME/trainlog/sync.lock
+```
+
+A TUI-triggered transaction waits for the lock. Daemon request polling is
+non-blocking and retries later.
+
+### Sync history
+
+Every actual synchronization transaction creates:
+
+```text
+$XDG_DATA_HOME/trainlog/sync_runs/sy_*.json
+$XDG_DATA_HOME/trainlog/sync_runs/sy_*.txt
+```
+
+and appends a compact entry to:
+
+```text
+$XDG_DATA_HOME/trainlog/sync_history.log
+```
+
+The TUI behaves like:
+
+```text
+git log
+    ↑/↓ select synchronization
+
+git show
+    Enter opens structured detail
+```
+
+Legacy three-field history entries remain readable but have no structured
+detail file.
+
+### Android request and receipt
+
+Request:
+
+```text
+format  = trainlog-sync-request
+version = 1
+```
+
+Receipt:
+
+```text
+format  = trainlog-sync-receipt
+version = 1
+```
+
+The receipt carries the originating `request_id`, a generated `sync_id`,
+status, summary and synchronization counts. Android ignores a receipt for a
+different request ID.
+
+### User service
+
+Install/refresh the user service with:
+
+```text
+bash tools/install_syncd_user.sh
+```
+
+No root privilege is required.
+
+### Status
+
+```text
+COMMON_SYNC_ENGINE=PASS
+TUI_SYNC_LOG_SHOW=PASS
+TRAINLOG_SYNCD=PASS
+ANDROID_TRIGGERED_SYNC=PASS
+ANDROID_SYNC_RECEIPT=PASS
+BIDIRECTIONAL_SYNC_V1=PASS
+```
+
+Frozen `TRAINLOG_FORMAT_V1` remains unchanged.
+<!-- TRAINLOG_SHARED_SYNC_ENGINE_V1 _END -->

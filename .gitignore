@@ -22,7 +22,7 @@ local.properties
 *.db-wal
 
 # Local user data
-data/
+/data/
 exports/
 
 # Python helpers

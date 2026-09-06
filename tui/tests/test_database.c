@@ -53,6 +53,7 @@ static bool test_generated_ids(void)
 {
     char first[TRAINLOG_GENERATED_ID_CAPACITY];
     char second[TRAINLOG_GENERATED_ID_CAPACITY];
+    char sync_id[TRAINLOG_GENERATED_ID_CAPACITY];
 
     CHECK(
         trainlog_id_generate("ex", first, sizeof(first)) ==
@@ -66,6 +67,28 @@ static bool test_generated_ids(void)
     CHECK(strlen(first) == TRAINLOG_GENERATED_ID_CAPACITY - 1U);
     CHECK(strcmp(first, second) != 0);
     CHECK(first[3U + 14U] == '4');
+
+    /* TRAINLOG_SYNC_ID_PREFIX_TEST */
+    CHECK(
+        trainlog_id_generate(
+            "sy",
+            sync_id,
+            sizeof(sync_id)
+        ) == TRAINLOG_STATUS_OK
+    );
+
+    CHECK(
+        strncmp(
+            sync_id,
+            "sy_",
+            3U
+        ) == 0
+    );
+
+    CHECK(
+        sync_id[3U + 14U] ==
+        '4'
+    );
 
     return true;
 }

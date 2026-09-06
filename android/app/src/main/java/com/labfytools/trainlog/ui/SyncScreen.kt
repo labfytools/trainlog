@@ -1,6 +1,6 @@
 package com.labfytools.trainlog.ui
 
-/* TRAINLOG_SYNC_AUTO_APPLY */
+/* TRAINLOG_ANDROID_TRIGGERED_SYNC_V1 */
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,9 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.CatalogInboxResult
 import com.labfytools.trainlog.data.SyncCatalogInbox
+import com.labfytools.trainlog.data.SyncReceiptResult
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.SyncRequestResult
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
+import kotlinx.coroutines.delay
 
 @Composable
 fun SyncScreen(
@@ -42,6 +44,13 @@ fun SyncScreen(
         remember {
             mutableStateOf(
                 inbox.hasFolderAccess()
+            )
+        }
+
+    var pendingRequestId by
+        remember {
+            mutableStateOf<String?>(
+                null
             )
         }
 
@@ -74,6 +83,124 @@ fun SyncScreen(
                 /* Nothing to import yet. */
             }
         }
+    }
+
+    LaunchedEffect(
+        pendingRequestId
+    ) {
+        val requestId =
+            pendingRequestId
+                ?: return@LaunchedEffect
+
+        repeat(60) {
+            when (
+                val receipt =
+                    inbox.readSyncReceipt(
+                        requestId
+                    )
+            ) {
+                SyncReceiptResult.Pending -> {
+                    delay(1000)
+                }
+
+                SyncReceiptResult.FolderNotAuthorized -> {
+                    success = false
+
+                    status =
+                        "Dossier Trainlog non autorisé."
+
+                    pendingRequestId =
+                        null
+
+                    return@LaunchedEffect
+                }
+
+                is SyncReceiptResult.Error -> {
+                    success = false
+                    status =
+                        receipt.message
+
+                    pendingRequestId =
+                        null
+
+                    return@LaunchedEffect
+                }
+
+                is SyncReceiptResult.Received -> {
+                    if (!receipt.success) {
+                        success = false
+
+                        status =
+                            receipt.summary
+
+                        pendingRequestId =
+                            null
+
+                        return@LaunchedEffect
+                    }
+
+                    when (
+                        val catalog =
+                            inbox.importPcCatalog()
+                    ) {
+                        is CatalogInboxResult.Imported -> {
+                            success = true
+
+                            status =
+                                (
+                                    "Synchronisation terminée · " +
+                                    receipt.summary +
+                                    " · Android catalogue : " +
+                                    "${catalog.imported} nouveau(x), " +
+                                    "${catalog.reconciled} réconcilié(s), " +
+                                    "${catalog.skipped} présent(s)."
+                                )
+
+                            onCatalogChanged()
+                        }
+
+                        CatalogInboxResult.FileNotFound -> {
+                            success = false
+
+                            status =
+                                (
+                                    "Sync PC terminée, mais catalogue reçu introuvable."
+                                )
+                        }
+
+                        CatalogInboxResult.FolderNotAuthorized -> {
+                            success = false
+
+                            status =
+                                "Sync PC terminée, dossier Trainlog non autorisé."
+                        }
+
+                        is CatalogInboxResult.Error -> {
+                            success = false
+
+                            status =
+                                (
+                                    "Sync PC terminée, import Android : " +
+                                    catalog.message
+                                )
+                        }
+                    }
+
+                    pendingRequestId =
+                        null
+
+                    return@LaunchedEffect
+                }
+            }
+        }
+
+        success = false
+
+        status =
+            "Le PC n'a pas répondu dans les 60 secondes."
+
+        pendingRequestId =
+            null
     }
 
     val folderLauncher =
@@ -122,13 +249,14 @@ fun SyncScreen(
 
                             CatalogInboxResult.FileNotFound -> {
                                 success = true
+
                                 status =
                                     "Dossier autorisé · aucun catalogue PC reçu."
                             }
 
                             CatalogInboxResult.FolderNotAuthorized,
                             is CatalogInboxResult.Error -> {
-                                /* Keep the permission status already shown. */
+                                /* Keep permission state. */
                             }
                         }
                     }
@@ -151,18 +279,43 @@ fun SyncScreen(
             title = "SYNCHRONISER"
         ) {
             TrainlogInfo(
-                "Le snapshot Android est maintenu automatiquement.",
-                color = colors.accent,
+                text =
+                    "Le snapshot Android est maintenu automatiquement.",
+                color =
+                    colors.accent,
             )
 
             TrainlogAction(
                 label =
-                    "Synchroniser maintenant",
+                    if (
+                        pendingRequestId !=
+                        null
+                    ) {
+                        "Synchronisation en cours..."
+                    } else {
+                        "Synchroniser maintenant"
+                    },
                 description =
-                    "Envoie une demande au service Trainlog du PC.",
+                    "Android → PC puis PC → Android, en une seule opération.",
                 accent =
                     colors.success,
                 onClick = {
+                    if (
+                        pendingRequestId !=
+                        null
+                    ) {
+                        return@TrainlogAction
+                    }
+
+                    if (!folderAuthorized) {
+                        success = false
+
+                        status =
+                            "Autorisez d'abord Téléchargements/Trainlog."
+
+                        return@TrainlogAction
+                    }
+
                     when (
                         val result =
                             requestOutbox
@@ -171,11 +324,11 @@ fun SyncScreen(
                         is SyncRequestResult.Requested -> {
                             success = true
 
+                            pendingRequestId =
+                                result.requestId
+
                             status =
-                                (
-                                    "Demande envoyée : " +
-                                    result.requestId
-                                )
+                                "Demande envoyée · attente du PC..."
                         }
 
                         SyncRequestResult.Unsupported -> {
@@ -198,11 +351,11 @@ fun SyncScreen(
 
         TrainlogFrame(
             title =
-                "CATALOGUE PC → ANDROID"
+                "DOSSIER D'ECHANGE"
         ) {
             if (folderAuthorized) {
                 TrainlogInfo(
-                    "Dossier Trainlog autorisé.",
+                    "Téléchargements/Trainlog autorisé.",
                     color =
                         colors.success,
                 )
@@ -228,14 +381,13 @@ fun SyncScreen(
 
             TrainlogAction(
                 label =
-                    "Appliquer le dernier catalogue PC",
+                    "Relire le catalogue PC",
                 description =
-                    "Réconcilie les exercices publiés par le PC.",
+                    "Action de récupération manuelle si nécessaire.",
                 onClick = {
                     when (
                         val result =
-                            inbox
-                                .importPcCatalog()
+                            inbox.importPcCatalog()
                     ) {
                         is CatalogInboxResult.Imported -> {
                             success = true
@@ -245,7 +397,7 @@ fun SyncScreen(
                                     "Catalogue PC : " +
                                     "${result.imported} nouveau(x), " +
                                     "${result.reconciled} réconcilié(s), " +
-                                    "${result.skipped} déjà présent(s)."
+                                    "${result.skipped} présent(s)."
                                 )
 
                             onCatalogChanged()
@@ -255,7 +407,7 @@ fun SyncScreen(
                             success = false
 
                             status =
-                                "Autorisez d'abord Download/Trainlog."
+                                "Autorisez d'abord Téléchargements/Trainlog."
                         }
 
                         CatalogInboxResult.FileNotFound -> {
