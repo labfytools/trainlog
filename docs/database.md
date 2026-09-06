@@ -3,9 +3,12 @@
 ## 1. Status
 
 ```text
-GATE_2_REVIEW_01=IMPLEMENTED
 GATE_2=IN_PROGRESS
-DATABASE_SCHEMA_V1=DRAFT
+DATABASE_SCHEMA_V2=IMPLEMENTED
+SESSION_TYPE_PERSISTENCE=IMPLEMENTED
+SESSION_EDIT_PERSISTENCE=IMPLEMENTED
+BODY_OBSERVATION_EDIT=IMPLEMENTED
+TRAINLOG_FORMAT_V1=FROZEN
 ```
 
 Gate 2 review #1 establishes the persistence foundation.
@@ -26,17 +29,29 @@ Trainlog database schema version uses SQLite:
 PRAGMA user_version;
 ```
 
-Initial schema:
+Current schema:
 
 ```text
-DATABASE_SCHEMA_V1=1
+DATABASE_SCHEMA_V2=2
 ```
 
-A new database starts with `user_version = 0` and is initialized atomically to version 1.
+A new database starts with `user_version = 0` and is initialized atomically to
+the current schema.
+
+The implemented historical path is:
+
+```text
+0 -> 2  fresh initialization
+1 -> 2  transactional migration
+```
+
+Schema v2 adds local session classification while leaving the frozen Trainlog
+JSON v1 exchange contract unchanged.
 
 A database newer than the running binary understands is rejected.
 
-Historical migrations are not invented. They must be explicitly implemented and tested when a schema version 2 is introduced.
+Every future schema change requires an explicit migration and dedicated
+coverage; metadata-only version rewriting is not an accepted migration.
 
 ## 4. Connection rules
 
@@ -83,8 +98,13 @@ id
 session_id         UNIQUE
 started_at
 ended_at            nullable
+session_type       training | max_test
 notes               nullable
 ```
+
+`session_type` is a local SQLite concern in schema v2. Existing schema-v1 rows
+migrate to `training`; no historical workout is retroactively inferred to be a
+max test.
 
 Body data is stored separately so standalone body observations can use the same representation.
 
@@ -195,7 +215,15 @@ ROLLBACK
 
 primitives.
 
-The future JSON import service must perform catalog reconciliation and all session inserts inside one transaction.
+The JSON import service must perform catalog reconciliation and all session inserts inside one transaction.
+
+Persisted session correction also uses an explicit transaction. Editing a
+session replaces only its `session_exercises` / `performed_sets` children and
+preserves the parent session row, stable `session_id`, timestamps,
+`session_type`, session notes, and any linked body observation.
+
+Body-observation correction preserves observation identity, timestamp, and
+optional session link.
 
 A hard conflict or validation failure leaves the database unchanged.
 
@@ -207,20 +235,24 @@ Canonical persistent units remain:
 - body circumference: centimeters;
 - duration/rest: seconds.
 
-## 9. Gate 2 review #1 boundary
+## 9. Current Gate 2 persistence boundary
 
-Review #1 intentionally does not implement:
+Implemented persistence includes:
 
-- JSON parsing;
-- Unicode exercise-name normalization;
-- local catalog reconciliation;
-- full session insert APIs;
-- body-observation CRUD;
-- ncurses.
+- SQLite schema v2;
+- transactional schema migration v1 -> v2;
+- Unicode-aware canonical exercise catalog support;
+- complete session insertion;
+- session detail loading;
+- exact bounded editable-session loading;
+- transactional replacement of session exercise/set children;
+- body-observation creation, listing, exact lookup, and update;
+- stable local identifiers for exercises, sessions, and body observations.
 
-Those belong to subsequent Gate 2 work.
+The database remains independent from ncurses rendering.
 
-This split keeps the first compiled C change small enough to review thoroughly.
+The frozen Trainlog JSON v1 format remains a separate compatibility boundary
+and is not version-coupled to SQLite schema v2.
 
 ## 10. Validation
 

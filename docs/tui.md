@@ -392,8 +392,8 @@ are not required for the Android transport milestone.
 <!-- TRAINLOG_GLOBAL_BODY_GRAPH_NEXT -->
 ## 21. Global body evolution graph — implemented
 
-`F4 Corps` keeps its current per-metric graph and gains a global normalized
-overlay view.
+`F4 Corps` provides a record-oriented observation history plus a global
+normalized overlay view.
 
 The global graph must not overlay raw kilograms and centimeters directly.
 
@@ -429,20 +429,14 @@ recorded value for each available metric.
 
 ## 22. Dashboard graph v2 — implemented
 
-The dashboard body-weight graph becomes a richer summary.
+The dashboard body graph is implemented as a compact rolling 12-month
+multi-metric summary.
 
-It will show:
-- current body weight;
-- change from first recorded weight;
-- change from previous recorded weight;
-- minimum recorded weight;
-- maximum recorded weight;
-- recent weight graph;
-- latest waist measurement when available;
-- latest left/right asymmetry alert when meaningful.
+It shows available body metrics normalized to their first visible value in the
+window, while the legend preserves each latest raw value and percentage change.
 
-The dashboard remains intentionally compact.
-The complete multi-metric overlay belongs to `F4 Corps`.
+The dashboard remains intentionally compact. Detailed absolute observation
+history and the complete normalized overlay belong to `F4 Corps`.
 
 ## 23. Current implementation cursor
 

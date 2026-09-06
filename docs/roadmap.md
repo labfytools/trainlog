@@ -35,11 +35,11 @@ Current TUI capabilities:
 
 Current remaining Gate 2 direction:
 
-1. finish the current visual/navigation checkpoint;
-2. validate persisted editing on the real database;
-3. detect Android over USB/ADB;
-4. build the minimal Android recorder;
-5. exercise frozen JSON v1 import/export end to end.
+1. detect Android over USB/ADB;
+2. build the minimal Android recorder;
+3. transfer/export one frozen Trainlog JSON v1 document over USB;
+4. import it transactionally into the canonical SQLite store;
+5. validate the complete Android -> JSON -> TUI -> SQLite path.
 
 Measured-max semantics remain a later independent analytics contract.
 
@@ -122,8 +122,10 @@ DASHBOARD_12_MONTHS=IMPLEMENTED
 
 ```text
 TUI_EXERCISE_PERFORMANCE=IMPLEMENTED
-MEASURED_MAX_TRACKING=NEXT
-PREVIOUS_SESSION_DEFAULTS=AFTER
+TUI_SESSION_EDIT=IMPLEMENTED
+TUI_BODY_OBSERVATION_EDIT=IMPLEMENTED
+ANDROID_USB_DETECTION=NEXT
+MEASURED_MAX_TRACKING=LATER
 ```
 
 ## Session type / measured max foundation
@@ -149,13 +151,16 @@ classified as a max test.
 
 ```text
 SESSION_EDIT_PERSISTENCE=IMPLEMENTED
-SESSION_EDIT_TUI=NEXT
-BODY_OBSERVATION_EDIT=AFTER
-USB_PHONE_DETECTION=AFTER_EDITING
+SESSION_EDIT_TUI=IMPLEMENTED
+BODY_OBSERVATION_EDIT=IMPLEMENTED
+USB_PHONE_DETECTION=NEXT
 ```
 
 Recorded session exercise/set correction uses atomic replacement of child rows
 while preserving the parent session row and linked body observations.
+
+The TUI exposes correction both while reviewing an in-progress draft and after
+persistence. Escape cancels without committing partial edits.
 
 ## Body observation record workflow
 

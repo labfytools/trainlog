@@ -4,7 +4,7 @@
 
 ```text
 SESSION_EDIT_PERSISTENCE=IMPLEMENTED
-SESSION_EDIT_TUI=NEXT
+SESSION_EDIT_TUI=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 DATABASE_SCHEMA_V2=UNCHANGED
 ```
@@ -31,3 +31,13 @@ exercise/set values in bounded caller-owned buffers. It refuses insufficient
 capacity instead of silently truncating editable data.
 
 No schema migration and no JSON v1 change are required.
+
+## TUI integration
+
+The persistence foundation is now used by the ncurses editor.
+
+A persisted workout can be reopened from history or session detail, corrected,
+and saved without deleting/recreating the parent `sessions` row.
+
+Draft editing and persisted editing share the same bounded exercise/set model.
+Cancelling with Escape leaves the stored workout unchanged.
