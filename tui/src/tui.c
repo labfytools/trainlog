@@ -6,6 +6,7 @@
 #include "trainlog/tui.h"
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <locale.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -14,6 +15,7 @@
 #include <string.h>
 #include <time.h>
 #include <wchar.h>
+#include <unistd.h>
 
 #include <curses.h>
 
@@ -21,8 +23,10 @@
 #include "trainlog/catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/id.h"
+#include "trainlog/mtp.h"
 #include "trainlog/theme.h"
 #include "trainlog/timeutil.h"
+#include "trainlog/usb.h"
 
 #define MAX_EXERCISES 128U
 #define MAX_SESSION_EXERCISES 32U
@@ -40,6 +44,7 @@ typedef enum DashboardAction {
     DASHBOARD_HISTORY,
     DASHBOARD_EXERCISES,
     DASHBOARD_BODY,
+    DASHBOARD_SYNC,
     DASHBOARD_QUIT
 } DashboardAction;
 
@@ -49,6 +54,10 @@ static DashboardAction screen_dashboard(
 );
 
 static void screen_exercises(
+    TrainlogDatabase *database
+);
+
+static void screen_sync(
     TrainlogDatabase *database
 );
 
@@ -1667,10 +1676,10 @@ primary_top_nav_forward(key)) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
-                        : 4;
+                        : 5;
             } else if (key == KEY_RIGHT) {
                 nav_selected =
-                    nav_selected < 4
+                    nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
@@ -3351,7 +3360,8 @@ static void primary_top_navbar(
         "1 Séance",
         "2 Historique",
         "3 Exercices",
-        "4 Corps"
+        "4 Corps",
+        "5 Sync"
     };
 
     int column = 5;
@@ -3367,7 +3377,7 @@ static void primary_top_navbar(
     );
 
     for (index = 0;
-         index < 5;
+         index < 6;
          ++index) {
         int width =
             (int)strlen(labels[index]) + 4;
@@ -3420,7 +3430,7 @@ static bool primary_top_nav_activate(
 )
 {
     if (selected_page < 0 ||
-        selected_page > 4) {
+        selected_page > 5) {
         return false;
     }
 
@@ -3467,6 +3477,11 @@ static bool primary_top_nav_forward(
     case KEY_F(4):
     case '4':
         forwarded = '4';
+        break;
+
+    case KEY_F(5):
+    case '5':
+        forwarded = '5';
         break;
 
     default:
@@ -4170,7 +4185,8 @@ static DashboardAction screen_dashboard(
         "1 Séance",
         "2 Historique",
         "3 Exercices",
-        "4 Corps"
+        "4 Corps",
+        "5 Sync"
     };
 
     static const char *const footer =
@@ -4215,7 +4231,7 @@ static DashboardAction screen_dashboard(
             large_layout ? 5 : 3;
 
         for (index = 0;
-             index < 5;
+             index < 6;
              ++index) {
             int width =
                 (int)strlen(labels[index]) + 4;
@@ -4279,13 +4295,13 @@ static DashboardAction screen_dashboard(
             selected =
                 selected > 0
                     ? selected - 1
-                    : 4;
+                    : 5;
             break;
 
         case KEY_DOWN:
         case KEY_RIGHT:
             selected =
-                selected < 4
+                selected < 5
                     ? selected + 1
                     : 0;
             break;
@@ -4303,6 +4319,8 @@ static DashboardAction screen_dashboard(
                 return DASHBOARD_EXERCISES;
             case 4:
                 return DASHBOARD_BODY;
+            case 5:
+                return DASHBOARD_SYNC;
             default:
                 break;
             }
@@ -4328,6 +4346,10 @@ static DashboardAction screen_dashboard(
         case KEY_F(4):
         case '4':
             return DASHBOARD_BODY;
+
+        case KEY_F(5):
+        case '5':
+            return DASHBOARD_SYNC;
 
         case 'q':
         case 'Q':
@@ -4903,7 +4925,9 @@ static bool choose_session_type(
              key == '3' ||
              key == KEY_F(3) ||
              key == '4' ||
-             key == KEY_F(4))) {
+             key == KEY_F(4) ||
+             key == '5' ||
+             key == KEY_F(5))) {
             if (primary_top_nav_forward(key)) {
                 return false;
             }
@@ -4917,10 +4941,10 @@ static bool choose_session_type(
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
-                        : 4;
+                        : 5;
             } else if (key == KEY_RIGHT) {
                 nav_selected =
-                    nav_selected < 4
+                    nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
@@ -6753,10 +6777,10 @@ static void screen_history(
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
-                        : 4;
+                        : 5;
             } else if (key == KEY_RIGHT) {
                 nav_selected =
-                    nav_selected < 4
+                    nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
@@ -8050,10 +8074,10 @@ static void screen_body(
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
-                        : 4;
+                        : 5;
             } else if (key == KEY_RIGHT) {
                 nav_selected =
-                    nav_selected < 4
+                    nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
@@ -8162,6 +8186,710 @@ static void screen_body(
     }
 }
 
+/* TRAINLOG_SYNC_TUI */
+
+#define SYNC_DEVICE_CAPACITY 8U
+#define SYNC_STORAGE_CAPACITY 8U
+#define SYNC_ENTRY_CAPACITY 128U
+
+typedef struct TrainlogSyncOverview {
+    bool connected;
+    bool storage_ready;
+    bool exchange_ready;
+    size_t device_count;
+    size_t remote_entry_count;
+    size_t remote_json_count;
+    size_t local_exercise_count;
+    TrainlogUsbDevice device;
+    TrainlogMtpStorage storage;
+    uint32_t exchange_folder_id;
+} TrainlogSyncOverview;
+
+static bool sync_name_has_json_suffix(
+    const char *name
+)
+{
+    size_t length;
+
+    if (name == NULL) {
+        return false;
+    }
+
+    length = strlen(name);
+
+    return
+        length >= 5U &&
+        strcmp(
+            name + length - 5U,
+            ".json"
+        ) == 0;
+}
+
+static double sync_bytes_to_gib(
+    uint64_t bytes
+)
+{
+    return
+        (double)bytes /
+        (1024.0 * 1024.0 * 1024.0);
+}
+
+static void sync_load_overview(
+    TrainlogDatabase *database,
+    TrainlogSyncOverview *overview
+)
+{
+    TrainlogUsbDevice devices[SYNC_DEVICE_CAPACITY];
+    TrainlogMtpStorage storages[SYNC_STORAGE_CAPACITY];
+    TrainlogMtpEntry entries[SYNC_ENTRY_CAPACITY];
+
+    size_t device_count = 0U;
+    size_t storage_count = 0U;
+    size_t entry_count = 0U;
+    size_t index;
+    bool folder_created = false;
+
+    if (overview == NULL) {
+        return;
+    }
+
+    (void)memset(
+        overview,
+        0,
+        sizeof(*overview)
+    );
+
+    (void)trainlog_database_exercise_count(
+        database,
+        &overview->local_exercise_count
+    );
+
+    if (trainlog_usb_list_mtp_devices(
+            devices,
+            SYNC_DEVICE_CAPACITY,
+            &device_count
+        ) != TRAINLOG_STATUS_OK ||
+        device_count == 0U) {
+        return;
+    }
+
+    overview->connected = true;
+    overview->device_count = device_count;
+    overview->device = devices[0];
+
+    if (trainlog_mtp_list_storages(
+            overview->device.bus_number,
+            overview->device.device_number,
+            storages,
+            SYNC_STORAGE_CAPACITY,
+            &storage_count
+        ) != TRAINLOG_STATUS_OK ||
+        storage_count == 0U) {
+        return;
+    }
+
+    overview->storage_ready = true;
+    overview->storage = storages[0];
+
+    if (trainlog_mtp_ensure_root_folder(
+            overview->device.bus_number,
+            overview->device.device_number,
+            overview->storage.storage_id,
+            "Trainlog",
+            &overview->exchange_folder_id,
+            &folder_created
+        ) != TRAINLOG_STATUS_OK) {
+        return;
+    }
+
+    (void)folder_created;
+    overview->exchange_ready = true;
+
+    if (trainlog_mtp_list_folder(
+            overview->device.bus_number,
+            overview->device.device_number,
+            overview->storage.storage_id,
+            overview->exchange_folder_id,
+            entries,
+            SYNC_ENTRY_CAPACITY,
+            &entry_count
+        ) != TRAINLOG_STATUS_OK) {
+        return;
+    }
+
+    overview->remote_entry_count =
+        entry_count;
+
+    for (index = 0U;
+         index < entry_count;
+         ++index) {
+        if (!entries[index].folder &&
+            sync_name_has_json_suffix(
+                entries[index].name
+            )) {
+            ++overview->remote_json_count;
+        }
+    }
+}
+
+static void screen_sync(
+    TrainlogDatabase *database
+)
+{
+    size_t selected = 0U;
+    int nav_selected = 5;
+    int focus = 1;
+
+    for (;;) {
+        TrainlogSyncOverview overview;
+        bool large_layout =
+            COLS >= 100 &&
+            LINES >= 30;
+
+        const size_t item_count = 4U;
+        size_t top = 0U;
+        size_t index;
+        int list_top;
+        int list_bottom;
+        int first_row;
+        int visible_rows;
+        int key;
+
+        int saved_stdout = -1;
+        int saved_stderr = -1;
+        int null_fd = -1;
+
+        /*
+         * libmtp may print raw-device identification directly to stdout or
+         * stderr. Redirect both temporarily so backend diagnostics cannot
+         * corrupt ncurses' physical-screen state.
+         */
+        (void)fflush(stdout);
+        (void)fflush(stderr);
+
+        saved_stdout =
+            dup(STDOUT_FILENO);
+
+        saved_stderr =
+            dup(STDERR_FILENO);
+
+        null_fd =
+            open(
+                "/dev/null",
+                O_WRONLY | O_CLOEXEC
+            );
+
+        if (saved_stdout >= 0 &&
+            saved_stderr >= 0 &&
+            null_fd >= 0) {
+            (void)dup2(
+                null_fd,
+                STDOUT_FILENO
+            );
+
+            (void)dup2(
+                null_fd,
+                STDERR_FILENO
+            );
+        }
+
+        sync_load_overview(
+            database,
+            &overview
+        );
+
+        (void)fflush(stdout);
+        (void)fflush(stderr);
+
+        if (saved_stdout >= 0) {
+            (void)dup2(
+                saved_stdout,
+                STDOUT_FILENO
+            );
+
+            (void)close(
+                saved_stdout
+            );
+        }
+
+        if (saved_stderr >= 0) {
+            (void)dup2(
+                saved_stderr,
+                STDERR_FILENO
+            );
+
+            (void)close(
+                saved_stderr
+            );
+        }
+
+        if (null_fd >= 0) {
+            (void)close(
+                null_fd
+            );
+        }
+
+        /*
+         * Force a complete physical redraw. This also protects the page if a
+         * backend writes directly to the terminal despite stdio redirection.
+         */
+        clear();
+        clearok(
+            stdscr,
+            TRUE
+        );
+
+        if (!large_layout) {
+            draw_shell(
+                "TRAINLOG — Sync",
+                "↑↓ parcourir  r actualiser  b/Échap retour"
+            );
+
+            if (!overview.connected) {
+                mvprintw(
+                    4,
+                    4,
+                    "Aucun appareil Android MTP connecté."
+                );
+            } else {
+                mvprintw(
+                    4,
+                    4,
+                    "Appareil : %.*s",
+                    COLS - 16,
+                    overview.device.model
+                );
+
+                mvprintw(
+                    6,
+                    4,
+                    "Séances : %zu JSON candidat(s)",
+                    overview.remote_json_count
+                );
+
+                mvprintw(
+                    7,
+                    4,
+                    "Catalogue PC : %zu exercice(s)",
+                    overview.local_exercise_count
+                );
+            }
+
+            refresh();
+            key = getch();
+
+            if (key == 'b' ||
+                key == 'B' ||
+                key == 27) {
+                return;
+            }
+
+            continue;
+        }
+
+        list_top = 17;
+        list_bottom = LINES - 4;
+        first_row = list_top + 2;
+        visible_rows =
+            list_bottom -
+            first_row;
+
+        if (visible_rows < 1) {
+            return;
+        }
+
+        if (selected >= item_count) {
+            selected =
+                item_count - 1U;
+        }
+
+        if (selected >=
+            (size_t)visible_rows) {
+            top =
+                selected -
+                (size_t)visible_rows +
+                1U;
+        }
+
+        box(
+            stdscr,
+            0,
+            0
+        );
+
+        section_ascii_header(
+            ":: S Y N C ::"
+        );
+
+        primary_top_navbar(
+            5,
+            nav_selected,
+            focus == 0
+        );
+
+        dashboard_panel(
+            11,
+            2,
+            16,
+            COLS - 3,
+            "APPAREIL CONNECTE"
+        );
+
+        focused_panel(
+            list_top,
+            2,
+            list_bottom,
+            COLS - 3,
+            "SYNCHRONISATION",
+            focus == 1
+        );
+
+        if (!overview.connected) {
+            attron(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_WARNING
+                )
+            );
+
+            mvprintw(
+                13,
+                5,
+                "Aucun appareil Android en mode partage de fichiers."
+            );
+
+            attroff(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_WARNING
+                )
+            );
+
+            mvprintw(
+                14,
+                5,
+                "%.*s",
+                COLS - 10,
+                "Branchez et déverrouillez le téléphone puis choisissez Transfert de fichiers."
+            );
+        } else {
+            attron(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_SUCCESS
+                )
+            );
+
+            mvprintw(
+                12,
+                5,
+                "✓ MTP direct connecté"
+            );
+
+            attroff(
+                A_BOLD |
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_SUCCESS
+                )
+            );
+
+            mvprintw(
+                13,
+                5,
+                "%.*s",
+                COLS - 10,
+                overview.device.model[0] != '\0'
+                    ? overview.device.model
+                    : overview.device.vendor
+            );
+
+            mvprintw(
+                14,
+                5,
+                "USB %03u:%03u   %04x:%04x   série %.*s",
+                overview.device.bus_number,
+                overview.device.device_number,
+                overview.device.vendor_id,
+                overview.device.product_id,
+                COLS - 48,
+                overview.device.serial[0] != '\0'
+                    ? overview.device.serial
+                    : "—"
+            );
+
+            if (overview.storage_ready) {
+                mvprintw(
+                    15,
+                    5,
+                    "%.*s · %.2f GiB libres / %.2f GiB",
+                    24,
+                    overview.storage.description[0] != '\0'
+                        ? overview.storage.description
+                        : "Stockage MTP",
+                    sync_bytes_to_gib(
+                        overview.storage.free_space_bytes
+                    ),
+                    sync_bytes_to_gib(
+                        overview.storage.max_capacity_bytes
+                    )
+                );
+            }
+        }
+
+        for (index = 0U;
+             index < (size_t)visible_rows &&
+             top + index < item_count;
+             ++index) {
+            size_t absolute =
+                top + index;
+
+            int row =
+                first_row +
+                (int)index;
+
+            const char *direction;
+            const char *category;
+            char status[128];
+
+            switch (absolute) {
+            case 0U:
+                direction = "↓";
+                category =
+                    "Séances Android -> PC";
+
+                (void)snprintf(
+                    status,
+                    sizeof(status),
+                    "%zu JSON candidat(s) à analyser",
+                    overview.remote_json_count
+                );
+                break;
+
+            case 1U:
+                direction = "↓";
+                category =
+                    "Exercices Android -> PC";
+
+                (void)snprintf(
+                    status,
+                    sizeof(status),
+                    "%s",
+                    "import automatique avec séance valide"
+                );
+                break;
+
+            case 2U:
+                direction = "↓";
+                category =
+                    "Mensurations Android -> PC";
+
+                (void)snprintf(
+                    status,
+                    sizeof(status),
+                    "%s",
+                    "import automatique avec séance valide"
+                );
+                break;
+
+            case 3U:
+            default:
+                direction = "↑";
+                category =
+                    "Catalogue PC -> Android";
+
+                (void)snprintf(
+                    status,
+                    sizeof(status),
+                    "%zu exercice(s) locaux à publier",
+                    overview.local_exercise_count
+                );
+                break;
+            }
+
+            if (focus == 1 &&
+                absolute == selected) {
+                attron(
+                    A_REVERSE |
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_ACCENT
+                    )
+                );
+            }
+
+            mvprintw(
+                row,
+                5,
+                " %s %-30.30s  %-.*s ",
+                direction,
+                category,
+                COLS - 45,
+                status
+            );
+
+            if (focus == 1 &&
+                absolute == selected) {
+                attroff(
+                    A_REVERSE |
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_ACCENT
+                    )
+                );
+            }
+        }
+
+        if (overview.exchange_ready &&
+            LINES > 31) {
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+
+            mvprintw(
+                list_bottom - 2,
+                5,
+                "Zone Trainlog : %zu objet(s) · JSON séance v1 gelé · snapshot catalogue séparé",
+                overview.remote_entry_count
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+        }
+
+        section_scrollbar(
+            first_row,
+            list_bottom - 1,
+            COLS - 5,
+            selected,
+            item_count,
+            (size_t)visible_rows
+        );
+
+        attron(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        mvprintw(
+            LINES - 2,
+            2,
+            "%.*s",
+            COLS - 4,
+            "Tab zone  ←→ menu  ↑↓/PgUp/PgDn parcourir  Entrée ouvrir  r actualiser  0-5/F1-F5 direct  b/Échap retour"
+        );
+
+        attroff(
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_MUTED
+            )
+        );
+
+        touchwin(
+            stdscr
+        );
+
+        refresh();
+        key = getch();
+
+        if (key == '\t' ||
+            key == KEY_BTAB) {
+            focus =
+                focus == 0
+                    ? 1
+                    : 0;
+            continue;
+        }
+
+        if (primary_top_nav_forward(
+                key
+            )) {
+            return;
+        }
+
+        if (key == 'b' ||
+            key == 'B' ||
+            key == 27) {
+            return;
+        }
+
+        if (focus == 0) {
+            if (key == KEY_LEFT) {
+                nav_selected =
+                    nav_selected > 0
+                        ? nav_selected - 1
+                        : 5;
+            } else if (key == KEY_RIGHT) {
+                nav_selected =
+                    nav_selected < 5
+                        ? nav_selected + 1
+                        : 0;
+            } else if (
+                key == '\n' ||
+                key == KEY_ENTER
+            ) {
+                if (nav_selected == 5) {
+                    focus = 1;
+                } else if (
+                    primary_top_nav_activate(
+                        nav_selected
+                    )
+                ) {
+                    return;
+                }
+            }
+
+            continue;
+        }
+
+        if (key == KEY_UP) {
+            selected =
+                selected > 0U
+                    ? selected - 1U
+                    : 0U;
+            continue;
+        }
+
+        if (key == KEY_DOWN) {
+            selected =
+                selected + 1U < item_count
+                    ? selected + 1U
+                    : item_count - 1U;
+            continue;
+        }
+
+        if (key == KEY_PPAGE) {
+            size_t jump =
+                (size_t)visible_rows;
+
+            selected =
+                selected > jump
+                    ? selected - jump
+                    : 0U;
+            continue;
+        }
+
+        if (key == KEY_NPAGE) {
+            size_t jump =
+                (size_t)visible_rows;
+
+            selected =
+                selected + jump < item_count
+                    ? selected + jump
+                    : item_count - 1U;
+            continue;
+        }
+
+        /*
+         * 'r' intentionally reaches the next loop iteration. Every iteration
+         * performs a fresh USB/MTP scan before repainting the page.
+         */
+    }
+}
+
 int trainlog_tui_run(TrainlogDatabase *database)
 {
     if (database == NULL) {
@@ -8216,6 +8944,9 @@ int trainlog_tui_run(TrainlogDatabase *database)
             break;
         case DASHBOARD_BODY:
             screen_body(database);
+            break;
+        case DASHBOARD_SYNC:
+            screen_sync(database);
             break;
         case DASHBOARD_QUIT:
             endwin();

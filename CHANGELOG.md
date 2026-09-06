@@ -139,3 +139,17 @@ Next:
 - validated a real Android internal-storage write/list/read roundtrip;
 - kept Android access mount-free: no GVFS/FUSE mount lifecycle is required.
 <!-- TRAINLOG_MTP_TRANSPORT_CHANGELOG _END -->
+
+<!-- TRAINLOG_SYNC_FINAL_CHANGELOG -->
+### Sync TUI page
+
+- added `5 Sync / F5` to primary navigation;
+- added dedicated Sync ASCII banner and framed page;
+- added live direct-MTP device and storage status;
+- suppressed libmtp terminal output during ncurses rendering;
+- added focused-frame navigation with Tab/Shift+Tab;
+- added clean list navigation and scrollbar behavior;
+- exposed Android -> PC session/exercise/body synchronization directions;
+- exposed PC -> Android canonical exercise-catalog direction;
+- kept frozen Trainlog session JSON v1 unchanged.
+<!-- TRAINLOG_SYNC_FINAL_CHANGELOG _END -->

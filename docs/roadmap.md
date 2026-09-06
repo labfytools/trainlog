@@ -230,3 +230,58 @@ Next implementation slice:
 4. begin the minimal Android recorder
 ```
 <!-- TRAINLOG_MTP_TRANSPORT_ROADMAP _END -->
+
+<!-- TRAINLOG_SYNC_PAGE_ROADMAP -->
+## Sync TUI integration
+
+```text
+MTP_TRANSPORT_FOUNDATION=PASS
+TUI_SYNC_PAGE=IMPLEMENTED
+TUI_SYNC_DEVICE_STATUS=IMPLEMENTED
+TUI_SYNC_REMOTE_JSON_CANDIDATES=IMPLEMENTED
+TUI_SYNC_LOCAL_CATALOG_COUNT=IMPLEMENTED
+JSON_V1_MTP_CLASSIFICATION_IMPORT=NEXT
+CATALOG_SNAPSHOT_SYNC=AFTER
+ANDROID_MINIMAL_RECORDER=AFTER
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+Sync direction:
+
+```text
+Android -> PC
+    sessions
+    new exercises embedded in sessions -> automatic reconciliation
+    body data embedded in sessions      -> automatic import
+
+PC -> Android
+    canonical exercise catalog snapshot
+```
+
+Standalone body-observation exchange, if required by the Android recorder, gets
+its own explicit versioned contract rather than changing session JSON v1.
+<!-- TRAINLOG_SYNC_PAGE_ROADMAP _END -->
+
+<!-- TRAINLOG_SYNC_FINAL_ROADMAP -->
+## Sync UI checkpoint complete
+
+```text
+MTP_TRANSPORT_FOUNDATION=PASS
+TUI_SYNC_PAGE=IMPLEMENTED
+TUI_SYNC_DEVICE_STATUS=IMPLEMENTED
+TUI_SYNC_FOCUS_NAVIGATION=IMPLEMENTED
+TUI_SYNC_REMOTE_JSON_CANDIDATES=IMPLEMENTED
+TUI_SYNC_LOCAL_CATALOG_COUNT=IMPLEMENTED
+ANDROID_APP_SCAFFOLD=NEXT
+ANDROID_FAKE_DATA_FLOW=AFTER
+JSON_V1_ANDROID_EXPORT=AFTER
+CATALOG_SNAPSHOT_SYNC=AFTER
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+Development now moves to the Android client.
+
+Fictitious sessions, exercises, and body observations are used during Android
+development and synchronization testing. The development database will be
+purged before normal production use begins.
+<!-- TRAINLOG_SYNC_FINAL_ROADMAP _END -->

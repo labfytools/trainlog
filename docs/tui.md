@@ -577,3 +577,100 @@ preserved.
 The dashboard rolling 12-month axis clamps the final `MM/YY` label inside the
 dashboard frame so the current-month label does not overwrite the right border.
 <!-- TRAINLOG_TUI_EDITABILITY_NAV_CHECKPOINT _END -->
+
+<!-- TRAINLOG_SYNC_PAGE -->
+## Sync page
+
+The primary TUI navigation includes:
+
+```text
+5 Sync / F5
+```
+
+The Sync screen uses the same ASCII banner, top navigation, ncurses frames and
+footer conventions as the other primary pages.
+
+The screen is a live overview of the direct USB/MTP transport:
+
+- connected physical MTP device;
+- USB bus/device and VID:PID;
+- device serial when available;
+- selected MTP storage;
+- free/capacity values;
+- readiness of the root `Trainlog` exchange area.
+
+Incoming categories are presented explicitly:
+
+```text
+Séances
+Exercices
+Mensurations
+```
+
+New exercise metadata arriving inside a valid session is intended to reconcile
+automatically against the canonical local catalog.
+
+Body measurements carried by a valid session are imported with that session.
+
+The opposite direction is also explicit: exercises created directly on the PC
+must be exportable to the Android application so both sides use the same stable
+exercise IDs, names and tracking modes. This catalog synchronization uses a
+separate versioned catalog snapshot; it does not overload or modify the frozen
+Trainlog session JSON v1 contract.
+
+The first Sync-page slice displays remote JSON candidates and the local exercise
+count. Actual JSON classification/import and catalog-snapshot export are the
+next synchronization slices.
+<!-- TRAINLOG_SYNC_PAGE _END -->
+
+<!-- TRAINLOG_SYNC_FINAL_CHECKPOINT -->
+## Sync page checkpoint
+
+Primary navigation now includes:
+
+```text
+0 Accueil
+1 Séance
+2 Historique
+3 Exercices
+4 Corps
+5 Sync
+```
+
+`5 Sync / F5` opens a dedicated page rather than drawing over the dashboard.
+
+The page contains:
+
+- `APPAREIL CONNECTE`;
+- `SYNCHRONISATION`.
+
+Focus rules:
+
+```text
+Tab / Shift+Tab  switch focused frame
+Left/Right       move inside top navigation
+Enter            activate selected navigation item
+Up/Down          move through synchronization rows
+PgUp/PgDn        scroll synchronization content
+r                rescan USB/MTP state
+b / Escape       return
+```
+
+Only the focused frame uses the yellow border/title role.
+
+The live page reports the connected Android MTP device and exposes these sync
+directions:
+
+```text
+Android -> PC
+    sessions
+    exercises carried by sessions
+    body measurements carried by sessions
+
+PC -> Android
+    canonical exercise catalog
+```
+
+The session exchange remains frozen Trainlog JSON v1.
+Catalog synchronization is a separate versioned contract.
+<!-- TRAINLOG_SYNC_FINAL_CHECKPOINT _END -->

@@ -234,3 +234,29 @@ slice before the Android recorder depends on it.
 The Android application itself will only need to produce a valid frozen
 Trainlog JSON v1 document and place it in the agreed exchange area.
 <!-- TRAINLOG_ANDROID_MTP_TRANSPORT _END -->
+
+<!-- TRAINLOG_ANDROID_NEXT_SLICE -->
+## 16. Current Android implementation cursor
+
+The Linux transport and Sync TUI foundations are complete enough to begin the
+Android client.
+
+Initial Android development uses fictitious data.
+
+First Android slice:
+
+```text
+1. application scaffold
+2. local exercise catalog
+3. create/select exercise
+4. session form
+5. actual set entry
+6. optional body measurements
+7. fictitious completed session
+```
+
+Transport/export is added only after the local recorder workflow is comfortable.
+
+The Android client must preserve stable exercise IDs so a catalog snapshot from
+the PC can normalize exercise selection on both sides.
+<!-- TRAINLOG_ANDROID_NEXT_SLICE _END -->
