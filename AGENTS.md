@@ -5,8 +5,10 @@
 Trainlog consists of:
 
 - a native Android application for fast workout and body-data capture;
-- a Unix/Linux C17 ncursesw TUI for durable history, correction, analysis,
-  visualization, and manual synchronization;
+- a Unix/Linux C17 terminal TUI for durable history, correction, analysis,
+  visualization, and manual synchronization. The current authorized
+  `TUI_NOTCURSES_V1` infrastructure tranche migrates the active rendering/input
+  backend from legacy ncursesw to Notcurses without changing product semantics;
 - a small user-session PC agent, `trainlog-syncd`, for Android-triggered
   synchronization;
 - versioned JSON synchronization artifacts exchanged over direct MTP.
@@ -71,22 +73,74 @@ The desktop core is C17.
 
 Current primary dependencies:
 
-- ncursesw;
 - SQLite3;
 - utf8proc;
 - libuuid;
 - libudev;
 - libmtp;
 - Meson;
-- Ninja.
+- Ninja;
+- one active desktop terminal backend.
+
+For the authorized `TUI_NOTCURSES_V1` tranche:
+
+```text
+legacy backend = ncursesw
+target backend = Notcurses
+```
+
+During the migration, ncursesw may remain only as the pre-migration
+implementation being replaced. Once `TUI_NOTCURSES_V1=PASS`, active desktop TUI
+code and build wiring must use Notcurses and must not retain ncursesw as an
+unused permanent compatibility backend.
 
 Business logic, persistence, transport, and rendering remain separated.
 
 SQLite operations must not be scattered through rendering code.
 
-Important business rules must not depend directly on ncurses.
+Important business rules must not depend directly on ncurses, Notcurses, or
+terminal-library-specific key constants.
 
 Strict warning policy must not be weakened to make a change compile.
+
+### Desktop TUI backend contract
+
+The terminal library is infrastructure, not product semantics.
+
+The active TUI backend must preserve:
+
+```text
+public entry point: trainlog_tui_run(TrainlogDatabase *)
+minimum terminal: 72x20
+small-terminal fallback
+keyboard-first navigation
+UTF-8 text input
+resize recovery
+semantic color roles
+all existing screen/workflow behavior
+```
+
+Terminal-library state must not become process-global application state.
+
+Application screen logic should consume Trainlog-owned key/input semantics
+rather than raw backend-specific `KEY_*`/event constants.
+
+The Notcurses migration may modernize rendering with true color, Unicode
+borders, flat panels, and clearer focus/selection states, but must not change:
+
+```text
+database schema or SQL semantics
+TRAINLOG_FORMAT_V1
+exercise semantics
+session semantics
+measured-max semantics
+body-analytics semantics
+sync/MTP protocols
+Android behavior
+```
+
+After the migration is validated, canonical documentation must describe
+Notcurses as the active desktop TUI backend.
 
 ## 6. Android implementation
 
