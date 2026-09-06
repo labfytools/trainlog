@@ -2,6 +2,8 @@ cc = meson.get_compiler('c')
 
 sqlite3_dep = dependency('sqlite3', required: true)
 uuid_dep = dependency('uuid', required: true)
+udev_dep = dependency('libudev', required: true)
+mtp_dep = dependency('libmtp', required: true)
 
 ncursesw_dep = dependency('ncursesw', required: false)
 if not ncursesw_dep.found()
@@ -31,6 +33,8 @@ trainlog_core_sources = files(
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
+  'src/usb.c',
+  'src/mtp.c',
 )
 
 trainlog_core = static_library(
@@ -42,6 +46,8 @@ trainlog_core = static_library(
     uuid_dep,
     utf8proc_dep,
     m_dep,
+    udev_dep,
+    mtp_dep,
   ],
   c_args: strict_c_args,
 )
@@ -54,6 +60,8 @@ trainlog_core_dep = declare_dependency(
     uuid_dep,
     utf8proc_dep,
     m_dep,
+    udev_dep,
+    mtp_dep,
   ],
 )
 
@@ -182,4 +190,56 @@ test_body_observation_edit = executable(
 test(
   'body_observation_edit',
   test_body_observation_edit,
+)
+
+trainlog_usb_probe = executable(
+  'trainlog-usb-probe',
+  'tools/usb_probe.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test_usb = executable(
+  'test_usb',
+  'tests/test_usb.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'usb',
+  test_usb,
+)
+
+trainlog_mtp_probe = executable(
+  'trainlog-mtp-probe',
+  'tools/mtp_probe.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test_mtp = executable(
+  'test_mtp',
+  'tests/test_mtp.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'mtp',
+  test_mtp,
+)
+
+trainlog_mtp_exchange_probe = executable(
+  'trainlog-mtp-exchange-probe',
+  'tools/mtp_exchange_probe.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+trainlog_mtp_roundtrip_probe = executable(
+  'trainlog-mtp-roundtrip-probe',
+  'tools/mtp_roundtrip_probe.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
 )

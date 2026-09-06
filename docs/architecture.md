@@ -138,3 +138,35 @@ Examples:
 - duplicate session: report already imported, do not duplicate;
 - unknown exercise: import it when valid catalog data is present;
 - incomplete active session: preserve it explicitly rather than silently inventing an end time.
+
+<!-- TRAINLOG_DIRECT_MTP_ARCHITECTURE -->
+## 7. Direct Android USB/MTP transport
+
+The Linux side does not require the Android device to be mounted as a normal
+filesystem.
+
+Transport layering is:
+
+```text
+Android USB file-transfer mode
+        |
+        v
+libudev physical-device discovery
+        |
+        | bus number + device number
+        v
+libmtp exact raw-device open
+        |
+        v
+Android internal MTP storage
+```
+
+This avoids GVFS/FUSE mount state and manual mount/unmount lifecycle management.
+
+`libudev` owns physical-device discovery. `libmtp` owns storage and object
+operations. The JSON exchange layer remains above both and stays independent
+from USB/MTP backend details.
+
+Current transport foundation supports folder creation, file upload, folder
+listing, file download, and verified byte-for-byte roundtrip.
+<!-- TRAINLOG_DIRECT_MTP_ARCHITECTURE _END -->

@@ -153,3 +153,40 @@ python tools/validate_json.py
 python tools/validate_import_contract.py
 git diff --check
 ```
+
+<!-- TRAINLOG_MTP_VALIDATION -->
+## 11. USB/MTP transport validation
+
+The compiled suite now contains:
+
+```text
+usb
+mtp
+```
+
+The `usb` test covers API validation, physical-device enumeration invariants,
+and rejection of duplicated USB interface children.
+
+The `mtp` test covers bounded API argument validation for storage, folder,
+upload, listing, and download entry points.
+
+Hardware probes additionally validate the real device path:
+
+```text
+trainlog-usb-probe
+trainlog-mtp-probe
+trainlog-mtp-exchange-probe
+trainlog-mtp-roundtrip-probe
+```
+
+Physical checkpoint result:
+
+```text
+MTP devices: 1
+ROUNDTRIP=PASS Trainlog/trainlog-probe.txt
+```
+
+The hardware probe is intentionally separate from the normal automated test
+suite because CI is not expected to have a connected unlocked Android MTP
+device.
+<!-- TRAINLOG_MTP_VALIDATION _END -->

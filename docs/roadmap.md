@@ -198,3 +198,35 @@ ANDROID_MINIMAL_RECORDER=AFTER
 JSON_V1_USB_IMPORT_EXPORT=AFTER
 ```
 <!-- TRAINLOG_EDITABILITY_ROADMAP _END -->
+
+<!-- TRAINLOG_MTP_TRANSPORT_ROADMAP -->
+## Direct MTP transport checkpoint
+
+```text
+USB_MTP_DETECTION=PASS
+MTP_STORAGE_ACCESS=PASS
+MTP_ROOT_FOLDER_ACCESS=PASS
+MTP_WRITE=PASS
+MTP_LIST_FOLDER=PASS
+MTP_READ=PASS
+MTP_ROUNDTRIP=PASS
+MTP_TRANSPORT_FOUNDATION=PASS
+JSON_V1_MTP_TRANSFER=NEXT
+ANDROID_MINIMAL_RECORDER=AFTER
+TRAINLOG_FORMAT_V1=FROZEN
+```
+
+The Linux side now detects one physical MTP phone without counting USB
+interface children, opens the exact device with libmtp, accesses internal
+storage, and performs a verified write/list/read roundtrip without mounting the
+phone.
+
+Next implementation slice:
+
+```text
+1. freeze the MTP exchange directory/file convention
+2. roundtrip a real examples/session-v1.json
+3. validate/import the downloaded JSON
+4. begin the minimal Android recorder
+```
+<!-- TRAINLOG_MTP_TRANSPORT_ROADMAP _END -->

@@ -205,3 +205,32 @@ A valid Android export can still conflict with an independently edited TUI catal
 The TUI owns final reconciliation.
 
 Android must not assume that a matching display name means two different IDs may be silently merged.
+
+<!-- TRAINLOG_ANDROID_MTP_TRANSPORT -->
+## 15. USB file-transfer transport
+
+The initial Android/Linux integration uses standard Android **file transfer
+(MTP)** mode.
+
+The Linux TUI/core accesses the device directly with `libudev` + `libmtp`.
+Trainlog does not require a mounted Android filesystem.
+
+Validated Linux-side capabilities:
+
+```text
+USB_MTP_DETECTION=PASS
+MTP_STORAGE_ACCESS=PASS
+MTP_WRITE=PASS
+MTP_READ=PASS
+MTP_ROUNDTRIP=PASS
+```
+
+The transport foundation currently uses a root `Trainlog` folder for physical
+validation.
+
+The final JSON exchange subdirectory/naming convention is defined in the next
+slice before the Android recorder depends on it.
+
+The Android application itself will only need to produce a valid frozen
+Trainlog JSON v1 document and place it in the agreed exchange area.
+<!-- TRAINLOG_ANDROID_MTP_TRANSPORT _END -->

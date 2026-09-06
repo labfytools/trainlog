@@ -123,3 +123,19 @@ Next:
 - added direct exercise creation from the in-session exercise chooser;
 - kept the final rolling 12-month `MM/YY` dashboard label inside its frame.
 <!-- TRAINLOG_EDITABILITY_NAV_CHANGELOG _END -->
+
+<!-- TRAINLOG_MTP_TRANSPORT_CHANGELOG -->
+### Direct Android USB/MTP transport foundation
+
+- added `libudev` discovery of physical MTP devices;
+- filtered MTP USB interface children to avoid duplicate phones;
+- added exact bus/device matching into `libmtp`;
+- added MTP storage enumeration;
+- added root-folder discovery/creation;
+- added direct MTP text-file upload;
+- added direct folder-child listing;
+- added direct MTP file download;
+- split cached and uncached libmtp open paths where required;
+- validated a real Android internal-storage write/list/read roundtrip;
+- kept Android access mount-free: no GVFS/FUSE mount lifecycle is required.
+<!-- TRAINLOG_MTP_TRANSPORT_CHANGELOG _END -->
