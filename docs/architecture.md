@@ -170,3 +170,30 @@ from USB/MTP backend details.
 Current transport foundation supports folder creation, file upload, folder
 listing, file download, and verified byte-for-byte roundtrip.
 <!-- TRAINLOG_DIRECT_MTP_ARCHITECTURE _END -->
+
+<!-- TRAINLOG_PROFILE_AWARE_ARCHITECTURE -->
+## Profile-aware activity architecture
+
+Trainlog has two distinct actual-work persistence paths:
+
+```text
+SET-based exercise
+    session_exercises
+        |
+        +--> performed_sets [0..N]
+
+CONTINUOUS exercise
+    session_exercises
+        |
+        +--> continuous_activity [exactly 1]
+```
+
+The two paths must remain semantically distinct.
+
+Catalog metadata determines future entry forms.
+
+Session-exercise snapshot metadata determines historical rendering/editing.
+
+The Android client must consume the same catalog profile metadata rather than
+maintaining an independent exercise-type system.
+<!-- TRAINLOG_PROFILE_AWARE_ARCHITECTURE _END -->

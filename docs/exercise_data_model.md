@@ -193,3 +193,51 @@ data_fields
 7. Android uses the same model
 8. design session exchange v2
 ```
+
+<!-- TRAINLOG_PROFILE_AWARE_IMPLEMENTED -->
+## Implemented checkpoint
+
+The profile-aware exercise model is now implemented in the C model, SQLite
+persistence and TUI.
+
+Current canonical rules:
+
+```text
+recording_mode = SETS | CONTINUOUS
+tracking_mode  = REPS | DURATION
+
+known data_fields:
+    SPEED_KMH
+    DISTANCE_KM
+```
+
+Valid model-v1 combinations:
+
+```text
+SETS + REPS
+SETS + DURATION
+CONTINUOUS + DURATION
+```
+
+Continuous exercise actual data is persisted as one `continuous_activity`
+record rather than a performed-set list.
+
+A continuous activity never manufactures a one-set representation.
+
+The TUI asks continuous duration in **minutes**, converts to seconds, and stores
+seconds internally.
+
+Example:
+
+```text
+Marche
+    CONTINUOUS + DURATION + SPEED_KMH
+
+TUI entry:
+    Durée (minutes)
+    Vitesse km/h
+```
+
+Historical session rows snapshot recording metadata and are not reinterpreted
+when catalog metadata later changes.
+<!-- TRAINLOG_PROFILE_AWARE_IMPLEMENTED _END -->

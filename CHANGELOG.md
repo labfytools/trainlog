@@ -153,3 +153,20 @@ Next:
 - exposed PC -> Android canonical exercise-catalog direction;
 - kept frozen Trainlog session JSON v1 unchanged.
 <!-- TRAINLOG_SYNC_FINAL_CHANGELOG _END -->
+
+<!-- TRAINLOG_PROFILE_AWARE_CHANGELOG -->
+### Profile-aware and continuous exercise tracking
+
+- added set-based versus continuous recording organization;
+- added speed and distance supplemental-field metadata;
+- added profiled catalog creation API;
+- added profile-aware exercise creation in the TUI;
+- added inline profiled exercise creation while recording a session;
+- migrated SQLite persistence to schema v4;
+- added one-to-one continuous activity persistence;
+- kept continuous activities out of `performed_sets`;
+- added profile-aware session detail loading;
+- added continuous duration/speed/distance history display;
+- made continuous TUI duration entry explicitly minute-based;
+- preserved frozen session JSON v1 unchanged.
+<!-- TRAINLOG_PROFILE_AWARE_CHANGELOG _END -->

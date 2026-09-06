@@ -696,3 +696,70 @@ Continuous exercises do not display a set count.
 `Marche` will use the continuous form only after its catalog metadata is
 explicitly changed; behavior is never inferred from its name.
 <!-- TRAINLOG_PROFILE_AWARE_ENTRY _END -->
+
+<!-- TRAINLOG_CONTINUOUS_TUI_IMPLEMENTED -->
+## Continuous exercise TUI — implemented
+
+Exercise creation supports explicit organization:
+
+```text
+1 séries
+2 continu
+```
+
+Continuous creation forces duration tracking in model v1 and can enable:
+
+```text
+speed
+distance
+```
+
+The same creation path is available:
+
+```text
+from Exercices page
+inline while recording a session
+```
+
+Session entry is profile-aware.
+
+Set-based exercises retain:
+
+```text
+charge
+sets
+reps/duration
+rest
+performed sets
+```
+
+Continuous exercises display only their relevant fields.
+
+For `Marche + SPEED_KMH`:
+
+```text
+Durée (minutes)
+Vitesse km/h
+```
+
+Bare continuous duration input is interpreted as minutes.
+
+Example:
+
+```text
+15 -> 15 min -> 900 seconds in SQLite
+```
+
+Session detail is also profile-aware.
+
+Continuous detail example:
+
+```text
+Mode : continu
+Durée : 15 min
+Vitesse : 7.0 km/h
+Réalisé : activité continue
+```
+
+Do not render set-oriented labels for a valid continuous activity.
+<!-- TRAINLOG_CONTINUOUS_TUI_IMPLEMENTED _END -->

@@ -309,3 +309,43 @@ supplemental fields:    SPEED_KMH | DISTANCE_KM
 
 Existing schema-v2 data migrates conservatively to `SETS`.
 <!-- TRAINLOG_EXERCISE_DATA_MODEL_ROADMAP _END -->
+
+<!-- TRAINLOG_PROFILE_AWARE_ROADMAP_FINAL -->
+## Current implementation cursor
+
+```text
+MTP_TRANSPORT_FOUNDATION=PASS
+TUI_SYNC_PAGE=PASS
+
+EXERCISE_DATA_MODEL_V1=PASS
+DATABASE_SCHEMA_V4=PASS
+PROFILED_CATALOG_API=PASS
+PROFILE_AWARE_EXERCISE_CREATION=PASS
+CONTINUOUS_ACTIVITY_PERSISTENCE=PASS
+CONTINUOUS_ACTIVITY_DETAIL_DISPLAY=PASS
+CONTINUOUS_DURATION_MINUTES_UI=PASS
+
+ANDROID_APP=NEXT
+
+TRAINLOG_FORMAT_V1=FROZEN
+PROFILE_AWARE_SESSION_EXCHANGE=DESIGN_LATER
+```
+
+Next Android slice:
+
+```text
+1. Android project scaffold
+2. shared Trainlog visual identity
+3. launcher icon = themed T
+4. home/navigation
+5. session recording
+6. inline exercise creation
+7. standalone exercise creation
+8. standalone body measurement recording
+9. fictitious local records
+10. only then connect exchange/sync
+```
+
+Do not revert continuous activities to performed sets.
+Do not modify JSON v1 to accommodate continuous metrics.
+<!-- TRAINLOG_PROFILE_AWARE_ROADMAP_FINAL _END -->

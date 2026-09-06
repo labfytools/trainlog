@@ -284,3 +284,66 @@ and no set count.
 Creating an exercise directly inside session entry must configure this metadata
 before adding it to the catalog/session.
 <!-- TRAINLOG_ANDROID_PROFILE_AWARE_ENTRY _END -->
+
+<!-- TRAINLOG_ANDROID_PROFILE_CURSOR -->
+## Android implementation cursor
+
+Android is the next implementation area.
+
+The application must share Trainlog's visual language with the TUI.
+
+Theme direction:
+
+```text
+dark background
+cyan/teal Trainlog accent
+yellow active/focus role
+green success
+red error
+```
+
+Launcher icon:
+
+```text
+T
+```
+
+Only the letter `T`, using Trainlog theme colors.
+
+Required recording sections:
+
+```text
+Séance
+Exercice
+Mensurations
+```
+
+Session recording must allow creating a new exercise inline without leaving the
+session flow.
+
+Android forms are driven by the same profile metadata as desktop:
+
+```text
+recording_mode
+tracking_mode
+data_fields
+```
+
+Examples:
+
+```text
+SETS + REPS
+    sets / reps / load / rest
+
+SETS + DURATION
+    sets / duration / optional load / rest
+
+CONTINUOUS + DURATION + SPEED_KMH
+    duration / speed
+```
+
+The app must never infer an input form from an exercise display name.
+
+Initial development uses fictitious records. Test/development data is removed
+before normal production use starts.
+<!-- TRAINLOG_ANDROID_PROFILE_CURSOR _END -->

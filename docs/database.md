@@ -304,3 +304,57 @@ No name-based migration is allowed.
 Continuous actual activity data is stored separately from `performed_sets`;
 Trainlog will not manufacture a fake one-set workout.
 <!-- TRAINLOG_EXERCISE_DATA_MODEL_V1 _END -->
+
+<!-- TRAINLOG_SCHEMA_V4_CONTINUOUS -->
+## Schema v4 — continuous exercise persistence
+
+Current database schema:
+
+```text
+TRAINLOG_DATABASE_SCHEMA_VERSION = 4
+PRAGMA user_version = 4
+```
+
+Relevant profile metadata is stored in both:
+
+```text
+exercises
+session_exercises
+```
+
+`session_exercises` snapshots:
+
+```text
+recording_mode
+data_fields
+```
+
+Continuous actual activity data is stored one-to-one in:
+
+```text
+continuous_activity
+```
+
+Columns:
+
+```text
+session_exercise_row_id
+duration_seconds
+speed_kmh     nullable
+distance_km   nullable
+```
+
+For a valid continuous activity:
+
+```text
+target_sets             NULL
+target_reps             NULL
+target_duration_seconds NULL
+load_mode               none
+rest_seconds            0
+target_weight_kg        NULL
+performed_sets          none
+```
+
+Schema migration never infers profile information from exercise names.
+<!-- TRAINLOG_SCHEMA_V4_CONTINUOUS _END -->

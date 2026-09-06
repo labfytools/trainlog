@@ -190,3 +190,35 @@ The hardware probe is intentionally separate from the normal automated test
 suite because CI is not expected to have a connected unlocked Android MTP
 device.
 <!-- TRAINLOG_MTP_VALIDATION _END -->
+
+<!-- TRAINLOG_CONTINUOUS_TEST_CHECKPOINT -->
+## Profile-aware / continuous validation
+
+Expected normal test suite after this checkpoint:
+
+```text
+15 tests
+```
+
+Coverage added around:
+
+```text
+exercise profile schema
+profiled catalog creation
+schema migration
+continuous session persistence
+continuous session detail loading
+```
+
+Manual TUI validation includes:
+
+```text
+Marche configured CONTINUOUS + DURATION + SPEED_KMH
+entry asks duration minutes + speed
+no sets/rest/load prompts
+continuous_activity row persisted
+performed_sets count remains zero
+history reopens as continuous
+duration and speed render correctly
+```
+<!-- TRAINLOG_CONTINUOUS_TEST_CHECKPOINT _END -->
