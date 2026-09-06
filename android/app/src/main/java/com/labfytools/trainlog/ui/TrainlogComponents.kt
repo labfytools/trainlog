@@ -6,20 +6,32 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,9 +58,7 @@ fun TrainlogScreen(
     Column(
         modifier =
             Modifier
-                .background(
-                    colors.background
-                )
+                .background(colors.background)
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
@@ -58,7 +68,7 @@ fun TrainlogScreen(
                 .padding(
                     PaddingValues(
                         horizontal = 16.dp,
-                        vertical = 14.dp,
+                        vertical = 12.dp,
                     )
                 ),
     ) {
@@ -81,9 +91,7 @@ private fun TrainlogBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(
-                    bottom = 22.dp
-                )
+                .padding(bottom = 18.dp)
     ) {
         val wide =
             maxWidth >= 560.dp
@@ -107,9 +115,9 @@ private fun TrainlogBanner(
                         fontWeight = FontWeight.Bold,
                         fontSize =
                             if (wide) {
-                                15.sp
+                                14.sp
                             } else {
-                                22.sp
+                                21.sp
                             },
                     ),
             )
@@ -117,9 +125,7 @@ private fun TrainlogBanner(
             BasicText(
                 text = subtitle,
                 modifier =
-                    Modifier.padding(
-                        top = 6.dp
-                    ),
+                    Modifier.padding(top = 5.dp),
                 style =
                     TrainlogTypography.small.copy(
                         color = colors.muted,
@@ -152,9 +158,7 @@ fun TrainlogFrame(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(
-                    bottom = 20.dp
-                )
+                .padding(bottom = 16.dp)
     ) {
         BasicText(
             text = title.uppercase(),
@@ -171,8 +175,8 @@ fun TrainlogFrame(
                 Modifier
                     .fillMaxWidth()
                     .padding(
-                        top = 7.dp,
-                        bottom = 10.dp,
+                        top = 6.dp,
+                        bottom = 8.dp,
                     )
                     .height(1.dp)
                     .background(accent)
@@ -196,25 +200,30 @@ fun TrainlogAction(
     val actualAccent =
         accent ?: colors.accent
 
-    Box(
+    Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(
-                    vertical = 4.dp
-                )
-                .background(
-                    colors.surface
-                )
-                .clickable(
-                    onClick = onClick
-                )
-                .padding(
-                    horizontal = 14.dp,
-                    vertical = 12.dp,
-                )
+                .padding(vertical = 3.dp)
+                .height(IntrinsicSize.Min)
+                .background(colors.surface)
+                .clickable(onClick = onClick)
     ) {
-        Column {
+        Box(
+            modifier =
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(actualAccent)
+        )
+
+        Column(
+            modifier =
+                Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 10.dp,
+                )
+        ) {
             BasicText(
                 text = label,
                 style =
@@ -229,9 +238,7 @@ fun TrainlogAction(
                 BasicText(
                     text = description,
                     modifier =
-                        Modifier.padding(
-                            top = 3.dp
-                        ),
+                        Modifier.padding(top = 2.dp),
                     style =
                         TrainlogTypography.small.copy(
                             color = colors.text,
@@ -239,6 +246,93 @@ fun TrainlogAction(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun TrainlogInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    keyboardOptions: KeyboardOptions =
+        KeyboardOptions.Default,
+) {
+    val colors =
+        LocalTrainlogColors.current
+
+    var focused by
+        remember {
+            mutableStateOf(false)
+        }
+
+    Column(
+        modifier =
+            Modifier.padding(bottom = 10.dp)
+    ) {
+        BasicText(
+            text = label.uppercase(),
+            modifier =
+                Modifier.padding(bottom = 4.dp),
+            style =
+                TrainlogTypography.small.copy(
+                    color =
+                        if (focused) {
+                            colors.accent
+                        } else {
+                            colors.muted
+                        },
+                    fontWeight =
+                        if (focused) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.Normal
+                        },
+                ),
+        )
+
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            keyboardOptions = keyboardOptions,
+            cursorBrush =
+                SolidColor(colors.accent),
+            textStyle =
+                TrainlogTypography.normal.copy(
+                    color = colors.text,
+                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged {
+                        focused = it.isFocused
+                    }
+                    .background(colors.surface)
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 10.dp,
+                    ),
+        )
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(
+                        if (focused) {
+                            2.dp
+                        } else {
+                            1.dp
+                        }
+                    )
+                    .background(
+                        if (focused) {
+                            colors.accent
+                        } else {
+                            colors.surfaceAlt
+                        }
+                    )
+        )
     }
 }
 
@@ -253,9 +347,7 @@ fun TrainlogInfo(
     BasicText(
         text = text,
         modifier =
-            Modifier.padding(
-                vertical = 3.dp
-            ),
+            Modifier.padding(vertical = 3.dp),
         style =
             TrainlogTypography.normal.copy(
                 color =

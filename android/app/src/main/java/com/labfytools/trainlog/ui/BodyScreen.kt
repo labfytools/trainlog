@@ -1,12 +1,8 @@
 package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -20,13 +16,10 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.SaveBodyObservationResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
-import com.labfytools.trainlog.ui.theme.TrainlogTypography
 
 @Composable
 fun BodyScreen(
@@ -503,67 +496,19 @@ private fun BodyMetricField(
     value: String,
     onValueChange: (String) -> Unit,
 ) {
-    val colors =
-        LocalTrainlogColors.current
-
-    Column(
-        modifier =
-            Modifier.padding(
-                bottom = 11.dp
-            )
-    ) {
-        BasicText(
-            text =
-                "$label ($unit)"
-                    .uppercase(),
-            modifier =
-                Modifier.padding(
-                    bottom = 5.dp
-                ),
-            style =
-                TrainlogTypography.small
-                    .copy(
-                        color =
-                            colors.muted,
-                    ),
-        )
-
-        BasicTextField(
-            value = value,
-            onValueChange =
-                onValueChange,
-            singleLine = true,
-            keyboardOptions =
-                KeyboardOptions(
-                    keyboardType =
-                        KeyboardType.Decimal,
-                    imeAction =
-                        ImeAction.Next,
-                ),
-            cursorBrush =
-                SolidColor(
-                    colors.accent
-                ),
-            textStyle =
-                TrainlogTypography.normal
-                    .copy(
-                        color =
-                            colors.text,
-                    ),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color =
-                            colors.surfaceAlt,
-                    )
-                    .background(
-                        colors.surface
-                    )
-                    .padding(12.dp),
-        )
-    }
+    TrainlogInputField(
+        label = "$label ($unit)",
+        value = value,
+        onValueChange =
+            onValueChange,
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType =
+                    KeyboardType.Decimal,
+                imeAction =
+                    ImeAction.Next,
+            ),
+    )
 }
 
 private sealed interface MetricParse {

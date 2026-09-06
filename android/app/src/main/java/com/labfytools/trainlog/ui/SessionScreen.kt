@@ -7,14 +7,12 @@ package com.labfytools.trainlog.ui
 /* TRAINLOG_VARIABLE_SET_REPS_V1 */
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -22,7 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.SaveSessionResult
 import com.labfytools.trainlog.data.TrainlogRepository
@@ -425,23 +423,7 @@ private fun CatalogChoice(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(
-                    vertical = 3.dp
-                )
-                .border(
-                    width = 1.dp,
-                    color =
-                        when {
-                            selected ->
-                                colors.warning
-
-                            disabled ->
-                                colors.muted
-
-                            else ->
-                                colors.surfaceAlt
-                        },
-                )
+                .padding(vertical = 2.dp)
                 .background(
                     if (selected) {
                         colors.surfaceAlt
@@ -450,40 +432,45 @@ private fun CatalogChoice(
                     }
                 )
                 .clickable(
-                    enabled =
-                        !disabled,
-                    onClick =
-                        onClick,
+                    enabled = !disabled,
+                    onClick = onClick,
                 )
-                .padding(11.dp)
+                .padding(
+                    horizontal = 10.dp,
+                    vertical = 9.dp,
+                )
     ) {
         BasicText(
             text =
                 (
                     if (disabled) {
-                        "[✓] "
+                        "✓ "
                     } else if (selected) {
-                        "[>] "
+                        "▌ "
                     } else {
-                        "[ ] "
+                        "  "
                     }
                 ) +
                     exercise.name +
-                    "  [$profile]",
+                    "  ·  " +
+                    profile,
             style =
-                TrainlogTypography.normal
-                    .copy(
-                        color =
-                            if (disabled) {
-                                colors.muted
-                            } else if (
-                                selected
-                            ) {
-                                colors.warning
-                            } else {
-                                colors.text
-                            },
-                    ),
+                TrainlogTypography.normal.copy(
+                    color =
+                        if (disabled) {
+                            colors.muted
+                        } else if (selected) {
+                            colors.warning
+                        } else {
+                            colors.text
+                        },
+                    fontWeight =
+                        if (selected) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.Normal
+                        },
+                ),
         )
     }
 }
@@ -701,59 +688,12 @@ private fun SessionNumberField(
     value: String,
     onValueChange: (String) -> Unit,
 ) {
-    val colors =
-        LocalTrainlogColors.current
-
-    Column(
-        modifier =
-            Modifier.padding(
-                bottom = 12.dp
-            )
-    ) {
-        BasicText(
-            text =
-                label.uppercase(),
-            modifier =
-                Modifier.padding(
-                    bottom = 5.dp
-                ),
-            style =
-                TrainlogTypography.small
-                    .copy(
-                        color =
-                            colors.muted,
-                    ),
-        )
-
-        BasicTextField(
-            value = value,
-            onValueChange =
-                onValueChange,
-            singleLine = true,
-            cursorBrush =
-                SolidColor(
-                    colors.accent
-                ),
-            textStyle =
-                TrainlogTypography.normal
-                    .copy(
-                        color =
-                            colors.text,
-                    ),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color =
-                            colors.surfaceAlt,
-                    )
-                    .background(
-                        colors.surface
-                    )
-                    .padding(12.dp),
-        )
-    }
+    TrainlogInputField(
+        label = label,
+        value = value,
+        onValueChange =
+            onValueChange,
+    )
 }
 
 private const val MAX_SESSION_SETS = 64

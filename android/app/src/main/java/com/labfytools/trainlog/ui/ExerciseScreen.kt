@@ -1,21 +1,19 @@
 package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.CreateExerciseResult
 import com.labfytools.trainlog.data.TrainlogRepository
@@ -315,54 +313,12 @@ private fun TrainlogField(
     value: String,
     onValueChange: (String) -> Unit,
 ) {
-    val colors =
-        LocalTrainlogColors.current
-
-    Column(
-        modifier =
-            Modifier.padding(
-                bottom = 14.dp
-            )
-    ) {
-        BasicText(
-            text = label.uppercase(),
-            modifier =
-                Modifier.padding(
-                    bottom = 6.dp
-                ),
-            style =
-                TrainlogTypography.small.copy(
-                    color = colors.muted,
-                ),
-        )
-
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            cursorBrush =
-                SolidColor(
-                    colors.accent
-                ),
-            textStyle =
-                TrainlogTypography.normal
-                    .copy(
-                        color = colors.text
-                    ),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color =
-                            colors.surfaceAlt,
-                    )
-                    .background(
-                        colors.surface
-                    )
-                    .padding(12.dp),
-        )
-    }
+    TrainlogInputField(
+        label = label,
+        value = value,
+        onValueChange =
+            onValueChange,
+    )
 }
 
 @Composable
@@ -408,18 +364,7 @@ private fun TrainlogChoice(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(
-                    vertical = 3.dp
-                )
-                .border(
-                    width = 1.dp,
-                    color =
-                        if (selected) {
-                            colors.warning
-                        } else {
-                            colors.surfaceAlt
-                        },
-                )
+                .padding(vertical = 2.dp)
                 .background(
                     if (selected) {
                         colors.surfaceAlt
@@ -427,17 +372,18 @@ private fun TrainlogChoice(
                         colors.surface
                     }
                 )
-                .clickable(
-                    onClick = onClick
+                .clickable(onClick = onClick)
+                .padding(
+                    horizontal = 10.dp,
+                    vertical = 9.dp,
                 )
-                .padding(11.dp)
     ) {
         BasicText(
             text =
                 if (selected) {
-                    "[X] $label"
+                    "▌ $label"
                 } else {
-                    "[ ] $label"
+                    "  $label"
                 },
             style =
                 TrainlogTypography.normal.copy(
@@ -447,10 +393,17 @@ private fun TrainlogChoice(
                         } else {
                             colors.text
                         },
+                    fontWeight =
+                        if (selected) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.Normal
+                        },
                 ),
         )
     }
 }
+
 
 private fun profilePreview(
     recordingMode: RecordingMode,

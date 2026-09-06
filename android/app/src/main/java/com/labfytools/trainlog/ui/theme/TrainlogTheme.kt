@@ -44,25 +44,25 @@ object TrainlogTypography {
     val normal =
         TextStyle(
             fontFamily = FontFamily.Monospace,
-            fontSize = 16.sp,
+            fontSize = 15.sp,
         )
 
     val small =
         TextStyle(
             fontFamily = FontFamily.Monospace,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
         )
 
     val title =
         TextStyle(
             fontFamily = FontFamily.Monospace,
-            fontSize = 20.sp,
+            fontSize = 19.sp,
         )
 
     val banner =
         TextStyle(
             fontFamily = FontFamily.Monospace,
-            fontSize = 24.sp,
+            fontSize = 22.sp,
         )
 }
 
