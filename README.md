@@ -29,7 +29,7 @@ ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
-DESKTOP_TESTS=19/19 PASS
+DESKTOP_TESTS=20/20 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -187,3 +187,23 @@ runs, a receipt is returned to Android, and the PC catalog is applied locally.
 - no fake data representation to force incompatible models together;
 - strict compiler warnings;
 - documentation and tests are part of feature completion.
+
+## Measured max
+
+Explicit `max_test` sessions are the only source of measured maxima.
+
+Ordinary training best sets remain ordinary performance even when they exceed a
+previous max-test result.
+
+The desktop exercise catalog exposes a separate measured-max view with current
+result, same-mode record, test history, a dedicated graph, and 60/70/80/90%
+working loads for external resistance. Working loads are rounded to a selectable
+practical increment and are not calculated for assistance.
+
+Android can explicitly save a session as `Entraînement` or `Test max`.
+
+```text
+MEASURED_MAX_V1=PASS
+WORKING_LOAD_PERCENTAGES=PASS
+ANDROID_MAX_TEST_SESSION=PASS
+```

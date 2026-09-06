@@ -1,5 +1,7 @@
 package com.labfytools.trainlog.ui
 
+/* TRAINLOG_ANDROID_MAX_TEST_SESSION_V1 */
+
 /* TRAINLOG_ANDROID_SESSION_REMOVE */
 
 /* TRAINLOG_VARIABLE_SET_REPS_V1 */
@@ -30,6 +32,7 @@ import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
+import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
@@ -70,6 +73,13 @@ fun SessionScreen(
             )
         }
 
+    var sessionType by
+        remember {
+            mutableStateOf(
+                SessionType.TRAINING
+            )
+        }
+
     var sessionRevision by
         remember {
             mutableIntStateOf(0)
@@ -94,8 +104,88 @@ fun SessionScreen(
         )
 
         TrainlogFrame(
+            title = "TYPE DE SEANCE"
+        ) {
+            TrainlogAction(
+                label =
+                    if (
+                        sessionType ==
+                        SessionType.TRAINING
+                    ) {
+                        "[✓] Entraînement"
+                    } else {
+                        "[ ] Entraînement"
+                    },
+                description =
+                    "Séance normale de travail.",
+                accent =
+                    if (
+                        sessionType ==
+                        SessionType.TRAINING
+                    ) {
+                        colors.success
+                    } else {
+                        colors.muted
+                    },
+                onClick = {
+                    sessionType =
+                        SessionType.TRAINING
+                },
+            )
+
+            TrainlogAction(
+                label =
+                    if (
+                        sessionType ==
+                        SessionType.MAX_TEST
+                    ) {
+                        "[✓] Test max"
+                    } else {
+                        "[ ] Test max"
+                    },
+                description =
+                    "Séance explicitement dédiée à une mesure de max.",
+                accent =
+                    if (
+                        sessionType ==
+                        SessionType.MAX_TEST
+                    ) {
+                        colors.warning
+                    } else {
+                        colors.muted
+                    },
+                onClick = {
+                    sessionType =
+                        SessionType.MAX_TEST
+                },
+            )
+        }
+
+        TrainlogFrame(
             title = "SEANCE EN COURS"
         ) {
+            TrainlogInfo(
+                text =
+                    "Type : " +
+                        if (
+                            sessionType ==
+                            SessionType.MAX_TEST
+                        ) {
+                            "TEST MAX"
+                        } else {
+                            "ENTRAÎNEMENT"
+                        },
+                color =
+                    if (
+                        sessionType ==
+                        SessionType.MAX_TEST
+                    ) {
+                        colors.warning
+                    } else {
+                        colors.accent
+                    },
+            )
+
             if (
                 draftExercises.isEmpty()
             ) {
@@ -254,7 +344,9 @@ fun SessionScreen(
                                 .saveSession(
                                     SessionDraft(
                                         exercises =
-                                            draftExercises
+                                            draftExercises,
+                                        sessionType =
+                                            sessionType,
                                     )
                                 )
                     ) {
@@ -264,6 +356,9 @@ fun SessionScreen(
 
                             selectedExercise =
                                 null
+
+                            sessionType =
+                                SessionType.TRAINING
 
                             sessionRevision += 1
 

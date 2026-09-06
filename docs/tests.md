@@ -85,7 +85,7 @@ Current normal suite:
 Validated checkpoint:
 
 ```text
-19/19 PASS
+20/20 PASS
 ```
 
 Notable regression coverage:
@@ -214,3 +214,29 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
 
 Documentation must describe the resulting state, not retain contradictory old
 `NEXT` checkpoints.
+
+## 11. Measured-max regression
+
+The normal Meson suite contains:
+
+```text
+measured_max
+```
+
+Coverage proves:
+
+- stronger ordinary training is ignored by measured-max classification;
+- only `max_test` sessions participate;
+- zero-repetition failed attempts are not promoted;
+- newest successful explicit test is the current measurement;
+- historical external-load record can remain older than current;
+- lower assistance is better;
+- no-load max tests compare actual reps/duration;
+- external working loads round to the configured increment;
+- working-load percentages reject assistance.
+
+Current normal baseline:
+
+```text
+20/20 PASS
+```

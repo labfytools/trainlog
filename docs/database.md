@@ -276,3 +276,38 @@ schema_v5_migration
 ```
 
 The current normal suite contains 19 tests.
+
+## 11. Measured-max derivation
+
+Measured maxima require no desktop schema v6.
+
+The existing `sessions.session_type = max_test` classification plus actual
+`performed_sets` are sufficient.
+
+Exercise performance points carry the originating session type so the
+measured-max layer can distinguish explicit tests from ordinary training.
+
+Rules:
+
+```text
+training session
+    never becomes measured max implicitly
+
+max_test + external
+    greatest successful actual load
+    tie -> greatest reps/duration
+
+max_test + assistance
+    lowest successful assistance
+    tie -> greatest reps/duration
+
+max_test + no load
+    greatest successful reps/duration
+```
+
+A zero-repetition failed attempt is not a successful measurement.
+
+The current measured result is the newest successful max-test point. The record
+is the best max-test point using the same load mode.
+
+No extra maximum row is persisted; results are derived from canonical history.

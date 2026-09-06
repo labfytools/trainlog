@@ -1,5 +1,23 @@
 package com.labfytools.trainlog.model
 
+enum class SessionType(
+    val wireValue: String,
+) {
+    TRAINING("training"),
+    MAX_TEST("max_test");
+
+    companion object {
+        fun fromWire(
+            value: String,
+        ): SessionType =
+            if (value == "max_test") {
+                MAX_TEST
+            } else {
+                TRAINING
+            }
+    }
+}
+
 data class SessionSetDraft(
     val reps: Int = 0,
     val durationSeconds: Int = 0,
@@ -15,12 +33,14 @@ data class SessionExerciseDraft(
 
 data class SessionDraft(
     val exercises: List<SessionExerciseDraft>,
+    val sessionType: SessionType = SessionType.TRAINING,
 )
 
 data class SessionSummary(
     val sessionId: String,
     val startedAt: String,
     val exerciseCount: Int,
+    val sessionType: SessionType = SessionType.TRAINING,
 )
 
 data class SessionExerciseDetail(

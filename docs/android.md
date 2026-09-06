@@ -242,3 +242,29 @@ Android is not intended to own:
 - direct SQLite-file synchronization;
 - exercise-name heuristics;
 - a mounted-filesystem dependency.
+
+## 15. Test-max sessions
+
+Android session entry exposes:
+
+```text
+Entraînement
+Test max
+```
+
+The selection is persisted in the existing Android `sessions.session_type`
+column and exported in the mobile snapshot as:
+
+```text
+training
+max_test
+```
+
+History and detail visibly identify max-test sessions.
+
+Selecting `Test max` is explicit metadata; Trainlog does not infer max tests
+from large repetition or duration values.
+
+Android's current session form still records the exercise data fields it
+supports. Measured-max classification on the desktop uses only actual values
+that were truly captured and synchronized.

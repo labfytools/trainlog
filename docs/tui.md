@@ -264,3 +264,43 @@ Current normal suite:
 ```text
 19/19 PASS
 ```
+
+## 15. Measured max view
+
+From `3 Exercices`, the selected exercise exposes:
+
+```text
+Enter   ordinary performance history
+m       measured max
+```
+
+The measured-max page is deliberately separate from ordinary best-set history.
+
+It shows:
+
+- count of explicit max-test sessions;
+- newest successful measured result;
+- best historical result using the same load mode;
+- dedicated max-test graph;
+- max-test history;
+- external-load working percentages at 60%, 70%, 80%, and 90%.
+
+For external load, `r` cycles practical rounding increments:
+
+```text
+0.5 kg
+1.0 kg
+2.5 kg
+5.0 kg
+```
+
+Working percentages are display calculations only.
+
+Assistance remains inverse-direction:
+
+```text
+less assistance = better
+```
+
+No percentage-of-max working load is produced for assistance or no-load
+performance.

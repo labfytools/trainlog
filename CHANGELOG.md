@@ -84,3 +84,19 @@ ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 ```
+
+### Measured max v1
+
+Added:
+
+- explicit measured-max derivation from `max_test` sessions only;
+- newest successful measured result and same-mode historical record;
+- dedicated TUI measured-max history and graph;
+- external working-load calculations at 60/70/80/90%;
+- selectable 0.5/1/2.5/5.0 kg working-load rounding;
+- direction-aware assistance measured-max semantics;
+- Android `Entraînement` / `Test max` session selection;
+- Android history/detail max-test identification;
+- measured-max regression coverage.
+
+No estimated 1RM, schema v6, or frozen Trainlog JSON v1 change was introduced.

@@ -161,3 +161,23 @@ fake performed sets for continuous activity
 fake uniform targets for heterogeneous actual sets
 incompatible changes to Trainlog JSON v1
 ```
+
+## Measured max v1
+
+```text
+MEASURED_MAX_V1=PASS
+MEASURED_MAX_ONLY_FROM_MAX_TEST=PASS
+MEASURED_MAX_HISTORY=PASS
+MEASURED_MAX_GRAPH=PASS
+WORKING_LOAD_PERCENTAGES=PASS
+ANDROID_MAX_TEST_SESSION=PASS
+DESKTOP_TESTS=20/20 PASS
+```
+
+No schema v6 and no Trainlog JSON v1 change were required.
+
+The next product feature remains intentionally unfrozen:
+
+```text
+NEXT_FEATURE=UNFROZEN
+```

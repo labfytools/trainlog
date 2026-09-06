@@ -24,6 +24,7 @@
 #include "trainlog/catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/id.h"
+#include "trainlog/measured_max.h"
 #include "trainlog/mtp.h"
 #include "trainlog/sync.h"
 #include "trainlog/reps.h"
@@ -642,7 +643,8 @@ static void draw_exercise_performance_graph(
     TrainlogLoadMode mode,
     TrainlogTrackingMode tracking_mode,
     int top,
-    int height
+    int height,
+    bool measured_max
 )
 {
     size_t indices[EXERCISE_GRAPH_POINTS];
@@ -720,7 +722,9 @@ static void draw_exercise_performance_graph(
         mvprintw(
             top,
             left,
-            "Assistance (kg) — moins = mieux"
+            measured_max
+                ? "Assistance mesurée (kg) — moins = mieux"
+                : "Assistance (kg) — moins = mieux"
         );
 
         attroff(
@@ -733,7 +737,9 @@ static void draw_exercise_performance_graph(
         mvprintw(
             top,
             left,
-            "Charge du meilleur set (kg)"
+            measured_max
+                ? "Max mesuré (kg)"
+                : "Charge du meilleur set (kg)"
         );
     } else if (
         tracking_mode ==
@@ -742,13 +748,17 @@ static void draw_exercise_performance_graph(
         mvprintw(
             top,
             left,
-            "Meilleure durée"
+            measured_max
+                ? "Durée max mesurée"
+                : "Meilleure durée"
         );
     } else {
         mvprintw(
             top,
             left,
-            "Meilleures répétitions"
+            measured_max
+                ? "Répétitions max mesurées"
+                : "Meilleures répétitions"
         );
     }
 
@@ -1234,7 +1244,8 @@ static void screen_exercise_performance(
             graph_mode,
             exercise->tracking_mode,
             graph_content_top,
-            graph_height
+            graph_height,
+            false
         );
     }
 
@@ -1296,6 +1307,497 @@ static void screen_exercise_performance(
             key == '\n' ||
             key == KEY_ENTER) {
             return;
+        }
+    }
+}
+
+/* TRAINLOG_MEASURED_MAX_TUI_V1 */
+
+static void screen_exercise_measured_max(
+    TrainlogDatabase *database,
+    const TrainlogExercise *exercise
+)
+{
+    static const double increments[] = {
+        0.5,
+        1.0,
+        2.5,
+        5.0
+    };
+
+    static const double percentages[] = {
+        60.0,
+        70.0,
+        80.0,
+        90.0
+    };
+
+    size_t increment_index = 2U;
+
+    if (
+        database == NULL ||
+        exercise == NULL
+    ) {
+        return;
+    }
+
+    for (;;) {
+        TrainlogExercisePerformancePoint
+            points[MAX_SESSIONS];
+
+        TrainlogExercisePerformancePoint
+            max_points[MAX_SESSIONS];
+
+        TrainlogMeasuredMaxSummary summary;
+
+        size_t count = 0U;
+        size_t max_count = 0U;
+        size_t index;
+        size_t history_limit;
+
+        bool decorated =
+            COLS >= 100 &&
+            LINES >= 30;
+
+        int summary_top =
+            decorated ? 8 : 3;
+
+        int summary_bottom =
+            decorated ? 15 : 9;
+
+        int graph_top =
+            decorated ? 16 : 10;
+
+        int graph_bottom =
+            decorated ? 23 : 17;
+
+        int history_top =
+            decorated ? 24 : 18;
+
+        int history_bottom =
+            LINES - 4;
+
+        int key;
+
+        if (
+            trainlog_database_list_exercise_performance(
+                database,
+                exercise->exercise_id,
+                points,
+                MAX_SESSIONS,
+                &count
+            ) != TRAINLOG_STATUS_OK ||
+            trainlog_measured_max_summarize(
+                points,
+                count,
+                &summary
+            ) != TRAINLOG_STATUS_OK
+        ) {
+            draw_shell(
+                "TRAINLOG — Max mesuré",
+                "Une touche pour revenir"
+            );
+
+            status_line(
+                "Impossible de lire les tests de max.",
+                TRAINLOG_COLOR_ERROR
+            );
+
+            wait_key();
+            return;
+        }
+
+        for (
+            index = 0U;
+            index < count &&
+            max_count < MAX_SESSIONS;
+            ++index
+        ) {
+            if (
+                points[index].session_type ==
+                TRAINLOG_SESSION_MAX_TEST
+            ) {
+                max_points[max_count] =
+                    points[index];
+
+                ++max_count;
+            }
+        }
+
+        erase();
+        box(
+            stdscr,
+            0,
+            0
+        );
+
+        if (decorated) {
+            section_ascii_header(
+                ":: M A X   M E S U R E ::"
+            );
+
+            dashboard_panel(
+                summary_top,
+                2,
+                summary_bottom,
+                COLS - 3,
+                "MAX MESURE"
+            );
+
+            dashboard_panel(
+                graph_top,
+                2,
+                graph_bottom,
+                COLS - 3,
+                "EVOLUTION DES TESTS MAX"
+            );
+
+            if (
+                history_bottom >
+                history_top + 1
+            ) {
+                exercise_panel(
+                    history_top,
+                    2,
+                    history_bottom,
+                    COLS - 3,
+                    "HISTORIQUE TESTS MAX"
+                );
+            }
+
+            attron(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+
+            mvprintw(
+                LINES - 2,
+                2,
+                "%.*s",
+                COLS - 4,
+                "r arrondi charge  b/Échap retour"
+            );
+
+            attroff(
+                trainlog_theme_attribute(
+                    TRAINLOG_COLOR_MUTED
+                )
+            );
+        } else {
+            draw_shell(
+                "TRAINLOG — Max mesuré",
+                "r arrondi charge  b/Échap retour"
+            );
+
+            exercise_panel(
+                summary_top,
+                2,
+                summary_bottom,
+                COLS - 3,
+                "MAX MESURE"
+            );
+
+            exercise_panel(
+                graph_top,
+                2,
+                graph_bottom,
+                COLS - 3,
+                "EVOLUTION"
+            );
+
+            if (
+                history_bottom >
+                history_top + 1
+            ) {
+                exercise_panel(
+                    history_top,
+                    2,
+                    history_bottom,
+                    COLS - 3,
+                    "HISTORIQUE"
+                );
+            }
+        }
+
+        attron(
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        mvprintw(
+            summary_top + 1,
+            5,
+            "%s",
+            exercise->name
+        );
+
+        attroff(
+            A_BOLD |
+            trainlog_theme_attribute(
+                TRAINLOG_COLOR_ACCENT
+            )
+        );
+
+        mvprintw(
+            summary_top + 2,
+            5,
+            "Tests max : %zu · réussis : %zu",
+            summary.test_count,
+            summary.successful_test_count
+        );
+
+        if (!summary.found) {
+            mvprintw(
+                summary_top + 3,
+                5,
+                "Aucun max mesuré réussi."
+            );
+
+            mvprintw(
+                summary_top + 4,
+                5,
+                "Seules les séances explicitement « Test de max » comptent."
+            );
+        } else {
+            char current_text[128];
+            char record_text[128];
+            char current_date[11];
+            char record_date[11];
+
+            exercise_format_performance(
+                &summary.current,
+                current_text,
+                sizeof(current_text)
+            );
+
+            exercise_format_performance(
+                &summary.record,
+                record_text,
+                sizeof(record_text)
+            );
+
+            exercise_short_date(
+                summary.current.started_at,
+                current_date
+            );
+
+            exercise_short_date(
+                summary.record.started_at,
+                record_date
+            );
+
+            mvprintw(
+                summary_top + 3,
+                5,
+                "Actuel : %s · %.*s",
+                current_date,
+                COLS - 32,
+                current_text
+            );
+
+            mvprintw(
+                summary_top + 4,
+                5,
+                "Record même mode : %s · %.*s",
+                record_date,
+                COLS - 42,
+                record_text
+            );
+
+            if (
+                summary.current.load_mode ==
+                TRAINLOG_LOAD_EXTERNAL
+            ) {
+                double working[4];
+                bool valid = true;
+
+                for (
+                    index = 0U;
+                    index < 4U;
+                    ++index
+                ) {
+                    if (
+                        trainlog_measured_max_working_load(
+                            &summary.current,
+                            percentages[index],
+                            increments[increment_index],
+                            &working[index]
+                        ) != TRAINLOG_STATUS_OK
+                    ) {
+                        valid = false;
+                        break;
+                    }
+                }
+
+                if (valid) {
+                    mvprintw(
+                        summary_top + 5,
+                        5,
+                        "Travail : 60%% %.1f · 70%% %.1f · 80%% %.1f · 90%% %.1f kg",
+                        working[0],
+                        working[1],
+                        working[2],
+                        working[3]
+                    );
+
+                    mvprintw(
+                        summary_top + 6,
+                        5,
+                        "Arrondi : %.1f kg (r pour changer) · aucun 1RM estimé",
+                        increments[increment_index]
+                    );
+                }
+            } else if (
+                summary.current.load_mode ==
+                TRAINLOG_LOAD_ASSISTANCE
+            ) {
+                attron(
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_WARNING
+                    )
+                );
+
+                mvprintw(
+                    summary_top + 5,
+                    5,
+                    "Assistance : moins de kg = mieux."
+                );
+
+                mvprintw(
+                    summary_top + 6,
+                    5,
+                    "Pourcentages de charge non applicables à l'assistance."
+                );
+
+                attroff(
+                    trainlog_theme_attribute(
+                        TRAINLOG_COLOR_WARNING
+                    )
+                );
+            } else {
+                mvprintw(
+                    summary_top + 5,
+                    5,
+                    "Sans charge externe : pourcentages non applicables."
+                );
+
+                mvprintw(
+                    summary_top + 6,
+                    5,
+                    "Le max reste une valeur réellement réalisée, jamais estimée."
+                );
+            }
+        }
+
+        if (
+            summary.found &&
+            max_count > 0U
+        ) {
+            int graph_content_top =
+                graph_top + 1;
+
+            int graph_height =
+                graph_bottom -
+                graph_top -
+                2;
+
+            draw_exercise_performance_graph(
+                max_points,
+                max_count,
+                summary.current.load_mode,
+                exercise->tracking_mode,
+                graph_content_top,
+                graph_height,
+                true
+            );
+        } else {
+            mvprintw(
+                graph_top + 2,
+                5,
+                "Aucun point de max mesuré à tracer."
+            );
+        }
+
+        if (
+            history_bottom >
+            history_top + 1
+        ) {
+            int first_row =
+                history_top + 1;
+
+            history_limit =
+                history_bottom >
+                    first_row
+                    ? (size_t)(
+                        history_bottom -
+                        first_row
+                    )
+                    : 0U;
+
+            for (
+                index = 0U;
+                index < max_count &&
+                index < history_limit;
+                ++index
+            ) {
+                char date[11];
+                char text[128];
+
+                exercise_short_date(
+                    max_points[index].started_at,
+                    date
+                );
+
+                exercise_format_performance(
+                    &max_points[index],
+                    text,
+                    sizeof(text)
+                );
+
+                mvprintw(
+                    first_row +
+                        (int)index,
+                    5,
+                    "%s  %-13s  %.*s",
+                    date,
+                    exercise_load_mode_label(
+                        max_points[index]
+                            .load_mode
+                    ),
+                    COLS - 40,
+                    text
+                );
+            }
+        }
+
+        refresh();
+        key = getch();
+
+        if (
+            key == 'b' ||
+            key == 'B' ||
+            key == 27 ||
+            key == '\n' ||
+            key == KEY_ENTER
+        ) {
+            return;
+        }
+
+        if (
+            key == 'r' ||
+            key == 'R'
+        ) {
+            increment_index =
+                (
+                    increment_index + 1U
+                ) %
+                (
+                    sizeof(increments) /
+                    sizeof(increments[0])
+                );
         }
     }
 }
@@ -1560,7 +2062,7 @@ static void screen_exercises(
                 2,
                 "%.*s",
                 COLS - 4,
-                "Tab zone  ↑↓/PgUp/PgDn catalogue  ←→ menu  Entrée ouvrir  a ajouter  0/Home accueil  F1-F4 direct  b/Échap retour"
+                "Tab zone  ↑↓/PgUp/PgDn catalogue  ←→ menu  Entrée ouvrir  m max mesuré  a ajouter  0/Home accueil  F1-F4 direct  b/Échap retour"
             );
 
             attroff(
@@ -1571,7 +2073,7 @@ static void screen_exercises(
         } else {
             draw_shell(
                 "TRAINLOG — Exercices",
-                "↑↓ naviguer  Entrée performance  a ajouter  b/Échap retour"
+                "↑↓ naviguer  Entrée performance  m max mesuré  a ajouter  b/Échap retour"
             );
         }
 
@@ -1753,6 +2255,17 @@ if (primary_top_nav_activate(
                 selected + jump < count
                     ? selected + jump
                     : count - 1U;
+
+            continue;
+        }
+
+        if (count > 0U &&
+            (key == 'm' ||
+             key == 'M')) {
+            screen_exercise_measured_max(
+                database,
+                &exercises[selected]
+            );
 
             continue;
         }

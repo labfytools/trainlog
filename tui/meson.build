@@ -36,6 +36,7 @@ trainlog_core_sources = files(
   'src/usb.c',
   'src/mtp.c',
   'src/reps.c',
+  'src/measured_max.c',
   'src/sync.c',
 )
 
@@ -340,4 +341,16 @@ trainlog_sync_once = executable(
   'tools/sync_once.c',
   dependencies: trainlog_core_dep,
   c_args: strict_c_args,
+)
+
+test_measured_max = executable(
+  'test_measured_max',
+  'tests/test_measured_max.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'measured_max',
+  test_measured_max,
 )

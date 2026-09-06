@@ -31,7 +31,7 @@ ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
-DESKTOP_TESTS=19/19 PASS
+DESKTOP_TESTS=20/20 PASS
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=PASS
 ```
@@ -120,7 +120,7 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-19/19 Meson tests PASS
+20/20 Meson tests PASS
 frozen JSON validator PASS
 import-contract validator PASS
 git diff --check PASS
@@ -139,8 +139,31 @@ multiple distinct request IDs consumed once each PASS
 No new feature is frozen by this documentation cleanup.
 
 ```text
+MEASURED_MAX_V1=PASS
+WORKING_LOAD_PERCENTAGES=PASS
+ANDROID_MAX_TEST_SESSION=PASS
 NEXT_FEATURE=UNFROZEN
 ```
 
 Future work must start from this validated baseline rather than from obsolete
 historical `NEXT` notes.
+
+## Measured max v1
+
+```text
+MEASURED_MAX_V1=PASS
+MEASURED_MAX_ONLY_FROM_MAX_TEST=PASS
+WORKING_LOAD_PERCENTAGES=PASS
+ASSISTANCE_DIRECTION_AWARE=PASS
+ANDROID_MAX_TEST_SESSION=PASS
+DESKTOP_TESTS=20/20 PASS
+```
+
+A measured maximum is derived only from explicit `max_test` sessions. Ordinary
+training is never promoted implicitly.
+
+The current measured result is the newest successful max test. The historical
+record compares max tests using the same load mode.
+
+External-load working percentages are pure calculations from the current
+measured load; they are not persisted and no estimated 1RM is introduced.

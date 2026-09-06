@@ -6,6 +6,7 @@ import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionExerciseDetail
+import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 
@@ -61,6 +62,25 @@ fun SessionDetailScreen(
                 formatStartedAt(
                     detail.summary.startedAt
                 )
+            )
+
+            TrainlogInfo(
+                text =
+                    "Type : " +
+                        sessionTypeLabel(
+                            detail.summary
+                                .sessionType
+                        ),
+                color =
+                    if (
+                        detail.summary
+                            .sessionType ==
+                        SessionType.MAX_TEST
+                    ) {
+                        colors.warning
+                    } else {
+                        colors.accent
+                    },
             )
 
             TrainlogInfo(

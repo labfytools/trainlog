@@ -16,6 +16,7 @@ import com.labfytools.trainlog.model.SessionSummary
 import com.labfytools.trainlog.model.SessionDetail
 import com.labfytools.trainlog.model.SessionExerciseDetail
 import com.labfytools.trainlog.model.SessionSetDraft
+import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -296,7 +297,8 @@ class TrainlogRepository(
 
                     put(
                         "session_type",
-                        "training"
+                        draft.sessionType
+                            .wireValue
                     )
                 }
 
@@ -469,6 +471,7 @@ class TrainlogRepository(
             SELECT
                 s.session_id,
                 s.started_at,
+                s.session_type,
                 COUNT(se.id)
             FROM sessions AS s
             LEFT JOIN session_exercises AS se
@@ -488,7 +491,11 @@ class TrainlogRepository(
                         startedAt =
                             cursor.getString(1),
                         exerciseCount =
-                            cursor.getInt(2),
+                            cursor.getInt(3),
+                        sessionType =
+                            SessionType.fromWire(
+                                cursor.getString(2)
+                            ),
                     )
             }
         }
@@ -1136,6 +1143,7 @@ class TrainlogRepository(
                 SELECT
                     s.session_id,
                     s.started_at,
+                    s.session_type,
                     COUNT(se.id)
                 FROM sessions AS s
                 LEFT JOIN session_exercises AS se
@@ -1154,7 +1162,11 @@ class TrainlogRepository(
                         startedAt =
                             cursor.getString(1),
                         exerciseCount =
-                            cursor.getInt(2),
+                            cursor.getInt(3),
+                        sessionType =
+                            SessionType.fromWire(
+                                cursor.getString(2)
+                            ),
                     )
                 }
             } ?: return null

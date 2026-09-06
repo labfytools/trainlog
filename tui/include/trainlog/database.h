@@ -197,6 +197,7 @@ TrainlogStatus trainlog_database_latest_body_pair(
 typedef struct TrainlogExercisePerformancePoint {
     char session_id[TRAINLOG_ID_MAX + 1U];
     char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    TrainlogSessionType session_type;
     TrainlogTrackingMode tracking_mode;
     TrainlogLoadMode load_mode;
     size_t actual_set_count;

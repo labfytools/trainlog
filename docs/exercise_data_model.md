@@ -199,3 +199,29 @@ Continuous activity must never be:
 - hidden in notes;
 - converted into a fake set;
 - silently discarded.
+
+## 10. Measured max semantics
+
+`session_type = max_test` is an explicit semantic boundary.
+
+Measured max v1 never equates an ordinary best set with a measured maximum.
+
+For set-based exercises:
+
+```text
+external
+    max measured load = greatest successful actual load in a max_test
+
+assistance
+    best measured assistance = lowest successful assistance in a max_test
+
+none
+    measured max = greatest successful reps/duration in a max_test
+```
+
+Ties use greater repetitions/duration.
+
+The newest successful explicit test is the current measured result. A separate
+same-mode historical record may be older.
+
+No estimated 1RM is mixed into this contract.
