@@ -27,6 +27,14 @@ android {
         compose = true
     }
 
+    sourceSets {
+        getByName("main") {
+            /* CONTRACT: this repository-level manifest is the one canonical
+             * equipment source. Android must not fork it into Kotlin constants. */
+            assets.srcDir("../../catalog")
+        }
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {

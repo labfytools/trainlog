@@ -8,6 +8,14 @@ It is a native Kotlin/Jetpack Compose application with local SQLite persistence.
 
 The desktop remains the canonical long-term history and analytics store.
 
+## Session exchange V2
+
+Completed session occurrences persist an `entry_id`; it is never regenerated
+for exchange. Android publishes `trainlog-mobile-export-v2.json` as the active
+desktop snapshot and imports `trainlog-pc-mobile-export-v2.json` after the PC
+catalogue. The artifact preserves occurrence order, continuous metrics, set
+weights and equipment. The legacy V1 contract remains separate and readable.
+
 ## 2. Implemented navigation
 
 ```text
@@ -25,7 +33,7 @@ Accueil
 Android local database version:
 
 ```text
-4
+7
 ```
 
 Domain tables cover:
@@ -41,9 +49,11 @@ body_observations
 
 This database is Android-local. It is not copied to the PC.
 
-Schema v4 adds `active_session_draft`, `draft_session_exercises`,
-`draft_performed_sets` and `draft_continuous_activity`. The additive v3 -> v4
-migration preserves catalog, completed sessions/actuals and body observations.
+Schema v4 introduced `active_session_draft`, `draft_session_exercises`,
+`draft_performed_sets` and `draft_continuous_activity`. The implemented
+additive v4 -> v7 chain preserves catalog, completed sessions/actuals, body
+observations and the draft while adding the shared equipment catalogue,
+occurrence-level equipment links and stable completed/draft `entry_id` values.
 Exactly one active draft is supported; it is separate from completed history.
 
 ## 4. Exercise catalog
@@ -119,6 +129,21 @@ The form asks for duration and only the configured supplemental fields such as
 speed or distance.
 
 Continuous work does not create fake sets.
+
+### Occurrences, equipment and actual loads
+
+The same catalogue `exercise_id` may be added more than once to a session.
+Every occurrence receives its own stable `entry_id`, position, actual sets and
+optional equipment selection. Editing one occurrence replaces only that entry;
+it does not merge or alter another passage of the same exercise.
+
+`Machine / équipement (optionnel)` searches the shared manifest by display
+name, physical-machine label and aliases. A selected equipment identity is
+stored on that occurrence in both the active draft and completed session.
+For `SETS + REPS`, `Charge (kg)` accepts one value for all sets or `;`-separated
+per-set values; French decimal commas are accepted. `Assistance (kg)` is an
+explicit alternative load semantic, not an external charge. Empty load and an
+entered zero remain distinct.
 
 ## 6. Session draft editing
 
@@ -196,11 +221,15 @@ bo_<uuid-v4>
 Android maintains:
 
 ```text
-Download/Trainlog/trainlog-mobile-export-v1.json
+Download/Trainlog/trainlog-mobile-export-v2.json
 ```
 
-The snapshot is refreshed after relevant local changes, including exercise,
-session, body-observation, and PC-catalog updates.
+The V2 snapshot is refreshed after relevant local changes, including exercise,
+session, body-observation, equipment association and PC-catalog updates. It
+preserves `entry_id`, occurrence position, optional equipment and actual
+per-set weights. Android also publishes the V2 companion
+`trainlog-equipment-associations-v2.json`; its `set` and `cleared` states are
+targeted by `(session_id, entry_id)`.
 
 The user does not need a separate manual export step before synchronization.
 
@@ -305,6 +334,31 @@ Android is not intended to own:
 - a mounted-filesystem dependency.
 
 ## 15. Test-max sessions
+
+## 16. Equipment and multi-occurrence exchange V2
+
+During exercise entry, `Machine / équipement (optionnel)` searches the shared
+catalogue by display name, physical-machine label and aliases. The selected
+canonical ID belongs to that session exercise entry, is durable in the active
+draft and completed session, and is visible in session detail. It may be
+cleared. The active V2 exchange preserves multiple ordered occurrences of the
+same exercise in one session through `entry_id`. The frozen V1 artifacts remain
+readable only as legacy artifacts and keep their historical one-exercise
+identity assumptions; V1 is not rewritten to claim V2 support.
+
+For a `SETS + REPS` exercise, selecting equipment never changes that exercise
+profile: the form retains per-set repetitions and exposes `Charge (kg)`. French
+decimal input is accepted (`12,5`); one value applies to all sets or values may
+be separated with `;`. Assisted equipment is explicitly labelled
+`Assistance (kg)`. Empty load remains distinct from an entered zero.
+
+`Nouvelle machine` in that same selector creates a persistent local custom
+equipment entry with a generated stable `eq_…` ID and selects it immediately.
+The shared bundled catalogue is synchronized by canonical IDs; a custom ID is
+not silently converted to null on the PC and is rejected until its definition
+is available to the receiving catalogue.
+The active-session list exposes `Modifier <exercice>`; saving replaces that
+entry in place, while cancelling only discards the form and preserves it.
 
 Android session entry exposes:
 

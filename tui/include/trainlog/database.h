@@ -11,13 +11,29 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 5
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 7
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
 TrainlogStatus trainlog_database_open(
     const char *path,
     TrainlogDatabase **output_database
+);
+
+/**
+ * @brief Open a database and report the backend failure that prevented it.
+ *
+ * CONTRACT: @p output_diagnostic is optional. When supplied with a non-zero
+ * capacity, it receives a NUL-terminated explanation of the failed SQLite
+ * operation; callers still use the returned TrainlogStatus for control flow.
+ * This preserves the stable application status surface without hiding the
+ * path-specific reason needed to repair a user's durable database safely.
+ */
+TrainlogStatus trainlog_database_open_with_diagnostic(
+    const char *path,
+    TrainlogDatabase **output_database,
+    char *output_diagnostic,
+    size_t output_diagnostic_capacity
 );
 
 void trainlog_database_close(TrainlogDatabase *database);
@@ -107,7 +123,10 @@ TrainlogStatus trainlog_database_list_weight_points(
 #define TRAINLOG_SET_SUMMARY_MAX 1024U
 
 typedef struct TrainlogPersistedExerciseDetail {
+    /* Stable occurrence identity; exercise_id is catalogue identity only. */
+    char entry_id[TRAINLOG_ID_MAX + 1U];
     char name[TRAINLOG_NAME_MAX + 1U];
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
     TrainlogTrackingMode tracking_mode;
     TrainlogRecordingMode recording_mode;
     TrainlogExerciseDataFields data_fields;
@@ -231,7 +250,9 @@ TrainlogStatus trainlog_database_list_exercise_performance(
 /* TRAINLOG_SESSION_EDIT_API */
 
 typedef struct TrainlogEditableExerciseRecord {
+    char entry_id[TRAINLOG_ID_MAX + 1U];
     char exercise_id[TRAINLOG_ID_MAX + 1U];
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
     char name[TRAINLOG_NAME_MAX + 1U];
     TrainlogTrackingMode tracking_mode;
     TrainlogLoadMode load_mode;

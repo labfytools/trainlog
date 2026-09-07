@@ -49,6 +49,27 @@ static bool test_database_open_and_schema(void)
     return true;
 }
 
+static bool test_database_open_diagnostic(void)
+{
+    TrainlogDatabase *database = NULL;
+    char diagnostic[256];
+
+    /* CONTRACT: a launcher must retain the stable status code while showing
+     * the SQLite operation that blocked access to the user's real database. */
+    CHECK(
+        trainlog_database_open_with_diagnostic(
+            "/",
+            &database,
+            diagnostic,
+            sizeof(diagnostic)
+        ) == TRAINLOG_STATUS_DATABASE_ERROR
+    );
+    CHECK(database == NULL);
+    CHECK(strstr(diagnostic, "open database:") != NULL);
+
+    return true;
+}
+
 static bool test_generated_ids(void)
 {
     char first[TRAINLOG_GENERATED_ID_CAPACITY];
@@ -262,6 +283,7 @@ int main(void)
 {
     static const struct TestCase tests[] = {
         {"database_open_and_schema", test_database_open_and_schema},
+        {"database_open_diagnostic", test_database_open_diagnostic},
         {"generated_ids", test_generated_ids},
         {"session_insert", test_session_insert},
         {"body_weight_history", test_body_weight_history},

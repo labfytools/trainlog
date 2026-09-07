@@ -2,6 +2,9 @@ package com.labfytools.trainlog.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.RecordingMode
@@ -19,8 +22,12 @@ fun SessionDetailScreen(
     val colors =
         LocalTrainlogColors.current
 
+    var revision by remember(sessionId) { mutableStateOf(0) }
+    var editingEntryId by remember(sessionId) { mutableStateOf<String?>(null) }
+    var equipmentQuery by remember(sessionId) { mutableStateOf("") }
+
     val detail =
-        remember(sessionId) {
+        remember(sessionId, revision) {
             sessionId?.let {
                 repository.getSessionDetail(
                     it
@@ -97,6 +104,45 @@ fun SessionDetailScreen(
                     title =
                         "${index + 1}. ${exercise.exerciseName}"
                 ) {
+                    exercise.equipmentDisplayName?.let { equipment ->
+                        TrainlogInfo("Équipement : $equipment", color = colors.muted)
+                    }
+                    if (editingEntryId == exercise.entryId) {
+                        TrainlogInputField(
+                            label = "Rechercher une machine",
+                            value = equipmentQuery,
+                            onValueChange = { equipmentQuery = it },
+                        )
+                        TrainlogAction(
+                            label = "Retirer l'équipement",
+                            description = "Conserver l'exercice sans machine associée.",
+                            accent = colors.warning,
+                            onClick = {
+                                if (repository.setCompletedSessionEquipment(detail.summary.sessionId, exercise.entryId, null)) {
+                                    revision++; editingEntryId = null; equipmentQuery = ""
+                                }
+                            },
+                        )
+                        repository.searchEquipment(equipmentQuery).take(8).forEach { equipment ->
+                            TrainlogAction(
+                                label = equipment.displayName,
+                                description = equipment.labelName.ifBlank { equipment.type },
+                                accent = colors.success,
+                                onClick = {
+                                    if (repository.setCompletedSessionEquipment(detail.summary.sessionId, exercise.entryId, equipment.equipmentId)) {
+                                        revision++; editingEntryId = null; equipmentQuery = ""
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        TrainlogAction(
+                            label = "Modifier l'équipement",
+                            description = "Choisir, remplacer ou retirer la machine de cette entrée.",
+                            accent = colors.muted,
+                            onClick = { editingEntryId = exercise.entryId },
+                        )
+                    }
                     if (
                         exercise.recordingMode ==
                         RecordingMode.CONTINUOUS
@@ -144,7 +190,13 @@ private fun SetsDetail(
                     exercise.trackingMode ==
                     TrackingMode.REPS
                 ) {
-                    "Série ${index + 1} : ${set.reps} reps"
+                    buildString {
+                        append("Série ${index + 1} : ${set.reps} reps")
+                        set.weightKg?.let {
+                            val rendered = "%.2f".format(java.util.Locale.FRANCE, it).trimEnd('0').trimEnd(',')
+                            append(" · $rendered kg")
+                        }
+                    }
                 } else {
                     "Série ${index + 1} : ${formatDuration(set.durationSeconds)}"
                 }

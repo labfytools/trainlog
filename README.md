@@ -16,9 +16,9 @@ desktop.
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V5=PASS
+DESKTOP_SCHEMA_V7=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V4=PASS
+ANDROID_LOCAL_DATABASE_V7=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
@@ -32,8 +32,10 @@ TRAINLOG_SYNCD=PASS
 ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
+MULTI_OCCURRENCE_SESSION_V2=PASS
+EQUIPMENT_ASSOCIATIONS_V2=PASS
 
-DESKTOP_TESTS=22/22 PASS
+DESKTOP_TESTS=25/25 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -100,6 +102,13 @@ Actual repetition sets are stored independently. Compact input supports:
 4..10..4
 ```
 
+A session may contain several ordered occurrences of the same catalogue
+exercise. Each occurrence has a stable `entry_id`, distinct from the stable
+`exercise_id` of the catalogue item. Equipment selection belongs to that
+occurrence, as do its actual per-set loads. `external` records an applied or
+machine-displayed load; `assistance` records assistance and is not interpreted
+as increasing strength.
+
 ## Repository layout
 
 ```text
@@ -138,6 +147,10 @@ export or desktop synchronization as completed sessions.
 Schema v4 migrates additively from v3, preserving existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
+The current Android schema is v7. Its additive v4 -> v7 chain adds the shared
+equipment catalogue, per-occurrence equipment links and durable occurrence
+identities without recreating completed history or the active draft.
+
 Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
 unchanged; completed history, an active draft, and synchronization therefore
 continue to resolve the same logical exercise. Referenced profiles are locked;
@@ -158,6 +171,16 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
 ```
 
 ## Android-triggered synchronization
+
+Launch the desktop TUI from a built checkout with:
+
+```bash
+trainlog
+```
+
+The usual user command resolves to `build/tui/trainlog` in this checkout. The
+desktop database is `$XDG_DATA_HOME/trainlog/trainlog.db`, or
+`~/.local/share/trainlog/trainlog.db` when `XDG_DATA_HOME` is unset.
 
 Build the desktop first, then install the user service:
 
@@ -181,6 +204,9 @@ Sync
 
 The request is consumed by `trainlog-syncd`, the shared bidirectional engine
 runs, a receipt is returned to Android, and the PC catalog is applied locally.
+The active completed-session exchange is V2 and preserves occurrence
+`entry_id`, per-set weights and equipment associations. Frozen V1 artifacts
+remain readable as legacy artifacts; they are not silently redefined as V2.
 
 ## Documentation
 
@@ -246,5 +272,5 @@ BODY_ANALYTICS_V1=PASS
 BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=22/22 PASS
+DESKTOP_TESTS=25/25 PASS
 ```

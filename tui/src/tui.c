@@ -7172,89 +7172,9 @@ static void screen_session_detail(
 
 static void history_ascii_header(void)
 {
-    static const char *const logo[] = {
-        "TTTTT RRRR   AAA  IIIII N   N L       OOO   GGG ",
-        "  T   R   R A   A   I   NN  N L      O   O G    ",
-        "  T   RRRR  AAAAA   I   N N N L      O   O G  GG",
-        "  T   R  R  A   A   I   N  NN L      O   O G   G",
-        "  T   R   R A   A IIIII N   N LLLLL   OOO   GGG "
-    };
-
-    const size_t line_count =
-        sizeof(logo) /
-        sizeof(logo[0]);
-
-    size_t index;
-
-    trainlog_terminal_style_on(tui_terminal,
-        TRAINLOG_TEXT_BOLD |
-        trainlog_theme_style(
-            TRAINLOG_COLOR_ACCENT
-        )
-    );
-
-    for (index = 0U;
-         index < line_count;
-         ++index) {
-        int width =
-            (int)strlen(logo[index]);
-
-        int column =
-            (trainlog_terminal_columns(tui_terminal) - width) / 2;
-
-        if (column < 2) {
-            column = 2;
-        }
-
-        trainlog_terminal_printf(tui_terminal,
-            1 + (int)index,
-            column,
-            "%.*s",
-            trainlog_terminal_columns(tui_terminal) - column - 2,
-            logo[index]
-        );
-    }
-
-    trainlog_terminal_style_off(tui_terminal,
-        TRAINLOG_TEXT_BOLD |
-        trainlog_theme_style(
-            TRAINLOG_COLOR_ACCENT
-        )
-    );
-
-    trainlog_terminal_style_on(tui_terminal,
-        trainlog_theme_style(
-            TRAINLOG_COLOR_MUTED
-        )
-    );
-
-    {
-        const char *label =
-            ":: H I S T O R I Q U E ::";
-
-        int width =
-            (int)strlen(label);
-
-        int column =
-            (trainlog_terminal_columns(tui_terminal) - width) / 2;
-
-        if (column < 2) {
-            column = 2;
-        }
-
-        trainlog_terminal_printf(tui_terminal,
-            6,
-            column,
-            "%s",
-            label
-        );
-    }
-
-    trainlog_terminal_style_off(tui_terminal,
-        trainlog_theme_style(
-            TRAINLOG_COLOR_MUTED
-        )
-    );
+    /* CONTRACT: history shares the current page shell; the old local logo
+     * occupied six unrelated rows and made this screen an exception. */
+    section_ascii_header("Historique");
 }
 
 static void history_scrollbar(

@@ -14,8 +14,8 @@ GATE_2_PERSISTENCE_AND_USABLE_TUI=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V5=PASS
-ANDROID_LOCAL_DATABASE_V4=PASS
+DESKTOP_SCHEMA_V7=PASS
+ANDROID_LOCAL_DATABASE_V7=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 ANDROID_DRAFT_DURABLE=PASS
 ANDROID_DRAFT_BACKGROUND_SURVIVAL=PASS
@@ -46,8 +46,10 @@ ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
+MULTI_OCCURRENCE_SESSION_V2=PASS
+EQUIPMENT_ASSOCIATIONS_V2=PASS
 
-DESKTOP_TESTS=22/22 PASS
+DESKTOP_TESTS=25/25 PASS
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=PASS
 ```
@@ -57,13 +59,16 @@ HARDWARE_SYNC_VALIDATION=PASS
 Implemented:
 
 - C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
-- SQLite schema v5;
+- SQLite schema v7, with stable ordered `session_exercises.entry_id` and
+  occurrence-level equipment identity;
 - direct session entry;
 - persisted session detail and editing;
 - exercise removal from a session through transactional child replacement;
 - exercise catalog;
 - profile-aware set and continuous activities;
 - heterogeneous repetition sets;
+- multiple occurrences of one catalogue exercise in a session;
+- per-set actual loads with distinct external/assistance semantics;
 - body-observation creation/history/editing;
 - body graphs and normalized overlays;
 - exercise performance history;
@@ -87,7 +92,7 @@ Primary navigation:
 Implemented:
 
 - native Kotlin/Compose application;
-- local SQLite database v4, with non-destructive v3 -> v4 migration;
+- local SQLite database v7, with non-destructive v3 -> v7 migration;
 - one durable active-session draft, Home resume and raw-form restoration;
 - explicit confirmed discard and atomic completed-save/draft-clear;
 - exercise creation;
@@ -97,6 +102,8 @@ Implemented:
 - heterogeneous repetition-set entry;
 - exercise removal from the current session draft;
 - continuous activity recording;
+- shared equipment selection, local custom equipment creation and occurrence
+  equipment persistence;
 - local session history/detail;
 - body measurements;
 - automatic mobile snapshot maintenance;
@@ -127,10 +134,13 @@ Artifacts:
 
 ```text
 Android -> PC
-    trainlog-mobile-export-v1.json
+    trainlog-mobile-export-v2.json
+    trainlog-equipment-associations-v2.json
 
 PC -> Android
     trainlog-pc-catalog-v1.json
+    trainlog-pc-mobile-export-v2.json
+    trainlog-equipment-associations-v2.json
 
 Android -> PC agent
     trainlog-sync-request-v1.json
@@ -141,6 +151,10 @@ PC agent -> Android
 
 The desktop TUI and `trainlog-syncd` share `trainlog_sync_run()`.
 
+V2 resolves equipment by `(session_id, entry_id)`, never by display name or
+catalogue identity alone. V1 files remain legacy-compatible and do not gain
+multi-occurrence semantics retroactively.
+
 No SQLite file is copied.
 
 No mounted Android filesystem is required.
@@ -150,7 +164,7 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-22/22 Meson tests PASS
+25/25 Meson tests PASS
 frozen JSON validator PASS
 import-contract validator PASS
 git diff --check PASS
@@ -159,8 +173,9 @@ git diff --check PASS
 Android:
 
 ```text
-assembleDebug PASS
-host repository tests 8/8 PASS
+assembleDebug and Android unit tests are run for every Android delivery.
+The prior device baseline below is hardware evidence, not a claim that every
+new implementation detail was re-exercised on the device in this document.
 device instrumentation 5/5 PASS
 real Samsung background/process-death/force-stop/resume matrix PASS
 real migration and original user-data preservation PASS
@@ -191,7 +206,7 @@ MEASURED_MAX_ONLY_FROM_MAX_TEST=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
-DESKTOP_TESTS=22/22 PASS
+DESKTOP_TESTS=25/25 PASS
 ```
 
 A measured maximum is derived only from explicit `max_test` sessions. Ordinary
@@ -212,7 +227,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=22/22 PASS
+DESKTOP_TESTS=25/25 PASS
 ```
 
 Android remains capture-only for this feature.

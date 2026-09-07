@@ -74,6 +74,8 @@ static bool test_session_details(void)
         "%s",
         "ex_detail"
     );
+    (void)snprintf(exercise.equipment_id, sizeof(exercise.equipment_id),
+                   "%s", "leg_press");
 
     exercise.load_mode =
         TRAINLOG_LOAD_EXTERNAL;
@@ -144,6 +146,7 @@ static bool test_session_details(void)
     CHECK(details[0].target_sets == 3);
     CHECK(details[0].target_reps == 5);
     CHECK(details[0].rest_seconds == 60);
+    CHECK(strcmp(details[0].equipment_id, "leg_press") == 0);
     CHECK(details[0].actual_set_count == 3U);
     CHECK(
         strcmp(

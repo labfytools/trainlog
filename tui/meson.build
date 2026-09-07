@@ -16,6 +16,13 @@ m_dep = cc.find_library('m', required: true)
 
 trainlog_include = include_directories('include')
 
+equipment_catalog_generated = custom_target(
+  'equipment_catalog_generated',
+  input: meson.project_source_root() / 'catalog/equipment-v1.json',
+  output: 'equipment_catalog_generated.c',
+  command: [find_program('python3'), meson.project_source_root() / 'tools/generate_equipment_catalog.py', '@INPUT@', '@OUTPUT@'],
+)
+
 strict_c_args = [
   '-D_POSIX_C_SOURCE=200809L',
   '-Wconversion',
@@ -37,6 +44,7 @@ trainlog_core_sources = files(
   'src/measured_max.c',
   'src/sync.c',
 )
+trainlog_core_sources += equipment_catalog_generated
 
 trainlog_core = static_library(
   'trainlog_core',
@@ -107,6 +115,14 @@ test(
   'catalog',
   test_catalog,
 )
+
+test_equipment_catalog = executable(
+  'test_equipment_catalog',
+  'tests/test_equipment_catalog.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('equipment_catalog', test_equipment_catalog)
 
 test_session_detail = executable(
   'test_session_detail',
@@ -333,6 +349,18 @@ test(
   args: [
     meson.project_source_root() / 'tests/test_mobile_import_variable_sets.py',
   ],
+)
+
+test(
+  'mobile_import_multi_occurrence',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_mobile_import_multi_occurrence.py'],
+)
+
+test(
+  'equipment_associations_exchange',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_equipment_associations_exchange.py'],
 )
 
 trainlog_sync_once = executable(

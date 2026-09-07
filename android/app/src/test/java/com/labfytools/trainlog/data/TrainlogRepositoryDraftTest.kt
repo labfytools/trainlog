@@ -63,6 +63,7 @@ class TrainlogRepositoryDraftTest {
             exercises = listOf(
                 SessionExerciseDraft(
                     exercise = reps,
+                    equipmentId = "leg_press",
                     sets = listOf(4, 5, 6, 7).map { SessionSetDraft(reps = it) },
                 ),
                 SessionExerciseDraft(
@@ -79,6 +80,7 @@ class TrainlogRepositoryDraftTest {
             sessionType = SessionType.MAX_TEST,
             form = SessionDraftForm(
                 selectedExercise = reps,
+                selectedEquipmentId = "treadmill",
                 setCountText = "4",
                 repsText = "4,5,6,",
                 durationText = "31",
@@ -159,6 +161,68 @@ class TrainlogRepositoryDraftTest {
                 FinalizeActiveDraftResult.Invalid
         )
         assertEquals(1, repo.listSessions().size)
+    }
+
+    @Test
+    fun repeatedContinuousExercisePersistsDistinctOccurrencesAcrossReopenAndFinalize() {
+        val repo = openRepository()
+        val marche = createExercise(repo, "Marche", RecordingMode.CONTINUOUS, TrackingMode.DURATION)
+        val first = SessionExerciseDraft(exercise = marche, continuousDurationSeconds = 600)
+        val second = SessionExerciseDraft(exercise = marche, continuousDurationSeconds = 900)
+        val draft = ActiveSessionDraft(exercises = listOf(first, second))
+        assertEquals(ActiveDraftMutationResult.Saved, repo.saveActiveSessionDraft(draft))
+        repo.close(); repository = null
+        val reopened = openRepository()
+        val restored = loadDraft(reopened)
+        assertEquals(listOf(600, 900), restored.exercises.map { it.continuousDurationSeconds })
+        assertEquals(listOf(marche.exerciseId, marche.exerciseId), restored.exercises.map { it.exercise.exerciseId })
+        assertEquals(2, restored.exercises.map { it.entryId }.toSet().size)
+        assertTrue(reopened.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+        val sessionId = reopened.listSessions().single().sessionId
+        val detail = reopened.getSessionDetail(sessionId)!!
+        assertEquals(listOf(600, 900), detail.exercises.map { it.continuousDurationSeconds })
+        assertEquals(2, detail.exercises.map { it.entryId }.toSet().size)
+        assertTrue(
+            reopened.setCompletedSessionEquipment(
+                sessionId,
+                detail.exercises[0].entryId,
+                "treadmill",
+            ),
+        )
+        assertTrue(
+            reopened.setCompletedSessionEquipment(
+                sessionId,
+                detail.exercises[1].entryId,
+                "leg_press",
+            ),
+        )
+        val edited = reopened.getSessionDetail(sessionId)!!
+        assertTrue(edited.exercises[0].equipmentDisplayName != null)
+        assertTrue(edited.exercises[1].equipmentDisplayName != null)
+    }
+
+    @Test
+    fun weightedMachineSetsAndCustomEquipmentSurviveDraftFinalizeAndReopen() {
+        val repo = openRepository()
+        val exercise = createExercise(repo, "Presse", RecordingMode.SETS, TrackingMode.REPS)
+        val custom = repo.createCustomEquipment("Presse personnelle")
+        assertTrue(custom is CreateEquipmentResult.Created)
+        val equipmentId = (custom as CreateEquipmentResult.Created).equipment.equipmentId
+        val draft = ActiveSessionDraft(
+            exercises = listOf(SessionExerciseDraft(
+                exercise = exercise, equipmentId = equipmentId,
+                sets = listOf(SessionSetDraft(10, weightKg = 12.5), SessionSetDraft(8, weightKg = 15.0)),
+            )),
+            form = SessionDraftForm(selectedExercise = exercise, selectedEquipmentId = equipmentId, weightText = "12,5;15"),
+        )
+        assertEquals(ActiveDraftMutationResult.Saved, repo.saveActiveSessionDraft(draft))
+        repo.close(); repository = null
+        val reopened = openRepository()
+        assertEquals(draft.exercises, loadDraft(reopened).exercises)
+        assertTrue(reopened.listEquipment().any { it.equipmentId == equipmentId })
+        assertTrue(reopened.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+        val detail = reopened.getSessionDetail(reopened.listSessions().single().sessionId)!!
+        assertEquals(listOf(12.5, 15.0), detail.exercises.single().sets.map { it.weightKg })
     }
 
     @Test
@@ -452,14 +516,55 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
-    fun versionThreeMigrationPreservesCompletedAndBodyData() {
-        createVersionThreeFixture(context.getDatabasePath(databaseName).path)
+    fun completedSessionKeepsEquipmentAcrossReopenAndCompanionExport() {
+        val first = openRepository()
+        val exercise = createExercise(first, "Presse test", RecordingMode.SETS, TrackingMode.REPS)
+        val saved = first.saveSession(
+            SessionDraft(
+                exercises = listOf(
+                    SessionExerciseDraft(
+                        exercise = exercise,
+                        equipmentId = "leg_press",
+                        sets = listOf(SessionSetDraft(reps = 10)),
+                    ),
+                ),
+            ),
+        )
+        assertTrue(saved is SaveSessionResult.Saved)
+        val sessionId = (saved as SaveSessionResult.Saved).sessionId
+        val exported = JSONObject(first.buildEquipmentAssociationsJson()).getJSONArray("associations")
+        assertEquals("set", exported.getJSONObject(0).getString("state"))
+        assertEquals("leg_press", exported.getJSONObject(0).getString("equipment_id"))
+        first.close()
+        repository = null
+        val reopened = openRepository()
+        val again = JSONObject(reopened.buildEquipmentAssociationsJson()).getJSONArray("associations")
+        assertEquals(sessionId, again.getJSONObject(0).getString("session_id"))
+        assertEquals("leg_press", again.getJSONObject(0).getString("equipment_id"))
+        val cleared = JSONObject()
+            .put("format", "trainlog-equipment-associations")
+            .put("version", 1)
+            .put("generated_at", "2026-01-01T00:00:00+00:00")
+            .put("associations", org.json.JSONArray().put(JSONObject()
+                .put("session_id", sessionId)
+                .put("exercise_id", exercise.exerciseId)
+                .put("state", "cleared")))
+        assertTrue(reopened.applyPcEquipmentAssociationsJson(cleared.toString()) is EquipmentAssociationImportResult.Applied)
+        val afterClear = JSONObject(reopened.buildEquipmentAssociationsJson()).getJSONArray("associations")
+        assertEquals("cleared", afterClear.getJSONObject(0).getString("state"))
+    }
+
+    @Test
+    fun versionFourMigrationPreservesCompletedBodyAndDurableDraftData() {
+        createVersionFourFixture(context.getDatabasePath(databaseName).path)
         val repo = openRepository()
 
         assertEquals(1, repo.listExercises().size)
         assertEquals(1, repo.listSessions().size)
         assertEquals(1, repo.listBodyObservations().size)
-        assertEquals(ActiveDraftLoadResult.None, repo.loadActiveSessionDraft())
+        val loadedDraft = loadDraft(repo)
+        assertEquals("Fixture", loadedDraft.form.selectedExercise?.name)
+        assertEquals(1, loadedDraft.exercises.size)
         SQLiteDatabase.openDatabase(
             context.getDatabasePath(databaseName).path,
             null,
@@ -467,7 +572,11 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(4, cursor.getInt(0))
+                assertEquals(7, cursor.getInt(0))
+            }
+            db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertTrue(cursor.isNull(0))
             }
             db.rawQuery("PRAGMA foreign_key_check;", null).use { cursor ->
                 assertFalse(cursor.moveToFirst())
@@ -499,7 +608,8 @@ class TrainlogRepositoryDraftTest {
         return (result as CreateExerciseResult.Created).exercise
     }
 
-    private fun createVersionThreeFixture(path: String) {
+    /** A real v4 shape: completed history plus the v4 durable draft tables. */
+    private fun createVersionFourFixture(path: String) {
         SQLiteDatabase.openOrCreateDatabase(path, null).use { db ->
             db.execSQL(
                 "CREATE TABLE exercises(id INTEGER PRIMARY KEY, exercise_id TEXT NOT NULL UNIQUE, " +
@@ -547,7 +657,33 @@ class TrainlogRepositoryDraftTest {
                 "INSERT INTO body_observations(id, observation_id, observed_at, body_weight_kg) " +
                     "VALUES(1, 'bo_fixture', '2026-01-02T03:04:05+01:00', 70.5);"
             )
-            db.execSQL("PRAGMA user_version = 3;")
+            db.execSQL(
+                "CREATE TABLE active_session_draft(id INTEGER PRIMARY KEY CHECK(id = 1), " +
+                    "session_type TEXT NOT NULL, selected_exercise_row_id INTEGER REFERENCES exercises(id) ON DELETE SET NULL, " +
+                    "selected_exercise_label TEXT, set_count_text TEXT NOT NULL, reps_text TEXT NOT NULL, " +
+                    "duration_text TEXT NOT NULL, speed_text TEXT NOT NULL, distance_text TEXT NOT NULL, updated_at TEXT NOT NULL);"
+            )
+            db.execSQL(
+                "CREATE TABLE draft_session_exercises(id INTEGER PRIMARY KEY, draft_id INTEGER NOT NULL " +
+                    "REFERENCES active_session_draft(id) ON DELETE CASCADE, exercise_row_id INTEGER NOT NULL " +
+                    "REFERENCES exercises(id) ON DELETE RESTRICT, position INTEGER NOT NULL, recording_mode TEXT NOT NULL, " +
+                    "tracking_mode TEXT NOT NULL, data_fields INTEGER NOT NULL, UNIQUE(draft_id, position), UNIQUE(draft_id, exercise_row_id));"
+            )
+            db.execSQL(
+                "CREATE TABLE draft_performed_sets(id INTEGER PRIMARY KEY, draft_exercise_row_id INTEGER NOT NULL " +
+                    "REFERENCES draft_session_exercises(id) ON DELETE CASCADE, position INTEGER NOT NULL, reps INTEGER, " +
+                    "duration_seconds INTEGER, UNIQUE(draft_exercise_row_id, position));"
+            )
+            db.execSQL(
+                "CREATE TABLE draft_continuous_activity(id INTEGER PRIMARY KEY, draft_exercise_row_id INTEGER NOT NULL UNIQUE " +
+                    "REFERENCES draft_session_exercises(id) ON DELETE CASCADE, duration_seconds INTEGER NOT NULL, speed_kmh REAL, distance_km REAL);"
+            )
+            db.execSQL(
+                "INSERT INTO active_session_draft VALUES(1, 'training', 1, 'Fixture', '3', '3x10', '', '', '', '2026-01-02T03:04:05+01:00');"
+            )
+            db.execSQL("INSERT INTO draft_session_exercises VALUES(1, 1, 1, 0, 'sets', 'reps', 0);")
+            db.execSQL("INSERT INTO draft_performed_sets VALUES(1, 1, 0, 10, NULL);")
+            db.execSQL("PRAGMA user_version = 4;")
         }
     }
 }

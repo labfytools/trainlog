@@ -120,7 +120,9 @@ Continuous work is persisted separately from performed sets.
 
 ### Desktop
 
-Desktop SQLite schema v5 is canonical long-term history.
+Desktop SQLite schema v7 is canonical long-term history. `session_exercises`
+stores a stable occurrence `entry_id`; a catalogue `exercise_id` can therefore
+occur more than once in one session without identity fusion.
 
 Main tables:
 
@@ -135,7 +137,7 @@ body_observations
 
 ### Android
 
-Android has an independent local SQLite schema, currently v4.
+Android has an independent local SQLite schema, currently v7.
 
 It mirrors domain concepts needed for capture, but its schema version is not
 coupled to the desktop schema.

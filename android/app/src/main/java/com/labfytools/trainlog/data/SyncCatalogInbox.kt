@@ -137,14 +137,17 @@ class SyncCatalogInbox(
                         )
             ) {
                 is PcCatalogImportResult.Applied ->
-                    CatalogInboxResult.Imported(
-                        imported =
-                            result.imported,
-                        reconciled =
-                            result.reconciled,
-                        skipped =
-                            result.skipped,
-                    )
+                    when (val sessions = importPcSessions(directory)) {
+                        null -> when (val equipment = importPcEquipmentAssociations(directory)) {
+                            null -> CatalogInboxResult.Imported(
+                            imported = result.imported,
+                            reconciled = result.reconciled,
+                            skipped = result.skipped,
+                        )
+                            else -> CatalogInboxResult.Error(equipment)
+                        }
+                        else -> CatalogInboxResult.Error(sessions)
+                    }
 
                 is PcCatalogImportResult.Invalid ->
                     CatalogInboxResult.Error(
@@ -163,6 +166,38 @@ class SyncCatalogInbox(
                 error.message
                     ?: "Import catalogue impossible."
             )
+        }
+    }
+
+    private fun importPcSessions(directory: DocumentFile): String? {
+        val file = directory.findFile("trainlog-pc-mobile-export-v2.json") ?: return null
+        return try {
+            val json = appContext.contentResolver.openInputStream(file.uri)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: return "Lecture snapshot séances V2 impossible."
+            when (val result = repository.applyPcMobileExportV2Json(json)) {
+                is MobileSessionImportResult.Applied -> null
+                is MobileSessionImportResult.Invalid -> result.message
+                MobileSessionImportResult.DatabaseError -> "Erreur base locale séances V2."
+            }
+        } catch (error: Exception) { error.message ?: "Import séances V2 impossible." }
+    }
+
+    private fun importPcEquipmentAssociations(directory: DocumentFile): String? {
+        val file = directory.findFile("trainlog-equipment-associations-v2.json")
+            ?: directory.findFile("trainlog-equipment-associations-v1.json")
+            ?: return null /* Historic PC sync: absence means no information. */
+        return try {
+            val json = appContext.contentResolver.openInputStream(file.uri)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: return "Lecture extension équipement impossible."
+            when (val result = repository.applyPcEquipmentAssociationsJson(json)) {
+                is EquipmentAssociationImportResult.Applied -> null
+                is EquipmentAssociationImportResult.Invalid -> result.message
+                EquipmentAssociationImportResult.DatabaseError -> "Erreur base locale équipement."
+            }
+        } catch (error: Exception) {
+            error.message ?: "Import extension équipement impossible."
         }
     }
 

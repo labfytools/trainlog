@@ -3,8 +3,8 @@
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=5
-DATABASE_SCHEMA_V5=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=7
+DATABASE_SCHEMA_V7=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -23,12 +23,18 @@ PRAGMA user_version;
 Current value:
 
 ```text
-5
+7
 ```
 
 Supported historical databases are migrated explicitly through the implemented
 migration chain. A database newer than the running binary understands is
 rejected.
+
+Version 7 assigns `session_exercises.entry_id` to each stable occurrence.
+`exercise_id` remains only the catalogue identity and may occur more than once
+in a session. The v6 → v7 migration rebuilds the obsolete uniqueness
+constraint while retaining rows, sets, continuous activities, weights and
+equipment associations.
 
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
@@ -83,6 +89,7 @@ Ordered exercise occurrence inside one session.
 ```text
 session_row_id
 exercise_row_id
+entry_id             UNIQUE stable occurrence identity
 recording_mode
 data_fields
 position
@@ -92,6 +99,7 @@ target_sets
 target_reps
 target_duration_seconds
 target_weight_kg
+equipment_id         nullable canonical equipment identity
 notes
 ```
 
@@ -296,11 +304,11 @@ Migration-specific regression coverage includes:
 schema_v5_migration
 ```
 
-The current normal desktop suite contains 22 tests.
+The current normal desktop suite contains 25 tests.
 
 ## 11. Measured-max derivation
 
-Measured maxima require no desktop schema v6.
+Measured maxima require no schema change beyond the current desktop schema v7.
 
 The existing `sessions.session_type = max_test` classification plus actual
 `performed_sets` are sufficient.
@@ -335,7 +343,21 @@ No extra maximum row is persisted; results are derived from canonical history.
 
 ## 12. Body analytics persistence rule
 
-Body analytics require no schema v6.
+## 13. Equipment and occurrence migration
+
+Desktop schema v6 added nullable `session_exercises.equipment_id`, which stores
+a canonical manifest ID rather than a local SQLite row ID. Schema v7 adds the
+non-null stable `entry_id` and removes the obsolete
+`UNIQUE(session_row_id, exercise_row_id)` constraint. The v6 -> v7 rebuild
+preserves primary keys, completed sessions, ordered sets, continuous activities,
+per-set weights and equipment values.
+
+Android schema v6 added nullable `weight_kg` to completed and durable draft
+set rows. Schema v7 assigns stable `entry_id` values to completed and draft
+occurrences. Actual per-set weights remain independent values, so heterogeneous
+sets and weights survive edit, finalization, reopen and V2 exchange.
+
+Body analytics require no schema change beyond schema v7.
 
 Canonical persistence continues to contain only measurements actually entered
 by the user.

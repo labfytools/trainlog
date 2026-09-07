@@ -67,6 +67,25 @@ sealed interface PcCatalogImportResult {
         PcCatalogImportResult
 }
 
+sealed interface EquipmentAssociationImportResult {
+    data class Applied(val updated: Int) : EquipmentAssociationImportResult
+    data class Invalid(val message: String) : EquipmentAssociationImportResult
+    data object DatabaseError : EquipmentAssociationImportResult
+}
+
+sealed interface MobileSessionImportResult {
+    data class Applied(val sessions: Int) : MobileSessionImportResult
+    data class Invalid(val message: String) : MobileSessionImportResult
+    data object DatabaseError : MobileSessionImportResult
+}
+
+sealed interface CreateEquipmentResult {
+    data class Created(val equipment: EquipmentCatalogEntry) : CreateEquipmentResult
+    data object Invalid : CreateEquipmentResult
+    data object Conflict : CreateEquipmentResult
+    data class DatabaseError(val message: String) : CreateEquipmentResult
+}
+
 sealed interface SaveBodyObservationResult {
     data class Saved(
         val observationId: String,
@@ -131,14 +150,70 @@ class TrainlogRepository(
     databaseName: String =
         ANDROID_DATABASE_NAME,
 ) {
+    private val applicationContext = context.applicationContext
     private val database =
         TrainlogDatabaseHelper(
-            context.applicationContext,
+            applicationContext,
             databaseName,
         )
 
     fun close() {
         database.close()
+    }
+
+    fun listEquipment(): List<EquipmentCatalogEntry> {
+        val output = mutableListOf<EquipmentCatalogEntry>()
+        database.readableDatabase.query(
+            "equipment",
+            arrayOf("equipment_id", "label_name", "display_name", "equipment_type", "load_semantics"),
+            null, null, null, null, "display_name COLLATE NOCASE, equipment_id",
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(0)
+                val aliases = mutableListOf<String>()
+                database.readableDatabase.rawQuery(
+                    "SELECT alias FROM equipment_aliases ea JOIN equipment e ON e.id = ea.equipment_row_id WHERE e.equipment_id = ? ORDER BY alias COLLATE NOCASE;",
+                    arrayOf(id),
+                ).use { aliasCursor -> while (aliasCursor.moveToNext()) aliases += aliasCursor.getString(0) }
+                output += EquipmentCatalogEntry(
+                    equipmentId = id,
+                    labelName = cursor.getString(1),
+                    displayName = cursor.getString(2),
+                    aliases = aliases,
+                    type = cursor.getString(3),
+                    loadSemantics = EquipmentLoadSemantics.valueOf(cursor.getString(4).uppercase(Locale.ROOT)),
+                )
+            }
+        }
+        return output
+    }
+
+    fun searchEquipment(query: String): List<EquipmentCatalogEntry> =
+        EquipmentCatalog.search(listEquipment(), query)
+
+    /** Custom equipment is local user data, not an edit to the bundled manifest. */
+    fun createCustomEquipment(name: String): CreateEquipmentResult {
+        val displayName = name.trim().replace(Regex("\\s+"), " ")
+        if (displayName.isBlank() || displayName.length > 120) return CreateEquipmentResult.Invalid
+        return try {
+            val db = database.writableDatabase
+            val duplicate = db.rawQuery(
+                "SELECT 1 FROM equipment WHERE lower(display_name) = lower(?) LIMIT 1;", arrayOf(displayName),
+            ).use { it.moveToFirst() }
+            if (duplicate) return CreateEquipmentResult.Conflict
+            val entry = EquipmentCatalogEntry(
+                equipmentId = "eq_" + UUID.randomUUID(), labelName = "", displayName = displayName,
+                aliases = emptyList(), type = "custom_machine", loadSemantics = EquipmentLoadSemantics.EXTERNAL,
+            )
+            val values = ContentValues().apply {
+                put("equipment_id", entry.equipmentId); put("label_name", entry.labelName)
+                put("display_name", entry.displayName); put("equipment_type", entry.type)
+                put("load_semantics", "external")
+            }
+            db.insertOrThrow("equipment", null, values)
+            CreateEquipmentResult.Created(entry)
+        } catch (error: SQLiteConstraintException) { CreateEquipmentResult.Conflict
+        } catch (error: Exception) { CreateEquipmentResult.DatabaseError(error.message ?: "erreur SQLite") }
     }
 
     fun listExercises(): List<ExerciseProfile> {
@@ -439,9 +514,16 @@ class TrainlogRepository(
             draft.exercises.any {
                 !validateSessionExercise(it)
             } ||
+            /* exercise_id identifies the catalogue movement. Repeated passages
+             * are valid; only their stable occurrence IDs must be unique. */
             draft.exercises
                 .map {
-                    it.exercise.exerciseId
+                    it.entryId
+                }
+                .any { it.isBlank() } ||
+            draft.exercises
+                .map {
+                    it.entryId
                 }
                 .distinct()
                 .size !=
@@ -691,6 +773,15 @@ class TrainlogRepository(
                             exerciseDraft.exercise
                                 .dataFields
                         )
+                        put("entry_id", exerciseDraft.entryId)
+                        val equipmentRowId = lookupEquipmentRowIdOrNull(
+                            db,
+                            exerciseDraft.equipmentId,
+                        )
+                        check(exerciseDraft.equipmentId == null || equipmentRowId != null) {
+                            "Unknown equipment: ${exerciseDraft.equipmentId}"
+                        }
+                        if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                     }
 
                 val sessionExerciseRowId =
@@ -757,6 +848,7 @@ class TrainlogRepository(
                                         "position",
                                         setIndex
                                     )
+                                    set.weightKg?.let { put("weight_kg", it) }
 
                                     if (
                                         exerciseDraft.exercise
@@ -1198,6 +1290,26 @@ class TrainlogRepository(
             if (cursor.moveToFirst()) cursor.getLong(0) else null
         }
 
+    private fun lookupEquipmentRowIdOrNull(
+        db: SQLiteDatabase,
+        equipmentId: String?,
+    ): Long? {
+        if (equipmentId == null) {
+            return null
+        }
+        return db.query(
+            "equipment",
+            arrayOf("id"),
+            "equipment_id = ?",
+            arrayOf(equipmentId),
+            null,
+            null,
+            null,
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+    }
+
     private fun exerciseHasReferences(
         db: SQLiteDatabase,
         exerciseRowId: Long,
@@ -1348,6 +1460,216 @@ class TrainlogRepository(
         }
         root.put("body_observations", bodyArray)
         return root.toString()
+    }
+
+    /**
+     * V2 is a new artifact, never a reinterpretation of frozen V1.  Each
+     * session occurrence carries its durable Android entry_id, ordering,
+     * equipment and actual load so repeated catalogue exercises round-trip.
+     */
+    fun buildMobileExportV2Json(): String {
+        val root = JSONObject(buildMobileExportJson())
+        root.put("version", 2)
+        val db = database.readableDatabase
+        val sessions = root.getJSONArray("sessions")
+        for (sessionIndex in 0 until sessions.length()) {
+            val session = sessions.getJSONObject(sessionIndex)
+            val items = session.getJSONArray("exercises")
+            db.rawQuery(
+                "SELECT se.id,se.entry_id,se.position,eq.equipment_id FROM session_exercises se " +
+                    "JOIN sessions s ON s.id=se.session_row_id LEFT JOIN equipment eq ON eq.id=se.equipment_row_id " +
+                    "WHERE s.session_id=? ORDER BY se.position ASC;",
+                arrayOf(session.getString("session_id")),
+            ).use { entries ->
+                var itemIndex = 0
+                while (entries.moveToNext()) {
+                    val item = items.getJSONObject(itemIndex++)
+                    val rowId = entries.getLong(0)
+                    item.put("entry_id", entries.getString(1))
+                    item.put("position", entries.getInt(2))
+                    if (entries.isNull(3)) item.put("equipment_id", JSONObject.NULL)
+                    else item.put("equipment_id", entries.getString(3))
+                    if (item.has("sets")) {
+                        val sets = item.getJSONArray("sets")
+                        db.query("performed_sets", arrayOf("weight_kg"),
+                            "session_exercise_row_id=?", arrayOf(rowId.toString()), null, null, "position ASC").use { cursor ->
+                            var setIndex = 0
+                            while (cursor.moveToNext()) {
+                                if (!cursor.isNull(0)) sets.getJSONObject(setIndex).put("weight_kg", cursor.getDouble(0))
+                                setIndex++
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return root.toString()
+    }
+
+    /** Apply the same V2 session artifact emitted by desktop, keyed by entry_id. */
+    fun applyPcMobileExportV2Json(json: String): MobileSessionImportResult {
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return MobileSessionImportResult.Invalid("Snapshot séances JSON invalide.")
+        }
+        if (root.optString("format") != "trainlog-mobile-export" || root.optInt("version", -1) != 2) {
+            return MobileSessionImportResult.Invalid("Snapshot séances V2 non supporté.")
+        }
+        val sessions = root.optJSONArray("sessions") ?: return MobileSessionImportResult.Invalid("Sessions manquantes.")
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            for (i in 0 until sessions.length()) {
+                val session = sessions.getJSONObject(i)
+                val sessionId = session.optString("session_id")
+                val startedAt = session.optString("started_at")
+                val type = session.optString("session_type")
+                val entries = session.optJSONArray("exercises")
+                if (sessionId.isBlank() || startedAt.isBlank() || type !in setOf("training", "max_test") || entries == null) {
+                    return MobileSessionImportResult.Invalid("Session V2 invalide.")
+                }
+                val rowId = db.rawQuery("SELECT id FROM sessions WHERE session_id=?", arrayOf(sessionId)).use {
+                    if (it.moveToFirst()) it.getLong(0) else null
+                } ?: run {
+                    val values = ContentValues().apply { put("session_id", sessionId); put("started_at", startedAt); put("session_type", type) }
+                    db.insertOrThrow("sessions", null, values)
+                }
+                /* V2 replaces only a same stable session; every entry is
+                 * checked before insertion and entry_id remains global unique. */
+                db.delete("session_exercises", "session_row_id=?", arrayOf(rowId.toString()))
+                val seen = mutableSetOf<String>()
+                for (index in 0 until entries.length()) {
+                    val entry = entries.getJSONObject(index)
+                    val entryId = entry.optString("entry_id")
+                    val exerciseId = entry.optString("exercise_id")
+                    val position = entry.optInt("position", -1)
+                    if (entryId.isBlank() || !seen.add(entryId) || exerciseId.isBlank() || position < 0) {
+                        return MobileSessionImportResult.Invalid("Identité d'entrée V2 invalide.")
+                    }
+                    val exerciseRow = findExerciseRow(db, "exercise_id = ?", arrayOf(exerciseId))
+                        ?: return MobileSessionImportResult.Invalid("Exercice V2 inconnu : $exerciseId")
+                    val recording = entry.optString("recording_mode")
+                    val tracking = entry.optString("tracking_mode")
+                    if (recording !in setOf("sets", "continuous") || tracking !in setOf("reps", "duration")) {
+                        return MobileSessionImportResult.Invalid("Profil V2 invalide.")
+                    }
+                    val values = ContentValues().apply {
+                        put("entry_id", entryId); put("session_row_id", rowId); put("exercise_row_id", exerciseRow.rowId)
+                        put("position", position); put("recording_mode", recording); put("tracking_mode", tracking)
+                        put("data_fields", entry.optInt("data_fields", 0)); put("equipment_row_id", lookupEquipmentRowIdOrNull(db, entry.optString("equipment_id").ifBlank { null }))
+                    }
+                    val occurrence = db.insertOrThrow("session_exercises", null, values)
+                    if (recording == "continuous") {
+                        val c = entry.optJSONObject("continuous") ?: return MobileSessionImportResult.Invalid("Activité continue manquante.")
+                        db.insertOrThrow("continuous_activity", null, ContentValues().apply {
+                            put("session_exercise_row_id", occurrence); put("duration_seconds", c.optInt("duration_seconds", 0))
+                            if (c.has("speed_kmh")) put("speed_kmh", c.getDouble("speed_kmh")); if (c.has("distance_km")) put("distance_km", c.getDouble("distance_km"))
+                        })
+                    } else {
+                        val sets = entry.optJSONArray("sets") ?: return MobileSessionImportResult.Invalid("Séries manquantes.")
+                        for (setIndex in 0 until sets.length()) {
+                            val set = sets.getJSONObject(setIndex)
+                            db.insertOrThrow("performed_sets", null, ContentValues().apply {
+                                put("session_exercise_row_id", occurrence); put("position", setIndex)
+                                if (tracking == "reps") put("reps", set.optInt("reps", -1)) else put("duration_seconds", set.optInt("duration_seconds", 0))
+                                if (set.has("weight_kg")) put("weight_kg", set.getDouble("weight_kg"))
+                            })
+                        }
+                    }
+                }
+            }
+            db.setTransactionSuccessful()
+            MobileSessionImportResult.Applied(sessions.length())
+        } catch (_: Exception) { MobileSessionImportResult.DatabaseError
+        } finally { db.endTransaction() }
+    }
+
+    /**
+     * CONTRACT: this companion artifact is deliberately outside frozen mobile
+     * export v1.  `(session_id, exercise_id)` is stable and unambiguous under
+     * the one-entry-per-exercise-per-session model. `cleared` is intentional
+     * state, unlike an absent v1 artifact which conveys no equipment signal.
+     */
+    fun buildEquipmentAssociationsJson(): String {
+        val root = JSONObject()
+            .put("format", "trainlog-equipment-associations")
+            .put("version", 2)
+            .put("generated_at", OffsetDateTime.now().toString())
+        val associations = JSONArray()
+        database.readableDatabase.rawQuery(
+            "SELECT s.session_id, se.entry_id, e.exercise_id, eq.equipment_id FROM session_exercises se " +
+                "JOIN sessions s ON s.id = se.session_row_id " +
+                "JOIN exercises e ON e.id = se.exercise_row_id " +
+                "LEFT JOIN equipment eq ON eq.id = se.equipment_row_id " +
+                "ORDER BY s.started_at ASC, s.id ASC, se.position ASC;",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val item = JSONObject()
+                    .put("session_id", cursor.getString(0))
+                    .put("entry_id", cursor.getString(1))
+                    .put("exercise_id", cursor.getString(2))
+                if (cursor.isNull(3)) item.put("state", "cleared") else {
+                    item.put("state", "set")
+                    item.put("equipment_id", cursor.getString(3))
+                }
+                associations.put(item)
+            }
+        }
+        return root.put("associations", associations).toString()
+    }
+
+    fun applyPcEquipmentAssociationsJson(json: String): EquipmentAssociationImportResult {
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return EquipmentAssociationImportResult.Invalid("Extension équipement JSON invalide.")
+        }
+        val version = root.optInt("version", -1)
+        if (root.optString("format") != "trainlog-equipment-associations" || version !in setOf(1, 2)) {
+            return EquipmentAssociationImportResult.Invalid("Extension équipement non supportée.")
+        }
+        val items = root.optJSONArray("associations")
+            ?: return EquipmentAssociationImportResult.Invalid("Associations équipement manquantes.")
+        val known = listEquipment().map { it.equipmentId }.toSet()
+        val db = database.writableDatabase
+        var updated = 0
+        db.beginTransaction()
+        try {
+            for (index in 0 until items.length()) {
+                val item = items.getJSONObject(index)
+                val sessionId = item.optString("session_id")
+                val exerciseId = item.optString("exercise_id")
+                val entryId = if (version == 2) item.optString("entry_id") else null
+                val state = item.optString("state")
+                if (sessionId.isBlank() || exerciseId.isBlank() || state !in setOf("set", "cleared") || (version == 2 && entryId.isNullOrBlank())) {
+                    return EquipmentAssociationImportResult.Invalid("Association équipement invalide.")
+                }
+                val equipmentId = if (state == "set") item.optString("equipment_id") else null
+                if (state == "set" && (equipmentId.isNullOrBlank() || equipmentId !in known)) {
+                    return EquipmentAssociationImportResult.Invalid("Équipement inconnu : $equipmentId")
+                }
+                val row = db.rawQuery(
+                    if (version == 2) {
+                        "SELECT se.id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id WHERE s.session_id=? AND se.entry_id=?;"
+                    } else {
+                        "SELECT se.id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id WHERE s.session_id=? AND e.exercise_id=?;"
+                    },
+                    if (version == 2) arrayOf(sessionId, entryId) else arrayOf(sessionId, exerciseId),
+                ).use { cursor ->
+                    val first = if (cursor.moveToFirst()) cursor.getLong(0) else null
+                    if (version == 1 && first != null && cursor.moveToNext()) null else first
+                }
+                    ?: return EquipmentAssociationImportResult.Invalid("Entrée de séance inconnue : $sessionId/$exerciseId")
+                val values = ContentValues()
+                if (equipmentId == null) values.putNull("equipment_row_id") else {
+                    val equipmentRowId = lookupEquipmentRowIdOrNull(db, equipmentId)!!
+                    values.put("equipment_row_id", equipmentRowId)
+                }
+                updated += db.update("session_exercises", values, "id = ?", arrayOf(row.toString()))
+            }
+            db.setTransactionSuccessful()
+            return EquipmentAssociationImportResult.Applied(updated)
+        } catch (_: Exception) {
+            return EquipmentAssociationImportResult.DatabaseError
+        } finally { db.endTransaction() }
     }
 
     fun saveBodyObservation(
@@ -1587,15 +1909,20 @@ class TrainlogRepository(
             """
             SELECT
                 se.id,
+                se.entry_id,
+                e.exercise_id,
                 e.name,
                 se.recording_mode,
                 se.tracking_mode,
-                se.data_fields
+                se.data_fields,
+                eq.display_name
             FROM session_exercises AS se
             JOIN sessions AS s
                 ON s.id = se.session_row_id
             JOIN exercises AS e
                 ON e.id = se.exercise_row_id
+            LEFT JOIN equipment AS eq
+                ON eq.id = se.equipment_row_id
             WHERE s.session_id = ?
             ORDER BY se.position ASC;
             """.trimIndent(),
@@ -1605,12 +1932,13 @@ class TrainlogRepository(
                 val sessionExerciseRowId =
                     cursor.getLong(0)
 
-                val name =
-                    cursor.getString(1)
+                val entryId = cursor.getString(1)
+                val exerciseId = cursor.getString(2)
+                val name = cursor.getString(3)
 
                 val recording =
                     when (
-                        cursor.getString(2)
+                        cursor.getString(4)
                     ) {
                         "continuous" ->
                             RecordingMode.CONTINUOUS
@@ -1621,7 +1949,7 @@ class TrainlogRepository(
 
                 val tracking =
                     when (
-                        cursor.getString(3)
+                        cursor.getString(5)
                     ) {
                         "duration" ->
                             TrackingMode.DURATION
@@ -1631,7 +1959,8 @@ class TrainlogRepository(
                     }
 
                 val dataFields =
-                    cursor.getInt(4)
+                    cursor.getInt(6)
+                val equipmentDisplayName = if (cursor.isNull(7)) null else cursor.getString(7)
 
                 if (
                     recording ==
@@ -1666,8 +1995,11 @@ class TrainlogRepository(
 
                         exercises +=
                             SessionExerciseDetail(
+                                entryId = entryId,
+                                exerciseId = exerciseId,
                                 exerciseName =
                                     name,
+                                equipmentDisplayName = equipmentDisplayName,
                                 recordingMode =
                                     recording,
                                 trackingMode =
@@ -1710,6 +2042,7 @@ class TrainlogRepository(
                         arrayOf(
                             "reps",
                             "duration_seconds",
+                            "weight_kg",
                         ),
                         "session_exercise_row_id = ?",
                         arrayOf(
@@ -1746,14 +2079,18 @@ class TrainlogRepository(
                                             setCursor
                                                 .getInt(1)
                                         },
+                                    weightKg = if (setCursor.isNull(2)) null else setCursor.getDouble(2),
                                 )
                         }
                     }
 
                     exercises +=
                         SessionExerciseDetail(
+                            entryId = entryId,
+                            exerciseId = exerciseId,
                             exerciseName =
                                 name,
+                            equipmentDisplayName = equipmentDisplayName,
                             recordingMode =
                                 recording,
                             trackingMode =
@@ -1772,6 +2109,26 @@ class TrainlogRepository(
         )
     }
 
+    fun setCompletedSessionEquipment(
+        sessionId: String,
+        entryId: String,
+        equipmentId: String?,
+    ): Boolean {
+        val db = database.writableDatabase
+        val equipmentRowId = lookupEquipmentRowIdOrNull(db, equipmentId)
+        if (equipmentId != null && equipmentRowId == null) return false
+        return try {
+            val values = ContentValues()
+            if (equipmentRowId == null) values.putNull("equipment_row_id") else values.put("equipment_row_id", equipmentRowId)
+            db.update(
+                "session_exercises", values,
+                "id = (SELECT se.id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id " +
+                    "WHERE s.session_id=? AND se.entry_id=?)",
+                arrayOf(sessionId, entryId),
+            ) == 1
+        } catch (_: Exception) { false }
+    }
+
     private fun loadActiveSessionDraft(
         db: SQLiteDatabase,
     ): ActiveDraftRestore? {
@@ -1787,6 +2144,7 @@ class TrainlogRepository(
                     d.distance_text,
                     d.updated_at,
                     d.selected_exercise_label,
+                    d.selected_equipment_id,
                     e.exercise_id,
                     e.name,
                     e.normalized_name,
@@ -1804,15 +2162,15 @@ class TrainlogRepository(
                     null
                 } else {
                     val missingSelection =
-                        cursor.isNull(8) &&
+                        cursor.isNull(9) &&
                             !cursor.isNull(7)
                     val selected =
-                        if (cursor.isNull(8)) {
+                        if (cursor.isNull(9)) {
                             null
                         } else {
                             exerciseProfileFromCursor(
                                 cursor,
-                                8,
+                                9,
                             )
                         }
 
@@ -1823,6 +2181,7 @@ class TrainlogRepository(
                             ),
                         form = SessionDraftForm(
                             selectedExercise = selected,
+                            selectedEquipmentId = if (cursor.isNull(8)) null else cursor.getString(8),
                             setCountText = cursor.getString(1),
                             repsText = cursor.getString(2),
                             durationText = cursor.getString(3),
@@ -1856,10 +2215,14 @@ class TrainlogRepository(
                 e.normalized_name,
                 de.recording_mode,
                 de.tracking_mode,
-                de.data_fields
+                de.data_fields,
+                eq.equipment_id,
+                de.entry_id
             FROM draft_session_exercises AS de
             JOIN exercises AS e
                 ON e.id = de.exercise_row_id
+            LEFT JOIN equipment AS eq
+                ON eq.id = de.equipment_row_id
             WHERE de.draft_id = ?
             ORDER BY de.position ASC;
             """.trimIndent(),
@@ -1882,9 +2245,11 @@ class TrainlogRepository(
                             trackingModeFromWire(
                                 cursor.getString(5)
                             ),
-                        dataFields =
-                            cursor.getInt(6),
+                            dataFields =
+                                cursor.getInt(6),
                     )
+                val equipmentId = if (cursor.isNull(7)) null else cursor.getString(7)
+                val entryId = cursor.getString(8)
 
                 if (
                     exercise.recordingMode ==
@@ -1909,7 +2274,9 @@ class TrainlogRepository(
                             }
 
                             SessionExerciseDraft(
+                                entryId = entryId,
                                 exercise = exercise,
+                                equipmentId = equipmentId,
                                 continuousDurationSeconds =
                                     item.getInt(0),
                                 speedKmh =
@@ -1935,6 +2302,7 @@ class TrainlogRepository(
                         arrayOf(
                             "reps",
                             "duration_seconds",
+                            "weight_kg",
                         ),
                         "draft_exercise_row_id = ?",
                         arrayOf(rowId.toString()),
@@ -1957,12 +2325,15 @@ class TrainlogRepository(
                                         } else {
                                             setCursor.getInt(1)
                                         },
+                                    weightKg = if (setCursor.isNull(2)) null else setCursor.getDouble(2),
                                 )
                         }
                     }
                     exercises +=
                         SessionExerciseDraft(
+                            entryId = entryId,
                             exercise = exercise,
+                            equipmentId = equipmentId,
                             sets = sets,
                         )
                 }
@@ -1996,6 +2367,7 @@ class TrainlogRepository(
         val values =
             ContentValues().apply {
                 put("session_type", draft.sessionType.wireValue)
+                putOptionalString("selected_equipment_id", draft.form.selectedEquipmentId)
                 if (selectedRowId == null) {
                     putNull("selected_exercise_row_id")
                     putNull("selected_exercise_label")
@@ -2064,6 +2436,15 @@ class TrainlogRepository(
                         "data_fields",
                         exerciseDraft.exercise.dataFields,
                     )
+                    put("entry_id", exerciseDraft.entryId)
+                    val equipmentRowId = lookupEquipmentRowIdOrNull(
+                        db,
+                        exerciseDraft.equipmentId,
+                    )
+                    check(exerciseDraft.equipmentId == null || equipmentRowId != null) {
+                        "Unknown equipment: ${exerciseDraft.equipmentId}"
+                    }
+                    if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                 }
             val draftExerciseRowId =
                 db.insertOrThrow(
@@ -2109,6 +2490,7 @@ class TrainlogRepository(
                                 draftExerciseRowId,
                             )
                             put("position", setIndex)
+                            set.weightKg?.let { put("weight_kg", it) }
                             if (
                                 exerciseDraft.exercise.trackingMode ==
                                 TrackingMode.REPS
@@ -2175,6 +2557,15 @@ class TrainlogRepository(
                         exerciseDraft.exercise.trackingMode.wireValue,
                     )
                     put("data_fields", exerciseDraft.exercise.dataFields)
+                    put("entry_id", exerciseDraft.entryId)
+                    val equipmentRowId = lookupEquipmentRowIdOrNull(
+                        db,
+                        exerciseDraft.equipmentId,
+                    )
+                    check(exerciseDraft.equipmentId == null || equipmentRowId != null) {
+                        "Unknown equipment: ${exerciseDraft.equipmentId}"
+                    }
+                    if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                 }
             val sessionExerciseRowId =
                 db.insertOrThrow(
@@ -2210,6 +2601,7 @@ class TrainlogRepository(
                         ContentValues().apply {
                             put("session_exercise_row_id", sessionExerciseRowId)
                             put("position", setIndex)
+                            set.weightKg?.let { put("weight_kg", it) }
                             if (
                                 exerciseDraft.exercise.trackingMode ==
                                 TrackingMode.REPS
@@ -2407,19 +2799,32 @@ private fun ContentValues.putOptionalDouble(
     }
 }
 
+private fun ContentValues.putOptionalString(
+    key: String,
+    value: String?,
+) {
+    if (value == null) putNull(key) else put(key, value)
+}
+
+private fun equipmentAliasNormalize(value: String): String =
+    Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace("\\p{M}+".toRegex(), "")
+        .lowercase(Locale.ROOT)
+        .trim()
+
 private const val ANDROID_DATABASE_NAME =
     "trainlog-android.db"
 private const val ACTIVE_DRAFT_ID = 1
 private const val MAX_DRAFT_FORM_TEXT_LENGTH = 4096
 
 private class TrainlogDatabaseHelper(
-    context: Context,
+    private val appContext: Context,
     databaseName: String,
 ) : SQLiteOpenHelper(
-    context,
+            appContext,
     databaseName,
     null,
-    4,
+    7,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -2438,6 +2843,8 @@ private class TrainlogDatabaseHelper(
         createSessionTables(db)
         createBodyTable(db)
         createActiveDraftTables(db)
+        createEquipmentTables(db)
+        seedEquipment(db)
     }
 
     override fun onUpgrade(
@@ -2462,6 +2869,41 @@ private class TrainlogDatabaseHelper(
              * performed values, and body observations remain untouched. */
             createActiveDraftTables(db)
             version = 4
+        }
+
+        if (version < 5 && newVersion >= 5) {
+            /* CONTRACT: v5 adds only canonical equipment metadata. Existing
+             * exercises, historical rows, and drafts are never rewritten. */
+            createEquipmentTables(db)
+            seedEquipment(db)
+            addEquipmentReferenceColumns(db)
+            version = 5
+        }
+
+        if (version < 6 && newVersion >= 6) {
+            /* v6 keeps historic sets intact while allowing optional per-set load. */
+            db.execSQL("ALTER TABLE performed_sets ADD COLUMN weight_kg REAL CHECK(weight_kg >= 0.0);")
+            db.execSQL("ALTER TABLE draft_performed_sets ADD COLUMN weight_kg REAL CHECK(weight_kg >= 0.0);")
+            version = 6
+        }
+
+        if (version < 7 && newVersion >= 7) {
+            /* WHY: exercise_id is a catalogue identity, not an occurrence identity.
+             * Historic rows get the deterministic same cross-device legacy key. */
+            db.execSQL("ALTER TABLE session_exercises ADD COLUMN entry_id TEXT;")
+            db.execSQL("UPDATE session_exercises SET entry_id = 'sxe_legacy_' || (SELECT session_id FROM sessions WHERE sessions.id = session_exercises.session_row_id) || '_' || (SELECT exercise_id FROM exercises WHERE exercises.id = session_exercises.exercise_row_id);")
+            db.execSQL("CREATE UNIQUE INDEX session_exercises_entry_id_v7 ON session_exercises(entry_id);")
+            db.execSQL("ALTER TABLE draft_performed_sets RENAME TO draft_performed_sets_v6;")
+            db.execSQL("ALTER TABLE draft_continuous_activity RENAME TO draft_continuous_activity_v6;")
+            db.execSQL("ALTER TABLE draft_session_exercises RENAME TO draft_session_exercises_v6;")
+            createActiveDraftTables(db)
+            db.execSQL("INSERT INTO draft_session_exercises(id,draft_id,exercise_row_id,position,recording_mode,tracking_mode,data_fields,equipment_row_id,entry_id) SELECT id,draft_id,exercise_row_id,position,recording_mode,tracking_mode,data_fields,equipment_row_id,'sxe_draft_legacy_' || id FROM draft_session_exercises_v6;")
+            db.execSQL("INSERT INTO draft_performed_sets(id,draft_exercise_row_id,position,reps,duration_seconds,weight_kg) SELECT id,draft_exercise_row_id,position,reps,duration_seconds,weight_kg FROM draft_performed_sets_v6;")
+            db.execSQL("INSERT INTO draft_continuous_activity(id,draft_exercise_row_id,duration_seconds,speed_kmh,distance_km) SELECT id,draft_exercise_row_id,duration_seconds,speed_kmh,distance_km FROM draft_continuous_activity_v6;")
+            db.execSQL("DROP TABLE draft_performed_sets_v6;")
+            db.execSQL("DROP TABLE draft_continuous_activity_v6;")
+            db.execSQL("DROP TABLE draft_session_exercises_v6;")
+            version = 7
         }
 
         if (version != newVersion) {
@@ -2569,6 +3011,10 @@ private class TrainlogDatabaseHelper(
                         data_fields >= 0 AND
                         (data_fields & ~3) = 0
                     ),
+                equipment_row_id INTEGER
+                    REFERENCES equipment(id)
+                    ON DELETE SET NULL,
+                entry_id TEXT NOT NULL UNIQUE,
                 UNIQUE(
                     session_row_id,
                     position
@@ -2590,6 +3036,8 @@ private class TrainlogDatabaseHelper(
                     CHECK(reps >= 0),
                 duration_seconds INTEGER
                     CHECK(duration_seconds > 0),
+                weight_kg REAL
+                    CHECK(weight_kg >= 0.0),
                 CHECK(
                     (
                         reps IS NOT NULL AND
@@ -2705,6 +3153,7 @@ private class TrainlogDatabaseHelper(
                     REFERENCES exercises(id)
                     ON DELETE SET NULL,
                 selected_exercise_label TEXT,
+                selected_equipment_id TEXT,
                 set_count_text TEXT NOT NULL,
                 reps_text TEXT NOT NULL,
                 duration_text TEXT NOT NULL,
@@ -2746,8 +3195,11 @@ private class TrainlogDatabaseHelper(
                         data_fields >= 0 AND
                         (data_fields & ~3) = 0
                     ),
-                UNIQUE(draft_id, position),
-                UNIQUE(draft_id, exercise_row_id)
+                equipment_row_id INTEGER
+                    REFERENCES equipment(id)
+                    ON DELETE SET NULL,
+                entry_id TEXT NOT NULL UNIQUE,
+                UNIQUE(draft_id, position)
             );
             """.trimIndent()
         )
@@ -2768,6 +3220,8 @@ private class TrainlogDatabaseHelper(
                     CHECK(reps >= 0),
                 duration_seconds INTEGER
                     CHECK(duration_seconds > 0),
+                weight_kg REAL
+                    CHECK(weight_kg >= 0.0),
                 CHECK(
                     (
                         reps IS NOT NULL AND
@@ -2798,5 +3252,138 @@ private class TrainlogDatabaseHelper(
             );
             """.trimIndent()
         )
+    }
+
+    private fun createEquipmentTables(
+        db: SQLiteDatabase,
+    ) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS equipment(
+                id INTEGER PRIMARY KEY,
+                equipment_id TEXT NOT NULL UNIQUE,
+                label_name TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                equipment_type TEXT NOT NULL,
+                load_semantics TEXT NOT NULL
+                    CHECK(load_semantics IN ('external', 'assistance', 'bodyweight', 'cardio'))
+            );
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS equipment_aliases(
+                equipment_row_id INTEGER NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
+                alias TEXT NOT NULL,
+                normalized_alias TEXT NOT NULL,
+                UNIQUE(equipment_row_id, normalized_alias)
+            );
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS exercise_equipment(
+                exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
+                equipment_row_id INTEGER NOT NULL REFERENCES equipment(id) ON DELETE RESTRICT,
+                UNIQUE(exercise_row_id, equipment_row_id)
+            );
+            """.trimIndent(),
+        )
+        /* WHY: these are logical catalogue capabilities, including exercises
+         * which need not yet exist in a user's mutable exercise catalogue. */
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS catalog_exercise_equipment(
+                exercise_id TEXT NOT NULL,
+                equipment_row_id INTEGER NOT NULL
+                    REFERENCES equipment(id)
+                    ON DELETE RESTRICT,
+                load_semantics TEXT NOT NULL
+                    CHECK(load_semantics IN ('external', 'assistance', 'bodyweight', 'cardio')),
+                PRIMARY KEY(exercise_id, equipment_row_id)
+            );
+            """.trimIndent(),
+        )
+    }
+
+    private fun addEquipmentReferenceColumns(
+        db: SQLiteDatabase,
+    ) {
+        /* CONTRACT: v5 retains all historic/draft rows unchanged; equipment
+         * is optional because it was not captured before this version. */
+        db.execSQL(
+            "ALTER TABLE session_exercises ADD COLUMN equipment_row_id INTEGER " +
+                "REFERENCES equipment(id) ON DELETE SET NULL;",
+        )
+        db.execSQL(
+            "ALTER TABLE draft_session_exercises ADD COLUMN equipment_row_id INTEGER " +
+                "REFERENCES equipment(id) ON DELETE SET NULL;",
+        )
+        db.execSQL(
+            "ALTER TABLE active_session_draft ADD COLUMN selected_equipment_id TEXT;",
+        )
+    }
+
+    private fun seedEquipment(
+        db: SQLiteDatabase,
+    ) {
+        /* INVARIANT: INSERT OR IGNORE makes application startup idempotent;
+         * canonical IDs, rather than display text, are the persistent keys. */
+        EquipmentCatalog.load(appContext).forEach { entry ->
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO equipment(
+                    equipment_id, label_name, display_name, equipment_type, load_semantics
+                ) VALUES(?, ?, ?, ?, ?);
+                """.trimIndent(),
+                arrayOf(
+                    entry.equipmentId,
+                    entry.labelName,
+                    entry.displayName,
+                    entry.type,
+                    entry.loadSemantics.name.lowercase(),
+                ),
+            )
+            db.rawQuery(
+                "SELECT id FROM equipment WHERE equipment_id = ?;",
+                arrayOf(entry.equipmentId),
+            ).use { cursor ->
+                check(cursor.moveToFirst())
+                val rowId = cursor.getLong(0)
+                entry.aliases.forEach { alias ->
+                    db.execSQL(
+                        """
+                        INSERT OR IGNORE INTO equipment_aliases(
+                            equipment_row_id, alias, normalized_alias
+                        ) VALUES(?, ?, ?);
+                        """.trimIndent(),
+                        arrayOf<Any>(
+                            rowId,
+                            alias,
+                            equipmentAliasNormalize(alias),
+                        ),
+                    )
+                }
+            }
+        }
+        EquipmentCatalog.exerciseEquipmentRelations(appContext).forEach { relation ->
+            db.rawQuery(
+                "SELECT id FROM equipment WHERE equipment_id = ?;",
+                arrayOf(relation.equipmentId),
+            ).use { cursor ->
+                check(cursor.moveToFirst()) {
+                    "Seeded equipment missing: ${relation.equipmentId}"
+                }
+                db.execSQL(
+                    "INSERT OR IGNORE INTO catalog_exercise_equipment(" +
+                        "exercise_id, equipment_row_id, load_semantics) VALUES(?, ?, ?);",
+                    arrayOf<Any>(
+                        relation.exerciseId,
+                        cursor.getLong(0),
+                        relation.loadSemantics.name.lowercase(Locale.ROOT),
+                    ),
+                )
+            }
+        }
     }
 }

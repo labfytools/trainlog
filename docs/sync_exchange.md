@@ -12,6 +12,8 @@ ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
+MULTI_OCCURRENCE_SESSION_V2=PASS
+EQUIPMENT_ASSOCIATIONS_V2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
@@ -37,11 +39,22 @@ Framework folder grant.
 | Direction | File | Format |
 | --- | --- | --- |
 | Android -> PC | `trainlog-mobile-export-v1.json` | `trainlog-mobile-export` v1 |
+| Android -> PC | `trainlog-mobile-export-v2.json` | `trainlog-mobile-export` v2 (active) |
+| Android -> PC | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | PC -> Android | `trainlog-pc-catalog-v1.json` | `trainlog-pc-catalog` v1 |
+| PC -> Android | `trainlog-pc-mobile-export-v2.json` | `trainlog-mobile-export` v2 |
+| PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
 No SQLite file is transferred.
+
+V2 is a separate format: every session entry has an `entry_id`, `position`,
+metrics, actual loads and optional equipment identity. This permits two
+occurrences of the same exercise without fusion. V1 remains readable with its
+frozen contract. A V1 historical session is reconciled with V2 only when the
+exercise/order correspondence is unambiguous; otherwise the importer reports
+a conflict rather than silently overwriting data.
 
 ## 4. Android -> PC mobile snapshot
 
@@ -50,7 +63,7 @@ Header:
 ```json
 {
   "format": "trainlog-mobile-export",
-  "version": 1
+  "version": 2
 }
 ```
 
@@ -61,6 +74,20 @@ exercises
 sessions
 body_observations
 ```
+
+V2 session entries additionally carry:
+
+```text
+entry_id             stable occurrence identity
+position             stable order within session
+equipment_id         optional canonical equipment identity
+weight_kg            optional actual value on each set
+```
+
+The desktop imports sessions first, preserving `entry_id`, then applies the
+equipment companion only after all referenced entries exist. Reimporting either
+artifact reconciles stable identities; it neither duplicates sessions nor
+regenerates occurrence IDs.
 
 Exercise profile fields:
 
@@ -234,7 +261,10 @@ One synchronization transaction performs:
 ```text
 mobile snapshot download
 -> mobile import
+-> equipment companion import by (session_id, entry_id)
 -> PC catalog export
+-> PC mobile V2 export
+-> PC equipment companion V2 export
 -> PC catalog MTP publication
 -> optional receipt publication
 -> structured run history
@@ -314,6 +344,22 @@ overloading frozen Trainlog JSON v1
 ```
 
 ## 14. Hardware validation
+
+## 15. Equipment associations V2 and legacy V1
+
+`TRAINLOG_FORMAT_V1` remains frozen. The active companion is
+`trainlog-equipment-associations-v2.json`, format
+`trainlog-equipment-associations`, version `2`. Each row is identified by
+`(session_id, entry_id)` and contains `exercise_id` as consistency metadata,
+then either `state: set` with a canonical `equipment_id`, or `state: cleared`
+for an intentional removal. A missing companion conveys no equipment
+information and cannot clear a previously known choice. Unknown canonical IDs,
+unknown entries and ambiguous identities reject the companion transaction
+explicitly; an unknown equipment reference is never silently changed to null.
+
+The historical V1 companion remains readable only where its
+`(session_id, exercise_id)` targeting is unambiguous. It cannot represent two
+occurrences of the same exercise in one session and is not redefined to do so.
 
 Validated on the physical Android device:
 

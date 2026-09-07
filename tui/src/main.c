@@ -83,6 +83,7 @@ static int build_database_path(char *output, size_t output_size)
 int main(void)
 {
     char database_path[PATH_MAX];
+    char database_diagnostic[256];
     TrainlogDatabase *database = NULL;
     TrainlogStatus status;
     int result;
@@ -92,12 +93,21 @@ int main(void)
         return 1;
     }
 
-    status = trainlog_database_open(database_path, &database);
+    status = trainlog_database_open_with_diagnostic(
+        database_path,
+        &database,
+        database_diagnostic,
+        sizeof(database_diagnostic)
+    );
     if (status != TRAINLOG_STATUS_OK) {
         (void)fprintf(
             stderr,
-            "trainlog: unable to open database (%d)\n",
-            (int)status
+            "trainlog: unable to open database '%s' (status %d): %s\n",
+            database_path,
+            (int)status,
+            database_diagnostic[0] != '\0'
+                ? database_diagnostic
+                : "no SQLite diagnostic available"
         );
         return 1;
     }

@@ -48,6 +48,10 @@ SESSION_EXERCISE_KEYS = {
     "continuous",
 }
 
+V2_SESSION_EXERCISE_KEYS = SESSION_EXERCISE_KEYS | {
+    "entry_id", "position", "equipment_id"
+}
+
 BODY_BASE_KEYS = {
     "observation_id",
     "observed_at",
@@ -209,7 +213,7 @@ def load_payload(path):
             "format mobile export invalide"
         )
 
-    if payload["version"] != VERSION:
+    if payload["version"] not in (1, 2):
         raise ImportFailure(
             "version mobile export non supportée"
         )
@@ -322,10 +326,11 @@ def validate_set_item(
     tracking_mode,
     label,
 ):
+    allowed_weight = {"weight_kg"}
     if tracking_mode == "reps":
         require_exact_keys(
             value,
-            {"reps"},
+            {"reps"} | allowed_weight,
             {"reps"},
             label,
         )
@@ -341,7 +346,7 @@ def validate_set_item(
 
     require_exact_keys(
         value,
-        {"duration_seconds"},
+        {"duration_seconds"} | allowed_weight,
         {"duration_seconds"},
         label,
     )
@@ -361,13 +366,20 @@ def validate_session_exercise(
     label,
     known_exercise_ids,
 ):
+    is_v2 = "entry_id" in item or "position" in item or "equipment_id" in item
     require_exact_keys(
         item,
-        SESSION_EXERCISE_KEYS,
-        SESSION_EXERCISE_KEYS
+        V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS,
+        (V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS)
         - {"sets", "continuous"},
         label,
     )
+
+    if is_v2:
+        require_nonempty_string(item["entry_id"], f"{label}.entry_id")
+        require_int(item["position"], 0, 100000, f"{label}.position")
+        if item["equipment_id"] is not None:
+            require_nonempty_string(item["equipment_id"], f"{label}.equipment_id")
 
     exercise_id = require_nonempty_string(
         item["exercise_id"],
@@ -492,6 +504,8 @@ def validate_session_exercise(
         )
 
     for set_index, set_item in enumerate(sets):
+        if not is_v2 and "weight_kg" in set_item:
+            raise ImportFailure(f"{label}.sets[{set_index}]: poids interdit en v1")
         validate_set_item(
             set_item,
             tracking_mode,
@@ -553,6 +567,7 @@ def validate_sessions(
             )
 
         seen_session_exercises = set()
+        seen_positions = set()
 
         for exercise_index, exercise in enumerate(
             exercises
@@ -568,15 +583,20 @@ def validate_sessions(
             )
 
             exercise_id = exercise["exercise_id"]
+            identity = exercise.get("entry_id", exercise_id)
 
-            if exercise_id in seen_session_exercises:
+            if identity in seen_session_exercises:
                 raise ImportFailure(
-                    f"{exercise_label}: exercice dupliqué dans la séance"
+                    f"{exercise_label}: identité d'entrée dupliquée dans la séance"
                 )
 
             seen_session_exercises.add(
-                exercise_id
+                identity
             )
+            if "position" in exercise:
+                if exercise["position"] in seen_positions:
+                    raise ImportFailure(f"{exercise_label}: position dupliquée")
+                seen_positions.add(exercise["position"])
 
 
 def validate_body(payload):
@@ -647,9 +667,9 @@ def require_schema_v5(connection):
         "PRAGMA user_version;"
     ).fetchone()[0]
 
-    if version != 5:
+    if version not in (5, 6, 7):
         raise ImportFailure(
-            f"base desktop schema v5 attendue, version trouvée: {version}"
+            f"base desktop schema v5, v6 ou v7 attendue, version trouvée: {version}"
         )
 
 
@@ -874,10 +894,21 @@ def import_set_session_exercise(
     sets = item["sets"]
     tracking = item["tracking_mode"]
 
+    entry_id = item.get("entry_id")
+    schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+    if entry_id is None and schema_version >= 7:
+        entry_id = "sxe_v1_" + str(session_row_id) + "_" + item["exercise_id"]
+    columns = "entry_id, " if entry_id is not None else ""
+    values = "?, " if entry_id is not None else ""
+    equipment_columns = ", equipment_id" if schema_version >= 6 else ""
+    equipment_values = ", ?" if schema_version >= 6 else ""
+    arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row, item["data_fields"], position]
+    if schema_version >= 6:
+        arguments.append(item.get("equipment_id"))
     cursor = connection.execute(
         """
         INSERT INTO session_exercises(
-            session_row_id,
+            """ + columns + """session_row_id,
             exercise_row_id,
             recording_mode,
             data_fields,
@@ -887,19 +918,13 @@ def import_set_session_exercise(
             target_sets,
             target_reps,
             target_duration_seconds,
-            target_weight_kg,
-            notes
+            target_weight_kg, notes""" + equipment_columns + """
         ) VALUES(
-            ?, ?, 'sets', ?, ?, 'none', 0,
-            NULL, NULL, NULL, NULL, NULL
+            """ + values + """?, ?, 'sets', ?, ?, 'none', 0,
+            NULL, NULL, NULL, NULL, NULL""" + equipment_values + """
         );
         """,
-        (
-            session_row_id,
-            exercise_row,
-            item["data_fields"],
-            position,
-        ),
+        arguments,
     )
 
     session_exercise_row_id = (
@@ -924,13 +949,13 @@ def import_set_session_exercise(
                 reps,
                 duration_seconds,
                 weight_kg
-            ) VALUES(?, ?, ?, ?, NULL);
+            ) VALUES(?, ?, ?, ?, ?);
             """,
             (
                 session_exercise_row_id,
                 set_index,
                 reps,
-                duration,
+                duration, set_item.get("weight_kg"),
             ),
         )
 
@@ -941,10 +966,21 @@ def import_continuous_session_exercise(
     item,
     exercise_row,
 ):
+    entry_id = item.get("entry_id")
+    schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+    if entry_id is None and schema_version >= 7:
+        entry_id = "sxe_v1_" + str(session_row_id) + "_" + item["exercise_id"]
+    columns = "entry_id, " if entry_id is not None else ""
+    values = "?, " if entry_id is not None else ""
+    equipment_columns = ", equipment_id" if schema_version >= 6 else ""
+    equipment_values = ", ?" if schema_version >= 6 else ""
+    arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row, item["data_fields"], position]
+    if schema_version >= 6:
+        arguments.append(item.get("equipment_id"))
     cursor = connection.execute(
         """
         INSERT INTO session_exercises(
-            session_row_id,
+            """ + columns + """session_row_id,
             exercise_row_id,
             recording_mode,
             data_fields,
@@ -954,19 +990,13 @@ def import_continuous_session_exercise(
             target_sets,
             target_reps,
             target_duration_seconds,
-            target_weight_kg,
-            notes
+            target_weight_kg, notes""" + equipment_columns + """
         ) VALUES(
-            ?, ?, 'continuous', ?, ?, 'none', 0,
-            NULL, NULL, NULL, NULL, NULL
+            """ + values + """?, ?, 'continuous', ?, ?, 'none', 0,
+            NULL, NULL, NULL, NULL, NULL""" + equipment_values + """
         );
         """,
-        (
-            session_row_id,
-            exercise_row,
-            item["data_fields"],
-            position,
-        ),
+        arguments,
     )
 
     continuous = item["continuous"]
@@ -1000,31 +1030,53 @@ def import_sessions(
             connection,
             session["session_id"],
         ):
-            report["sessions_skipped"] += 1
-            continue
+            if payload["version"] == 1:
+                report["sessions_skipped"] += 1
+                continue
+            existing = connection.execute(
+                "SELECT s.id FROM sessions s WHERE s.session_id=?;",
+                (session["session_id"],)).fetchone()
+            session_row_id = existing[0]
+            incoming = [(x["entry_id"], x["exercise_id"]) for x in session["exercises"]]
+            rows = connection.execute(
+                "SELECT se.entry_id,e.exercise_id FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position;",
+                (session_row_id,)).fetchall()
+            current = [(row[0], row[1]) for row in rows]
+            legacy = all(value[0].startswith("sxe_legacy_") or value[0].startswith("sxe_v1_") for value in current)
+            # A v1 history may be upgraded only when exercise/order mapping is
+            # unique. Any other identity disagreement is an explicit conflict.
+            if current != incoming and not (legacy and [x[1] for x in current] == [x[1] for x in incoming]):
+                raise ImportFailure("conflit d'identités d'entrées pour " + session["session_id"])
+            # Explicit child deletion makes reconciliation safe even for old
+            # databases which were created without enforced foreign keys.
+            connection.execute("DELETE FROM performed_sets WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
+            connection.execute("DELETE FROM continuous_activity WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
+            connection.execute("DELETE FROM session_exercises WHERE session_row_id=?;", (session_row_id,))
+            report["sessions_reconciled"] += 1
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO sessions(
+                    session_id,
+                    started_at,
+                    ended_at,
+                    session_type,
+                    notes
+                ) VALUES(?, ?, NULL, ?, NULL);
+                """,
+                (
+                    session["session_id"],
+                    session["started_at"],
+                    session["session_type"],
+                ),
+            )
 
-        cursor = connection.execute(
-            """
-            INSERT INTO sessions(
-                session_id,
-                started_at,
-                ended_at,
-                session_type,
-                notes
-            ) VALUES(?, ?, NULL, ?, NULL);
-            """,
-            (
-                session["session_id"],
-                session["started_at"],
-                session["session_type"],
-            ),
-        )
-
-        session_row_id = cursor.lastrowid
+            session_row_id = cursor.lastrowid
 
         for position, item in enumerate(
             session["exercises"]
         ):
+            position = item.get("position", position)
             mobile_id = item["exercise_id"]
 
             desktop_id = exercise_mapping.get(
@@ -1188,6 +1240,7 @@ def run_import(
         "exercises_reconciled": 0,
         "exercises_skipped": 0,
         "sessions_imported": 0,
+        "sessions_reconciled": 0,
         "sessions_skipped": 0,
         "body_imported": 0,
         "body_skipped": 0,
@@ -1255,6 +1308,7 @@ def print_report(
         "exercises_reconciled",
         "exercises_skipped",
         "sessions_imported",
+        "sessions_reconciled",
         "sessions_skipped",
         "body_imported",
         "body_skipped",

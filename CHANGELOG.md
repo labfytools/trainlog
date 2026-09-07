@@ -9,6 +9,13 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- multi-occurrence session V2: stable per-occurrence `entry_id`, repeated
+  catalogue exercises in one session, per-set actual weights, and occurrence
+  equipment associations across Android, desktop, import and export;
+- shared versioned equipment catalogue, Android machine selection/search,
+  Android-local custom equipment creation, and explicit rejection of unknown
+  equipment identities rather than silent association loss;
+
 - Android `EXERCISE_EDIT_V1`: visible catalog editing, stable-ID name rename,
   explicit invalid/conflict/profile/database results, and profile locking once
   completed history or an active draft references the exercise;
@@ -45,6 +52,14 @@ Detailed implementation chronology remains available in Git history and
 
 ### Changed
 
+- desktop SQLite schema v7 and Android SQLite schema v7 preserve historic rows
+  while adding durable occurrence identities and occurrence-level equipment;
+- the active Android↔PC completed-session exchange is V2; frozen V1 artifacts
+  remain readable as historical formats and are not redefined for repeated
+  occurrences;
+- synchronization invokes each local helper with the explicit XDG-resolved
+  desktop database path and records the concrete equipment-import failure;
+
 - same-ID Android ↔ PC catalog reconciliation now updates display-name metadata
   in place and rejects a different-ID normalized-name collision, preserving
   synchronization identity and preventing renamed duplicates;
@@ -68,6 +83,12 @@ Detailed implementation chronology remains available in Git history and
 
 ### Fixed
 
+- equipment companion import previously omitted its required `--database`
+  argument and blocked synchronization after a successful session import;
+- PC catalogue/mobile export paths now accept schema v7 and preserve catalogue
+  tracking metadata; Android completed-session equipment editing now targets
+  the stable occurrence `entry_id`, not an ambiguous catalogue exercise ID;
+
 - in-progress Android workout loss when leaving the foreground or recreating
   the Activity/process;
 - missing selected-exercise recovery preserves raw partial input and reports a
@@ -88,12 +109,12 @@ Current validated baseline:
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V5=PASS
-DESKTOP_TESTS=22/22 PASS
+DESKTOP_SCHEMA_V7=PASS
+DESKTOP_TESTS=25/25 PASS
 
 ANDROID_BUILD=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V4=PASS
+ANDROID_LOCAL_DATABASE_V7=PASS
 ANDROID_HOST_TESTS=8/8 PASS
 ANDROID_DEVICE_INSTRUMENTATION=5/5 PASS
 ANDROID_SESSION_DRAFT_V1=PASS
@@ -109,6 +130,8 @@ ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
+MULTI_OCCURRENCE_SESSION_V2=PASS
+EQUIPMENT_ASSOCIATIONS_V2=PASS
 ```
 
 ### Measured max v1

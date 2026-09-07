@@ -21,10 +21,15 @@ enum class SessionType(
 data class SessionSetDraft(
     val reps: Int = 0,
     val durationSeconds: Int = 0,
+    val weightKg: Double? = null,
 )
 
 data class SessionExerciseDraft(
+    /** Stable occurrence identity; exercise_id identifies only the catalogue movement. */
+    val entryId: String = "sxe_" + java.util.UUID.randomUUID().toString(),
     val exercise: ExerciseProfile,
+    /** Stable canonical equipment ID selected for this occurrence, if any. */
+    val equipmentId: String? = null,
     val sets: List<SessionSetDraft> = emptyList(),
     val continuousDurationSeconds: Int = 0,
     val speedKmh: Double? = null,
@@ -38,8 +43,13 @@ data class SessionDraft(
 
 data class SessionDraftForm(
     val selectedExercise: ExerciseProfile? = null,
+    /** Null means creation; otherwise replace this durable draft entry. */
+    val editingExerciseIndex: Int? = null,
+    val editingEntryId: String? = null,
+    val selectedEquipmentId: String? = null,
     val setCountText: String = "3",
     val repsText: String = "3x10",
+    val weightText: String = "",
     val durationText: String = "30",
     val speedText: String = "",
     val distanceText: String = "",
@@ -65,7 +75,11 @@ data class SessionSummary(
 )
 
 data class SessionExerciseDetail(
+    /** Stable completed-session occurrence identity, never catalogue identity. */
+    val entryId: String,
+    val exerciseId: String,
     val exerciseName: String,
+    val equipmentDisplayName: String? = null,
     val recordingMode: RecordingMode,
     val trackingMode: TrackingMode,
     val dataFields: Int,

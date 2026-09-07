@@ -60,7 +60,11 @@ typedef struct TrainlogSetInput {
 } TrainlogSetInput;
 
 typedef struct TrainlogSessionExerciseInput {
+    /* Empty means local creation; the database allocates a stable sxe UUID. */
+    char entry_id[TRAINLOG_ID_MAX + 1U];
     char exercise_id[TRAINLOG_ID_MAX + 1U];
+    /* Optional canonical ID from equipment-v1.json, never a SQLite row ID. */
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
     TrainlogRecordingMode recording_mode;
     TrainlogExerciseDataFields data_fields;
     TrainlogLoadMode load_mode;

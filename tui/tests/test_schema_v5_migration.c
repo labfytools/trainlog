@@ -1,6 +1,6 @@
 /**
  * @file test_schema_v5_migration.c
- * @brief Direct v4 -> v5 migration regression test.
+ * @brief Direct v4 -> v7 migration regression test.
  */
 
 #include <stdbool.h>
@@ -27,7 +27,7 @@
         }                                                                    \
     } while (0)
 
-static bool test_v4_to_v5_preserves_session(void)
+static bool test_v4_to_v7_preserves_session(void)
 {
     char path[] =
         "/tmp/trainlog-schema-v4-v5-XXXXXX";
@@ -188,7 +188,7 @@ static bool test_v4_to_v5_preserves_session(void)
     );
 
     CHECK(
-        version == 5
+        version == 7
     );
 
     CHECK(
@@ -228,7 +228,7 @@ static bool test_v4_to_v5_preserves_session(void)
 int main(void)
 {
     CHECK(
-        test_v4_to_v5_preserves_session()
+        test_v4_to_v7_preserves_session()
     );
 
     (void)printf(

@@ -210,10 +210,7 @@ def validate_semantics(document: dict[str, Any]) -> None:
         validate_load_mode(workout, index)
 
         if "notes" in workout:
-            require_non_blank(
-                workout["notes"],
-                f"session.exercises[{index}].notes",
-            )
+            require_non_blank(workout["notes"], f"session.exercises[{index}].notes")
 
     catalog_ids = set(catalog_by_id)
     if catalog_ids != workout_ids:
@@ -224,11 +221,39 @@ def validate_semantics(document: dict[str, Any]) -> None:
             details.append(f"unreferenced catalog ids: {unreferenced}")
         if missing:
             details.append(f"missing catalog ids: {missing}")
-        raise TrainlogSemanticError(
-            "catalog/reference set mismatch: " + "; ".join(details)
-        )
+        raise TrainlogSemanticError("catalog/reference set mismatch: " + "; ".join(details))
 
 
+def validate_mobile_export_v2(document: Any) -> None:
+    """Validate occurrence identity/order without weakening frozen v1 rules."""
+    if not isinstance(document, dict) or document.get("format") != "trainlog-mobile-export" or document.get("version") != 2:
+        raise TrainlogSemanticError("mobile export V2: format/version invalid")
+    catalog = document.get("exercises")
+    sessions = document.get("sessions")
+    if not isinstance(catalog, list) or not isinstance(sessions, list):
+        raise TrainlogSemanticError("mobile export V2: arrays required")
+    ids = {item.get("exercise_id") for item in catalog if isinstance(item, dict)}
+    if len(ids) != len(catalog) or None in ids:
+        raise TrainlogSemanticError("mobile export V2: duplicate/invalid catalogue identity")
+    seen_sessions: set[str] = set()
+    for session in sessions:
+        if not isinstance(session, dict) or not isinstance(session.get("session_id"), str) or not session["session_id"]:
+            raise TrainlogSemanticError("mobile export V2: invalid session identity")
+        if session["session_id"] in seen_sessions:
+            raise TrainlogSemanticError("mobile export V2: duplicate session identity")
+        seen_sessions.add(session["session_id"])
+        entries = session.get("exercises")
+        if not isinstance(entries, list):
+            raise TrainlogSemanticError("mobile export V2: entries array required")
+        entry_ids: set[str] = set(); positions: set[int] = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("entry_id"), str) or not entry["entry_id"]:
+                raise TrainlogSemanticError("mobile export V2: invalid entry identity")
+            if entry["entry_id"] in entry_ids or entry.get("exercise_id") not in ids:
+                raise TrainlogSemanticError("mobile export V2: duplicate entry or unknown exercise")
+            if isinstance(entry.get("position"), bool) or not isinstance(entry.get("position"), int) or entry["position"] < 0 or entry["position"] in positions:
+                raise TrainlogSemanticError("mobile export V2: invalid/duplicate entry position")
+            entry_ids.add(entry["entry_id"]); positions.add(entry["position"])
 def structural_errors(
     validator: jsonschema.Draft202012Validator,
     document: Any,
@@ -259,12 +284,17 @@ def validate_document(
     except (OSError, json.JSONDecodeError) as exc:
         return [str(exc)]
 
-    errors = structural_errors(validator, document)
-    if errors:
-        return errors
+    is_mobile_v2 = isinstance(document, dict) and document.get("format") == "trainlog-mobile-export" and document.get("version") == 2
+    if not is_mobile_v2:
+        errors = structural_errors(validator, document)
+        if errors:
+            return errors
 
     try:
-        validate_semantics(document)
+        if is_mobile_v2:
+            validate_mobile_export_v2(document)
+        else:
+            validate_semantics(document)
     except TrainlogSemanticError as exc:
         return [str(exc)]
 

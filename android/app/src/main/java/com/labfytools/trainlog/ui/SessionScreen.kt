@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
+import com.labfytools.trainlog.data.CreateEquipmentResult
+import com.labfytools.trainlog.data.EquipmentLoadSemantics
 import com.labfytools.trainlog.data.FinalizeActiveDraftResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ActiveSessionDraft
@@ -276,6 +278,20 @@ fun SessionScreen(
                         )
 
                         TrainlogAction(
+                            label = "Modifier ${draft.exercise.name}",
+                            description = "Corriger cet exercice sans le supprimer de la séance.",
+                            accent = colors.accent,
+                            onClick = {
+                                persistDraft(
+                                    currentDraft.copy(
+                                        form = formForExistingExercise(draft, index),
+                                    ),
+                                    null,
+                                )
+                            },
+                        )
+
+                        TrainlogAction(
                             label =
                                 "Retirer ${draft.exercise.name}",
                             description =
@@ -330,12 +346,9 @@ fun SessionScreen(
                                 .selectedExercise
                                 ?.exerciseId ==
                                 exercise.exerciseId,
-                        disabled =
-                            alreadyAdded,
+                    disabled = false,
                         onClick = {
-                            if (
-                                !alreadyAdded
-                            ) {
+                            if (true) {
                                 persistDraft(
                                     currentDraft.copy(
                                         form =
@@ -360,6 +373,7 @@ fun SessionScreen(
             SessionExerciseForm(
                 key =
                     editingExercise.exerciseId,
+                repository = repository,
                 exercise =
                     editingExercise,
                 initialForm =
@@ -368,7 +382,10 @@ fun SessionScreen(
                     form ->
                         persistDraft(
                             currentDraft.copy(
-                                form = form
+                                form = form.copy(
+                                    editingExerciseIndex = currentDraft.form.editingExerciseIndex,
+                                    editingEntryId = currentDraft.form.editingEntryId,
+                                )
                             ),
                             null,
                         )
@@ -384,15 +401,18 @@ fun SessionScreen(
                 },
                 onAdd = {
                     draft ->
+                        val editIndex = currentDraft.form.editingExerciseIndex
                         persistDraft(
                             currentDraft.copy(
-                                exercises =
-                                    currentDraft.exercises +
-                                        draft,
+                                exercises = editIndex?.let { replacingIndex ->
+                                    currentDraft.exercises.mapIndexed { index, existing ->
+                                        if (index == replacingIndex) draft else existing
+                                    }
+                                } ?: (currentDraft.exercises + draft),
                                 form =
                                     SessionDraftForm(),
                             ),
-                            "Exercice ajouté à la séance.",
+                            if (editIndex == null) "Exercice ajouté à la séance." else "Exercice modifié.",
                         )
                 },
             )
@@ -594,6 +614,7 @@ private fun CatalogChoice(
 @Composable
 private fun SessionExerciseForm(
     key: String,
+    repository: TrainlogRepository,
     exercise: ExerciseProfile,
     initialForm: SessionDraftForm,
     onFormChanged: (SessionDraftForm) -> Unit,
@@ -619,6 +640,13 @@ private fun SessionExerciseForm(
             )
         }
 
+    var weightText by
+        remember(key) {
+            mutableStateOf(
+                initialForm.weightText
+            )
+        }
+
     var durationText by
         remember(key) {
             mutableStateOf(
@@ -640,6 +668,14 @@ private fun SessionExerciseForm(
             )
         }
 
+    var equipmentRevision by remember(key) { mutableStateOf(0) }
+    val equipmentEntries = remember(equipmentRevision) { repository.listEquipment() }
+    var equipmentSearch by remember(key) { mutableStateOf("") }
+    var customEquipmentName by remember(key) { mutableStateOf("") }
+    var selectedEquipmentId by remember(key) {
+        mutableStateOf(initialForm.selectedEquipmentId)
+    }
+
     var error by
         remember(key) {
             mutableStateOf<
@@ -658,6 +694,58 @@ private fun SessionExerciseForm(
                 ),
             color = colors.accent,
         )
+
+        TrainlogInputField(
+            label = "Machine / équipement (optionnel)",
+            value = equipmentSearch,
+            onValueChange = { equipmentSearch = it },
+        )
+        TrainlogInputField(
+            label = "Nouvelle machine",
+            value = customEquipmentName,
+            onValueChange = { customEquipmentName = it },
+        )
+        TrainlogAction(
+            label = "Créer la machine",
+            description = "L'ajouter à votre catalogue puis la sélectionner pour cette entrée.",
+            accent = colors.success,
+            onClick = {
+                when (val result = repository.createCustomEquipment(customEquipmentName)) {
+                    is CreateEquipmentResult.Created -> {
+                        customEquipmentName = ""
+                        equipmentRevision += 1
+                        selectedEquipmentId = result.equipment.equipmentId
+                        onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText))
+                    }
+                    CreateEquipmentResult.Invalid -> error = "Donnez un nom de machine valide."
+                    CreateEquipmentResult.Conflict -> error = "Cette machine existe déjà."
+                    is CreateEquipmentResult.DatabaseError -> error = "Machine non créée : ${result.message}"
+                }
+            },
+        )
+        val selectedEquipment = equipmentEntries.firstOrNull { it.equipmentId == selectedEquipmentId }
+        if (selectedEquipment != null) {
+            TrainlogAction(
+                label = "✓ ${selectedEquipment.displayName}",
+                description = selectedEquipment.labelName.ifBlank { "Équipement sélectionné." },
+                accent = colors.success,
+                onClick = {
+                    selectedEquipmentId = null
+                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, null, weightText))
+                },
+            )
+        }
+        repository.searchEquipment(equipmentSearch).take(8).forEach { equipment ->
+            TrainlogAction(
+                label = if (equipment.equipmentId == selectedEquipmentId) "✓ ${equipment.displayName}" else equipment.displayName,
+                description = equipment.labelName.ifBlank { equipment.type },
+                accent = if (equipment.equipmentId == selectedEquipmentId) colors.success else colors.muted,
+                onClick = {
+                    selectedEquipmentId = equipment.equipmentId
+                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, equipment.equipmentId, weightText))
+                },
+            )
+        }
 
         if (
             exercise.recordingMode ==
@@ -683,6 +771,8 @@ private fun SessionExerciseForm(
                                 durationText,
                                 speedText,
                                 distanceText,
+                                selectedEquipmentId,
+                                weightText,
                             )
                         )
                     },
@@ -693,6 +783,29 @@ private fun SessionExerciseForm(
                         "Formats : 5x10 · 4,5,6,7 · 4..10..4",
                     color =
                         colors.muted,
+                )
+
+                SessionNumberField(
+                    label = if (selectedEquipment?.loadSemantics == EquipmentLoadSemantics.ASSISTANCE) {
+                        "Assistance (kg)"
+                    } else {
+                        "Charge (kg)"
+                    },
+                    value = weightText,
+                    onValueChange = {
+                        weightText = it
+                        error = null
+                        onFormChanged(
+                            currentForm(
+                                exercise, setCountText, repsText, durationText,
+                                speedText, distanceText, selectedEquipmentId, it,
+                            )
+                        )
+                    },
+                )
+                TrainlogInfo(
+                    text = "Une valeur par série séparée par ; (ex. 12,5;15). Une seule valeur s'applique à toutes les séries.",
+                    color = colors.muted,
                 )
             } else {
                 SessionNumberField(
@@ -711,6 +824,8 @@ private fun SessionExerciseForm(
                                 durationText,
                                 speedText,
                                 distanceText,
+                                selectedEquipmentId,
+                                weightText,
                             )
                         )
                     },
@@ -732,6 +847,8 @@ private fun SessionExerciseForm(
                                 it,
                                 speedText,
                                 distanceText,
+                                selectedEquipmentId,
+                                weightText,
                             )
                         )
                     },
@@ -752,8 +869,10 @@ private fun SessionExerciseForm(
                             setCountText,
                             repsText,
                             it,
-                            speedText,
-                            distanceText,
+                                speedText,
+                                distanceText,
+                                selectedEquipmentId,
+                                weightText,
                         )
                     )
                 },
@@ -780,6 +899,8 @@ private fun SessionExerciseForm(
                                 durationText,
                                 it,
                                 distanceText,
+                                selectedEquipmentId,
+                                weightText,
                             )
                         )
                     },
@@ -807,6 +928,8 @@ private fun SessionExerciseForm(
                                 durationText,
                                 speedText,
                                 it,
+                                selectedEquipmentId,
+                                weightText,
                             )
                         )
                     },
@@ -836,6 +959,9 @@ private fun SessionExerciseForm(
                             speedText,
                         distanceText =
                             distanceText,
+                        equipmentId = selectedEquipmentId,
+                        weightText = weightText,
+                        entryId = initialForm.editingEntryId,
                     )
 
                 if (draft == null) {
@@ -877,11 +1003,15 @@ private fun currentForm(
     durationText: String,
     speedText: String,
     distanceText: String,
+    equipmentId: String? = null,
+    weightText: String = "",
 ): SessionDraftForm =
     SessionDraftForm(
         selectedExercise = exercise,
+        selectedEquipmentId = equipmentId,
         setCountText = setCountText,
         repsText = repsText,
+        weightText = weightText,
         durationText = durationText,
         speedText = speedText,
         distanceText = distanceText,
@@ -1062,6 +1192,9 @@ private fun buildSessionExerciseDraft(
     durationText: String,
     speedText: String,
     distanceText: String,
+    equipmentId: String? = null,
+    weightText: String = "",
+    entryId: String? = null,
 ): SessionExerciseDraft? {
     return if (
         exercise.recordingMode ==
@@ -1122,7 +1255,9 @@ private fun buildSessionExerciseDraft(
                 null
             } else {
                 SessionExerciseDraft(
+                    entryId = entryId ?: "sxe_" + java.util.UUID.randomUUID().toString(),
                     exercise = exercise,
+                    equipmentId = equipmentId,
                     continuousDurationSeconds =
                         minutes * 60,
                     speedKmh = speed,
@@ -1139,12 +1274,17 @@ private fun buildSessionExerciseDraft(
                 repsText
             ) ?: return null
 
+        val weights = parseWeightSequence(weightText, reps.size) ?: return null
+
         SessionExerciseDraft(
+            entryId = entryId ?: "sxe_" + java.util.UUID.randomUUID().toString(),
             exercise = exercise,
+            equipmentId = equipmentId,
             sets =
-                reps.map {
+                reps.mapIndexed { index, rep ->
                     SessionSetDraft(
-                        reps = it
+                        reps = rep,
+                        weightKg = weights[index],
                     )
                 },
         )
@@ -1166,7 +1306,9 @@ private fun buildSessionExerciseDraft(
             null
         } else {
             SessionExerciseDraft(
+                entryId = entryId ?: "sxe_" + java.util.UUID.randomUUID().toString(),
                 exercise = exercise,
+                equipmentId = equipmentId,
                 sets =
                     List(count) {
                         SessionSetDraft(
@@ -1176,6 +1318,50 @@ private fun buildSessionExerciseDraft(
                     },
             )
         }
+    }
+}
+
+/** Reconstruct editable text from the entry itself; editing never mutates a
+ * different entry or the global exercise definition. */
+private fun formForExistingExercise(
+    draft: SessionExerciseDraft,
+    index: Int,
+): SessionDraftForm =
+    SessionDraftForm(
+        selectedExercise = draft.exercise,
+        editingExerciseIndex = index,
+        editingEntryId = draft.entryId,
+        selectedEquipmentId = draft.equipmentId,
+        setCountText = draft.sets.size.toString(),
+        repsText = if (draft.exercise.trackingMode == TrackingMode.REPS) {
+            draft.sets.joinToString(",") { it.reps.toString() }
+        } else {
+            "3x10"
+        },
+        weightText = draft.sets.mapNotNull { it.weightKg }.joinToString(";") { "%g".format(java.util.Locale.FRANCE, it) },
+        durationText = if (draft.exercise.recordingMode == RecordingMode.CONTINUOUS) {
+            (draft.continuousDurationSeconds / 60).toString()
+        } else {
+            draft.sets.firstOrNull()?.durationSeconds?.toString() ?: "30"
+        },
+        speedText = draft.speedKmh?.toString().orEmpty(),
+        distanceText = draft.distanceKm?.toString().orEmpty(),
+    )
+
+/** Accept French decimal commas without confusing them with the set separator.
+ * CONTRACT: blank means no load recorded; zero is a real explicit value. */
+private fun parseWeightSequence(text: String, count: Int): List<Double?>? {
+    if (text.trim().isEmpty()) return List(count) { null }
+    val values = text.split(';').map { token ->
+        token.trim().replace(',', '.').toDoubleOrNull()
+    }
+    if (values.any { it == null || !it.isFinite() || it < 0.0 }) return null
+    @Suppress("UNCHECKED_CAST")
+    val parsed = values as List<Double>
+    return when {
+        parsed.size == 1 -> List(count) { parsed.single() }
+        parsed.size == count -> parsed
+        else -> null
     }
 }
 

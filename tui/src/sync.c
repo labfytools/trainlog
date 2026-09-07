@@ -28,10 +28,19 @@
 #define SYNC_REQUEST_TEXT_MAX 4095U
 
 static const char *const MOBILE_EXPORT_NAME =
+    "trainlog-mobile-export-v2.json";
+
+static const char *const MOBILE_EXPORT_V1_NAME =
     "trainlog-mobile-export-v1.json";
+
+static const char *const PC_MOBILE_EXPORT_NAME =
+    "trainlog-pc-mobile-export-v2.json";
 
 static const char *const PC_CATALOG_NAME =
     "trainlog-pc-catalog-v1.json";
+
+static const char *const EQUIPMENT_ASSOCIATIONS_NAME =
+    "trainlog-equipment-associations-v2.json";
 
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
@@ -40,10 +49,16 @@ static const char *const SYNC_RECEIPT_NAME =
     "trainlog-sync-receipt-v1.json";
 
 static const char *const MOBILE_EXPORT_LOCAL =
-    "/tmp/trainlog-mobile-export-v1.json";
+    "/tmp/trainlog-mobile-export-v2.json";
+
+static const char *const PC_MOBILE_EXPORT_LOCAL =
+    "/tmp/trainlog-pc-mobile-export-v2.json";
 
 static const char *const PC_CATALOG_LOCAL =
     "/tmp/trainlog-pc-catalog-v1.json";
+
+static const char *const EQUIPMENT_ASSOCIATIONS_LOCAL =
+    "/tmp/trainlog-equipment-associations-v2.json";
 
 static const char *const SYNC_REQUEST_LOCAL =
     "/tmp/trainlog-sync-request-v1.json";
@@ -56,6 +71,9 @@ static const char *const MOBILE_IMPORT_RESULT =
 
 static const char *const PC_CATALOG_RESULT =
     "/tmp/trainlog-pc-catalog-result.txt";
+
+static const char *const EQUIPMENT_ASSOCIATIONS_RESULT =
+    "/tmp/trainlog-equipment-associations-result.txt";
 
 typedef struct SyncSilence {
     int saved_stdout;
@@ -947,6 +965,7 @@ static bool sync_read_text(
 static TrainlogStatus sync_run_python_tool(
     const char *tool_name,
     const char *argument,
+    const char *database_path,
     const char *result_path,
     char *output,
     size_t output_size
@@ -1028,13 +1047,28 @@ static TrainlogStatus sync_run_python_tool(
             result_fd
         );
 
-        execlp(
-            "python3",
-            "python3",
-            tool,
-            argument,
-            (char *)NULL
-        );
+        if (database_path != NULL) {
+            /* CONTRACT: helpers which mutate the desktop store receive its
+             * explicit XDG-resolved path. They must never infer a different
+             * user's database from Python's process environment. */
+            execlp(
+                "python3",
+                "python3",
+                tool,
+                argument,
+                "--database",
+                database_path,
+                (char *)NULL
+            );
+        } else {
+            execlp(
+                "python3",
+                "python3",
+                tool,
+                argument,
+                (char *)NULL
+            );
+        }
 
         _exit(127);
     }
@@ -2192,6 +2226,10 @@ TrainlogStatus trainlog_sync_run(
         SYNC_REQUEST_TEXT_MAX + 1U
     ];
 
+    char database_path[
+        PATH_MAX + 1U
+    ];
+
     uint32_t folder_id = 0U;
     uint64_t ignored_size = 0U;
     int lock_fd = -1;
@@ -2400,6 +2438,16 @@ TrainlogStatus trainlog_sync_run(
 
     run_started = true;
 
+    /* INVARIANT: every local import/export in one run addresses the same
+     * XDG-resolved database as the TUI, never a Python-derived fallback. */
+    if (!sync_data_file("trainlog.db", database_path,
+                        sizeof(database_path))) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "Synchronisation : chemin de base introuvable.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+
     status =
         sync_receive_named(
             &device,
@@ -2413,6 +2461,12 @@ TrainlogStatus trainlog_sync_run(
         status !=
         TRAINLOG_STATUS_OK
     ) {
+        /* Explicit historic fallback only: a V1 file is never mistaken for
+         * V2, and V2 remains the default path for all current Android apps. */
+        status = sync_receive_named(&device, folder_id, MOBILE_EXPORT_V1_NAME,
+                                    MOBILE_EXPORT_LOCAL, &ignored_size);
+    }
+    if (status != TRAINLOG_STATUS_OK) {
         (void)snprintf(
             output->error,
             sizeof(output->error),
@@ -2428,6 +2482,7 @@ TrainlogStatus trainlog_sync_run(
         sync_run_python_tool(
             "import_mobile_export.py",
             MOBILE_EXPORT_LOCAL,
+            database_path,
             MOBILE_IMPORT_RESULT,
             tool_output,
             sizeof(tool_output)
@@ -2470,10 +2525,43 @@ TrainlogStatus trainlog_sync_run(
         output
     );
 
+    /* V1 exports carry no equipment signal. A missing companion therefore
+     * preserves existing desktop associations rather than clearing them. */
+    status = sync_receive_named(&device, folder_id, EQUIPMENT_ASSOCIATIONS_NAME,
+                                EQUIPMENT_ASSOCIATIONS_LOCAL, &ignored_size);
+    if (status == TRAINLOG_STATUS_OK) {
+        char useful[
+            TRAINLOG_SYNC_ERROR_MAX + 1U
+        ];
+
+        status = sync_run_python_tool("import_equipment_associations.py",
+                                      EQUIPMENT_ASSOCIATIONS_LOCAL,
+                                      database_path,
+                                      EQUIPMENT_ASSOCIATIONS_RESULT,
+                                      tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK ||
+            strstr(tool_output, "EQUIPMENT_ASSOCIATIONS_IMPORT=PASS") == NULL) {
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            (void)snprintf(output->error, sizeof(output->error),
+                           "Android→PC : import équipement : %s",
+                           useful[0] != '\0'
+                               ? useful
+                               : "échec sans diagnostic du script");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "Android→PC : lecture extension équipement échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     status =
         sync_run_python_tool(
             "export_pc_catalog.py",
             PC_CATALOG_LOCAL,
+            database_path,
             PC_CATALOG_RESULT,
             tool_output,
             sizeof(tool_output)
@@ -2517,6 +2605,21 @@ TrainlogStatus trainlog_sync_run(
             "exercises"
         );
 
+    status = sync_run_python_tool("export_pc_mobile.py", PC_MOBILE_EXPORT_LOCAL,
+                                  database_path,
+                                  PC_CATALOG_RESULT, tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK || strstr(tool_output, "PC_MOBILE_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error), "PC→Android : export séances V2 échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id, PC_MOBILE_EXPORT_LOCAL, PC_MOBILE_EXPORT_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error), "PC→Android : publication séances V2 échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     status =
         sync_publish_named(
             &device,
@@ -2536,6 +2639,28 @@ TrainlogStatus trainlog_sync_run(
             "PC→Android : publication MTP du catalogue échouée."
         );
 
+        final_status = status;
+        goto finalize;
+    }
+
+    status = sync_run_python_tool("export_equipment_associations.py",
+                                  EQUIPMENT_ASSOCIATIONS_LOCAL,
+                                  database_path,
+                                  EQUIPMENT_ASSOCIATIONS_RESULT,
+                                  tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "EQUIPMENT_ASSOCIATIONS_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "PC→Android : export équipement échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+
+    status = sync_publish_named(&device, folder_id, EQUIPMENT_ASSOCIATIONS_LOCAL,
+                                EQUIPMENT_ASSOCIATIONS_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "PC→Android : publication équipement échouée.");
         final_status = status;
         goto finalize;
     }

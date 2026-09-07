@@ -63,32 +63,35 @@ Current normal suite:
 ```text
  1  database
  2  catalog
- 3  session_detail
- 4  duration
- 5  body_metrics
- 6  bodyviz
- 7  exercise_performance
- 8  session_type_schema
- 9  session_edit
-10  body_observation_edit
-11  mtp
-12  continuous_session
-13  continuous_detail
-14  reps
+ 3  equipment_catalog
+ 4  session_detail
+ 5  duration
+ 6  body_metrics
+ 7  bodyviz
+ 8  exercise_performance
+ 9  session_type_schema
+10  session_edit
+11  body_observation_edit
+12  mtp
+13  continuous_session
+14  continuous_detail
 15  exercise_profile_schema
 16  usb
-17  variable_sets
-18  schema_v5_migration
-19  measured_max
-20  body_analytics
-21  terminal_input_event_type_policy
-22  mobile_import_variable_sets
+17  reps
+18  variable_sets
+19  schema_v5_migration
+20  measured_max
+21  body_analytics
+22  terminal_input_event_type_policy
+23  mobile_import_multi_occurrence
+24  equipment_associations_exchange
+25  mobile_import_variable_sets
 ```
 
 Validated checkpoint:
 
 ```text
-22/22 PASS
+25/25 PASS
 ```
 
 The desktop executable is additionally smoke-checked in isolated tmux PTYs at
@@ -104,12 +107,17 @@ Notable regression coverage:
 - profile-aware exercise constraints;
 - continuous activity without fake sets;
 - repetition shorthand/list/pyramid parsing;
-- direct v4 -> v5 database migration;
+- direct v4 -> v7 database migration;
 - heterogeneous mobile-set import;
 - Notcurses input lifecycle translation: PRESS/REPEAT are actionable while a
   RELEASE event is consumed without creating a second navigation action.
 - targetless mobile SETS persistence;
 - mobile-import idempotence.
+- V2 mobile import with repeated exercise occurrences and stable `entry_id`;
+- companion equipment import after session import, including idempotent
+  reimport and independent associations for repeated occurrences;
+- rejection of the historical equipment-import invocation without its required
+  `--database` target, followed by the corrected complete V2 export chain.
 - stable-ID mobile-to-desktop rename reconciliation without duplicate catalog
   rows or historical-reference replacement.
 
@@ -258,7 +266,7 @@ Coverage proves:
 Current normal baseline:
 
 ```text
-22/22 PASS
+25/25 PASS
 ```
 
 ## 12. Body analytics regression
@@ -283,16 +291,18 @@ Coverage includes:
 Current normal baseline:
 
 ```text
-22/22 PASS
+25/25 PASS
 ```
 
 ## 13. Android session draft v1
 
-Android schema v4 adds one durable active draft with an explicit additive v3 ->
-v4 migration. The current host suite has **8 tests**, covering all exercise
+Android schema v4 introduced one durable active draft; the current additive
+chain reaches schema v7 without clearing completed history or the draft. The
+current host suite covers exercise
 shapes and raw partial text, fresh repository restore, remove/discard, atomic
 finalization and repeated-finalize rejection, rollback, catalog reconciliation,
-missing-selection recovery, explicit DB-open failure and historical migration.
+missing-selection recovery, explicit DB-open failure, historical migration,
+equipment selection and occurrence identity.
 
 ```bash
 cd android
