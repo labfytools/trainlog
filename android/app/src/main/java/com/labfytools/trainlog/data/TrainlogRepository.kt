@@ -5,12 +5,15 @@ import android.content.Context
 import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.BodyObservationSummary
 import com.labfytools.trainlog.model.ExerciseProfile
+import com.labfytools.trainlog.model.ExerciseEditInput
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
+import com.labfytools.trainlog.model.SessionDraftForm
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSummary
 import com.labfytools.trainlog.model.SessionDetail
@@ -35,6 +38,17 @@ sealed interface CreateExerciseResult {
 
     data object Invalid :
         CreateExerciseResult
+}
+
+sealed interface EditExerciseResult {
+    data class Saved(
+        val exercise: ExerciseProfile,
+    ) : EditExerciseResult
+
+    data object InvalidNameOrProfile : EditExerciseResult
+    data object Conflict : EditExerciseResult
+    data object IncompatibleProfileChange : EditExerciseResult
+    data object DatabaseError : EditExerciseResult
 }
 
 
@@ -77,13 +91,55 @@ sealed interface SaveSessionResult {
         SaveSessionResult
 }
 
+sealed interface ActiveDraftLoadResult {
+    data class Loaded(
+        val draft: ActiveSessionDraft,
+        val warning: String? = null,
+    ) : ActiveDraftLoadResult
+
+    data object None : ActiveDraftLoadResult
+
+    data class Error(
+        val message: String,
+    ) : ActiveDraftLoadResult
+}
+
+sealed interface ActiveDraftMutationResult {
+    data object Saved : ActiveDraftMutationResult
+
+    data class Error(
+        val message: String,
+    ) : ActiveDraftMutationResult
+}
+
+sealed interface FinalizeActiveDraftResult {
+    data class Saved(
+        val sessionId: String,
+    ) : FinalizeActiveDraftResult
+
+    data class Invalid(
+        val message: String,
+    ) : FinalizeActiveDraftResult
+
+    data class DatabaseError(
+        val message: String,
+    ) : FinalizeActiveDraftResult
+}
+
 class TrainlogRepository(
     context: Context,
+    databaseName: String =
+        ANDROID_DATABASE_NAME,
 ) {
     private val database =
         TrainlogDatabaseHelper(
-            context.applicationContext
+            context.applicationContext,
+            databaseName,
         )
+
+    fun close() {
+        database.close()
+    }
 
     fun listExercises(): List<ExerciseProfile> {
         val output =
@@ -253,6 +309,286 @@ class TrainlogRepository(
             error: SQLiteConstraintException
         ) {
             CreateExerciseResult.Conflict
+        }
+    }
+
+    /**
+     * WHY: completed sessions and active drafts snapshot profile fields, but
+     * keeping referenced catalog profiles immutable prevents a later catalog
+     * sync/profile edit from appearing to change an established exercise.
+     * A rename remains safe because all relationships use the unchanged row.
+     */
+    fun canEditExerciseProfile(
+        exerciseId: String,
+    ): Boolean {
+        val db = database.readableDatabase
+        val rowId = lookupExerciseRowIdOrNull(db, exerciseId) ?: return false
+        return !exerciseHasReferences(db, rowId)
+    }
+
+    fun editExercise(
+        input: ExerciseEditInput,
+    ): EditExerciseResult {
+        if (!input.validateProfile()) {
+            return EditExerciseResult.InvalidNameOrProfile
+        }
+
+        val name = input.name.trim()
+        val normalized = normalizeName(name)
+        if (normalized.isEmpty()) {
+            return EditExerciseResult.InvalidNameOrProfile
+        }
+
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            val current = findExerciseRow(db, "exercise_id = ?", arrayOf(input.exerciseId))
+                ?: return EditExerciseResult.DatabaseError
+            val profileChanged =
+                current.recordingMode != input.recordingMode ||
+                    current.trackingMode != input.trackingMode ||
+                    current.dataFields != input.dataFields
+            if (profileChanged && exerciseHasReferences(db, current.rowId)) {
+                return EditExerciseResult.IncompatibleProfileChange
+            }
+
+            val nameOwner = findExerciseRow(db, "normalized_name = ?", arrayOf(normalized))
+            if (nameOwner != null && nameOwner.rowId != current.rowId) {
+                return EditExerciseResult.Conflict
+            }
+
+            val values = ContentValues().apply {
+                put("name", name)
+                put("normalized_name", normalized)
+                put("recording_mode", input.recordingMode.wireValue)
+                put("tracking_mode", input.trackingMode.wireValue)
+                put("data_fields", input.dataFields)
+            }
+            if (db.update("exercises", values, "id = ?", arrayOf(current.rowId.toString())) != 1) {
+                return EditExerciseResult.DatabaseError
+            }
+            db.setTransactionSuccessful()
+            EditExerciseResult.Saved(
+                ExerciseProfile(
+                    exerciseId = input.exerciseId,
+                    name = name,
+                    normalizedName = normalized,
+                    recordingMode = input.recordingMode,
+                    trackingMode = input.trackingMode,
+                    dataFields = input.dataFields,
+                ),
+            )
+        } catch (error: SQLiteConstraintException) {
+            EditExerciseResult.Conflict
+        } catch (error: Exception) {
+            EditExerciseResult.DatabaseError
+        } finally {
+            if (db.inTransaction()) {
+                db.endTransaction()
+            }
+        }
+    }
+
+    fun loadActiveSessionDraft():
+        ActiveDraftLoadResult =
+        try {
+            val restored =
+                loadActiveSessionDraft(
+                    database.readableDatabase
+                )
+
+            if (restored == null) {
+                ActiveDraftLoadResult.None
+            } else {
+                ActiveDraftLoadResult.Loaded(
+                    draft = restored.draft,
+                    warning = restored.warning,
+                )
+            }
+        } catch (error: Exception) {
+            ActiveDraftLoadResult.Error(
+                error.message
+                    ?: "Lecture du brouillon impossible."
+            )
+        }
+
+    fun startActiveSessionDraft():
+        ActiveDraftMutationResult {
+        return when (
+            loadActiveSessionDraft()
+        ) {
+            is ActiveDraftLoadResult.Loaded ->
+                ActiveDraftMutationResult.Saved
+
+            is ActiveDraftLoadResult.Error ->
+                ActiveDraftMutationResult.Error(
+                    "Le brouillon existant ne peut pas être lu."
+                )
+
+            ActiveDraftLoadResult.None ->
+                saveActiveSessionDraft(
+                    ActiveSessionDraft()
+                )
+        }
+    }
+
+    fun saveActiveSessionDraft(
+        draft: ActiveSessionDraft,
+    ): ActiveDraftMutationResult {
+        if (
+            draft.exercises.any {
+                !validateSessionExercise(it)
+            } ||
+            draft.exercises
+                .map {
+                    it.exercise.exerciseId
+                }
+                .distinct()
+                .size !=
+            draft.exercises.size ||
+            listOf(
+                draft.form.setCountText,
+                draft.form.repsText,
+                draft.form.durationText,
+                draft.form.speedText,
+                draft.form.distanceText,
+            ).any {
+                it.length > MAX_DRAFT_FORM_TEXT_LENGTH
+            }
+        ) {
+            return ActiveDraftMutationResult.Error(
+                "Brouillon de séance invalide."
+            )
+        }
+
+        var db: SQLiteDatabase? = null
+        var transactionOpen = false
+        return try {
+            db = database.writableDatabase
+            db.beginTransaction()
+            transactionOpen = true
+            persistActiveSessionDraft(
+                db,
+                draft,
+            )
+            db.setTransactionSuccessful()
+            db.endTransaction()
+            transactionOpen = false
+            ActiveDraftMutationResult.Saved
+        } catch (error: Exception) {
+            if (transactionOpen && db?.inTransaction() == true) {
+                try {
+                    db.endTransaction()
+                } catch (endError: Exception) {
+                    error.addSuppressed(endError)
+                }
+            }
+            ActiveDraftMutationResult.Error(
+                error.message
+                    ?: "Enregistrement du brouillon impossible."
+            )
+        }
+    }
+
+    fun discardActiveSessionDraft():
+        ActiveDraftMutationResult {
+        return try {
+            database.writableDatabase.delete(
+                "active_session_draft",
+                "id = ?",
+                arrayOf(ACTIVE_DRAFT_ID.toString()),
+            )
+            ActiveDraftMutationResult.Saved
+        } catch (error: Exception) {
+            ActiveDraftMutationResult.Error(
+                error.message
+                    ?: "Suppression du brouillon impossible."
+            )
+        }
+    }
+
+    fun finalizeActiveSessionDraft():
+        FinalizeActiveDraftResult {
+        var db: SQLiteDatabase? = null
+        var transactionOpen = false
+        return try {
+            db = database.writableDatabase
+            db.beginTransaction()
+            transactionOpen = true
+            val active =
+                loadActiveSessionDraft(db)
+            if (active == null) {
+                db.endTransaction()
+                transactionOpen = false
+                return FinalizeActiveDraftResult.Invalid(
+                    "Aucune séance en cours."
+                )
+            }
+
+            val completed =
+                SessionDraft(
+                    exercises =
+                        active.draft.exercises,
+                    sessionType =
+                        active.draft.sessionType,
+                )
+
+            if (
+                completed.exercises.isEmpty() ||
+                completed.exercises.any {
+                    !validateSessionExercise(it)
+                }
+            ) {
+                db.endTransaction()
+                transactionOpen = false
+                return FinalizeActiveDraftResult.Invalid(
+                    "La séance en cours est invalide."
+                )
+            }
+
+            val sessionId =
+                insertCompletedSession(
+                    db,
+                    completed,
+                )
+
+            /*
+             * INVARIANT: completion and draft deletion share this transaction.
+             * A crash or constraint failure therefore leaves the retryable draft
+             * and never exposes a completed/draft duplicate pair.
+             */
+            val deleted =
+                db.delete(
+                    "active_session_draft",
+                    "id = ?",
+                    arrayOf(
+                        ACTIVE_DRAFT_ID
+                            .toString()
+                    ),
+                )
+
+            check(deleted == 1) {
+                "Le brouillon finalisé n'a pas été supprimé."
+            }
+
+            db.setTransactionSuccessful()
+            db.endTransaction()
+            transactionOpen = false
+            FinalizeActiveDraftResult.Saved(
+                sessionId
+            )
+        } catch (error: Exception) {
+            if (transactionOpen && db?.inTransaction() == true) {
+                try {
+                    db.endTransaction()
+                } catch (endError: Exception) {
+                    error.addSuppressed(endError)
+                }
+            }
+            FinalizeActiveDraftResult.DatabaseError(
+                error.message
+                    ?: "Finalisation de la séance impossible."
+            )
         }
     }
 
@@ -638,7 +974,40 @@ class TrainlogRepository(
                         )
                     }
 
-                    skipped += 1
+                    /* CONTRACT: a catalog name is mutable metadata.  Identity
+                     * reconciliation always prefers exercise_id, so an update
+                     * retains the row used by completed sessions and drafts. */
+                    val nameOwner =
+                        findExerciseRow(
+                            db,
+                            "normalized_name = ?",
+                            arrayOf(normalized),
+                        )
+                    if (
+                        nameOwner != null &&
+                        nameOwner.rowId != byId.rowId
+                    ) {
+                        return PcCatalogImportResult.Invalid(
+                            "Conflit de nom catalogue PC pour $name."
+                        )
+                    }
+
+                    val values = ContentValues().apply {
+                        put("name", name.trim())
+                        put("normalized_name", normalized)
+                    }
+                    if (
+                        db.update(
+                            "exercises",
+                            values,
+                            "id = ?",
+                            arrayOf(byId.rowId.toString()),
+                        ) != 1
+                    ) {
+                        return PcCatalogImportResult.DatabaseError
+                    }
+
+                    reconciled += 1
                     continue
                 }
 
@@ -813,6 +1182,42 @@ class TrainlogRepository(
         }
     }
 
+    private fun lookupExerciseRowIdOrNull(
+        db: SQLiteDatabase,
+        exerciseId: String,
+    ): Long? =
+        db.query(
+            "exercises",
+            arrayOf("id"),
+            "exercise_id = ?",
+            arrayOf(exerciseId),
+            null,
+            null,
+            null,
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+
+    private fun exerciseHasReferences(
+        db: SQLiteDatabase,
+        exerciseRowId: Long,
+    ): Boolean {
+        /* INVARIANT: both completed and active-draft records own a catalog-row
+         * reference.  Profile mutation is admitted only while neither exists. */
+        return db.rawQuery(
+            """
+            SELECT EXISTS(
+                SELECT 1 FROM session_exercises WHERE exercise_row_id = ?
+                UNION ALL
+                SELECT 1 FROM draft_session_exercises WHERE exercise_row_id = ?
+            );
+            """.trimIndent(),
+            arrayOf(exerciseRowId.toString(), exerciseRowId.toString()),
+        ).use { cursor ->
+            cursor.moveToFirst() && cursor.getInt(0) != 0
+        }
+    }
+
     fun buildMobileExportJson(): String {
         val root = JSONObject()
         root.put("format", "trainlog-mobile-export")
@@ -834,6 +1239,8 @@ class TrainlogRepository(
 
         val db = database.readableDatabase
         val sessionArray = JSONArray()
+        /* CONTRACT: only completed `sessions` are part of mobile export v1;
+         * active draft tables are intentionally outside the frozen artifact. */
         db.rawQuery(
             "SELECT id, session_id, started_at, session_type FROM sessions ORDER BY started_at ASC, id ASC;",
             null,
@@ -1365,6 +1772,514 @@ class TrainlogRepository(
         )
     }
 
+    private fun loadActiveSessionDraft(
+        db: SQLiteDatabase,
+    ): ActiveDraftRestore? {
+        val header =
+            db.rawQuery(
+                """
+                SELECT
+                    d.session_type,
+                    d.set_count_text,
+                    d.reps_text,
+                    d.duration_text,
+                    d.speed_text,
+                    d.distance_text,
+                    d.updated_at,
+                    d.selected_exercise_label,
+                    e.exercise_id,
+                    e.name,
+                    e.normalized_name,
+                    e.recording_mode,
+                    e.tracking_mode,
+                    e.data_fields
+                FROM active_session_draft AS d
+                LEFT JOIN exercises AS e
+                    ON e.id = d.selected_exercise_row_id
+                WHERE d.id = ?;
+                """.trimIndent(),
+                arrayOf(ACTIVE_DRAFT_ID.toString()),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    val missingSelection =
+                        cursor.isNull(8) &&
+                            !cursor.isNull(7)
+                    val selected =
+                        if (cursor.isNull(8)) {
+                            null
+                        } else {
+                            exerciseProfileFromCursor(
+                                cursor,
+                                8,
+                            )
+                        }
+
+                    ActiveDraftHeader(
+                        sessionType =
+                            SessionType.fromWire(
+                                cursor.getString(0)
+                            ),
+                        form = SessionDraftForm(
+                            selectedExercise = selected,
+                            setCountText = cursor.getString(1),
+                            repsText = cursor.getString(2),
+                            durationText = cursor.getString(3),
+                            speedText = cursor.getString(4),
+                            distanceText = cursor.getString(5),
+                        ),
+                        updatedAt =
+                            cursor.getString(6),
+                        warning =
+                            if (missingSelection) {
+                                "L'exercice en cours de saisie n'existe plus ; " +
+                                    "seule la sélection a été annulée. " +
+                                    "La saisie partielle et les exercices ajoutés " +
+                                    "sont conservés."
+                            } else {
+                                null
+                            },
+                    )
+                }
+            } ?: return null
+
+        val exercises =
+            mutableListOf<SessionExerciseDraft>()
+
+        db.rawQuery(
+            """
+            SELECT
+                de.id,
+                e.exercise_id,
+                e.name,
+                e.normalized_name,
+                de.recording_mode,
+                de.tracking_mode,
+                de.data_fields
+            FROM draft_session_exercises AS de
+            JOIN exercises AS e
+                ON e.id = de.exercise_row_id
+            WHERE de.draft_id = ?
+            ORDER BY de.position ASC;
+            """.trimIndent(),
+            arrayOf(ACTIVE_DRAFT_ID.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val rowId = cursor.getLong(0)
+                val exercise =
+                    ExerciseProfile(
+                        exerciseId =
+                            cursor.getString(1),
+                        name = cursor.getString(2),
+                        normalizedName =
+                            cursor.getString(3),
+                        recordingMode =
+                            recordingModeFromWire(
+                                cursor.getString(4)
+                            ),
+                        trackingMode =
+                            trackingModeFromWire(
+                                cursor.getString(5)
+                            ),
+                        dataFields =
+                            cursor.getInt(6),
+                    )
+
+                if (
+                    exercise.recordingMode ==
+                    RecordingMode.CONTINUOUS
+                ) {
+                    val continuous =
+                        db.query(
+                            "draft_continuous_activity",
+                            arrayOf(
+                                "duration_seconds",
+                                "speed_kmh",
+                                "distance_km",
+                            ),
+                            "draft_exercise_row_id = ?",
+                            arrayOf(rowId.toString()),
+                            null,
+                            null,
+                            null,
+                        ).use { item ->
+                            check(item.moveToFirst()) {
+                                "Activité continue du brouillon manquante."
+                            }
+
+                            SessionExerciseDraft(
+                                exercise = exercise,
+                                continuousDurationSeconds =
+                                    item.getInt(0),
+                                speedKmh =
+                                    if (item.isNull(1)) {
+                                        null
+                                    } else {
+                                        item.getDouble(1)
+                                    },
+                                distanceKm =
+                                    if (item.isNull(2)) {
+                                        null
+                                    } else {
+                                        item.getDouble(2)
+                                    },
+                            )
+                        }
+                    exercises += continuous
+                } else {
+                    val sets =
+                        mutableListOf<SessionSetDraft>()
+                    db.query(
+                        "draft_performed_sets",
+                        arrayOf(
+                            "reps",
+                            "duration_seconds",
+                        ),
+                        "draft_exercise_row_id = ?",
+                        arrayOf(rowId.toString()),
+                        null,
+                        null,
+                        "position ASC",
+                    ).use { setCursor ->
+                        while (setCursor.moveToNext()) {
+                            sets +=
+                                SessionSetDraft(
+                                    reps =
+                                        if (setCursor.isNull(0)) {
+                                            0
+                                        } else {
+                                            setCursor.getInt(0)
+                                        },
+                                    durationSeconds =
+                                        if (setCursor.isNull(1)) {
+                                            0
+                                        } else {
+                                            setCursor.getInt(1)
+                                        },
+                                )
+                        }
+                    }
+                    exercises +=
+                        SessionExerciseDraft(
+                            exercise = exercise,
+                            sets = sets,
+                        )
+                }
+            }
+        }
+
+        return ActiveDraftRestore(
+            draft = ActiveSessionDraft(
+                exercises = exercises,
+                sessionType = header.sessionType,
+                form = header.form,
+                updatedAt = header.updatedAt,
+            ),
+            warning = header.warning,
+        )
+    }
+
+    private fun persistActiveSessionDraft(
+        db: SQLiteDatabase,
+        draft: ActiveSessionDraft,
+    ) {
+        val selectedRowId =
+            draft.form.selectedExercise
+                ?.let {
+                    lookupExerciseRowId(
+                        db,
+                        it.exerciseId,
+                    )
+                }
+        val now = OffsetDateTime.now().toString()
+        val values =
+            ContentValues().apply {
+                put("session_type", draft.sessionType.wireValue)
+                if (selectedRowId == null) {
+                    putNull("selected_exercise_row_id")
+                    putNull("selected_exercise_label")
+                } else {
+                    put("selected_exercise_row_id", selectedRowId)
+                    put(
+                        "selected_exercise_label",
+                        draft.form.selectedExercise.name,
+                    )
+                }
+                put("set_count_text", draft.form.setCountText)
+                put("reps_text", draft.form.repsText)
+                put("duration_text", draft.form.durationText)
+                put("speed_text", draft.form.speedText)
+                put("distance_text", draft.form.distanceText)
+                put("updated_at", now)
+            }
+
+        val updated =
+            db.update(
+                "active_session_draft",
+                values,
+                "id = ?",
+                arrayOf(ACTIVE_DRAFT_ID.toString()),
+            )
+
+        if (updated == 0) {
+            values.put("id", ACTIVE_DRAFT_ID)
+            db.insertOrThrow(
+                "active_session_draft",
+                null,
+                values,
+            )
+        }
+
+        db.delete(
+            "draft_session_exercises",
+            "draft_id = ?",
+            arrayOf(ACTIVE_DRAFT_ID.toString()),
+        )
+
+        draft.exercises.forEachIndexed {
+                index,
+                exerciseDraft ->
+            val exerciseRowId =
+                lookupExerciseRowId(
+                    db,
+                    exerciseDraft.exercise.exerciseId,
+                )
+            val exerciseValues =
+                ContentValues().apply {
+                    put("draft_id", ACTIVE_DRAFT_ID)
+                    put("exercise_row_id", exerciseRowId)
+                    put("position", index)
+                    put(
+                        "recording_mode",
+                        exerciseDraft.exercise
+                            .recordingMode.wireValue,
+                    )
+                    put(
+                        "tracking_mode",
+                        exerciseDraft.exercise
+                            .trackingMode.wireValue,
+                    )
+                    put(
+                        "data_fields",
+                        exerciseDraft.exercise.dataFields,
+                    )
+                }
+            val draftExerciseRowId =
+                db.insertOrThrow(
+                    "draft_session_exercises",
+                    null,
+                    exerciseValues,
+                )
+
+            if (
+                exerciseDraft.exercise.recordingMode ==
+                RecordingMode.CONTINUOUS
+            ) {
+                val continuousValues =
+                    ContentValues().apply {
+                        put(
+                            "draft_exercise_row_id",
+                            draftExerciseRowId,
+                        )
+                        put(
+                            "duration_seconds",
+                            exerciseDraft.continuousDurationSeconds,
+                        )
+                        exerciseDraft.speedKmh?.let {
+                            put("speed_kmh", it)
+                        }
+                        exerciseDraft.distanceKm?.let {
+                            put("distance_km", it)
+                        }
+                    }
+                db.insertOrThrow(
+                    "draft_continuous_activity",
+                    null,
+                    continuousValues,
+                )
+            } else {
+                exerciseDraft.sets.forEachIndexed {
+                        setIndex,
+                        set ->
+                    val setValues =
+                        ContentValues().apply {
+                            put(
+                                "draft_exercise_row_id",
+                                draftExerciseRowId,
+                            )
+                            put("position", setIndex)
+                            if (
+                                exerciseDraft.exercise.trackingMode ==
+                                TrackingMode.REPS
+                            ) {
+                                put("reps", set.reps)
+                            } else {
+                                put(
+                                    "duration_seconds",
+                                    set.durationSeconds,
+                                )
+                            }
+                        }
+                    db.insertOrThrow(
+                        "draft_performed_sets",
+                        null,
+                        setValues,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun insertCompletedSession(
+        db: SQLiteDatabase,
+        draft: SessionDraft,
+    ): String {
+        val sessionId =
+            "se_" + UUID.randomUUID().toString()
+        /* Preserve the existing Android meaning: started_at is assigned when
+         * the completed session is saved, not when its draft is first opened. */
+        val startedAt = OffsetDateTime.now().toString()
+        val sessionValues =
+            ContentValues().apply {
+                put("session_id", sessionId)
+                put("started_at", startedAt)
+                put("session_type", draft.sessionType.wireValue)
+            }
+        val sessionRowId =
+            db.insertOrThrow(
+                "sessions",
+                null,
+                sessionValues,
+            )
+
+        draft.exercises.forEachIndexed {
+                exerciseIndex,
+                exerciseDraft ->
+            val exerciseRowId =
+                lookupExerciseRowId(
+                    db,
+                    exerciseDraft.exercise.exerciseId,
+                )
+            val exerciseValues =
+                ContentValues().apply {
+                    put("session_row_id", sessionRowId)
+                    put("exercise_row_id", exerciseRowId)
+                    put("position", exerciseIndex)
+                    put(
+                        "recording_mode",
+                        exerciseDraft.exercise.recordingMode.wireValue,
+                    )
+                    put(
+                        "tracking_mode",
+                        exerciseDraft.exercise.trackingMode.wireValue,
+                    )
+                    put("data_fields", exerciseDraft.exercise.dataFields)
+                }
+            val sessionExerciseRowId =
+                db.insertOrThrow(
+                    "session_exercises",
+                    null,
+                    exerciseValues,
+                )
+
+            if (
+                exerciseDraft.exercise.recordingMode ==
+                RecordingMode.CONTINUOUS
+            ) {
+                val continuousValues =
+                    ContentValues().apply {
+                        put("session_exercise_row_id", sessionExerciseRowId)
+                        put(
+                            "duration_seconds",
+                            exerciseDraft.continuousDurationSeconds,
+                        )
+                        exerciseDraft.speedKmh?.let { put("speed_kmh", it) }
+                        exerciseDraft.distanceKm?.let { put("distance_km", it) }
+                    }
+                db.insertOrThrow(
+                    "continuous_activity",
+                    null,
+                    continuousValues,
+                )
+            } else {
+                exerciseDraft.sets.forEachIndexed {
+                        setIndex,
+                        set ->
+                    val setValues =
+                        ContentValues().apply {
+                            put("session_exercise_row_id", sessionExerciseRowId)
+                            put("position", setIndex)
+                            if (
+                                exerciseDraft.exercise.trackingMode ==
+                                TrackingMode.REPS
+                            ) {
+                                put("reps", set.reps)
+                            } else {
+                                put("duration_seconds", set.durationSeconds)
+                            }
+                        }
+                    db.insertOrThrow(
+                        "performed_sets",
+                        null,
+                        setValues,
+                    )
+                }
+            }
+        }
+
+        return sessionId
+    }
+
+    private fun exerciseProfileFromCursor(
+        cursor: android.database.Cursor,
+        offset: Int,
+    ): ExerciseProfile =
+        ExerciseProfile(
+            exerciseId = cursor.getString(offset),
+            name = cursor.getString(offset + 1),
+            normalizedName = cursor.getString(offset + 2),
+            recordingMode =
+                recordingModeFromWire(
+                    cursor.getString(offset + 3)
+                ),
+            trackingMode =
+                trackingModeFromWire(
+                    cursor.getString(offset + 4)
+                ),
+            dataFields = cursor.getInt(offset + 5),
+        )
+
+    private fun recordingModeFromWire(
+        value: String,
+    ): RecordingMode =
+        if (value == "continuous") {
+            RecordingMode.CONTINUOUS
+        } else {
+            RecordingMode.SETS
+        }
+
+    private fun trackingModeFromWire(
+        value: String,
+    ): TrackingMode =
+        if (value == "duration") {
+            TrackingMode.DURATION
+        } else {
+            TrackingMode.REPS
+        }
+
+    private data class ActiveDraftHeader(
+        val sessionType: SessionType,
+        val form: SessionDraftForm,
+        val updatedAt: String,
+        val warning: String?,
+    )
+
+    private data class ActiveDraftRestore(
+        val draft: ActiveSessionDraft,
+        val warning: String?,
+    )
+
     private fun validateSessionExercise(
         draft: SessionExerciseDraft,
     ): Boolean {
@@ -1492,13 +2407,19 @@ private fun ContentValues.putOptionalDouble(
     }
 }
 
+private const val ANDROID_DATABASE_NAME =
+    "trainlog-android.db"
+private const val ACTIVE_DRAFT_ID = 1
+private const val MAX_DRAFT_FORM_TEXT_LENGTH = 4096
+
 private class TrainlogDatabaseHelper(
     context: Context,
+    databaseName: String,
 ) : SQLiteOpenHelper(
     context,
-    "trainlog-android.db",
+    databaseName,
     null,
-    3,
+    4,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -1516,6 +2437,7 @@ private class TrainlogDatabaseHelper(
         createExerciseTable(db)
         createSessionTables(db)
         createBodyTable(db)
+        createActiveDraftTables(db)
     }
 
     override fun onUpgrade(
@@ -1533,6 +2455,13 @@ private class TrainlogDatabaseHelper(
         if (version < 3 && newVersion >= 3) {
             createBodyTable(db)
             version = 3
+        }
+
+        if (version < 4 && newVersion >= 4) {
+            /* CONTRACT: v4 is additive. Existing catalog, completed sessions,
+             * performed values, and body observations remain untouched. */
+            createActiveDraftTables(db)
+            version = 4
         }
 
         if (version != newVersion) {
@@ -1750,6 +2679,122 @@ private class TrainlogDatabaseHelper(
                     left_calf_cm IS NOT NULL OR
                     right_calf_cm IS NOT NULL
                 )
+            );
+            """.trimIndent()
+        )
+    }
+
+    private fun createActiveDraftTables(
+        db: SQLiteDatabase,
+    ) {
+        /* WHY: unfinished capture must be durable without entering completed
+         * history. The singleton check enforces the v1 one-active-draft rule. */
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS active_session_draft(
+                id INTEGER PRIMARY KEY
+                    CHECK(id = 1),
+                session_type TEXT NOT NULL
+                    CHECK(
+                        session_type IN (
+                            'training',
+                            'max_test'
+                        )
+                    ),
+                selected_exercise_row_id INTEGER
+                    REFERENCES exercises(id)
+                    ON DELETE SET NULL,
+                selected_exercise_label TEXT,
+                set_count_text TEXT NOT NULL,
+                reps_text TEXT NOT NULL,
+                duration_text TEXT NOT NULL,
+                speed_text TEXT NOT NULL,
+                distance_text TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS draft_session_exercises(
+                id INTEGER PRIMARY KEY,
+                draft_id INTEGER NOT NULL
+                    REFERENCES active_session_draft(id)
+                    ON DELETE CASCADE,
+                exercise_row_id INTEGER NOT NULL
+                    REFERENCES exercises(id)
+                    ON DELETE RESTRICT,
+                position INTEGER NOT NULL
+                    CHECK(position >= 0),
+                recording_mode TEXT NOT NULL
+                    CHECK(
+                        recording_mode IN (
+                            'sets',
+                            'continuous'
+                        )
+                    ),
+                tracking_mode TEXT NOT NULL
+                    CHECK(
+                        tracking_mode IN (
+                            'reps',
+                            'duration'
+                        )
+                    ),
+                data_fields INTEGER NOT NULL
+                    CHECK(
+                        data_fields >= 0 AND
+                        (data_fields & ~3) = 0
+                    ),
+                UNIQUE(draft_id, position),
+                UNIQUE(draft_id, exercise_row_id)
+            );
+            """.trimIndent()
+        )
+
+        /* INVARIANT: child cascades terminate at the active-draft singleton;
+         * neither discard nor child replacement reaches catalog/history rows. */
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS draft_performed_sets(
+                id INTEGER PRIMARY KEY,
+                draft_exercise_row_id INTEGER NOT NULL
+                    REFERENCES draft_session_exercises(id)
+                    ON DELETE CASCADE,
+                position INTEGER NOT NULL
+                    CHECK(position >= 0),
+                reps INTEGER
+                    CHECK(reps >= 0),
+                duration_seconds INTEGER
+                    CHECK(duration_seconds > 0),
+                CHECK(
+                    (
+                        reps IS NOT NULL AND
+                        duration_seconds IS NULL
+                    ) OR (
+                        reps IS NULL AND
+                        duration_seconds IS NOT NULL
+                    )
+                ),
+                UNIQUE(draft_exercise_row_id, position)
+            );
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS draft_continuous_activity(
+                id INTEGER PRIMARY KEY,
+                draft_exercise_row_id INTEGER NOT NULL UNIQUE
+                    REFERENCES draft_session_exercises(id)
+                    ON DELETE CASCADE,
+                duration_seconds INTEGER NOT NULL
+                    CHECK(duration_seconds > 0),
+                speed_kmh REAL
+                    CHECK(speed_kmh > 0.0),
+                distance_km REAL
+                    CHECK(distance_km > 0.0)
             );
             """.trimIndent()
         )

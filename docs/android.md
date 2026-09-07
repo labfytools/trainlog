@@ -12,6 +12,7 @@ The desktop remains the canonical long-term history and analytics store.
 
 ```text
 Accueil
+├── Reprendre la séance en cours (si un brouillon existe)
 ├── Enregistrer une séance
 ├── Enregistrer un exercice
 ├── Enregistrer des mensurations
@@ -24,7 +25,7 @@ Accueil
 Android local database version:
 
 ```text
-3
+4
 ```
 
 Domain tables cover:
@@ -39,6 +40,11 @@ body_observations
 ```
 
 This database is Android-local. It is not copied to the PC.
+
+Schema v4 adds `active_session_draft`, `draft_session_exercises`,
+`draft_performed_sets` and `draft_continuous_activity`. The additive v3 -> v4
+migration preserves catalog, completed sessions/actuals and body observations.
+Exactly one active draft is supported; it is separate from completed history.
 
 ## 4. Exercise catalog
 
@@ -61,6 +67,25 @@ The UI rejects invalid profile combinations and local normalized-name
 collisions.
 
 An exercise may be created standalone or inline while building a session.
+
+### Editing an exercise
+
+Every existing catalog item exposes **Modifier**. Editing a name trims its
+input, recomputes `normalized_name`, and rejects a normalized-name collision.
+The row retains its existing `exercise_id`; naming is presentation metadata,
+not identity. Completed session rows and the active draft retain their catalog
+row relationship and immediately resolve the renamed display text after reopen.
+
+Profile fields (`recording_mode`, `tracking_mode`, `data_fields`) are editable
+only while an exercise has no completed-session or active-draft reference. Once
+referenced, Android displays the lock and returns an explicit incompatible
+profile result rather than silently reinterpreting work or creating another
+exercise. Renaming remains available independently.
+
+The shared Compose `TrainlogScreen` header is used by Accueil, Séance,
+Exercice, Mensurations, Historique, Détail séance and Sync. Its compact
+`◆ TRAINLOG ◆` accent plaque and muted subtitle intentionally mirror the
+Notcurses TUI identity in a flat mobile layout.
 
 ## 5. Session recording
 
@@ -97,10 +122,34 @@ Continuous work does not create fake sets.
 
 ## 6. Session draft editing
 
-Before a session is saved, an exercise already added to the draft can be
-removed.
+The repository durably saves every meaningful mutation, including session type,
+exercise selection/addition/removal, actual values and raw form edits. Partial
+text such as `4,5,6,` is retained without normalization. A failed write displays
+a specific error and does not claim the latest change was saved.
 
-Removing one exercise does not alter the exercise catalog entry itself.
+Home shows **Reprendre la séance en cours** and an exercise-count/type summary.
+The ordinary new-session action opens an existing draft without overwriting it.
+Back returns Home and preserves the draft. Backgrounding, switching apps,
+Activity/configuration recreation, background process death and force-stop with
+relaunch preserve the draft; these paths were validated on the Samsung SM_G990B.
+
+**Retirer <exercice>** removes only that draft exercise and its actual values.
+It does not change the catalog or completed history. Removal survives restart.
+**Supprimer la séance en cours** requires deliberate confirmation; cancellation
+preserves the draft. Confirmed deletion leaves no completed session or stale
+resume action after relaunch.
+
+Final save validates the durable draft, inserts the completed session and actual
+values, and removes the draft in one SQLite transaction. Failure rolls back and
+retains the draft for retry; repeated completion does not create duplicates.
+The existing completed-session save-time timestamp behavior is unchanged.
+
+PC catalog reconciliation preserves draft references through catalog row
+ownership. If an editing selection no longer resolves, only the selection is
+cleared; added exercises and raw text remain, with a specific diagnostic.
+When a received or exported catalog entry has the same `exercise_id`, a changed
+display name is reconciled in that same row. A different-ID normalized-name
+collision is rejected, so a rename cannot become a duplicate exercise.
 
 ## 7. Session history
 
@@ -154,6 +203,10 @@ The snapshot is refreshed after relevant local changes, including exercise,
 session, body-observation, and PC-catalog updates.
 
 The user does not need a separate manual export step before synchronization.
+
+An active draft is never included in completed history, session detail or this
+snapshot. Synchronization continues to exchange completed data while the draft
+stays local; no draft fields were added to the frozen mobile artifact.
 
 ## 10. PC catalog access
 
@@ -231,6 +284,14 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 `local.properties` is local machine configuration and must not be committed.
+
+Host regression suite: 8 tests. Device instrumentation: 5 tests (2 repository,
+3 production-screen UI tests using an isolated database and no shared export).
+The real device matrix additionally exercised production `MainActivity`,
+including verified process exit with `am kill`, force-stop, configuration
+relaunch, raw-form recovery, removal, discard and unchanged user data. Final-save
+UI checks use isolated data so fictitious workouts do not enter user history.
+See [tests](tests.md) for commands and the precise validation boundary.
 
 ## 14. Non-goals
 

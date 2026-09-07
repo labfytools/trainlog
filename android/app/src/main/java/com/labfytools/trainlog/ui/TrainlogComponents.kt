@@ -3,7 +3,6 @@ package com.labfytools.trainlog.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -27,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -37,15 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
-
-private val FullAsciiBanner =
-    """
-TTTTT RRRR   AAA  IIIII N   N L       OOO   GGG
-  T   R   R A   A   I   NN  N L      O   O G
-  T   RRRR  AAAAA   I   N N N L      O   O G  GG
-  T   R  R  A   A   I   N  NN L      O   O G   G
-  T   R   R A   A IIIII N   N LLLLL   OOO   GGG
-""".trimIndent()
 
 @Composable
 fun TrainlogScreen(
@@ -87,53 +76,33 @@ private fun TrainlogBanner(
     val colors =
         LocalTrainlogColors.current
 
-    BoxWithConstraints(
+    Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(bottom = 18.dp)
     ) {
-        val wide =
-            maxWidth >= 560.dp
+        /* WHY: TUI and Android share this compact plaque rather than separate
+         * brand treatments. The terminal box becomes flat spacing on touch. */
+        BasicText(
+            text = "◆ TRAINLOG ◆",
+            style =
+                TrainlogTypography.banner.copy(
+                    color = colors.accent,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 21.sp,
+                ),
+        )
 
-        Column(
-            modifier =
-                Modifier.fillMaxWidth(),
-            horizontalAlignment =
-                Alignment.Start,
-        ) {
-            BasicText(
-                text =
-                    if (wide) {
-                        FullAsciiBanner
-                    } else {
-                        "T R A I N L O G"
-                    },
-                style =
-                    TrainlogTypography.banner.copy(
-                        color = colors.accent,
-                        fontWeight = FontWeight.Bold,
-                        fontSize =
-                            if (wide) {
-                                14.sp
-                            } else {
-                                21.sp
-                            },
-                    ),
-            )
-
-            BasicText(
-                text = subtitle,
-                modifier =
-                    Modifier.padding(top = 5.dp),
-                style =
-                    TrainlogTypography.small.copy(
-                        color = colors.muted,
-                        fontWeight =
-                            FontWeight.Bold,
-                    ),
-            )
-        }
+        BasicText(
+            text = subtitle,
+            modifier = Modifier.padding(top = 5.dp),
+            style =
+                TrainlogTypography.small.copy(
+                    color = colors.muted,
+                    fontWeight = FontWeight.Bold,
+                ),
+        )
     }
 }
 

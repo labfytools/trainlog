@@ -70,3 +70,24 @@ data class NewExerciseProfile(
         return true
     }
 }
+
+/**
+ * CONTRACT: an edit addresses the existing stable identity.  `name` is
+ * presentation metadata, not a replacement identity, so callers must never
+ * create a second exercise merely to rename one.
+ */
+data class ExerciseEditInput(
+    val exerciseId: String,
+    val name: String,
+    val recordingMode: RecordingMode,
+    val trackingMode: TrackingMode,
+    val dataFields: Int,
+) {
+    fun validateProfile(): Boolean =
+        NewExerciseProfile(
+            name = name,
+            recordingMode = recordingMode,
+            trackingMode = trackingMode,
+            dataFields = dataFields,
+        ).validate()
+}

@@ -736,11 +736,45 @@ def import_exercises(
                     f"profil incompatible pour {exercise_id}"
                 )
 
+            by_name = lookup_exercise_by_normalized(
+                connection,
+                normalized,
+            )
+            if (
+                by_name is not None
+                and by_name["id"] != by_id["id"]
+            ):
+                raise ImportFailure(
+                    "conflit de nom pour l'identité "
+                    + exercise_id
+                )
+
+            # CONTRACT: exercise_id is the synchronization identity. A rename
+            # updates metadata in place, retaining every historical and draft
+            # foreign-key reference instead of creating a second exercise.
+            if (
+                by_id["name"] != exercise["name"]
+                or by_id["normalized_name"] != normalized
+            ):
+                connection.execute(
+                    """
+                    UPDATE exercises
+                    SET name = ?, normalized_name = ?
+                    WHERE id = ?;
+                    """,
+                    (
+                        exercise["name"],
+                        normalized,
+                        by_id["id"],
+                    ),
+                )
+                report["exercises_reconciled"] += 1
+            else:
+                report["exercises_skipped"] += 1
+
             mapping[exercise_id] = (
                 by_id["exercise_id"]
             )
-
-            report["exercises_skipped"] += 1
             continue
 
         by_name = lookup_exercise_by_normalized(

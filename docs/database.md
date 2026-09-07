@@ -258,6 +258,27 @@ distance              km
 
 The Android SQLite database is independent.
 
+Current Android-local version: **4**. The explicit v3 -> v4 migration only adds
+structured draft tables; it does not rebuild or delete existing domain tables.
+
+| Table | Ownership |
+| --- | --- |
+| `active_session_draft` | Single `id = 1` row, session type, selected catalog row, raw form text, update time |
+| `draft_session_exercises` | Ordered draft exercises and profile snapshots |
+| `draft_performed_sets` | Ordered heterogeneous repetition or duration actuals |
+| `draft_continuous_activity` | Duration and configured speed/distance without synthetic sets |
+
+Foreign keys remain enabled. Draft deletion cascades only through draft child
+tables; it cannot delete catalog entries or completed history. The repository
+commits completed-session insertion and draft removal together, rolling back
+both on failure. Repeating finalization after success cannot create another
+completed session. Completed `started_at` semantics are unchanged by this repair.
+
+Migration tests use a real v3-shaped fixture. The physical Samsung upgrade also
+preserved every existing domain row, with successful integrity and foreign-key
+checks. Device backup files are outside the repository; no SQLite files are
+used as synchronization artifacts.
+
 Desktop and Android schema versions are not required to match.
 
 Do not synchronize SQLite database files.
@@ -275,7 +296,7 @@ Migration-specific regression coverage includes:
 schema_v5_migration
 ```
 
-The current normal suite contains 19 tests.
+The current normal desktop suite contains 22 tests.
 
 ## 11. Measured-max derivation
 

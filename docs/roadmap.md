@@ -15,7 +15,7 @@ GATE_2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
 DESKTOP_SCHEMA_V5=PASS
-ANDROID_LOCAL_DATABASE_V3=PASS
+ANDROID_LOCAL_DATABASE_V4=PASS
 
 DIRECT_MTP_TRANSPORT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
@@ -23,14 +23,19 @@ BIDIRECTIONAL_SYNC_V1=PASS
 VARIABLE_REPETITION_SETS=PASS
 MEASURED_MAX_V1=PASS
 BODY_ANALYTICS_V1=PASS
+EXERCISE_EDIT_V1=PASS
+ANDROID_BANNER_PARITY_V1=PASS
 
-DESKTOP_TESTS=21/21 PASS
+DESKTOP_TESTS=22/22 PASS
+TUI_NOTCURSES_V1=PASS
+NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
+NOTCURSES_TRUECOLOR_THEME=PASS
 ```
 
 The current product baseline includes:
 
 - SQLite persistence and explicit migrations;
-- usable ncurses desktop TUI;
+- usable Notcurses desktop TUI;
 - native Android capture client;
 - exercise catalog;
 - profile-aware set and continuous activity;
@@ -43,7 +48,18 @@ The current product baseline includes:
 - bidirectional Android/PC synchronization;
 - shared synchronization engine and `trainlog-syncd`.
 
+`EXERCISE_EDIT_V1` is a completed capture correction: Android permits
+stable-ID renames, protects referenced profiles, and reconciles same-ID display
+metadata without duplicates. `ANDROID_BANNER_PARITY_V1` is a presentation-only
+completed checkpoint: all Android screens share the Notcurses-derived compact
+header; it does not reorder the roadmap below.
+
 ## Product boundary
+
+`ANDROID_SESSION_DRAFT_V1` is an implemented P0 capture-reliability correction:
+one durable active draft, Home resume, explicit discard and atomic completion.
+Host and device validation and the final tranche review pass. This repair
+does not introduce planning/templates or reorder the product roadmap below.
 
 The intended split remains:
 

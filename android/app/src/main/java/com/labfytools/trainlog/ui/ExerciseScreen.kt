@@ -16,8 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.CreateExerciseResult
+import com.labfytools.trainlog.data.EditExerciseResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ExerciseDataFields
+import com.labfytools.trainlog.model.ExerciseEditInput
+import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.TrackingMode
@@ -70,6 +73,28 @@ fun ExerciseScreen(
             )
         }
 
+    var editedExercise by
+        remember {
+            mutableStateOf<ExerciseProfile?>(null)
+        }
+
+    val profileLocked =
+        editedExercise?.let {
+            !repository.canEditExerciseProfile(it.exerciseId)
+        } ?: false
+
+    fun startEditing(exercise: ExerciseProfile) {
+        /* WHY: edit state copies catalog metadata for presentation only. The
+         * repository remains the sole owner of stable identity and SQLite. */
+        editedExercise = exercise
+        name = exercise.name
+        recordingMode = exercise.recordingMode
+        trackingMode = exercise.trackingMode
+        speed = exercise.dataFields and ExerciseDataFields.SPEED_KMH != 0
+        distance = exercise.dataFields and ExerciseDataFields.DISTANCE_KM != 0
+        message = null
+    }
+
     TrainlogScreen(
         subtitle = "E X E R C I C E"
     ) {
@@ -91,7 +116,12 @@ fun ExerciseScreen(
         )
 
         TrainlogFrame(
-            title = "NOUVEL EXERCICE"
+            title =
+                if (editedExercise == null) {
+                    "NOUVEL EXERCICE"
+                } else {
+                    "MODIFIER L'EXERCICE"
+                }
         ) {
             TrainlogField(
                 label = "Nom",
@@ -110,7 +140,9 @@ fun ExerciseScreen(
                     selected =
                         recordingMode ==
                             RecordingMode.SETS,
+                    enabled = !profileLocked,
                     onClick = {
+                        if (profileLocked) return@TrainlogChoice
                         recordingMode =
                             RecordingMode.SETS
 
@@ -125,7 +157,9 @@ fun ExerciseScreen(
                     selected =
                         recordingMode ==
                             RecordingMode.CONTINUOUS,
+                    enabled = !profileLocked,
                     onClick = {
+                        if (profileLocked) return@TrainlogChoice
                         recordingMode =
                             RecordingMode.CONTINUOUS
 
@@ -150,7 +184,9 @@ fun ExerciseScreen(
                         selected =
                             trackingMode ==
                                 TrackingMode.REPS,
+                        enabled = !profileLocked,
                         onClick = {
+                            if (profileLocked) return@TrainlogChoice
                             trackingMode =
                                 TrackingMode.REPS
 
@@ -164,7 +200,9 @@ fun ExerciseScreen(
                     selected =
                         trackingMode ==
                             TrackingMode.DURATION,
+                    enabled = !profileLocked,
                     onClick = {
+                        if (profileLocked) return@TrainlogChoice
                         trackingMode =
                             TrackingMode.DURATION
 
@@ -184,7 +222,9 @@ fun ExerciseScreen(
                     TrainlogChoice(
                         label = "Vitesse",
                         selected = speed,
+                        enabled = !profileLocked,
                         onClick = {
+                            if (profileLocked) return@TrainlogChoice
                             speed = !speed
                             message = null
                         },
@@ -193,7 +233,9 @@ fun ExerciseScreen(
                     TrainlogChoice(
                         label = "Distance",
                         selected = distance,
+                        enabled = !profileLocked,
                         onClick = {
+                            if (profileLocked) return@TrainlogChoice
                             distance =
                                 !distance
 
@@ -240,31 +282,60 @@ fun ExerciseScreen(
                 color = colors.accent,
             )
 
+            if (profileLocked) {
+                TrainlogInfo(
+                    text =
+                        "Profil verrouillé : cet exercice est déjà référencé " +
+                            "par une séance terminée ou le brouillon actif. " +
+                            "Le nom reste modifiable.",
+                    color = colors.warning,
+                )
+            }
+
             TrainlogAction(
                 label =
-                    if (inline) {
+                    if (editedExercise != null) {
+                        "Enregistrer les modifications"
+                    } else if (inline) {
                         "Créer et revenir à la séance"
                     } else {
                         "Enregistrer l'exercice"
                     },
                 description =
-                    "Ajouter ce profil au catalogue local.",
+                    if (editedExercise == null) {
+                        "Ajouter ce profil au catalogue local."
+                    } else {
+                        "Conserver l'identité et mettre à jour le catalogue."
+                    },
                 accent =
                     colors.success,
                 onClick = {
-                    when (
-                        repository.createExercise(
-                            NewExerciseProfile(
-                                name = name,
-                                recordingMode =
-                                    recordingMode,
-                                trackingMode =
-                                    trackingMode,
-                                dataFields =
-                                    fields,
+                    val current = editedExercise
+                    val result =
+                        if (current == null) {
+                            repository.createExercise(
+                                NewExerciseProfile(
+                                    name = name,
+                                    recordingMode =
+                                        recordingMode,
+                                    trackingMode =
+                                        trackingMode,
+                                    dataFields =
+                                        fields,
+                                ),
                             )
-                        )
-                    ) {
+                        } else {
+                            repository.editExercise(
+                                ExerciseEditInput(
+                                    exerciseId = current.exerciseId,
+                                    name = name,
+                                    recordingMode = recordingMode,
+                                    trackingMode = trackingMode,
+                                    dataFields = fields,
+                                ),
+                            )
+                        }
+                    when (result) {
                         is CreateExerciseResult.Created -> {
                             message = null
                             onSaved()
@@ -279,9 +350,49 @@ fun ExerciseScreen(
                             message =
                                 "Profil ou nom invalide."
                         }
+
+                        is EditExerciseResult.Saved -> {
+                            message = null
+                            editedExercise = null
+                            onSaved()
+                        }
+
+                        EditExerciseResult.Conflict -> {
+                            message = "Un autre exercice porte déjà ce nom."
+                        }
+
+                        EditExerciseResult.InvalidNameOrProfile -> {
+                            message = "Nom ou profil invalide."
+                        }
+
+                        EditExerciseResult.IncompatibleProfileChange -> {
+                            message =
+                                "Le profil ne peut pas changer après utilisation."
+                        }
+
+                        EditExerciseResult.DatabaseError -> {
+                            message = "Enregistrement en base impossible."
+                        }
                     }
                 },
             )
+
+            if (editedExercise != null) {
+                TrainlogAction(
+                    label = "Annuler",
+                    description = "Revenir au catalogue sans modification.",
+                    accent = colors.muted,
+                    onClick = {
+                        editedExercise = null
+                        name = ""
+                        recordingMode = RecordingMode.SETS
+                        trackingMode = TrackingMode.REPS
+                        speed = false
+                        distance = false
+                        message = null
+                    },
+                )
+            }
 
             if (message != null) {
                 TrainlogInfo(
@@ -289,6 +400,22 @@ fun ExerciseScreen(
                         message.orEmpty(),
                     color = colors.error,
                 )
+            }
+        }
+
+        TrainlogFrame(title = "EXERCICES EXISTANTS", active = false) {
+            val exercises = repository.listExercises()
+            if (exercises.isEmpty()) {
+                TrainlogInfo("Aucun exercice enregistré.")
+            } else {
+                exercises.forEach { exercise ->
+                    TrainlogAction(
+                        label = "Modifier · ${exercise.name}",
+                        description = "Modifier le nom ou le profil si disponible.",
+                        accent = colors.accent,
+                        onClick = { startEditing(exercise) },
+                    )
+                }
             }
         }
 
@@ -355,6 +482,7 @@ private fun TrainlogChoiceGroup(
 private fun TrainlogChoice(
     label: String,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colors =
@@ -372,7 +500,10 @@ private fun TrainlogChoice(
                         colors.surface
                     }
                 )
-                .clickable(onClick = onClick)
+                .clickable(
+                    enabled = enabled,
+                    onClick = onClick,
+                )
                 .padding(
                     horizontal = 10.dp,
                     vertical = 9.dp,
@@ -390,6 +521,8 @@ private fun TrainlogChoice(
                     color =
                         if (selected) {
                             colors.warning
+                        } else if (!enabled) {
+                            colors.muted
                         } else {
                             colors.text
                         },

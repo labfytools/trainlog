@@ -9,6 +9,15 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- Android `EXERCISE_EDIT_V1`: visible catalog editing, stable-ID name rename,
+  explicit invalid/conflict/profile/database results, and profile locking once
+  completed history or an active draft references the exercise;
+- `ANDROID_BANNER_PARITY_V1`: one Android `◆ TRAINLOG ◆` header component
+  matching the compact Notcurses banner's accent and muted context rhythm;
+
+- one durable Android active-session draft with Home resume, raw form restore,
+  confirmed discard and draft-only exercise removal;
+
 - native Kotlin/Compose Android capture client;
 - Android local exercise, session, continuous-activity, and body persistence;
 - C17/ncursesw desktop TUI with direct session entry and durable SQLite history;
@@ -36,6 +45,14 @@ Detailed implementation chronology remains available in Git history and
 
 ### Changed
 
+- same-ID Android ↔ PC catalog reconciliation now updates display-name metadata
+  in place and rejects a different-ID normalized-name collision, preserving
+  synchronization identity and preventing renamed duplicates;
+
+- Android local SQLite v3 -> v4 additive migration for structured active drafts;
+- completed-session insertion and draft clearing are atomic; drafts remain
+  excluded from completed history and frozen mobile export;
+
 - desktop SQLite schema evolved to v5;
 - schema v5 permits targetless set-session rows for actual-only mobile data;
 - heterogeneous performed sets are preserved without inventing a uniform target;
@@ -50,6 +67,11 @@ Detailed implementation chronology remains available in Git history and
   storage remains RFC3339.
 
 ### Fixed
+
+- in-progress Android workout loss when leaving the foreground or recreating
+  the Activity/process;
+- missing selected-exercise recovery preserves raw partial input and reports a
+  specific warning; draft write/finalization failures return explicit errors;
 
 - stale schema-v4 importer call after desktop schema v5 migration;
 - stale schema-v4 guard in the PC catalog exporter;
@@ -67,10 +89,14 @@ Current validated baseline:
 TRAINLOG_FORMAT_V1=FROZEN
 
 DESKTOP_SCHEMA_V5=PASS
-DESKTOP_TESTS=19/19 PASS
+DESKTOP_TESTS=22/22 PASS
 
 ANDROID_BUILD=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
+ANDROID_LOCAL_DATABASE_V4=PASS
+ANDROID_HOST_TESTS=8/8 PASS
+ANDROID_DEVICE_INSTRUMENTATION=5/5 PASS
+ANDROID_SESSION_DRAFT_V1=PASS
 
 USB_MTP_DETECTION=PASS
 MTP_ROUNDTRIP=PASS

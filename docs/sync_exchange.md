@@ -103,6 +103,13 @@ continuous
 
 No synthetic set is created for continuous work.
 
+Android-local active-session drafts are excluded from this snapshot and remain
+local during synchronization. Only successful atomic finalization makes a draft
+a completed exportable session. The v1 artifact has no draft fields or tables;
+catalog reconciliation preserves active draft references.
+Same-ID catalog entries may update display-name metadata in their existing
+catalog row; a rename never creates a second exercise identity.
+
 ## 5. Desktop mobile importer
 
 Reference importer:

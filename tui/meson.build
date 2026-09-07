@@ -5,10 +5,7 @@ uuid_dep = dependency('uuid', required: true)
 udev_dep = dependency('libudev', required: true)
 mtp_dep = dependency('libmtp', required: true)
 
-ncursesw_dep = dependency('ncursesw', required: false)
-if not ncursesw_dep.found()
-  ncursesw_dep = cc.find_library('ncursesw', required: true)
-endif
+notcurses_dep = dependency('notcurses-core', required: true)
 
 utf8proc_dep = dependency('libutf8proc', required: false)
 if not utf8proc_dep.found()
@@ -71,6 +68,7 @@ trainlog_core_dep = declare_dependency(
 
 trainlog_tui_sources = files(
   'src/main.c',
+  'src/terminal.c',
   'src/theme.c',
   'src/tui.c',
 )
@@ -80,7 +78,7 @@ trainlog_exe = executable(
   trainlog_tui_sources,
   dependencies: [
     trainlog_core_dep,
-    ncursesw_dep,
+    notcurses_dep,
   ],
   c_args: strict_c_args,
   install: true,
@@ -366,4 +364,18 @@ test_body_analytics = executable(
 test(
   'body_analytics',
   test_body_analytics,
+)
+
+test_terminal_input = executable(
+  'test_terminal_input',
+  'tests/test_terminal_input.c',
+  'src/terminal.c',
+  include_directories: trainlog_include,
+  dependencies: notcurses_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'terminal_input_event_type_policy',
+  test_terminal_input,
 )

@@ -3,7 +3,7 @@
 
 /**
  * @file tui.h
- * @brief Interactive ncurses entry point.
+ * @brief Interactive Notcurses entry point.
  */
 
 #include "trainlog/database.h"

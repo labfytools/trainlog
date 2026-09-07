@@ -19,7 +19,7 @@
 #include <wchar.h>
 #include <unistd.h>
 
-#include <curses.h>
+#include "trainlog/terminal.h"
 
 #include "trainlog/bodyviz.h"
 #include "trainlog/body_analytics.h"
@@ -41,6 +41,14 @@
 #define MAX_WEIGHT_POINTS 256U
 
 #define MAX_BODY_METRIC_POINTS 256U
+
+/*
+ * INVARIANT: this pointer is assigned only for the dynamic extent of one
+ * trainlog_tui_run() call and is cleared before Notcurses shutdown.  The
+ * screen implementation predates explicit context parameters; the terminal
+ * object itself remains owned by the public run entry point.
+ */
+static TrainlogTerminal *tui_terminal;
 
 
 /* TRAINLOG_TUI_V02_POLISH */
@@ -117,32 +125,32 @@ static void session_history_datetime(
 
 static void draw_shell(const char *heading, const char *footer)
 {
-    erase();
-    box(stdscr, 0, 0);
+    trainlog_terminal_erase(tui_terminal);
+    trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
-    attron(A_BOLD | trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT));
-    mvprintw(1, 2, " %s ", heading);
-    attroff(A_BOLD | trainlog_theme_attribute(TRAINLOG_COLOR_ACCENT));
+    trainlog_terminal_style_on(tui_terminal, TRAINLOG_TEXT_BOLD | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+    trainlog_terminal_printf(tui_terminal, 1, 2, " %s ", heading);
+    trainlog_terminal_style_off(tui_terminal, TRAINLOG_TEXT_BOLD | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
 
-    attron(trainlog_theme_attribute(TRAINLOG_COLOR_MUTED));
-    mvprintw(LINES - 2, 2, "%-*s", COLS - 4, footer);
-    attroff(trainlog_theme_attribute(TRAINLOG_COLOR_MUTED));
+    trainlog_terminal_style_on(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_MUTED));
+    trainlog_terminal_printf(tui_terminal, trainlog_terminal_rows(tui_terminal) - 2, 2, "%-*s", trainlog_terminal_columns(tui_terminal) - 4, footer);
+    trainlog_terminal_style_off(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_MUTED));
 }
 
 static void wait_key(void)
 {
-    attron(trainlog_theme_attribute(TRAINLOG_COLOR_MUTED));
-    mvprintw(LINES - 2, 2, "Appuyez sur une touche pour continuer...");
-    attroff(trainlog_theme_attribute(TRAINLOG_COLOR_MUTED));
-    refresh();
-    (void)getch();
+    trainlog_terminal_style_on(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_MUTED));
+    trainlog_terminal_printf(tui_terminal, trainlog_terminal_rows(tui_terminal) - 2, 2, "Appuyez sur une touche pour continuer...");
+    trainlog_terminal_style_off(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_MUTED));
+    trainlog_terminal_render(tui_terminal);
+    (void)trainlog_terminal_get_key(tui_terminal);
 }
 
 static void status_line(const char *text, TrainlogColorRole role)
 {
-    attron(trainlog_theme_attribute(role));
-    mvprintw(LINES - 3, 2, "%-*s", COLS - 4, text);
-    attroff(trainlog_theme_attribute(role));
+    trainlog_terminal_style_on(tui_terminal, trainlog_theme_style(role));
+    trainlog_terminal_printf(tui_terminal, trainlog_terminal_rows(tui_terminal) - 3, 2, "%-*s", trainlog_terminal_columns(tui_terminal) - 4, text);
+    trainlog_terminal_style_off(tui_terminal, trainlog_theme_style(role));
 }
 
 static bool prompt_text(
@@ -166,55 +174,48 @@ static bool prompt_text(
 
     output[0] = '\0';
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         row,
         2,
         "%s",
         label
     );
 
-    getyx(
-        stdscr,
-        cursor_row,
-        input_column
-    );
+    trainlog_terminal_cursor_yx(tui_terminal, &cursor_row, &input_column);
 
     (void)cursor_row;
 
-    noecho();
-    (void)curs_set(1);
+
+    (void)trainlog_terminal_cursor_visible(tui_terminal, true);
 
     for (;;) {
-        wint_t value;
-        int rc;
+        int value;
+        char encoded[5];
 
-        move(
+        trainlog_terminal_move(tui_terminal,
             row,
             input_column
         );
 
-        clrtoeol();
+        trainlog_terminal_clear_to_end(tui_terminal);
 
         if (used > 0U) {
-            addnstr(
+            trainlog_terminal_putn(tui_terminal,
                 output,
-                (int)used
+                used
             );
         }
 
-        refresh();
+        trainlog_terminal_render(tui_terminal);
 
-        rc = get_wch(&value);
-
-        if (rc == ERR) {
+        if (!trainlog_terminal_read_unicode(tui_terminal, &value, encoded)) {
             break;
         }
 
-        if (rc == KEY_CODE_YES) {
-            int key =
-                (int)value;
+        if (value < 0) {
+            int key = value;
 
-            if (key == KEY_ENTER) {
+            if (key == TRAINLOG_KEY_ENTER) {
                 if (allow_empty ||
                     used > 0U) {
                     accepted = true;
@@ -224,8 +225,8 @@ static bool prompt_text(
                 continue;
             }
 
-            if (key == KEY_BACKSPACE ||
-                key == KEY_DC) {
+            if (key == TRAINLOG_KEY_BACKSPACE ||
+                key == TRAINLOG_KEY_DELETE) {
                 if (used > 0U) {
                     do {
                         --used;
@@ -244,13 +245,12 @@ static bool prompt_text(
             continue;
         }
 
-        if (value == (wint_t)27) {
+        if (value == 27) {
             accepted = false;
             break;
         }
 
-        if (value == (wint_t)'\n' ||
-            value == (wint_t)'\r') {
+        if (value == '\n' || value == '\r') {
             if (allow_empty ||
                 used > 0U) {
                 accepted = true;
@@ -260,8 +260,7 @@ static bool prompt_text(
             continue;
         }
 
-        if (value == (wint_t)8 ||
-            value == (wint_t)127) {
+        if (value == 8 || value == 127) {
             if (used > 0U) {
                 do {
                     --used;
@@ -277,27 +276,11 @@ static bool prompt_text(
             continue;
         }
 
-        if (value >= (wint_t)32) {
-            char encoded[MB_LEN_MAX];
-            mbstate_t state;
+        if (value >= 32) {
             size_t encoded_size;
+            encoded_size = strlen(encoded);
 
-            (void)memset(
-                &state,
-                0,
-                sizeof(state)
-            );
-
-            encoded_size =
-                wcrtomb(
-                    encoded,
-                    (wchar_t)value,
-                    &state
-                );
-
-            if (encoded_size ==
-                    (size_t)-1 ||
-                encoded_size == 0U ||
+            if (encoded_size == 0U ||
                 encoded_size >
                     output_size - used - 1U) {
                 continue;
@@ -314,8 +297,8 @@ static bool prompt_text(
         }
     }
 
-    noecho();
-    (void)curs_set(0);
+
+    (void)trainlog_terminal_cursor_visible(tui_terminal, false);
 
     return accepted;
 }
@@ -393,7 +376,7 @@ static bool prompt_int_value(
         }
 
         status_line("Valeur entière invalide.", TRAINLOG_COLOR_ERROR);
-        refresh();
+        trainlog_terminal_render(tui_terminal);
     }
 }
 
@@ -423,7 +406,7 @@ static bool prompt_optional_double(
         }
 
         status_line("Nombre positif invalide.", TRAINLOG_COLOR_ERROR);
-        refresh();
+        trainlog_terminal_render(tui_terminal);
     }
 }
 
@@ -656,7 +639,7 @@ static void draw_exercise_performance_graph(
     double maximum = 0.0;
     const int left = 11;
     int width =
-        COLS - left - 4;
+        trainlog_terminal_columns(tui_terminal) - left - 4;
 
     if (points == NULL ||
         count == 0U ||
@@ -677,7 +660,7 @@ static void draw_exercise_performance_graph(
     }
 
     if (selected_count == 0U) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top + 1,
             4,
             "Aucune performance réussie pour ce mode."
@@ -715,13 +698,13 @@ static void draw_exercise_performance_graph(
     }
 
     if (mode == TRAINLOG_LOAD_ASSISTANCE) {
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_WARNING
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top,
             left,
             measured_max
@@ -729,14 +712,14 @@ static void draw_exercise_performance_graph(
                 : "Assistance (kg) — moins = mieux"
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_WARNING
             )
         );
     } else if (mode ==
                TRAINLOG_LOAD_EXTERNAL) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top,
             left,
             measured_max
@@ -747,7 +730,7 @@ static void draw_exercise_performance_graph(
         tracking_mode ==
         TRAINLOG_TRACKING_DURATION
     ) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top,
             left,
             measured_max
@@ -755,7 +738,7 @@ static void draw_exercise_performance_graph(
                 : "Meilleure durée"
         );
     } else {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top,
             left,
             measured_max
@@ -764,22 +747,22 @@ static void draw_exercise_performance_graph(
         );
     }
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         top + 1,
         2,
         "%.1f",
         maximum
     );
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         top + height - 1,
         2,
         "%.1f",
         minimum
     );
 
-    attron(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_GRAPH
         )
     );
@@ -837,21 +820,21 @@ static void draw_exercise_performance_graph(
                           (line_x - previous_x)) /
                          (x - previous_x));
 
-                    mvaddch(
+                    trainlog_terminal_draw(tui_terminal,
                         line_y,
                         line_x,
-                        (chtype)'.'
+                        (uint32_t)'.'
                     );
                 }
             }
 
-            mvaddch(
+            trainlog_terminal_draw(tui_terminal,
                 y,
                 x,
                 chronological + 1U ==
                     selected_count
-                    ? (chtype)'O'
-                    : (chtype)'*'
+                    ? (uint32_t)'O'
+                    : (uint32_t)'*'
             );
 
             previous_x = x;
@@ -859,8 +842,8 @@ static void draw_exercise_performance_graph(
         }
     }
 
-    attroff(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_GRAPH
         )
     );
@@ -880,14 +863,14 @@ static void draw_exercise_performance_graph(
             newest
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top + height,
             left,
             "%s",
             oldest
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             top + height,
             left + width - 10,
             "%s",
@@ -906,7 +889,7 @@ static void exercise_panel(
     const char *label
 )
 {
-    WINDOW *panel;
+    TrainlogPanel *panel;
     int height;
     int width;
 
@@ -914,17 +897,15 @@ static void exercise_panel(
         left < 0 ||
         bottom <= top ||
         right <= left ||
-        bottom >= LINES ||
-        right >= COLS) {
+        bottom >= trainlog_terminal_rows(tui_terminal) ||
+        right >= trainlog_terminal_columns(tui_terminal)) {
         return;
     }
 
     height = bottom - top + 1;
     width = right - left + 1;
 
-    panel = derwin(
-        stdscr,
-        height,
+    panel = tui_panel_create(tui_terminal, height,
         width,
         top,
         left
@@ -934,20 +915,20 @@ static void exercise_panel(
         return;
     }
 
-    box(panel, 0, 0);
+    tui_panel_box(panel);
 
     if (label != NULL &&
         label[0] != '\0' &&
         width > 8) {
-        wattron(
+        tui_panel_style_on(
             panel,
-            A_BOLD |
-            trainlog_theme_attribute(
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvwprintw(
+        tui_panel_print(
             panel,
             0,
             2,
@@ -956,18 +937,17 @@ static void exercise_panel(
             label
         );
 
-        wattroff(
+        tui_panel_style_off(
             panel,
-            A_BOLD |
-            trainlog_theme_attribute(
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
     }
 
-    syncok(panel, TRUE);
-    wsyncup(panel);
-    delwin(panel);
+    tui_panel_commit(panel);
+    tui_panel_destroy(panel);
 }
 
 static void screen_exercise_performance(
@@ -995,8 +975,8 @@ static void screen_exercise_performance(
     char best_text[128];
 
     bool decorated =
-        COLS >= 100 &&
-        LINES >= 36;
+        trainlog_terminal_columns(tui_terminal) >= 100 &&
+        trainlog_terminal_rows(tui_terminal) >= 36;
 
     int summary_top =
         decorated ? 8 : 3;
@@ -1014,7 +994,7 @@ static void screen_exercise_performance(
         decorated ? 26 : 22;
 
     int history_bottom =
-        LINES - 4;
+        trainlog_terminal_rows(tui_terminal) - 4;
 
     if (database == NULL ||
         exercise == NULL) {
@@ -1082,8 +1062,8 @@ static void screen_exercise_performance(
     );
 
     if (decorated) {
-        erase();
-        box(stdscr, 0, 0);
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
         section_ascii_header(
             ":: P E R F O R M A N C E   E X E R C I C E ::"
@@ -1093,7 +1073,7 @@ static void screen_exercise_performance(
             summary_top,
             2,
             summary_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "PERFORMANCE"
         );
 
@@ -1101,7 +1081,7 @@ static void screen_exercise_performance(
             graph_top,
             2,
             graph_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "EVOLUTION"
         );
 
@@ -1111,28 +1091,28 @@ static void screen_exercise_performance(
                 history_top,
                 2,
                 history_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "HISTORIQUE",
                 true
             );
         }
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
-            LINES - 2,
+        trainlog_terminal_printf(tui_terminal,
+            trainlog_terminal_rows(tui_terminal) - 2,
             2,
             "%.*s",
-            COLS - 4,
+            trainlog_terminal_columns(tui_terminal) - 4,
             "b/Échap retour"
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
@@ -1146,7 +1126,7 @@ static void screen_exercise_performance(
             summary_top,
             2,
             summary_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "PERFORMANCE"
         );
 
@@ -1154,7 +1134,7 @@ static void screen_exercise_performance(
             graph_top,
             2,
             graph_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "EVOLUTION"
         );
 
@@ -1164,34 +1144,34 @@ static void screen_exercise_performance(
                 history_top,
                 2,
                 history_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "HISTORIQUE"
             );
         }
     }
 
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         summary_top + 1,
         5,
         "%s",
         exercise->name
     );
 
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         summary_top + 2,
         5,
         "Séances enregistrées : %zu",
@@ -1199,13 +1179,13 @@ static void screen_exercise_performance(
     );
 
     if (latest == NULL) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             summary_top + 3,
             5,
             "Aucune série réussie enregistrée."
         );
     } else {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             summary_top + 3,
             5,
             "Mode suivi : %s",
@@ -1214,19 +1194,19 @@ static void screen_exercise_performance(
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             summary_top + 4,
             5,
             "Dernier meilleur set : %.*s",
-            COLS - 30,
+            trainlog_terminal_columns(tui_terminal) - 30,
             latest_text
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             summary_top + 5,
             5,
             "Meilleur set enregistré : %.*s",
-            COLS - 33,
+            trainlog_terminal_columns(tui_terminal) - 33,
             best_text
         );
     }
@@ -1283,7 +1263,7 @@ static void screen_exercise_performance(
                 sizeof(summary)
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 history_first_row +
                     (int)index,
                 5,
@@ -1292,22 +1272,22 @@ static void screen_exercise_performance(
                 exercise_load_mode_label(
                     points[index].load_mode
                 ),
-                COLS - 40,
+                trainlog_terminal_columns(tui_terminal) - 40,
                 summary
             );
         }
     }
 
-    refresh();
+    trainlog_terminal_render(tui_terminal);
 
     for (;;) {
-        int key = getch();
+        int key = trainlog_terminal_get_key(tui_terminal);
 
         if (key == 'b' ||
             key == 'B' ||
             key == 27 ||
             key == '\n' ||
-            key == KEY_ENTER) {
+            key == TRAINLOG_KEY_ENTER) {
             return;
         }
     }
@@ -1358,8 +1338,8 @@ static void screen_exercise_measured_max(
         size_t history_limit;
 
         bool decorated =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int summary_top =
             decorated ? 8 : 3;
@@ -1377,7 +1357,7 @@ static void screen_exercise_measured_max(
             decorated ? 24 : 18;
 
         int history_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int key;
 
@@ -1426,12 +1406,10 @@ static void screen_exercise_measured_max(
             }
         }
 
-        erase();
-        box(
-            stdscr,
-            0,
-            0
-        );
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0,
+                              trainlog_terminal_rows(tui_terminal) - 1,
+                              trainlog_terminal_columns(tui_terminal) - 1);
 
         if (decorated) {
             section_ascii_header(
@@ -1442,7 +1420,7 @@ static void screen_exercise_measured_max(
                 summary_top,
                 2,
                 summary_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "MAX MESURE"
             );
 
@@ -1450,7 +1428,7 @@ static void screen_exercise_measured_max(
                 graph_top,
                 2,
                 graph_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "EVOLUTION DES TESTS MAX"
             );
 
@@ -1462,27 +1440,27 @@ static void screen_exercise_measured_max(
                     history_top,
                     2,
                     history_bottom,
-                    COLS - 3,
+                    trainlog_terminal_columns(tui_terminal) - 3,
                     "HISTORIQUE TESTS MAX"
                 );
             }
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "r arrondi charge  b/Échap retour"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -1496,7 +1474,7 @@ static void screen_exercise_measured_max(
                 summary_top,
                 2,
                 summary_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "MAX MESURE"
             );
 
@@ -1504,7 +1482,7 @@ static void screen_exercise_measured_max(
                 graph_top,
                 2,
                 graph_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "EVOLUTION"
             );
 
@@ -1516,34 +1494,34 @@ static void screen_exercise_measured_max(
                     history_top,
                     2,
                     history_bottom,
-                    COLS - 3,
+                    trainlog_terminal_columns(tui_terminal) - 3,
                     "HISTORIQUE"
                 );
             }
         }
 
-        attron(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             summary_top + 1,
             5,
             "%s",
             exercise->name
         );
 
-        attroff(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             summary_top + 2,
             5,
             "Tests max : %zu · réussis : %zu",
@@ -1552,13 +1530,13 @@ static void screen_exercise_measured_max(
         );
 
         if (!summary.found) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 summary_top + 3,
                 5,
                 "Aucun max mesuré réussi."
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 summary_top + 4,
                 5,
                 "Seules les séances explicitement « Test de max » comptent."
@@ -1591,21 +1569,21 @@ static void screen_exercise_measured_max(
                 record_date
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 summary_top + 3,
                 5,
                 "Actuel : %s · %.*s",
                 current_date,
-                COLS - 32,
+                trainlog_terminal_columns(tui_terminal) - 32,
                 current_text
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 summary_top + 4,
                 5,
                 "Record même mode : %s · %.*s",
                 record_date,
-                COLS - 42,
+                trainlog_terminal_columns(tui_terminal) - 42,
                 record_text
             );
 
@@ -1635,7 +1613,7 @@ static void screen_exercise_measured_max(
                 }
 
                 if (valid) {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         summary_top + 5,
                         5,
                         "Travail : 60%% %.1f · 70%% %.1f · 80%% %.1f · 90%% %.1f kg",
@@ -1645,7 +1623,7 @@ static void screen_exercise_measured_max(
                         working[3]
                     );
 
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         summary_top + 6,
                         5,
                         "Arrondi : %.1f kg (r pour changer) · aucun 1RM estimé",
@@ -1656,37 +1634,37 @@ static void screen_exercise_measured_max(
                 summary.current.load_mode ==
                 TRAINLOG_LOAD_ASSISTANCE
             ) {
-                attron(
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_WARNING
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     summary_top + 5,
                     5,
                     "Assistance : moins de kg = mieux."
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     summary_top + 6,
                     5,
                     "Pourcentages de charge non applicables à l'assistance."
                 );
 
-                attroff(
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_WARNING
                     )
                 );
             } else {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     summary_top + 5,
                     5,
                     "Sans charge externe : pourcentages non applicables."
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     summary_top + 6,
                     5,
                     "Le max reste une valeur réellement réalisée, jamais estimée."
@@ -1716,7 +1694,7 @@ static void screen_exercise_measured_max(
                 true
             );
         } else {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 graph_top + 2,
                 5,
                 "Aucun point de max mesuré à tracer."
@@ -1759,7 +1737,7 @@ static void screen_exercise_measured_max(
                     sizeof(text)
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     first_row +
                         (int)index,
                     5,
@@ -1769,21 +1747,21 @@ static void screen_exercise_measured_max(
                         max_points[index]
                             .load_mode
                     ),
-                    COLS - 40,
+                    trainlog_terminal_columns(tui_terminal) - 40,
                     text
                 );
             }
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (
             key == 'b' ||
             key == 'B' ||
             key == 27 ||
             key == '\n' ||
-            key == KEY_ENTER
+            key == TRAINLOG_KEY_ENTER
         ) {
             return;
         }
@@ -1810,83 +1788,58 @@ static void section_ascii_header(
     const char *subtitle
 )
 {
-    static const char *const logo[] = {
-        "TTTTT RRRR   AAA  IIIII N   N L       OOO   GGG ",
-        "  T   R   R A   A   I   NN  N L      O   O G    ",
-        "  T   RRRR  AAAAA   I   N N N L      O   O G  GG",
-        "  T   R  R  A   A   I   N  NN L      O   O G   G",
-        "  T   R   R A   A IIIII N   N LLLLL   OOO   GGG "
-    };
+    int header_left = 2;
+    int header_right = trainlog_terminal_columns(tui_terminal) - 3;
+    int subtitle_width;
 
-    const size_t line_count =
-        sizeof(logo) /
-        sizeof(logo[0]);
-
-    size_t index;
-
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
-            TRAINLOG_COLOR_ACCENT
-        )
-    );
-
-    for (index = 0U;
-         index < line_count;
-         ++index) {
-        int width =
-            (int)strlen(logo[index]);
-
-        int column =
-            (COLS - width) / 2;
-
-        if (column < 2) {
-            column = 2;
-        }
-
-        mvprintw(
-            1 + (int)index,
-            column,
-            "%.*s",
-            COLS - column - 2,
-            logo[index]
-        );
+    if (header_right - header_left < 20) {
+        return;
     }
 
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
+    /* WHY: one restrained three-row plaque provides a recognizable terminal
+     * identity without consuming the panel rows reserved by every screen. */
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(TRAINLOG_COLOR_MUTED));
+    trainlog_terminal_box(tui_terminal, 1, header_left, 3, header_right);
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(TRAINLOG_COLOR_MUTED));
+
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    if (subtitle != NULL &&
-        subtitle[0] != '\0') {
-        int width =
-            (int)strlen(subtitle);
+    trainlog_terminal_printf(tui_terminal, 1, header_left + 3,
+                             "◆ TRAINLOG ◆");
 
-        int column =
-            (COLS - width) / 2;
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
+            TRAINLOG_COLOR_ACCENT
+        )
+    );
 
-        if (column < 2) {
-            column = 2;
-        }
+    if (subtitle != NULL && subtitle[0] != '\0') {
+        subtitle_width = header_right - header_left - 4;
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
-            6,
-            column,
-            "%s",
+        trainlog_terminal_printf(tui_terminal,
+            2,
+            header_left + 2,
+            "%.*s",
+            subtitle_width,
             subtitle
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
@@ -1919,8 +1872,8 @@ static void section_scrollbar(
         return;
     }
 
-    attron(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -1928,15 +1881,15 @@ static void section_scrollbar(
     for (row = top;
          row <= bottom;
          ++row) {
-        mvaddch(
+        trainlog_terminal_draw(tui_terminal,
             row,
             column,
-            ACS_VLINE
+            0x2502U
         );
     }
 
-    attroff(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -1949,22 +1902,22 @@ static void section_scrollbar(
             (count - 1U)
         );
 
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    mvaddch(
+    trainlog_terminal_draw(tui_terminal,
         thumb,
         column,
-        ACS_CKBOARD
+        0x2593U
     );
 
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
@@ -1985,12 +1938,12 @@ static void screen_exercises(
         size_t index;
 
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         bool framed =
-            COLS >= 90 &&
-            LINES >= 24;
+            trainlog_terminal_columns(tui_terminal) >= 90 &&
+            trainlog_terminal_rows(tui_terminal) >= 24;
 
         int list_top =
             large_layout
@@ -1998,7 +1951,7 @@ static void screen_exercises(
                 : 3;
 
         int list_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int first_row =
             list_top + 1;
@@ -2007,7 +1960,7 @@ static void screen_exercises(
             framed
                 ? list_bottom -
                     first_row
-                : LINES - 7;
+                : trainlog_terminal_rows(tui_terminal) - 7;
 
         int key;
 
@@ -2040,8 +1993,8 @@ static void screen_exercises(
         }
 
         if (large_layout) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: E X E R C I C E S ::"
@@ -2053,22 +2006,22 @@ static void screen_exercises(
                 focus == 0
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "Tab zone  ↑↓/PgUp/PgDn catalogue  ←→ menu  Entrée ouvrir  m max mesuré  a ajouter  0/Home accueil  F1-F4 direct  b/Échap retour"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -2085,7 +2038,7 @@ static void screen_exercises(
                     list_top,
                     2,
                     list_bottom,
-                    COLS - 3,
+                    trainlog_terminal_columns(tui_terminal) - 3,
                     "CATALOGUE",
                     focus == 1
                 );
@@ -2094,14 +2047,14 @@ static void screen_exercises(
                     list_top,
                     2,
                     list_bottom,
-                    COLS - 3,
+                    trainlog_terminal_columns(tui_terminal) - 3,
                     "CATALOGUE"
                 );
             }
         }
 
         if (count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 first_row + 1,
                 framed ? 5 : 4,
                 "Aucun exercice."
@@ -2124,15 +2077,15 @@ static void screen_exercises(
 
             if (focus == 1 &&
                 absolute == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 item_row,
                 item_col,
                 " %-42s [%s] ",
@@ -2145,9 +2098,9 @@ static void screen_exercises(
 
             if (focus == 1 &&
                 absolute == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
@@ -2158,19 +2111,19 @@ static void screen_exercises(
             section_scrollbar(
                 first_row,
                 list_bottom - 1,
-                COLS - 5,
+                trainlog_terminal_columns(tui_terminal) - 5,
                 selected,
                 count,
                 (size_t)visible_rows
             );
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (large_layout &&
-            (key == '\t' ||
-             key == KEY_BTAB)) {
+            (key == TRAINLOG_KEY_TAB ||
+             key == TRAINLOG_KEY_SHIFT_TAB)) {
             focus =
                 focus == 0
                     ? 1
@@ -2191,19 +2144,19 @@ primary_top_nav_forward(key)) {
 
         if (large_layout &&
             focus == 0) {
-            if (key == KEY_LEFT) {
+            if (key == TRAINLOG_KEY_LEFT) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
                         : 5;
-            } else if (key == KEY_RIGHT) {
+            } else if (key == TRAINLOG_KEY_RIGHT) {
                 nav_selected =
                     nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
                 key == '\n' ||
-                key == KEY_ENTER
+                key == TRAINLOG_KEY_ENTER
             ) {
 if (primary_top_nav_activate(
                         nav_selected
@@ -2216,7 +2169,7 @@ if (primary_top_nav_activate(
         }
 
         if (count > 0U &&
-            key == KEY_UP) {
+            key == TRAINLOG_KEY_UP) {
             selected =
                 selected > 0U
                     ? selected - 1U
@@ -2226,7 +2179,7 @@ if (primary_top_nav_activate(
         }
 
         if (count > 0U &&
-            key == KEY_DOWN) {
+            key == TRAINLOG_KEY_DOWN) {
             selected =
                 selected + 1U < count
                     ? selected + 1U
@@ -2236,7 +2189,7 @@ if (primary_top_nav_activate(
         }
 
         if (count > 0U &&
-            key == KEY_PPAGE) {
+            key == TRAINLOG_KEY_PAGE_UP) {
             size_t jump =
                 (size_t)visible_rows;
 
@@ -2249,7 +2202,7 @@ if (primary_top_nav_activate(
         }
 
         if (count > 0U &&
-            key == KEY_NPAGE) {
+            key == TRAINLOG_KEY_PAGE_DOWN) {
             size_t jump =
                 (size_t)visible_rows;
 
@@ -2274,7 +2227,7 @@ if (primary_top_nav_activate(
 
         if (count > 0U &&
             (key == '\n' ||
-             key == KEY_ENTER)) {
+             key == TRAINLOG_KEY_ENTER)) {
             screen_exercise_performance(
                 database,
                 &exercises[selected]
@@ -2542,12 +2495,12 @@ static bool choose_exercise(
         size_t top = 0U;
         size_t index;
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
         int list_top =
             large_layout ? 8 : 3;
         int list_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
         int first_row =
             list_top + 1;
         int visible_rows =
@@ -2573,14 +2526,14 @@ static bool choose_exercise(
                 "a ajouter un exercice · Échap annuler"
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 4,
                 4,
                 "Aucun exercice disponible."
             );
 
-            refresh();
-            key = getch();
+            trainlog_terminal_render(tui_terminal);
+            key = trainlog_terminal_get_key(tui_terminal);
 
             if (key == 'a' ||
                 key == 'A') {
@@ -2611,8 +2564,8 @@ static bool choose_exercise(
         }
 
         if (large_layout) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: C H O I S I R   E X E R C I C E ::"
@@ -2622,27 +2575,27 @@ static bool choose_exercise(
                 list_top,
                 2,
                 list_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "CATALOGUE",
                 true
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "↑↓ choisir  Entrée sélectionner  a créer un exercice  Échap annuler"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -2665,15 +2618,15 @@ static bool choose_exercise(
                 (int)index;
 
             if (absolute == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 item_row,
                 large_layout ? 5 : 4,
                 " %-42s [%s] ",
@@ -2685,9 +2638,9 @@ static bool choose_exercise(
             );
 
             if (absolute == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
@@ -2698,29 +2651,29 @@ static bool choose_exercise(
             section_scrollbar(
                 first_row,
                 list_bottom - 1,
-                COLS - 5,
+                trainlog_terminal_columns(tui_terminal) - 5,
                 selected,
                 count,
                 (size_t)visible_rows
             );
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
-        if (key == KEY_UP) {
+        if (key == TRAINLOG_KEY_UP) {
             selected =
                 selected > 0U
                     ? selected - 1U
                     : count - 1U;
-        } else if (key == KEY_DOWN) {
+        } else if (key == TRAINLOG_KEY_DOWN) {
             selected =
                 selected + 1U < count
                     ? selected + 1U
                     : 0U;
         } else if (
             key == '\n' ||
-            key == KEY_ENTER
+            key == TRAINLOG_KEY_ENTER
         ) {
             *output =
                 exercises[selected];
@@ -2823,7 +2776,7 @@ static bool prompt_duration_value(
             "Durée invalide : 90, 90s, 1:30, 1m30, 2m.",
             TRAINLOG_COLOR_ERROR
         );
-        refresh();
+        trainlog_terminal_render(tui_terminal);
     }
 }
 
@@ -2842,11 +2795,11 @@ static void draw_body_metric_graph(
     int width;
 
     if (count == 0U) {
-        mvprintw(row, 4, "Aucune donnée pour cette mesure.");
+        trainlog_terminal_printf(tui_terminal, row, 4, "Aucune donnée pour cette mesure.");
         return;
     }
 
-    width = COLS - 14;
+    width = trainlog_terminal_columns(tui_terminal) - 14;
     if (width < 10 || height < 3) {
         return;
     }
@@ -2870,26 +2823,26 @@ static void draw_body_metric_graph(
     if (maximum == minimum) {
         int graph_row = row + (height / 2);
 
-        mvprintw(graph_row, 2, "%.1f %s", minimum, unit);
+        trainlog_terminal_printf(tui_terminal, graph_row, 2, "%.1f %s", minimum, unit);
 
-        attron(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+        trainlog_terminal_style_on(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_GRAPH));
 
         for (index = start; index < count; ++index) {
             int x = 12 + (int)(index - start);
 
-            if (x < COLS - 2) {
-                mvaddch(graph_row, x, (chtype)'*');
+            if (x < trainlog_terminal_columns(tui_terminal) - 2) {
+                trainlog_terminal_draw(tui_terminal, graph_row, x, (uint32_t)'*');
             }
         }
 
-        attroff(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+        trainlog_terminal_style_off(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_GRAPH));
         return;
     }
 
-    mvprintw(row, 2, "%.1f", maximum);
-    mvprintw(row + height - 1, 2, "%.1f", minimum);
+    trainlog_terminal_printf(tui_terminal, row, 2, "%.1f", maximum);
+    trainlog_terminal_printf(tui_terminal, row + height - 1, 2, "%.1f", minimum);
 
-    attron(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+    trainlog_terminal_style_on(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_GRAPH));
 
     for (index = start; index < count; ++index) {
         double ratio =
@@ -2908,12 +2861,12 @@ static void draw_body_metric_graph(
             y = row + height - 1;
         }
 
-        if (x < COLS - 2) {
-            mvaddch(y, x, (chtype)'*');
+        if (x < trainlog_terminal_columns(tui_terminal) - 2) {
+            trainlog_terminal_draw(tui_terminal, y, x, (uint32_t)'*');
         }
     }
 
-    attroff(trainlog_theme_attribute(TRAINLOG_COLOR_GRAPH));
+    trainlog_terminal_style_off(tui_terminal, trainlog_theme_style(TRAINLOG_COLOR_GRAPH));
 }
 
 static void add_body_observation(TrainlogDatabase *database)
@@ -3187,32 +3140,31 @@ static void global_plot_point(
     TrainlogColorRole role
 )
 {
-    chtype current;
-    chtype character;
+    uint32_t current;
+    uint32_t character;
 
     if (row < 0 ||
-        row >= LINES ||
+        row >= trainlog_terminal_rows(tui_terminal) ||
         column < 0 ||
-        column >= COLS) {
+        column >= trainlog_terminal_columns(tui_terminal)) {
         return;
     }
 
-    current =
-        mvinch(row, column) &
-        A_CHARTEXT;
+    /* Standard-plane writes are deterministic; a later series marks overlap. */
+    current = (uint32_t)' ';
 
     character =
-        (chtype)(unsigned char)symbol;
+        (uint32_t)(unsigned char)symbol;
 
-    if (current != (chtype)' ' &&
-        current != (chtype)'.' &&
+    if (current != (uint32_t)' ' &&
+        current != (uint32_t)'.' &&
         current != character) {
-        character = (chtype)'#';
+        character = (uint32_t)'#';
     }
 
-    attron(trainlog_theme_attribute(role));
-    mvaddch(row, column, character);
-    attroff(trainlog_theme_attribute(role));
+    trainlog_terminal_style_on(tui_terminal, trainlog_theme_style(role));
+    trainlog_terminal_draw(tui_terminal, row, column, character);
+    trainlog_terminal_style_off(tui_terminal, trainlog_theme_style(role));
 }
 
 static void global_plot_segment(
@@ -3320,7 +3272,7 @@ static void draw_global_body_overlay(
     const int graph_height = 5;
     const int graph_left = 8;
     int graph_width =
-        COLS - graph_left - 3;
+        trainlog_terminal_columns(tui_terminal) - graph_left - 3;
 
     (void)memset(
         series,
@@ -3396,7 +3348,7 @@ static void draw_global_body_overlay(
     }
 
     if (date_count == 0U) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             4,
             4,
             "Aucune mensuration disponible pour la vue globale."
@@ -3415,7 +3367,7 @@ static void draw_global_body_overlay(
         global_date_compare
     );
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         3,
         4,
         "Vue globale — première mesure de chaque série = 100"
@@ -3426,14 +3378,14 @@ static void draw_global_body_overlay(
         maximum = 101.0;
     }
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         graph_top,
         2,
         "%.1f",
         maximum
     );
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         graph_top + graph_height - 1,
         2,
         "%.1f",
@@ -3453,8 +3405,8 @@ static void draw_global_body_overlay(
 
         int column;
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
@@ -3463,15 +3415,15 @@ static void draw_global_body_overlay(
              column <
                 graph_left + graph_width;
              ++column) {
-            mvaddch(
+            trainlog_terminal_draw(tui_terminal,
                 baseline_row,
                 column,
-                (chtype)'.'
+                (uint32_t)'.'
             );
         }
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
@@ -3583,15 +3535,15 @@ static void draw_global_body_overlay(
             column =
                 row_index < 7U
                     ? 4
-                    : (COLS / 2);
+                    : (trainlog_terminal_columns(tui_terminal) / 2);
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     item->role
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 row,
                 column,
                 "%c %-16s %+.1f%%",
@@ -3600,8 +3552,8 @@ static void draw_global_body_overlay(
                 item->latest_percent
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     item->role
                 )
             );
@@ -3759,8 +3711,8 @@ static void dashboard_draw_month_axis(
         graph_width /
         (int)(DASHBOARD_MONTH_COUNT - 1U);
 
-    attron(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -3797,19 +3749,19 @@ static void dashboard_draw_month_axis(
                 x = 2;
             }
 
-            if (x > COLS - 8) {
-                x = COLS - 8;
+            if (x > trainlog_terminal_columns(tui_terminal) - 8) {
+                x = trainlog_terminal_columns(tui_terminal) - 8;
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 row,
                 x,
                 "%s",
                 label
             );
         } else {
-            if (x + 2 < COLS - 1) {
-                mvprintw(
+            if (x + 2 < trainlog_terminal_columns(tui_terminal) - 1) {
+                trainlog_terminal_printf(tui_terminal,
                     row,
                     x,
                     "%02d",
@@ -3819,8 +3771,8 @@ static void dashboard_draw_month_axis(
         }
     }
 
-    attroff(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -3836,7 +3788,7 @@ static void dashboard_panel(
     const char *label
 )
 {
-    WINDOW *panel;
+    TrainlogPanel *panel;
     int height;
     int width;
 
@@ -3844,17 +3796,15 @@ static void dashboard_panel(
         left < 0 ||
         bottom <= top ||
         right <= left ||
-        bottom >= LINES ||
-        right >= COLS) {
+        bottom >= trainlog_terminal_rows(tui_terminal) ||
+        right >= trainlog_terminal_columns(tui_terminal)) {
         return;
     }
 
     height = bottom - top + 1;
     width = right - left + 1;
 
-    panel = derwin(
-        stdscr,
-        height,
+    panel = tui_panel_create(tui_terminal, height,
         width,
         top,
         left
@@ -3864,20 +3814,20 @@ static void dashboard_panel(
         return;
     }
 
-    box(panel, 0, 0);
+    tui_panel_box(panel);
 
     if (label != NULL &&
         label[0] != '\0' &&
         width > 8) {
-        wattron(
+        tui_panel_style_on(
             panel,
-            A_BOLD |
-            trainlog_theme_attribute(
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvwprintw(
+        tui_panel_print(
             panel,
             0,
             2,
@@ -3886,10 +3836,10 @@ static void dashboard_panel(
             label
         );
 
-        wattroff(
+        tui_panel_style_off(
             panel,
-            A_BOLD |
-            trainlog_theme_attribute(
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
@@ -3897,12 +3847,11 @@ static void dashboard_panel(
 
     /*
      * derwin() shares the parent screen storage. syncok()+wsyncup() makes
-     * the panel border part of stdscr, so later dashboard content and one
-     * final refresh() compose cleanly.
+     * the panel border part of tui_terminal, so later dashboard content and one
+     * final trainlog_terminal_render(tui_terminal) compose cleanly.
      */
-    syncok(panel, TRUE);
-    wsyncup(panel);
-    delwin(panel);
+    tui_panel_commit(panel);
+    tui_panel_destroy(panel);
 }
 
 /* TRAINLOG_PRIMARY_TOP_NAVIGATION */
@@ -3918,26 +3867,24 @@ static void focused_panel(
     bool active
 )
 {
-    WINDOW *panel;
+    TrainlogPanel *panel;
     int height;
     int width;
-    chtype border_attribute;
+    uint32_t border_attribute;
 
     if (top < 0 ||
         left < 0 ||
         bottom <= top ||
         right <= left ||
-        bottom >= LINES ||
-        right >= COLS) {
+        bottom >= trainlog_terminal_rows(tui_terminal) ||
+        right >= trainlog_terminal_columns(tui_terminal)) {
         return;
     }
 
     height = bottom - top + 1;
     width = right - left + 1;
 
-    panel = derwin(
-        stdscr,
-        height,
+    panel = tui_panel_create(tui_terminal, height,
         width,
         top,
         left
@@ -3949,25 +3896,25 @@ static void focused_panel(
 
     border_attribute =
         active
-            ? A_BOLD |
-                trainlog_theme_attribute(
+            ? TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_WARNING
                 )
-            : trainlog_theme_attribute(
+            : trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             );
 
-    wattron(
+    tui_panel_style_on(
         panel,
         border_attribute
     );
 
-    box(panel, 0, 0);
+    tui_panel_box(panel);
 
     if (label != NULL &&
         label[0] != '\0' &&
         width > 8) {
-        mvwprintw(
+        tui_panel_print(
             panel,
             0,
             2,
@@ -3977,14 +3924,13 @@ static void focused_panel(
         );
     }
 
-    wattroff(
+    tui_panel_style_off(
         panel,
         border_attribute
     );
 
-    syncok(panel, TRUE);
-    wsyncup(panel);
-    delwin(panel);
+    tui_panel_commit(panel);
+    tui_panel_destroy(panel);
 }
 
 static void primary_top_navbar(
@@ -4009,7 +3955,7 @@ static void primary_top_navbar(
         8,
         2,
         10,
-        COLS - 3,
+        trainlog_terminal_columns(tui_terminal) - 3,
         "NAVIGATION",
         focused
     );
@@ -4021,22 +3967,22 @@ static void primary_top_navbar(
             (int)strlen(labels[index]) + 4;
 
         if (index == selected_page) {
-            attron(
-                A_REVERSE |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_REVERSE |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
         } else if (index == active_page) {
-            attron(
-                A_BOLD |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
         }
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             9,
             column,
             " %s ",
@@ -4044,16 +3990,16 @@ static void primary_top_navbar(
         );
 
         if (index == selected_page) {
-            attroff(
-                A_REVERSE |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_REVERSE |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
         } else if (index == active_page) {
-            attroff(
-                A_BOLD |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
@@ -4076,9 +4022,7 @@ static bool primary_top_nav_activate(
         return true;
     }
 
-    return ungetch(
-        '0' + selected_page
-    ) != ERR;
+    return trainlog_terminal_push_key(tui_terminal, '0' + selected_page);
 }
 
 /*
@@ -4094,30 +4038,30 @@ static bool primary_top_nav_forward(
 
     switch (key) {
     case '0':
-    case KEY_HOME:
+    case TRAINLOG_KEY_HOME:
         return true;
 
-    case KEY_F(1):
+    case TRAINLOG_KEY_F1:
     case '1':
         forwarded = '1';
         break;
 
-    case KEY_F(2):
+    case TRAINLOG_KEY_F2:
     case '2':
         forwarded = '2';
         break;
 
-    case KEY_F(3):
+    case TRAINLOG_KEY_F3:
     case '3':
         forwarded = '3';
         break;
 
-    case KEY_F(4):
+    case TRAINLOG_KEY_F4:
     case '4':
         forwarded = '4';
         break;
 
-    case KEY_F(5):
+    case TRAINLOG_KEY_F5:
     case '5':
         forwarded = '5';
         break;
@@ -4126,92 +4070,12 @@ static bool primary_top_nav_forward(
         return false;
     }
 
-    return ungetch(forwarded) != ERR;
+    return trainlog_terminal_push_key(tui_terminal, forwarded);
 }
 
 static void dashboard_ascii_header(void)
 {
-    static const char *const logo[] = {
-        "TTTTT RRRR   AAA  IIIII N   N L       OOO   GGG ",
-        "  T   R   R A   A   I   NN  N L      O   O G    ",
-        "  T   RRRR  AAAAA   I   N N N L      O   O G  GG",
-        "  T   R  R  A   A   I   N  NN L      O   O G   G",
-        "  T   R   R A   A IIIII N   N LLLLL   OOO   GGG "
-    };
-
-    const size_t line_count =
-        sizeof(logo) /
-        sizeof(logo[0]);
-
-    size_t index;
-
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
-            TRAINLOG_COLOR_ACCENT
-        )
-    );
-
-    for (index = 0U;
-         index < line_count;
-         ++index) {
-        int width =
-            (int)strlen(logo[index]);
-
-        int column =
-            (COLS - width) / 2;
-
-        if (column < 2) {
-            column = 2;
-        }
-
-        mvprintw(
-            1 + (int)index,
-            column,
-            "%.*s",
-            COLS - column - 2,
-            logo[index]
-        );
-    }
-
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
-            TRAINLOG_COLOR_ACCENT
-        )
-    );
-
-    attron(
-        trainlog_theme_attribute(
-            TRAINLOG_COLOR_MUTED
-        )
-    );
-
-    {
-        const char *label =
-            ":: D A S H B O A R D ::";
-        int width =
-            (int)strlen(label);
-        int column =
-            (COLS - width) / 2;
-
-        if (column < 2) {
-            column = 2;
-        }
-
-        mvprintw(
-            6,
-            column,
-            "%s",
-            label
-        );
-    }
-
-    attroff(
-        trainlog_theme_attribute(
-            TRAINLOG_COLOR_MUTED
-        )
-    );
+    section_ascii_header("Accueil · Séance · Progression");
 }
 
 static void draw_dashboard_body_graph(
@@ -4231,8 +4095,8 @@ static void draw_dashboard_body_graph(
         sizeof(BODY_METRICS[0]);
 
     bool large_layout =
-        COLS >= 100 &&
-        LINES >= 30;
+        trainlog_terminal_columns(tui_terminal) >= 100 &&
+        trainlog_terminal_rows(tui_terminal) >= 30;
 
     int graph_panel_top =
         large_layout ? 11 : 2;
@@ -4252,7 +4116,7 @@ static void draw_dashboard_body_graph(
         large_layout ? 10 : 8;
 
     int graph_right =
-        COLS - 5;
+        trainlog_terminal_columns(tui_terminal) - 5;
 
     int graph_width =
         graph_right -
@@ -4290,7 +4154,7 @@ static void draw_dashboard_body_graph(
             graph_panel_top,
             2,
             graph_panel_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "EVOLUTION CORPORELLE - 12 MOIS"
         );
 
@@ -4298,26 +4162,26 @@ static void draw_dashboard_body_graph(
             legend_panel_top,
             2,
             legend_panel_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "MESURES"
         );
     } else {
-        attron(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             1,
             3,
             "TRAINLOG :: DASHBOARD"
         );
 
-        attroff(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
@@ -4326,7 +4190,7 @@ static void draw_dashboard_body_graph(
     if (!dashboard_current_month_key(
             &current_key
         )) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             graph_top + 1,
             5,
             "Impossible de déterminer le mois courant."
@@ -4498,26 +4362,26 @@ static void draw_dashboard_body_graph(
     }
 
     if (plotted_series == 0U) {
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             graph_top + 1,
             graph_left,
             "Premières courbes après 2 mois relevés pour une même mesure."
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             graph_top + 2,
             graph_left,
             "Un mois sans relevé reste vide."
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
@@ -4534,14 +4398,14 @@ static void draw_dashboard_body_graph(
             maximum = 1.0;
         }
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             graph_top,
             3,
             "%+.1f%%",
             maximum
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             graph_top + graph_height - 1,
             3,
             "%+.1f%%",
@@ -4560,8 +4424,8 @@ static void draw_dashboard_body_graph(
 
             int column;
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -4569,15 +4433,15 @@ static void draw_dashboard_body_graph(
             for (column = graph_left;
                  column <= graph_right;
                  ++column) {
-                mvaddch(
+                trainlog_terminal_draw(tui_terminal,
                     zero_row,
                     column,
-                    (chtype)'.'
+                    (uint32_t)'.'
                 );
             }
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -4681,7 +4545,7 @@ static void draw_dashboard_body_graph(
             large_layout ? 3 : 2;
 
         int cell_width =
-            (COLS - 8) /
+            (trainlog_terminal_columns(tui_terminal) - 8) /
             columns;
 
         for (metric_index = 0U;
@@ -4779,13 +4643,13 @@ static void draw_dashboard_body_graph(
                 );
             }
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     item->role
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 row,
                 column,
                 "%c %-*.*s %6.1f",
@@ -4796,15 +4660,15 @@ static void draw_dashboard_body_graph(
                 latest
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 row,
                 column + cell_width - 7,
                 "%6s",
                 evolution
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     item->role
                 )
             );
@@ -4834,21 +4698,21 @@ static DashboardAction screen_dashboard(
 
     for (;;) {
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int nav_top =
-            large_layout ? 8 : LINES - 4;
+            large_layout ? 8 : trainlog_terminal_rows(tui_terminal) - 4;
 
         int nav_bottom =
-            large_layout ? 10 : LINES - 3;
+            large_layout ? 10 : trainlog_terminal_rows(tui_terminal) - 3;
 
         int key;
         int index;
         int column;
 
-        erase();
-        box(stdscr, 0, 0);
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
         if (large_layout) {
             dashboard_ascii_header();
@@ -4857,7 +4721,7 @@ static DashboardAction screen_dashboard(
                 nav_top,
                 2,
                 nav_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "NAVIGATION",
                 true
             );
@@ -4875,27 +4739,27 @@ static DashboardAction screen_dashboard(
                 (int)strlen(labels[index]) + 4;
 
             if (index == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 large_layout
                     ? nav_top + 1
-                    : LINES - 3,
+                    : trainlog_terminal_rows(tui_terminal) - 3,
                 column,
                 " %s ",
                 labels[index]
             );
 
             if (index == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
@@ -4904,40 +4768,40 @@ static DashboardAction screen_dashboard(
             column += width + 2;
         }
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
-            LINES - 2,
+        trainlog_terminal_printf(tui_terminal,
+            trainlog_terminal_rows(tui_terminal) - 2,
             2,
             "%.*s",
-            COLS - 4,
+            trainlog_terminal_columns(tui_terminal) - 4,
             footer
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         switch (key) {
-        case KEY_UP:
-        case KEY_LEFT:
+        case TRAINLOG_KEY_UP:
+        case TRAINLOG_KEY_LEFT:
             selected =
                 selected > 0
                     ? selected - 1
                     : 5;
             break;
 
-        case KEY_DOWN:
-        case KEY_RIGHT:
+        case TRAINLOG_KEY_DOWN:
+        case TRAINLOG_KEY_RIGHT:
             selected =
                 selected < 5
                     ? selected + 1
@@ -4945,7 +4809,7 @@ static DashboardAction screen_dashboard(
             break;
 
         case '\n':
-        case KEY_ENTER:
+        case TRAINLOG_KEY_ENTER:
             switch (selected) {
             case 0:
                 break;
@@ -4965,27 +4829,27 @@ static DashboardAction screen_dashboard(
             break;
 
         case '0':
-        case KEY_HOME:
+        case TRAINLOG_KEY_HOME:
             selected = 0;
             break;
 
-        case KEY_F(1):
+        case TRAINLOG_KEY_F1:
         case '1':
             return DASHBOARD_NEW_SESSION;
 
-        case KEY_F(2):
+        case TRAINLOG_KEY_F2:
         case '2':
             return DASHBOARD_HISTORY;
 
-        case KEY_F(3):
+        case TRAINLOG_KEY_F3:
         case '3':
             return DASHBOARD_EXERCISES;
 
-        case KEY_F(4):
+        case TRAINLOG_KEY_F4:
         case '4':
             return DASHBOARD_BODY;
 
-        case KEY_F(5):
+        case TRAINLOG_KEY_F5:
         case '5':
             return DASHBOARD_SYNC;
 
@@ -5242,7 +5106,7 @@ static bool build_session_exercise(
                 TRAINLOG_COLOR_ERROR
             );
 
-            refresh();
+            trainlog_terminal_render(tui_terminal);
         }
     } else {
         if (!prompt_int_value(
@@ -5316,7 +5180,7 @@ static bool build_session_exercise(
                 "Échap annuler · Durées : 90, 90s, 1:30, 1m30, 2m"
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 3,
                 4,
                 "Série %zu / %zu",
@@ -5443,14 +5307,14 @@ static bool choose_session_type(
 
     for (;;) {
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int key;
 
         if (large_layout) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: N O U V E L L E   S E A N C E ::"
@@ -5466,42 +5330,42 @@ static bool choose_session_type(
                 11,
                 4,
                 20,
-                COLS - 5,
+                trainlog_terminal_columns(tui_terminal) - 5,
                 "TYPE DE SEANCE",
                 focus == 1
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "Tab zone  ←→ menu  ↑↓ type  Entrée valider  0/Home accueil  F2-F4 direct  Échap annuler"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
             if (focus == 1 &&
                 selected == 0) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 13,
                 7,
                 " Entraînement "
@@ -5509,43 +5373,43 @@ static bool choose_session_type(
 
             if (focus == 1 &&
                 selected == 0) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 14,
                 9,
                 "Séance normale : progression, volume, travail courant."
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
             if (focus == 1 &&
                 selected == 1) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 17,
                 7,
                 " Test de max "
@@ -5553,35 +5417,35 @@ static bool choose_session_type(
 
             if (focus == 1 &&
                 selected == 1) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 18,
                 9,
                 "Séance explicitement dédiée aux mesures de max."
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
         } else {
-            WINDOW *panel;
+            TrainlogPanel *panel;
             int panel_width =
-                COLS - 8;
+                trainlog_terminal_columns(tui_terminal) - 8;
 
             draw_shell(
                 "TRAINLOG — Nouvelle séance",
@@ -5592,9 +5456,7 @@ static bool choose_session_type(
                 panel_width = 40;
             }
 
-            panel = derwin(
-                stdscr,
-                9,
+            panel = tui_panel_create(tui_terminal, 9,
                 panel_width,
                 3,
                 4
@@ -5604,42 +5466,42 @@ static bool choose_session_type(
                 return false;
             }
 
-            box(panel, 0, 0);
+            tui_panel_box(panel);
 
-            wattron(
+            tui_panel_style_on(
                 panel,
-                A_BOLD |
-                trainlog_theme_attribute(
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
 
-            mvwprintw(
+            tui_panel_print(
                 panel,
                 0,
                 2,
                 " TYPE DE SEANCE "
             );
 
-            wattroff(
+            tui_panel_style_off(
                 panel,
-                A_BOLD |
-                trainlog_theme_attribute(
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
 
             if (selected == 0) {
-                wattron(
+                tui_panel_style_on(
                     panel,
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvwprintw(
+            tui_panel_print(
                 panel,
                 2,
                 3,
@@ -5647,16 +5509,16 @@ static bool choose_session_type(
             );
 
             if (selected == 0) {
-                wattroff(
+                tui_panel_style_off(
                     panel,
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvwprintw(
+            tui_panel_print(
                 panel,
                 3,
                 5,
@@ -5664,16 +5526,16 @@ static bool choose_session_type(
             );
 
             if (selected == 1) {
-                wattron(
+                tui_panel_style_on(
                     panel,
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvwprintw(
+            tui_panel_print(
                 panel,
                 5,
                 3,
@@ -5681,33 +5543,32 @@ static bool choose_session_type(
             );
 
             if (selected == 1) {
-                wattroff(
+                tui_panel_style_off(
                     panel,
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvwprintw(
+            tui_panel_print(
                 panel,
                 6,
                 5,
                 "Séance explicitement dédiée aux mesures de max."
             );
 
-            syncok(panel, TRUE);
-            wsyncup(panel);
-            delwin(panel);
+            tui_panel_commit(panel);
+            tui_panel_destroy(panel);
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (large_layout &&
-            (key == '\t' ||
-             key == KEY_BTAB)) {
+            (key == TRAINLOG_KEY_TAB ||
+             key == TRAINLOG_KEY_SHIFT_TAB)) {
             focus =
                 focus == 0
                     ? 1
@@ -5721,19 +5582,19 @@ static bool choose_session_type(
 
         if (large_layout &&
             (key == '0' ||
-             key == KEY_HOME)) {
+             key == TRAINLOG_KEY_HOME)) {
             return false;
         }
 
         if (large_layout &&
             (key == '2' ||
-             key == KEY_F(2) ||
+             key == TRAINLOG_KEY_F2 ||
              key == '3' ||
-             key == KEY_F(3) ||
+             key == TRAINLOG_KEY_F3 ||
              key == '4' ||
-             key == KEY_F(4) ||
+             key == TRAINLOG_KEY_F4 ||
              key == '5' ||
-             key == KEY_F(5))) {
+             key == TRAINLOG_KEY_F5)) {
             if (primary_top_nav_forward(key)) {
                 return false;
             }
@@ -5743,19 +5604,19 @@ static bool choose_session_type(
 
         if (large_layout &&
             focus == 0) {
-            if (key == KEY_LEFT) {
+            if (key == TRAINLOG_KEY_LEFT) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
                         : 5;
-            } else if (key == KEY_RIGHT) {
+            } else if (key == TRAINLOG_KEY_RIGHT) {
                 nav_selected =
                     nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
                 key == '\n' ||
-                key == KEY_ENTER
+                key == TRAINLOG_KEY_ENTER
             ) {
                 if (nav_selected == 1) {
                     focus = 1;
@@ -5771,10 +5632,10 @@ static bool choose_session_type(
             continue;
         }
 
-        if (key == KEY_UP ||
-            key == KEY_LEFT ||
-            key == KEY_DOWN ||
-            key == KEY_RIGHT) {
+        if (key == TRAINLOG_KEY_UP ||
+            key == TRAINLOG_KEY_LEFT ||
+            key == TRAINLOG_KEY_DOWN ||
+            key == TRAINLOG_KEY_RIGHT) {
             selected =
                 selected == 0
                     ? 1
@@ -5783,7 +5644,7 @@ static bool choose_session_type(
         }
 
         if (key == '\n' ||
-            key == KEY_ENTER) {
+            key == TRAINLOG_KEY_ENTER) {
             *output =
                 selected == 0
                     ? TRAINLOG_SESSION_TRAINING
@@ -6049,7 +5910,7 @@ static bool confirm_draft_delete(
         "1 confirmer  0 annuler"
     );
 
-    mvprintw(
+    trainlog_terminal_printf(tui_terminal,
         4,
         4,
         "%s",
@@ -6092,14 +5953,14 @@ static bool edit_session_draft(
         size_t top = 0U;
 
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int frame_top =
             large_layout ? 8 : 3;
 
         int frame_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int first_row =
             frame_top + 3;
@@ -6130,8 +5991,8 @@ static bool edit_session_draft(
         }
 
         if (large_layout) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: S E A N C E   E N   C O U R S ::"
@@ -6141,27 +6002,27 @@ static bool edit_session_draft(
                 frame_top,
                 2,
                 frame_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "RESUME AVANT ENREGISTREMENT",
                 true
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "↑↓ choisir  e/Entrée modifier  a ajouter  d supprimer  f enregistrer  q/Échap abandonner"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -6172,14 +6033,14 @@ static bool edit_session_draft(
             );
         }
 
-        attron(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             frame_top + 1,
             large_layout ? 5 : 4,
             "Type : %s",
@@ -6188,15 +6049,15 @@ static bool edit_session_draft(
             )
         );
 
-        attroff(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
         if (*count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 first_row + 1,
                 large_layout ? 5 : 4,
                 "Aucun exercice saisi. a = ajouter."
@@ -6223,15 +6084,15 @@ static bool edit_session_draft(
             );
 
             if (absolute == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 row,
                 large_layout ? 5 : 4,
                 " %2zu  %-36.36s  %-28.28s ",
@@ -6241,17 +6102,17 @@ static bool edit_session_draft(
             );
 
             if (absolute == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (key == 'q' ||
             key == 'Q' ||
@@ -6267,15 +6128,15 @@ static bool edit_session_draft(
                     TRAINLOG_COLOR_WARNING
                 );
 
-                refresh();
-                (void)getch();
+                trainlog_terminal_render(tui_terminal);
+                (void)trainlog_terminal_get_key(tui_terminal);
                 continue;
             }
 
             return true;
         }
 
-        if (key == KEY_UP &&
+        if (key == TRAINLOG_KEY_UP &&
             *count > 0U) {
             selected =
                 selected > 0U
@@ -6284,7 +6145,7 @@ static bool edit_session_draft(
             continue;
         }
 
-        if (key == KEY_DOWN &&
+        if (key == TRAINLOG_KEY_DOWN &&
             *count > 0U) {
             selected =
                 selected + 1U < *count
@@ -6302,8 +6163,8 @@ static bool edit_session_draft(
                     TRAINLOG_COLOR_WARNING
                 );
 
-                refresh();
-                (void)getch();
+                trainlog_terminal_render(tui_terminal);
+                (void)trainlog_terminal_get_key(tui_terminal);
                 continue;
             }
 
@@ -6322,7 +6183,7 @@ static bool edit_session_draft(
         if ((key == 'e' ||
              key == 'E' ||
              key == '\n' ||
-             key == KEY_ENTER) &&
+             key == TRAINLOG_KEY_ENTER) &&
             *count > 0U) {
             TrainlogSessionDraftExercise replacement;
 
@@ -6756,39 +6617,39 @@ static void screen_new_session(
     );
 
     if (status == TRAINLOG_STATUS_OK) {
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_SUCCESS
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             4,
             2,
             "✓ Séance enregistrée."
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_SUCCESS
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             6,
             2,
             "Début : %s",
             started_at
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             7,
             2,
             "Fin   : %s",
             ended_at
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             8,
             2,
             "Type  : %s",
@@ -6797,7 +6658,7 @@ static void screen_new_session(
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             9,
             2,
             "Exercices : %zu",
@@ -6868,14 +6729,14 @@ static void screen_session_detail(
 
     for (;;) {
         bool decorated =
-            COLS >= 100 &&
-            LINES >= 32;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 32;
 
         int key;
 
         if (decorated) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: D E T A I L   S E A N C E ::"
@@ -6885,47 +6746,47 @@ static void screen_session_detail(
                 8,
                 2,
                 13,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "SEANCE"
             );
 
             focused_panel(
                 14,
                 2,
-                LINES - 4,
-                COLS - 3,
+                trainlog_terminal_rows(tui_terminal) - 4,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "EXERCICE",
                 true
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "←→/↑↓ exercice précédent/suivant  e modifier la séance  b/Échap retour"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 10,
                 5,
                 "Début : %s",
                 session.started_at
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 11,
                 5,
                 "Fin   : %s",
@@ -6934,7 +6795,7 @@ static void screen_session_detail(
                     : "séance ouverte"
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 12,
                 5,
                 "Type  : %s",
@@ -6948,14 +6809,14 @@ static void screen_session_detail(
                 "←→/↑↓ naviguer  e modifier  b/Échap retour"
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 3,
                 4,
                 "Début : %s",
                 session.started_at
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 4,
                 4,
                 "Fin   : %s",
@@ -6964,7 +6825,7 @@ static void screen_session_detail(
                     : "séance ouverte"
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 5,
                 4,
                 "Type  : %s",
@@ -6975,7 +6836,7 @@ static void screen_session_detail(
         }
 
         if (count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 decorated ? 17 : 7,
                 decorated ? 5 : 4,
                 "Aucun exercice dans cette séance."
@@ -7013,14 +6874,14 @@ static void screen_session_detail(
                     );
                 }
 
-                attron(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     title_row,
                     decorated ? 5 : 4,
                     "Exercice %zu/%zu — %s",
@@ -7029,20 +6890,20 @@ static void screen_session_detail(
                     exercise->name
                 );
 
-                attroff(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     mode_row,
                     decorated ? 5 : 4,
                     "Mode : continu"
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     row++,
                     decorated ? 5 : 4,
                     "Durée : %s",
@@ -7050,7 +6911,7 @@ static void screen_session_detail(
                 );
 
                 if (exercise->has_continuous_speed != 0) {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         row++,
                         decorated ? 5 : 4,
                         "Vitesse : %.1f km/h",
@@ -7059,7 +6920,7 @@ static void screen_session_detail(
                 }
 
                 if (exercise->has_continuous_distance != 0) {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         row++,
                         decorated ? 5 : 4,
                         "Distance : %.2f km",
@@ -7067,22 +6928,22 @@ static void screen_session_detail(
                     );
                 }
 
-                attron(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_SUCCESS
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     row + 1,
                     decorated ? 5 : 4,
                     "Réalisé : activité continue"
                 );
 
-                attroff(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_SUCCESS
                     )
                 );
@@ -7135,14 +6996,14 @@ static void screen_session_detail(
                     );
                 }
 
-                attron(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     title_row,
                     decorated ? 5 : 4,
                     "Exercice %zu/%zu — %s",
@@ -7151,14 +7012,14 @@ static void screen_session_detail(
                     exercise->name
                 );
 
-                attroff(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     mode_row,
                     decorated ? 5 : 4,
                     "Mode : %-12s   Charge : %-10s   Repos : %s",
@@ -7175,7 +7036,7 @@ static void screen_session_detail(
                 if (
                     exercise->target_sets <= 0
                 ) {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         target_row,
                         decorated ? 5 : 4,
                         "Cible : non renseignée"
@@ -7184,7 +7045,7 @@ static void screen_session_detail(
                     exercise->tracking_mode ==
                     TRAINLOG_TRACKING_REPS
                 ) {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         target_row,
                         decorated ? 5 : 4,
                         "Cible : %d série(s) × %d reps",
@@ -7192,7 +7053,7 @@ static void screen_session_detail(
                         exercise->target_reps
                     );
                 } else {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         target_row,
                         decorated ? 5 : 4,
                         "Cible : %d série(s) × %s",
@@ -7202,65 +7063,65 @@ static void screen_session_detail(
                 }
 
                 if (exercise->has_target_weight != 0) {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         weight_row,
                         decorated ? 5 : 4,
                         "Charge cible : %.1f kg",
                         exercise->target_weight_kg
                     );
                 } else {
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         weight_row,
                         decorated ? 5 : 4,
                         "Charge cible : —"
                     );
                 }
 
-                attron(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_SUCCESS
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     actual_row,
                     decorated ? 5 : 4,
                     "Réalisé : %zu série(s)",
                     exercise->actual_set_count
                 );
 
-                attroff(
-                    A_BOLD |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_SUCCESS
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     summary_row,
                     decorated ? 5 : 4,
                     "%.*s",
-                    COLS - 10,
+                    trainlog_terminal_columns(tui_terminal) - 10,
                     exercise->actual_summary
                 );
 
                 if (exercise->load_mode ==
                     TRAINLOG_LOAD_ASSISTANCE) {
-                    attron(
-                        trainlog_theme_attribute(
+                    trainlog_terminal_style_on(tui_terminal,
+                        trainlog_theme_style(
                             TRAINLOG_COLOR_WARNING
                         )
                     );
 
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         warning_row,
                         decorated ? 5 : 4,
                         "Assistance : plus de kg = davantage d'aide."
                     );
 
-                    attroff(
-                        trainlog_theme_attribute(
+                    trainlog_terminal_style_off(tui_terminal,
+                        trainlog_theme_style(
                             TRAINLOG_COLOR_WARNING
                         )
                     );
@@ -7268,8 +7129,8 @@ static void screen_session_detail(
             }
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (key == 'b' ||
             key == 'B' ||
@@ -7288,16 +7149,16 @@ static void screen_session_detail(
         }
 
         if (count > 0U &&
-            (key == KEY_RIGHT ||
-             key == KEY_DOWN)) {
+            (key == TRAINLOG_KEY_RIGHT ||
+             key == TRAINLOG_KEY_DOWN)) {
             selected =
                 selected + 1U < count
                     ? selected + 1U
                     : 0U;
         } else if (
             count > 0U &&
-            (key == KEY_LEFT ||
-             key == KEY_UP)
+            (key == TRAINLOG_KEY_LEFT ||
+             key == TRAINLOG_KEY_UP)
         ) {
             selected =
                 selected > 0U
@@ -7325,9 +7186,9 @@ static void history_ascii_header(void)
 
     size_t index;
 
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
@@ -7339,30 +7200,30 @@ static void history_ascii_header(void)
             (int)strlen(logo[index]);
 
         int column =
-            (COLS - width) / 2;
+            (trainlog_terminal_columns(tui_terminal) - width) / 2;
 
         if (column < 2) {
             column = 2;
         }
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             1 + (int)index,
             column,
             "%.*s",
-            COLS - column - 2,
+            trainlog_terminal_columns(tui_terminal) - column - 2,
             logo[index]
         );
     }
 
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    attron(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -7375,13 +7236,13 @@ static void history_ascii_header(void)
             (int)strlen(label);
 
         int column =
-            (COLS - width) / 2;
+            (trainlog_terminal_columns(tui_terminal) - width) / 2;
 
         if (column < 2) {
             column = 2;
         }
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             6,
             column,
             "%s",
@@ -7389,8 +7250,8 @@ static void history_ascii_header(void)
         );
     }
 
-    attroff(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -7422,8 +7283,8 @@ static void history_scrollbar(
         return;
     }
 
-    attron(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -7431,15 +7292,15 @@ static void history_scrollbar(
     for (row = top;
          row <= bottom;
          ++row) {
-        mvaddch(
+        trainlog_terminal_draw(tui_terminal,
             row,
             column,
-            ACS_VLINE
+            0x2502U
         );
     }
 
-    attroff(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -7452,22 +7313,22 @@ static void history_scrollbar(
             (count - 1U)
         );
 
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    mvaddch(
+    trainlog_terminal_draw(tui_terminal,
         thumb,
         column,
-        ACS_CKBOARD
+        0x2593U
     );
 
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
@@ -7490,8 +7351,8 @@ static void screen_history(
         size_t index;
 
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int list_top =
             large_layout
@@ -7499,7 +7360,7 @@ static void screen_history(
                 : 3;
 
         int list_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int first_row =
             list_top + 1;
@@ -7523,8 +7384,8 @@ static void screen_history(
             return;
         }
 
-        erase();
-        box(stdscr, 0, 0);
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
         if (large_layout) {
             history_ascii_header();
@@ -7539,56 +7400,56 @@ static void screen_history(
                 list_top,
                 2,
                 list_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "SEANCES ENREGISTREES",
                 focus == 1
             );
         } else {
-            attron(
-                A_BOLD |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 1,
                 2,
                 " TRAINLOG — Historique "
             );
 
-            attroff(
-                A_BOLD |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
         }
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
-            LINES - 2,
+        trainlog_terminal_printf(tui_terminal,
+            trainlog_terminal_rows(tui_terminal) - 2,
             2,
             "%.*s",
-            COLS - 4,
+            trainlog_terminal_columns(tui_terminal) - 4,
             large_layout
                 ? "Tab zone  ↑↓/PgUp/PgDn liste  ←→ menu  Entrée ouvrir  e modifier  0/Home accueil  F1-F4 direct  b/Échap retour"
                 : "↑↓ naviguer  Entrée détail  e modifier  b/Échap retour"
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
         if (count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 first_row + 1,
                 large_layout ? 6 : 4,
                 "Aucune séance."
@@ -7625,9 +7486,9 @@ static void screen_history(
 
                 if (focus == 1 &&
                     absolute == selected) {
-                    attron(
-                        A_REVERSE |
-                        trainlog_theme_attribute(
+                    trainlog_terminal_style_on(tui_terminal,
+                        TRAINLOG_TEXT_REVERSE |
+                        trainlog_theme_style(
                             TRAINLOG_COLOR_ACCENT
                         )
                     );
@@ -7641,7 +7502,7 @@ static void screen_history(
                         display_date
                     );
 
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         item_row,
                         item_col,
                         " %-16s  %-14s  %2zu exercice(s) ",
@@ -7655,9 +7516,9 @@ static void screen_history(
 
                 if (focus == 1 &&
                     absolute == selected) {
-                    attroff(
-                        A_REVERSE |
-                        trainlog_theme_attribute(
+                    trainlog_terminal_style_off(tui_terminal,
+                        TRAINLOG_TEXT_REVERSE |
+                        trainlog_theme_style(
                             TRAINLOG_COLOR_ACCENT
                         )
                     );
@@ -7668,7 +7529,7 @@ static void screen_history(
                 history_scrollbar(
                     first_row,
                     list_bottom - 1,
-                    COLS - 5,
+                    trainlog_terminal_columns(tui_terminal) - 5,
                     selected,
                     count,
                     (size_t)visible_rows
@@ -7676,12 +7537,12 @@ static void screen_history(
             }
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (large_layout &&
-            (key == '\t' ||
-             key == KEY_BTAB)) {
+            (key == TRAINLOG_KEY_TAB ||
+             key == TRAINLOG_KEY_SHIFT_TAB)) {
             focus =
                 focus == 0
                     ? 1
@@ -7702,19 +7563,19 @@ static void screen_history(
 
         if (large_layout &&
             focus == 0) {
-            if (key == KEY_LEFT) {
+            if (key == TRAINLOG_KEY_LEFT) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
                         : 5;
-            } else if (key == KEY_RIGHT) {
+            } else if (key == TRAINLOG_KEY_RIGHT) {
                 nav_selected =
                     nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
                 key == '\n' ||
-                key == KEY_ENTER
+                key == TRAINLOG_KEY_ENTER
             ) {
                 if (primary_top_nav_activate(
                         nav_selected
@@ -7730,7 +7591,7 @@ static void screen_history(
             continue;
         }
 
-        if (key == KEY_UP) {
+        if (key == TRAINLOG_KEY_UP) {
             selected =
                 selected > 0U
                     ? selected - 1U
@@ -7739,7 +7600,7 @@ static void screen_history(
             continue;
         }
 
-        if (key == KEY_DOWN) {
+        if (key == TRAINLOG_KEY_DOWN) {
             selected =
                 selected + 1U < count
                     ? selected + 1U
@@ -7748,7 +7609,7 @@ static void screen_history(
             continue;
         }
 
-        if (key == KEY_PPAGE) {
+        if (key == TRAINLOG_KEY_PAGE_UP) {
             size_t jump =
                 (size_t)visible_rows;
 
@@ -7760,7 +7621,7 @@ static void screen_history(
             continue;
         }
 
-        if (key == KEY_NPAGE) {
+        if (key == TRAINLOG_KEY_PAGE_DOWN) {
             size_t jump =
                 (size_t)visible_rows;
 
@@ -7773,7 +7634,7 @@ static void screen_history(
         }
 
         if (key == '\n' ||
-            key == KEY_ENTER) {
+            key == TRAINLOG_KEY_ENTER) {
             screen_session_detail(
                 database,
                 sessions[selected].session_id
@@ -7804,7 +7665,7 @@ static void body_panel(
     const char *label
 )
 {
-    WINDOW *panel;
+    TrainlogPanel *panel;
     int height;
     int width;
 
@@ -7812,17 +7673,15 @@ static void body_panel(
         left < 0 ||
         bottom <= top ||
         right <= left ||
-        bottom >= LINES ||
-        right >= COLS) {
+        bottom >= trainlog_terminal_rows(tui_terminal) ||
+        right >= trainlog_terminal_columns(tui_terminal)) {
         return;
     }
 
     height = bottom - top + 1;
     width = right - left + 1;
 
-    panel = derwin(
-        stdscr,
-        height,
+    panel = tui_panel_create(tui_terminal, height,
         width,
         top,
         left
@@ -7832,20 +7691,20 @@ static void body_panel(
         return;
     }
 
-    box(panel, 0, 0);
+    tui_panel_box(panel);
 
     if (label != NULL &&
         label[0] != '\0' &&
         width > 8) {
-        wattron(
+        tui_panel_style_on(
             panel,
-            A_BOLD |
-            trainlog_theme_attribute(
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvwprintw(
+        tui_panel_print(
             panel,
             0,
             2,
@@ -7854,18 +7713,17 @@ static void body_panel(
             label
         );
 
-        wattroff(
+        tui_panel_style_off(
             panel,
-            A_BOLD |
-            trainlog_theme_attribute(
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
     }
 
-    syncok(panel, TRUE);
-    wsyncup(panel);
-    delwin(panel);
+    tui_panel_commit(panel);
+    tui_panel_destroy(panel);
 }
 
 static void body_short_date(
@@ -7961,8 +7819,8 @@ static void body_draw_scrollbar(
         return;
     }
 
-    attron(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -7970,15 +7828,15 @@ static void body_draw_scrollbar(
     for (row = top;
          row <= bottom;
          ++row) {
-        mvaddch(
+        trainlog_terminal_draw(tui_terminal,
             row,
             column,
-            ACS_VLINE
+            0x2502U
         );
     }
 
-    attroff(
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        trainlog_theme_style(
             TRAINLOG_COLOR_MUTED
         )
     );
@@ -7991,22 +7849,22 @@ static void body_draw_scrollbar(
             (count - 1U)
         );
 
-    attron(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
 
-    mvaddch(
+    trainlog_terminal_draw(tui_terminal,
         thumb,
         column,
-        ACS_CKBOARD
+        0x2593U
     );
 
-    attroff(
-        A_BOLD |
-        trainlog_theme_attribute(
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(
             TRAINLOG_COLOR_ACCENT
         )
     );
@@ -8447,7 +8305,7 @@ static void body_detail_value(
 )
 {
     if (present) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             row,
             column,
             "%-24s %7.1f %s",
@@ -8456,7 +8314,7 @@ static void body_detail_value(
             unit
         );
     } else {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             row,
             column,
             "%-24s %7s",
@@ -8477,8 +8335,8 @@ static void screen_body_observation_detail(
         TrainlogBodyObservationRecord record;
         char date[9];
         bool decorated =
-            COLS >= 100 &&
-            LINES >= 34;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 34;
         int frame_top =
             decorated ? 8 : 3;
         int key;
@@ -8503,8 +8361,8 @@ static void screen_body_observation_detail(
         );
 
         if (decorated) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: D E T A I L   C O R P S ::"
@@ -8513,30 +8371,30 @@ static void screen_body_observation_detail(
             focused_panel(
                 frame_top,
                 2,
-                LINES - 4,
-                COLS - 3,
+                trainlog_terminal_rows(tui_terminal) - 4,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 page == 0
                     ? "RELEVE — GENERAL"
                     : "RELEVE — MEMBRES",
                 true
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "←→ page  e Modifier  b/Échap retour"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -8549,22 +8407,22 @@ static void screen_body_observation_detail(
             body_panel(
                 3,
                 2,
-                LINES - 4,
-                COLS - 3,
+                trainlog_terminal_rows(tui_terminal) - 4,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 page == 0
                     ? "RELEVE — GENERAL"
                     : "RELEVE — MEMBRES"
             );
         }
 
-        attron(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
 
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             frame_top + 2,
             5,
             "%s   page %d/2",
@@ -8572,9 +8430,9 @@ static void screen_body_observation_detail(
             page + 1
         );
 
-        attroff(
-            A_BOLD |
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            TRAINLOG_TEXT_BOLD |
+            trainlog_theme_style(
                 TRAINLOG_COLOR_ACCENT
             )
         );
@@ -8707,8 +8565,8 @@ static void screen_body_observation_detail(
             );
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (key == 'b' ||
             key == 'B' ||
@@ -8716,8 +8574,8 @@ static void screen_body_observation_detail(
             return;
         }
 
-        if (key == KEY_LEFT ||
-            key == KEY_RIGHT) {
+        if (key == TRAINLOG_KEY_LEFT ||
+            key == TRAINLOG_KEY_RIGHT) {
             page =
                 page == 0
                     ? 1
@@ -9122,7 +8980,7 @@ static bool body_analytics_profile_prompt(
             TRAINLOG_COLOR_ERROR
         );
 
-        refresh();
+        trainlog_terminal_render(tui_terminal);
     }
 
     profile->formula =
@@ -9257,7 +9115,7 @@ static void body_analytics_value(
 )
 {
     if (present) {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             row,
             6,
             "%-25s %8.2f %s",
@@ -9268,7 +9126,7 @@ static void body_analytics_value(
                 : ""
         );
     } else {
-        mvprintw(
+        trainlog_terminal_printf(tui_terminal,
             row,
             6,
             "%-25s %8s",
@@ -9352,23 +9210,21 @@ static void screen_body_analytics(
             );
 
         bool decorated =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int panel_top =
             decorated ? 8 : 3;
 
         int panel_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int key;
 
-        erase();
-        box(
-            stdscr,
-            0,
-            0
-        );
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0,
+                              trainlog_terminal_rows(tui_terminal) - 1,
+                              trainlog_terminal_columns(tui_terminal) - 1);
 
         if (decorated) {
             section_ascii_header(
@@ -9379,7 +9235,7 @@ static void screen_body_analytics(
                 panel_top,
                 2,
                 panel_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 page == 0
                     ? "COMPOSITION ET TENDANCE"
                     : "PROPORTIONS ET SYMETRIE",
@@ -9395,41 +9251,41 @@ static void screen_body_analytics(
                 panel_top,
                 2,
                 panel_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 page == 0
                     ? "COMPOSITION"
                     : "PROPORTIONS"
             );
         }
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
-            LINES - 2,
+        trainlog_terminal_printf(tui_terminal,
+            trainlog_terminal_rows(tui_terminal) - 2,
             2,
             "%.*s",
-            COLS - 4,
+            trainlog_terminal_columns(tui_terminal) - 4,
             "←→ page  p profil estimation  b/Échap retour"
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
         if (count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 panel_top + 2,
                 6,
                 "Aucun relevé corporel."
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 panel_top + 4,
                 6,
                 "Ajoutez d'abord un relevé réel."
@@ -9442,29 +9298,29 @@ static void screen_body_analytics(
                 date
             );
 
-            attron(
-                A_BOLD |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 panel_top + 2,
                 6,
                 "Dernier relevé : %s",
                 date
             );
 
-            attroff(
-                A_BOLD |
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_BOLD |
+                trainlog_theme_style(
                     TRAINLOG_COLOR_ACCENT
                 )
             );
 
             if (has_profile) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 4,
                     6,
                     "Profil estimation : %s · %.1f cm",
@@ -9475,20 +9331,20 @@ static void screen_body_analytics(
                     profile.height_cm
                 );
             } else {
-                attron(
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_WARNING
                     )
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 4,
                     6,
                     "Profil estimation non configuré · p pour configurer."
                 );
 
-                attroff(
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_WARNING
                     )
                 );
@@ -9543,7 +9399,7 @@ static void screen_body_analytics(
                                 ->body_weight_kg
                         : 0.0;
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 10,
                     6,
                     "Poids : %.1f kg  · variation depuis 1er poids : %+.1f kg",
@@ -9551,7 +9407,7 @@ static void screen_body_analytics(
                     delta
                 );
             } else {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 10,
                     6,
                     "Poids : —"
@@ -9568,7 +9424,7 @@ static void screen_body_analytics(
                                 ->waist_cm
                         : 0.0;
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 11,
                     6,
                     "Tour de taille : %.1f cm  · variation : %+.1f cm",
@@ -9576,7 +9432,7 @@ static void screen_body_analytics(
                     delta
                 );
             } else {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 11,
                     6,
                     "Tour de taille : —"
@@ -9589,7 +9445,7 @@ static void screen_body_analytics(
                     .has_body_fat_estimate &&
                 has_oldest_estimate
             ) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     panel_top + 12,
                     6,
                     "Variation graisse estimée : %+.2f point(s)",
@@ -9600,22 +9456,22 @@ static void screen_body_analytics(
                 );
             }
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_WARNING
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 panel_top + 14,
                 6,
                 "%.*s",
-                COLS - 14,
+                trainlog_terminal_columns(tui_terminal) - 14,
                 "Estimation anthropométrique : tendance utile, pas mesure directe de composition."
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_WARNING
                 )
             );
@@ -9659,7 +9515,7 @@ static void screen_body_analytics(
                 ""
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 panel_top + 8,
                 6,
                 "ASYMETRIE GAUCHE / DROITE"
@@ -9717,29 +9573,29 @@ static void screen_body_analytics(
                 "%"
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 panel_top + 16,
                 6,
                 "%.*s",
-                COLS - 14,
+                trainlog_terminal_columns(tui_terminal) - 14,
                 "Ratios et asymétries sont descriptifs : Trainlog ne les transforme pas en diagnostic."
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (
             key == 'b' ||
@@ -9750,8 +9606,8 @@ static void screen_body_analytics(
         }
 
         if (
-            key == KEY_LEFT ||
-            key == KEY_RIGHT
+            key == TRAINLOG_KEY_LEFT ||
+            key == TRAINLOG_KEY_RIGHT
         ) {
             page =
                 page == 0
@@ -9794,8 +9650,8 @@ static void screen_body_analytics(
                     TRAINLOG_COLOR_SUCCESS
                 );
 
-                refresh();
-                (void)getch();
+                trainlog_terminal_render(tui_terminal);
+                (void)trainlog_terminal_get_key(tui_terminal);
             }
         }
     }
@@ -9822,8 +9678,8 @@ static void screen_body(
         size_t index;
 
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int graph_top =
             large_layout ? 11 : 3;
@@ -9835,7 +9691,7 @@ static void screen_body(
             graph_bottom + 1;
 
         int list_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int first_row =
             list_top + 1;
@@ -9883,8 +9739,8 @@ static void screen_body(
         }
 
         if (large_layout) {
-            erase();
-            box(stdscr, 0, 0);
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_box(tui_terminal, 0, 0, trainlog_terminal_rows(tui_terminal) - 1, trainlog_terminal_columns(tui_terminal) - 1);
 
             section_ascii_header(
                 ":: C O R P S ::"
@@ -9896,22 +9752,22 @@ static void screen_body(
                 focus == 0
             );
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "Tab zone  ↑↓/PgUp/PgDn relevés  ←→ menu  Entrée détail  e Modifier  a ajouter  v analyse  g vue globale  0/Home accueil  F1-F4 direct"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -9926,12 +9782,12 @@ static void screen_body(
             graph_top,
             2,
             graph_bottom,
-            COLS - 3,
+            trainlog_terminal_columns(tui_terminal) - 3,
             "EVOLUTION DU POIDS"
         );
 
         if (weight_count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 graph_top + 3,
                 6,
                 "Aucune donnée de poids."
@@ -9953,7 +9809,7 @@ static void screen_body(
                 list_top,
                 2,
                 list_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "RELEVES ENREGISTRES",
                 focus == 1
             );
@@ -9962,13 +9818,13 @@ static void screen_body(
                 list_top,
                 2,
                 list_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "RELEVES ENREGISTRES"
             );
         }
 
         if (count == 0U) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 first_row + 1,
                 6,
                 "Aucun relevé. Appuyez sur a pour en ajouter un."
@@ -10002,28 +9858,28 @@ static void screen_body(
 
             if (focus == 1 &&
                 absolute == selected) {
-                attron(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
             }
 
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 row,
                 5,
                 " %-8s  %.*s ",
                 date,
-                COLS - 20,
+                trainlog_terminal_columns(tui_terminal) - 20,
                 summary
             );
 
             if (focus == 1 &&
                 absolute == selected) {
-                attroff(
-                    A_REVERSE |
-                    trainlog_theme_attribute(
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(
                         TRAINLOG_COLOR_ACCENT
                     )
                 );
@@ -10033,18 +9889,18 @@ static void screen_body(
         body_draw_scrollbar(
             first_row,
             list_bottom - 1,
-            COLS - 5,
+            trainlog_terminal_columns(tui_terminal) - 5,
             selected,
             count,
             (size_t)visible_rows
         );
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (large_layout &&
-            (key == '\t' ||
-             key == KEY_BTAB)) {
+            (key == TRAINLOG_KEY_TAB ||
+             key == TRAINLOG_KEY_SHIFT_TAB)) {
             focus =
                 focus == 0
                     ? 1
@@ -10065,19 +9921,19 @@ static void screen_body(
 
         if (large_layout &&
             focus == 0) {
-            if (key == KEY_LEFT) {
+            if (key == TRAINLOG_KEY_LEFT) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
                         : 5;
-            } else if (key == KEY_RIGHT) {
+            } else if (key == TRAINLOG_KEY_RIGHT) {
                 nav_selected =
                     nav_selected < 5
                         ? nav_selected + 1
                         : 0;
             } else if (
                 key == '\n' ||
-                key == KEY_ENTER
+                key == TRAINLOG_KEY_ENTER
             ) {
                 if (primary_top_nav_activate(
                         nav_selected
@@ -10089,7 +9945,7 @@ static void screen_body(
             continue;
         }
 
-        if (key == KEY_UP &&
+        if (key == TRAINLOG_KEY_UP &&
             count > 0U) {
             selected =
                 selected > 0U
@@ -10099,7 +9955,7 @@ static void screen_body(
             continue;
         }
 
-        if (key == KEY_DOWN &&
+        if (key == TRAINLOG_KEY_DOWN &&
             count > 0U) {
             selected =
                 selected + 1U < count
@@ -10109,7 +9965,7 @@ static void screen_body(
             continue;
         }
 
-        if (key == KEY_PPAGE &&
+        if (key == TRAINLOG_KEY_PAGE_UP &&
             count > 0U) {
             size_t jump =
                 (size_t)visible_rows;
@@ -10122,7 +9978,7 @@ static void screen_body(
             continue;
         }
 
-        if (key == KEY_NPAGE &&
+        if (key == TRAINLOG_KEY_PAGE_DOWN &&
             count > 0U) {
             size_t jump =
                 (size_t)visible_rows;
@@ -10136,7 +9992,7 @@ static void screen_body(
         }
 
         if ((key == '\n' ||
-             key == KEY_ENTER) &&
+             key == TRAINLOG_KEY_ENTER) &&
             count > 0U) {
             screen_body_observation_detail(
                 database,
@@ -10184,8 +10040,8 @@ static void screen_body(
                 database
             );
 
-            refresh();
-            (void)getch();
+            trainlog_terminal_render(tui_terminal);
+            (void)trainlog_terminal_get_key(tui_terminal);
         }
     }
 }
@@ -10657,8 +10513,8 @@ static void screen_sync_run_detail(
 
     for (;;) {
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int panel_top =
             large_layout
@@ -10666,7 +10522,7 @@ static void screen_sync_run_detail(
                 : 3;
 
         int panel_bottom =
-            LINES - 4;
+            trainlog_terminal_rows(tui_terminal) - 4;
 
         int first_row =
             panel_top + 2;
@@ -10682,12 +10538,10 @@ static void screen_sync_run_detail(
             return;
         }
 
-        erase();
-        box(
-            stdscr,
-            0,
-            0
-        );
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0,
+                              trainlog_terminal_rows(tui_terminal) - 1,
+                              trainlog_terminal_columns(tui_terminal) - 1);
 
         if (large_layout) {
             section_ascii_header(
@@ -10698,7 +10552,7 @@ static void screen_sync_run_detail(
                 panel_top,
                 2,
                 panel_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "DETAIL SYNCHRONISATION",
                 true
             );
@@ -10716,14 +10570,14 @@ static void screen_sync_run_detail(
                 line_count;
             ++index
         ) {
-            mvprintw(
+            trainlog_terminal_printf(tui_terminal,
                 first_row +
                     (int)index,
                 large_layout
                     ? 5
                     : 4,
                 "%.*s",
-                COLS -
+                trainlog_terminal_columns(tui_terminal) -
                     (
                         large_layout
                             ? 10
@@ -10736,53 +10590,53 @@ static void screen_sync_run_detail(
             );
         }
 
-        attron(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_on(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        mvprintw(
-            LINES - 2,
+        trainlog_terminal_printf(tui_terminal,
+            trainlog_terminal_rows(tui_terminal) - 2,
             2,
             "%.*s",
-            COLS - 4,
+            trainlog_terminal_columns(tui_terminal) - 4,
             "↑↓ défiler  PgUp/PgDn page  b/Échap retour"
         );
 
-        attroff(
-            trainlog_theme_attribute(
+        trainlog_terminal_style_off(tui_terminal,
+            trainlog_theme_style(
                 TRAINLOG_COLOR_MUTED
             )
         );
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (
             key == 'b' ||
             key == 'B' ||
             key == 27 ||
             key == '\n' ||
-            key == KEY_ENTER
+            key == TRAINLOG_KEY_ENTER
         ) {
             return;
         }
 
         if (
-            key == KEY_UP &&
+            key == TRAINLOG_KEY_UP &&
             offset > 0U
         ) {
             --offset;
         } else if (
-            key == KEY_DOWN &&
+            key == TRAINLOG_KEY_DOWN &&
             offset +
                 (size_t)visible <
                 line_count
         ) {
             ++offset;
         } else if (
-            key == KEY_PPAGE
+            key == TRAINLOG_KEY_PAGE_UP
         ) {
             size_t jump =
                 (size_t)visible;
@@ -10792,7 +10646,7 @@ static void screen_sync_run_detail(
                     ? offset - jump
                     : 0U;
         } else if (
-            key == KEY_NPAGE
+            key == TRAINLOG_KEY_PAGE_DOWN
         ) {
             size_t jump =
                 (size_t)visible;
@@ -10861,8 +10715,8 @@ static void screen_sync(
         size_t history_count = 0U;
 
         bool large_layout =
-            COLS >= 100 &&
-            LINES >= 30;
+            trainlog_terminal_columns(tui_terminal) >= 100 &&
+            trainlog_terminal_rows(tui_terminal) >= 30;
 
         int key;
 
@@ -10889,12 +10743,10 @@ static void screen_sync(
                 history_count - 1U;
         }
 
-        erase();
-        box(
-            stdscr,
-            0,
-            0
-        );
+        trainlog_terminal_erase(tui_terminal);
+        trainlog_terminal_box(tui_terminal, 0, 0,
+                              trainlog_terminal_rows(tui_terminal) - 1,
+                              trainlog_terminal_columns(tui_terminal) - 1);
 
         if (large_layout) {
             size_t index;
@@ -10903,7 +10755,7 @@ static void screen_sync(
             int history_top = 18;
 
             int history_bottom =
-                LINES - 4;
+                trainlog_terminal_rows(tui_terminal) - 4;
 
             int visible_rows =
                 history_bottom -
@@ -10924,7 +10776,7 @@ static void screen_sync(
                 11,
                 2,
                 16,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "APPAREIL CONNECTE",
                 false
             );
@@ -10935,13 +10787,13 @@ static void screen_sync(
                 device.connected &&
                 device.storage_ready
             ) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     12,
                     5,
                     "✓ MTP direct connecté"
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     13,
                     5,
                     "%s %s",
@@ -10949,7 +10801,7 @@ static void screen_sync(
                     device.device.model
                 );
 
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     14,
                     5,
                     "Stockage interne : %.2f GiB libres / %.2f GiB",
@@ -10966,13 +10818,13 @@ static void screen_sync(
                 probe_status ==
                 TRAINLOG_STATUS_CONFLICT
             ) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     13,
                     5,
                     "Service de synchronisation occupé."
                 );
             } else {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     13,
                     5,
                     "Aucun appareil MTP Trainlog détecté."
@@ -10983,7 +10835,7 @@ static void screen_sync(
                 history_top,
                 2,
                 history_bottom,
-                COLS - 3,
+                trainlog_terminal_columns(tui_terminal) - 3,
                 "HISTORIQUE DES SYNCHRONISATIONS",
                 focus == 1
             );
@@ -10991,7 +10843,7 @@ static void screen_sync(
             if (
                 history_count == 0U
             ) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     history_top + 2,
                     5,
                     "Aucune synchronisation enregistrée."
@@ -11031,15 +10883,15 @@ static void screen_sync(
                         focus == 1 &&
                         absolute == selected
                     ) {
-                        attron(
-                            A_REVERSE |
-                            trainlog_theme_attribute(
+                        trainlog_terminal_style_on(tui_terminal,
+                            TRAINLOG_TEXT_REVERSE |
+                            trainlog_theme_style(
                                 TRAINLOG_COLOR_ACCENT
                             )
                         );
                     }
 
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         row,
                         5,
                         " %-16s  %c  %-*.*s ",
@@ -11049,8 +10901,8 @@ static void screen_sync(
                             .success
                             ? '+'
                             : '!',
-                        COLS - 28,
-                        COLS - 28,
+                        trainlog_terminal_columns(tui_terminal) - 28,
+                        trainlog_terminal_columns(tui_terminal) - 28,
                         history[absolute]
                             .summary
                     );
@@ -11059,9 +10911,9 @@ static void screen_sync(
                         focus == 1 &&
                         absolute == selected
                     ) {
-                        attroff(
-                            A_REVERSE |
-                            trainlog_theme_attribute(
+                        trainlog_terminal_style_off(tui_terminal,
+                            TRAINLOG_TEXT_REVERSE |
+                            trainlog_theme_style(
                                 TRAINLOG_COLOR_ACCENT
                             )
                         );
@@ -11069,22 +10921,22 @@ static void screen_sync(
                 }
             }
 
-            attron(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_on(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
 
-            mvprintw(
-                LINES - 2,
+            trainlog_terminal_printf(tui_terminal,
+                trainlog_terminal_rows(tui_terminal) - 2,
                 2,
                 "%.*s",
-                COLS - 4,
+                trainlog_terminal_columns(tui_terminal) - 4,
                 "Tab zone  ←→ menu  ↑↓ historique  Entrée détail  s synchroniser  r actualiser  b/Échap retour"
             );
 
-            attroff(
-                trainlog_theme_attribute(
+            trainlog_terminal_style_off(tui_terminal,
+                trainlog_theme_style(
                     TRAINLOG_COLOR_MUTED
                 )
             );
@@ -11099,7 +10951,7 @@ static void screen_sync(
                     TRAINLOG_STATUS_OK &&
                 device.connected
             ) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     4,
                     4,
                     "✓ %s %s",
@@ -11107,7 +10959,7 @@ static void screen_sync(
                     device.device.model
                 );
             } else {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     4,
                     4,
                     "Aucun appareil MTP."
@@ -11117,7 +10969,7 @@ static void screen_sync(
             if (
                 history_count == 0U
             ) {
-                mvprintw(
+                trainlog_terminal_printf(tui_terminal,
                     7,
                     4,
                     "Aucune synchronisation."
@@ -11138,15 +10990,15 @@ static void screen_sync(
                     if (
                         index == selected
                     ) {
-                        attron(
-                            A_REVERSE |
-                            trainlog_theme_attribute(
+                        trainlog_terminal_style_on(tui_terminal,
+                            TRAINLOG_TEXT_REVERSE |
+                            trainlog_theme_style(
                                 TRAINLOG_COLOR_ACCENT
                             )
                         );
                     }
 
-                    mvprintw(
+                    trainlog_terminal_printf(tui_terminal,
                         7 + (int)index,
                         4,
                         "%-16s %c %.*s",
@@ -11156,7 +11008,7 @@ static void screen_sync(
                             .success
                             ? '+'
                             : '!',
-                        COLS - 25,
+                        trainlog_terminal_columns(tui_terminal) - 25,
                         history[index]
                             .summary
                     );
@@ -11164,9 +11016,9 @@ static void screen_sync(
                     if (
                         index == selected
                     ) {
-                        attroff(
-                            A_REVERSE |
-                            trainlog_theme_attribute(
+                        trainlog_terminal_style_off(tui_terminal,
+                            TRAINLOG_TEXT_REVERSE |
+                            trainlog_theme_style(
                                 TRAINLOG_COLOR_ACCENT
                             )
                         );
@@ -11175,8 +11027,8 @@ static void screen_sync(
             }
         }
 
-        refresh();
-        key = getch();
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
 
         if (
             key == 's' ||
@@ -11190,7 +11042,7 @@ static void screen_sync(
                 TRAINLOG_COLOR_WARNING
             );
 
-            refresh();
+            trainlog_terminal_render(tui_terminal);
 
             status =
                 trainlog_sync_run(
@@ -11217,8 +11069,8 @@ static void screen_sync(
                 );
             }
 
-            refresh();
-            (void)getch();
+            trainlog_terminal_render(tui_terminal);
+            (void)trainlog_terminal_get_key(tui_terminal);
 
             refresh_device = true;
             continue;
@@ -11243,8 +11095,8 @@ static void screen_sync(
         if (
             large_layout &&
             (
-                key == '\t' ||
-                key == KEY_BTAB
+                key == TRAINLOG_KEY_TAB ||
+                key == TRAINLOG_KEY_SHIFT_TAB
             )
         ) {
             focus =
@@ -11260,14 +11112,14 @@ static void screen_sync(
             focus == 0
         ) {
             if (
-                key == KEY_LEFT
+                key == TRAINLOG_KEY_LEFT
             ) {
                 nav_selected =
                     nav_selected > 0
                         ? nav_selected - 1
                         : 5;
             } else if (
-                key == KEY_RIGHT
+                key == TRAINLOG_KEY_RIGHT
             ) {
                 nav_selected =
                     nav_selected < 5
@@ -11275,11 +11127,9 @@ static void screen_sync(
                         : 0;
             } else if (
                 key == '\n' ||
-                key == KEY_ENTER
+                key == TRAINLOG_KEY_ENTER
             ) {
-                if (
-                    nav_selected == 5
-                ) {
+                if (nav_selected == 5) {
                     focus = 1;
                 } else if (
                     primary_top_nav_activate(
@@ -11297,7 +11147,7 @@ static void screen_sync(
             history_count > 0U &&
             (
                 key == '\n' ||
-                key == KEY_ENTER
+                key == TRAINLOG_KEY_ENTER
             )
         ) {
             if (
@@ -11314,7 +11164,7 @@ static void screen_sync(
         }
 
         if (
-            key == KEY_UP &&
+            key == TRAINLOG_KEY_UP &&
             history_count > 0U
         ) {
             selected =
@@ -11322,7 +11172,7 @@ static void screen_sync(
                     ? selected - 1U
                     : history_count - 1U;
         } else if (
-            key == KEY_DOWN &&
+            key == TRAINLOG_KEY_DOWN &&
             history_count > 0U
         ) {
             selected =
@@ -11332,18 +11182,18 @@ static void screen_sync(
                     : 0U;
         } else if (
             key == '0' ||
-            key == KEY_HOME
+            key == TRAINLOG_KEY_HOME
         ) {
             return;
         } else if (
             key == '1' ||
-            key == KEY_F(1) ||
+            key == TRAINLOG_KEY_F1 ||
             key == '2' ||
-            key == KEY_F(2) ||
+            key == TRAINLOG_KEY_F2 ||
             key == '3' ||
-            key == KEY_F(3) ||
+            key == TRAINLOG_KEY_F3 ||
             key == '4' ||
-            key == KEY_F(4)
+            key == TRAINLOG_KEY_F4
         ) {
             if (
                 primary_top_nav_forward(
@@ -11364,32 +11214,29 @@ int trainlog_tui_run(TrainlogDatabase *database)
 
     (void)setlocale(LC_ALL, "");
 
-    if (initscr() == NULL) {
+    tui_terminal = trainlog_terminal_create();
+    if (tui_terminal == NULL) {
         return 1;
     }
 
-    cbreak();
-    noecho();
-    keypad(stdscr, true);
-    curs_set(0);
-    trainlog_theme_initialize();
+    trainlog_terminal_cursor_visible(tui_terminal, false);
 
     for (;;) {
         DashboardAction action;
 
-        if (LINES < 20 || COLS < 72) {
+        if (trainlog_terminal_rows(tui_terminal) < 20 || trainlog_terminal_columns(tui_terminal) < 72) {
             int key;
 
-            erase();
-            mvprintw(
+            trainlog_terminal_erase(tui_terminal);
+            trainlog_terminal_printf(tui_terminal,
                 1,
                 2,
                 "Terminal trop petit — minimum 72x20."
             );
-            mvprintw(3, 2, "q pour quitter");
-            refresh();
+            trainlog_terminal_printf(tui_terminal, 3, 2, "q pour quitter");
+            trainlog_terminal_render(tui_terminal);
 
-            key = getch();
+            key = trainlog_terminal_get_key(tui_terminal);
             if (key == 'q' || key == 'Q') {
                 break;
             }
@@ -11415,13 +11262,15 @@ int trainlog_tui_run(TrainlogDatabase *database)
             screen_sync(database);
             break;
         case DASHBOARD_QUIT:
-            endwin();
+            trainlog_terminal_destroy(tui_terminal);
+            tui_terminal = NULL;
             return 0;
         default:
             break;
         }
     }
 
-    endwin();
+    trainlog_terminal_destroy(tui_terminal);
+    tui_terminal = NULL;
     return 0;
 }

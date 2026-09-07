@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-The Trainlog desktop application is a C17/ncursesw interface for durable
+The Trainlog desktop application is a C17/Notcurses interface for durable
 history, correction, analysis, visualization, direct data entry, and manual
 synchronization.
 
@@ -45,6 +45,22 @@ Smaller terminals display a clear fallback instead of corrupt layout.
 ## 3. Visual rules
 
 The TUI uses centralized semantic theme roles.
+
+Notcurses provides a true-color Catppuccin-derived dark palette: background
+`#1E1E2E`, surface `#181825`, text `#CDD6F4`, and semantic accent, success,
+warning, error, muted, and graph roles. Unicode frames and visible selection
+markers enhance presentation without becoming application semantics.
+
+The backend owns one standard plane for a run, translates terminal input into
+Trainlog-owned keys, accepts complete UTF-8 code points in prompts, and
+re-queries dimensions while rendering so the 72x20 minimum/fallback recovers
+after a resize.
+
+Input lifecycle is handled at that boundary: legacy/unknown terminal events,
+Notcurses PRESS events, and deliberate auto-REPEAT events become one logical
+Trainlog action; Notcurses RELEASE events are consumed and never reach screen
+navigation or prompt handling. This prevents extended terminal keyboard
+protocols from applying one physical keypress twice.
 
 Color is not the sole state carrier.
 

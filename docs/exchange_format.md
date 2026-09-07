@@ -524,9 +524,11 @@ For each incoming exercise, the TUI reconciles against the local canonical catal
 
 Reuse the existing exercise.
 
-If the normalized display name differs, import is allowed but a non-fatal metadata warning is surfaced.
-
-The canonical local name is not silently changed.
+If the normalized display name differs, update `name` and `normalized_name` in
+the existing catalog row. This is a stable-ID rename: completed session
+references remain attached to the same row and no second exercise is created.
+If another identity already owns the incoming normalized name, reject the
+import as an identity conflict.
 
 ### Same ID, different tracking mode
 

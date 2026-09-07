@@ -79,14 +79,22 @@ Current normal suite:
 16  usb
 17  variable_sets
 18  schema_v5_migration
-19  mobile_import_variable_sets
+19  measured_max
+20  body_analytics
+21  terminal_input_event_type_policy
+22  mobile_import_variable_sets
 ```
 
 Validated checkpoint:
 
 ```text
-21/21 PASS
+22/22 PASS
 ```
+
+The desktop executable is additionally smoke-checked in isolated tmux PTYs at
+100x30, the exact 72x20 minimum, and the 60x15 fallback; a resize down/up must
+recover before a clean keyboard quit. Notcurses is verified as the executable's
+direct terminal dependency with `readelf -d`.
 
 Notable regression coverage:
 
@@ -98,8 +106,12 @@ Notable regression coverage:
 - repetition shorthand/list/pyramid parsing;
 - direct v4 -> v5 database migration;
 - heterogeneous mobile-set import;
+- Notcurses input lifecycle translation: PRESS/REPEAT are actionable while a
+  RELEASE event is consumed without creating a second navigation action.
 - targetless mobile SETS persistence;
 - mobile-import idempotence.
+- stable-ID mobile-to-desktop rename reconciliation without duplicate catalog
+  rows or historical-reference replacement.
 
 ## 5. Build
 
@@ -129,6 +141,14 @@ Install to the connected device when hardware behavior changes:
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Android repository host tests additionally cover exercise editing:
+
+- trimmed rename preserves `exercise_id` and recalculates `normalized_name`;
+- duplicate and invalid names are rejected;
+- completed history and active-draft references resolve the renamed catalog row;
+- a referenced profile change is explicitly rejected;
+- same-ID PC-catalog rename reconciles in place without a duplicate.
 
 ## 7. Hardware MTP validation
 
@@ -238,7 +258,7 @@ Coverage proves:
 Current normal baseline:
 
 ```text
-21/21 PASS
+22/22 PASS
 ```
 
 ## 12. Body analytics regression
@@ -263,5 +283,53 @@ Coverage includes:
 Current normal baseline:
 
 ```text
-21/21 PASS
+22/22 PASS
 ```
+
+## 13. Android session draft v1
+
+Android schema v4 adds one durable active draft with an explicit additive v3 ->
+v4 migration. The current host suite has **8 tests**, covering all exercise
+shapes and raw partial text, fresh repository restore, remove/discard, atomic
+finalization and repeated-finalize rejection, rollback, catalog reconciliation,
+missing-selection recovery, explicit DB-open failure and historical migration.
+
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug assembleDebugAndroidTest
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w -e package com.labfytools.trainlog \
+  com.labfytools.trainlog.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The device instrumentation suite has **5 tests**: two real-SQLite repository
+checks and three production-screen Compose UI checks. Coverage includes exact
+raw form restoration through Activity recreation, cancellation and confirmation
+of discard, final save with no stale Resume after recreation, and refusal of a
+second completion. All tests use isolated databases; the debug-only,
+non-exported Activity renders production Home/Session screens without exporting
+synthetic data. The phone must be unlocked and interactive. Do not interpret a
+locked-screen `No compose hierarchies found` failure as a passing UI check.
+
+The Samsung SM_G990B additionally passed the normal `MainActivity` matrix:
+
+- two real catalog exercises with distinct continuous values survived Home,
+  another app, background `am kill` with verified PID exit, and force-stop;
+- rotation recreated the Activity and Home Resume restored both exercises;
+- removal of one exercise survived process death, with the other intact;
+- raw duration/speed text survived process death and force-stop exactly;
+- Back and the normal new-session action preserved the existing draft;
+- discard cancellation preserved the DB exactly; confirmation and relaunch
+  left all draft tables empty and no Resume action;
+- completed History and mobile export excluded the populated draft;
+- every original domain row survived migration and the entire device matrix.
+
+Final-save UI and repeated-finalization tests ran on-device with isolated data;
+no fictitious completed session was added to the user's history. Real migration
+and final state passed SQLite integrity/foreign-key checks. The pre-upgrade DB
+and preferences backup is outside the repository. No uninstall, package-data
+clear, desktop schema change or frozen artifact change is part of this repair.
+
+Detailed retained evidence: [Android draft execution record](reviews/android_session_draft_v1_resume.md).

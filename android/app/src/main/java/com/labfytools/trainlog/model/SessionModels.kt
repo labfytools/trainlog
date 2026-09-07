@@ -36,6 +36,27 @@ data class SessionDraft(
     val sessionType: SessionType = SessionType.TRAINING,
 )
 
+data class SessionDraftForm(
+    val selectedExercise: ExerciseProfile? = null,
+    val setCountText: String = "3",
+    val repsText: String = "3x10",
+    val durationText: String = "30",
+    val speedText: String = "",
+    val distanceText: String = "",
+)
+
+/**
+ * INVARIANT: this is the one Android-local in-progress workout. It is stored
+ * separately from [SessionDraft] completion rows so history and sync can never
+ * mistake unfinished capture for a completed session.
+ */
+data class ActiveSessionDraft(
+    val exercises: List<SessionExerciseDraft> = emptyList(),
+    val sessionType: SessionType = SessionType.TRAINING,
+    val form: SessionDraftForm = SessionDraftForm(),
+    val updatedAt: String = "",
+)
+
 data class SessionSummary(
     val sessionId: String,
     val startedAt: String,

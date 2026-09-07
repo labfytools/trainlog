@@ -265,6 +265,19 @@ def main() -> int:
                 + second
             )
 
+        renamed_payload = payload()
+        renamed_payload["exercises"][0]["name"] = "Pompes corrigées"
+        renamed_payload["sessions"][0]["exercises"][0]["name"] = "Pompes corrigées"
+        json_path.write_text(
+            json.dumps(renamed_payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        renamed = run_import(json_path, database_path)
+        if "exercises_reconciled=1" not in renamed:
+            raise AssertionError(
+                "stable-ID rename was not reconciled:\n" + renamed
+            )
+
         connection = sqlite3.connect(
             database_path
         )
@@ -316,6 +329,23 @@ def main() -> int:
             ):
                 raise AssertionError(
                     f"fake target persisted: {target!r}"
+                )
+
+            catalog = connection.execute(
+                """
+                SELECT exercise_id, name, normalized_name
+                FROM exercises;
+                """
+            ).fetchall()
+            if catalog != [
+                (
+                    "ex_mobile_pyramid",
+                    "Pompes corrigées",
+                    "pompes corrigées",
+                )
+            ]:
+                raise AssertionError(
+                    f"stable-ID rename created or lost catalog row: {catalog!r}"
                 )
         finally:
             connection.close()

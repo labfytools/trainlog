@@ -15,19 +15,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.labfytools.trainlog.data.SaveSessionResult
+import com.labfytools.trainlog.data.ActiveDraftLoadResult
+import com.labfytools.trainlog.data.ActiveDraftMutationResult
+import com.labfytools.trainlog.data.FinalizeActiveDraftResult
 import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
-import com.labfytools.trainlog.model.SessionDraft
+import com.labfytools.trainlog.model.SessionDraftForm
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
@@ -53,41 +55,64 @@ fun SessionScreen(
             repository.listExercises()
         }
 
-    var selectedExercise by
-        remember(
-            catalogRevision
-        ) {
-            mutableStateOf<
-                ExerciseProfile?
-            >(null)
+    val initialLoad =
+        remember(catalogRevision) {
+            repository.loadActiveSessionDraft()
         }
 
-    var draftExercises by
-        remember {
+    var activeDraft by
+        remember(catalogRevision) {
             mutableStateOf(
-                emptyList<
-                    SessionExerciseDraft
-                >()
+                (initialLoad as?
+                    ActiveDraftLoadResult.Loaded)
+                    ?.draft
             )
-        }
-
-    var sessionType by
-        remember {
-            mutableStateOf(
-                SessionType.TRAINING
-            )
-        }
-
-    var sessionRevision by
-        remember {
-            mutableIntStateOf(0)
         }
 
     var message by
-        remember {
+        remember(catalogRevision) {
             mutableStateOf<
                 String?
-            >(null)
+            >(
+                when (initialLoad) {
+                    is ActiveDraftLoadResult.Error ->
+                        initialLoad.message
+
+                    ActiveDraftLoadResult.None ->
+                        "Aucune séance en cours."
+
+                    is ActiveDraftLoadResult.Loaded ->
+                        initialLoad.warning
+                }
+            )
+        }
+
+    var confirmingDiscard by
+        remember {
+            mutableStateOf(false)
+        }
+
+    val persistDraft:
+        (ActiveSessionDraft, String?) -> Unit =
+        { updated, successMessage ->
+            when (
+                val result =
+                    repository
+                        .saveActiveSessionDraft(
+                            updated
+                        )
+            ) {
+                ActiveDraftMutationResult.Saved -> {
+                    activeDraft = updated
+                    message = successMessage
+                }
+
+                is ActiveDraftMutationResult.Error -> {
+                    message =
+                        "Brouillon non sauvegardé : " +
+                            result.message
+                }
+            }
         }
 
     TrainlogScreen(
@@ -96,9 +121,43 @@ fun SessionScreen(
         TrainlogAction(
             label = "< Retour",
             description =
-                "Revenir à l'accueil.",
+                "Revenir à l'accueil sans supprimer la séance en cours.",
+            /* CONTRACT: ordinary navigation never owns draft deletion. */
             onClick = onBack,
             accent = colors.muted,
+        )
+
+        if (activeDraft == null) {
+            TrainlogFrame(
+                title = "ERREUR"
+            ) {
+                TrainlogInfo(
+                    text = message.orEmpty(),
+                    color = colors.error,
+                )
+            }
+            return@TrainlogScreen
+        }
+
+        val currentDraft = activeDraft!!
+
+        val lastWriteFailed =
+            message?.startsWith(
+                "Brouillon non sauvegardé"
+            ) == true
+        TrainlogInfo(
+            text =
+                if (lastWriteFailed) {
+                    "Dernière modification non sauvegardée."
+                } else {
+                    "Séance sauvegardée localement."
+                },
+            color =
+                if (lastWriteFailed) {
+                    colors.error
+                } else {
+                    colors.muted
+                },
         )
 
         TrainlogFrame(
@@ -107,7 +166,7 @@ fun SessionScreen(
             TrainlogAction(
                 label =
                     if (
-                        sessionType ==
+                        currentDraft.sessionType ==
                         SessionType.TRAINING
                     ) {
                         "[✓] Entraînement"
@@ -118,7 +177,7 @@ fun SessionScreen(
                     "Séance normale de travail.",
                 accent =
                     if (
-                        sessionType ==
+                        currentDraft.sessionType ==
                         SessionType.TRAINING
                     ) {
                         colors.success
@@ -126,15 +185,20 @@ fun SessionScreen(
                         colors.muted
                     },
                 onClick = {
-                    sessionType =
-                        SessionType.TRAINING
+                    persistDraft(
+                        currentDraft.copy(
+                            sessionType =
+                                SessionType.TRAINING
+                        ),
+                        null,
+                    )
                 },
             )
 
             TrainlogAction(
                 label =
                     if (
-                        sessionType ==
+                        currentDraft.sessionType ==
                         SessionType.MAX_TEST
                     ) {
                         "[✓] Test max"
@@ -145,7 +209,7 @@ fun SessionScreen(
                     "Séance explicitement dédiée à une mesure de max.",
                 accent =
                     if (
-                        sessionType ==
+                        currentDraft.sessionType ==
                         SessionType.MAX_TEST
                     ) {
                         colors.warning
@@ -153,8 +217,13 @@ fun SessionScreen(
                         colors.muted
                     },
                 onClick = {
-                    sessionType =
-                        SessionType.MAX_TEST
+                    persistDraft(
+                        currentDraft.copy(
+                            sessionType =
+                                SessionType.MAX_TEST
+                        ),
+                        null,
+                    )
                 },
             )
         }
@@ -166,7 +235,7 @@ fun SessionScreen(
                 text =
                     "Type : " +
                         if (
-                            sessionType ==
+                            currentDraft.sessionType ==
                             SessionType.MAX_TEST
                         ) {
                             "TEST MAX"
@@ -175,7 +244,7 @@ fun SessionScreen(
                         },
                 color =
                     if (
-                        sessionType ==
+                        currentDraft.sessionType ==
                         SessionType.MAX_TEST
                     ) {
                         colors.warning
@@ -185,13 +254,13 @@ fun SessionScreen(
             )
 
             if (
-                draftExercises.isEmpty()
+                currentDraft.exercises.isEmpty()
             ) {
                 TrainlogInfo(
                     "Aucun exercice ajouté."
                 )
             } else {
-                draftExercises
+                currentDraft.exercises
                     .forEachIndexed {
                             index,
                             draft ->
@@ -214,19 +283,18 @@ fun SessionScreen(
                             accent =
                                 colors.error,
                             onClick = {
-                                draftExercises =
-                                    draftExercises
-                                        .filterIndexed {
-                                                itemIndex,
-                                                _ ->
-                                            itemIndex !=
-                                                index
-                                        }
-
-                                sessionRevision += 1
-
-                                message =
-                                    "Exercice retiré de la séance."
+                                persistDraft(
+                                    currentDraft.copy(
+                                        exercises =
+                                            currentDraft.exercises
+                                                .filterIndexed {
+                                                        itemIndex,
+                                                        _ ->
+                                                    itemIndex != index
+                                                }
+                                    ),
+                                    "Exercice retiré de la séance.",
+                                )
                             },
                         )
                     }
@@ -249,7 +317,7 @@ fun SessionScreen(
                         exercise ->
 
                     val alreadyAdded =
-                        draftExercises.any {
+                        currentDraft.exercises.any {
                             it.exercise.exerciseId ==
                                 exercise.exerciseId
                         }
@@ -258,7 +326,8 @@ fun SessionScreen(
                         exercise =
                             exercise,
                         selected =
-                            selectedExercise
+                            currentDraft.form
+                                .selectedExercise
                                 ?.exerciseId ==
                                 exercise.exerciseId,
                         disabled =
@@ -267,10 +336,16 @@ fun SessionScreen(
                             if (
                                 !alreadyAdded
                             ) {
-                                selectedExercise =
-                                    exercise
-
-                                message = null
+                                persistDraft(
+                                    currentDraft.copy(
+                                        form =
+                                            currentDraft.form.copy(
+                                                selectedExercise =
+                                                    exercise
+                                            )
+                                    ),
+                                    null,
+                                )
                             }
                         },
                     )
@@ -278,32 +353,47 @@ fun SessionScreen(
             }
         }
 
-        if (
-            selectedExercise != null
-        ) {
+        val editingExercise =
+            currentDraft.form.selectedExercise
+
+        if (editingExercise != null) {
             SessionExerciseForm(
                 key =
-                    selectedExercise!!
-                        .exerciseId,
+                    editingExercise.exerciseId,
                 exercise =
-                    selectedExercise!!,
+                    editingExercise,
+                initialForm =
+                    currentDraft.form,
+                onFormChanged = {
+                    form ->
+                        persistDraft(
+                            currentDraft.copy(
+                                form = form
+                            ),
+                            null,
+                        )
+                },
                 onCancel = {
-                    selectedExercise =
-                        null
+                    persistDraft(
+                        currentDraft.copy(
+                            form =
+                                SessionDraftForm()
+                        ),
+                        null,
+                    )
                 },
                 onAdd = {
                     draft ->
-                        draftExercises =
-                            draftExercises +
-                                draft
-
-                        selectedExercise =
-                            null
-
-                        sessionRevision += 1
-
-                        message =
-                            "Exercice ajouté à la séance."
+                        persistDraft(
+                            currentDraft.copy(
+                                exercises =
+                                    currentDraft.exercises +
+                                        draft,
+                                form =
+                                    SessionDraftForm(),
+                            ),
+                            "Exercice ajouté à la séance.",
+                        )
                 },
             )
         }
@@ -326,58 +416,86 @@ fun SessionScreen(
         TrainlogFrame(
             title = "ENREGISTREMENT",
             active =
-                draftExercises.isNotEmpty(),
+                currentDraft.exercises.isNotEmpty(),
         ) {
             TrainlogAction(
                 label =
                     "Enregistrer la séance",
                 description =
-                    "${draftExercises.size} exercice(s) dans la séance.",
+                    "${currentDraft.exercises.size} exercice(s) dans la séance.",
                 accent =
                     colors.success,
                 onClick = {
                     when (
                         val result =
-                            repository
-                                .saveSession(
-                                    SessionDraft(
-                                        exercises =
-                                            draftExercises,
-                                        sessionType =
-                                            sessionType,
-                                    )
-                                )
+                            repository.finalizeActiveSessionDraft()
                     ) {
-                        is SaveSessionResult.Saved -> {
-                            draftExercises =
-                                emptyList()
-
-                            selectedExercise =
-                                null
-
-                            sessionType =
-                                SessionType.TRAINING
-
-                            sessionRevision += 1
-
-                            message =
-                                "Séance enregistrée."
-
+                        is FinalizeActiveDraftResult.Saved -> {
                             onSessionSaved()
+                            onBack()
                         }
 
-                        SaveSessionResult.Invalid -> {
-                            message =
-                                "Séance invalide."
+                        is FinalizeActiveDraftResult.Invalid -> {
+                            message = result.message
                         }
 
-                        SaveSessionResult.DatabaseError -> {
+                        is FinalizeActiveDraftResult.DatabaseError -> {
                             message =
-                                "Erreur base locale."
+                                "Échec de finalisation, brouillon conservé : " +
+                                    result.message
                         }
                     }
                 },
             )
+
+            TrainlogAction(
+                label = "Supprimer la séance en cours",
+                description =
+                    "Supprimer uniquement ce brouillon local.",
+                accent = colors.error,
+                onClick = {
+                    confirmingDiscard = true
+                },
+            )
+
+            if (confirmingDiscard) {
+                TrainlogInfo(
+                    text =
+                        "Cette suppression n'ajoutera rien à l'historique.",
+                    color = colors.error,
+                )
+                TrainlogAction(
+                    label = "Confirmer la suppression",
+                    description =
+                        "Supprimer définitivement la séance en cours.",
+                    accent = colors.error,
+                    onClick = {
+                        when (
+                            val result =
+                                repository
+                                    .discardActiveSessionDraft()
+                        ) {
+                            ActiveDraftMutationResult.Saved -> {
+                                confirmingDiscard = false
+                                onBack()
+                            }
+
+                            is ActiveDraftMutationResult.Error -> {
+                                message = result.message
+                            }
+                        }
+                    },
+                )
+                TrainlogAction(
+                    label = "Annuler",
+                    description =
+                        "Conserver la séance en cours.",
+                    accent = colors.muted,
+                    onClick = {
+                        confirmingDiscard = false
+                    },
+                )
+            }
 
             if (
                 message != null
@@ -387,8 +505,6 @@ fun SessionScreen(
                         message.orEmpty(),
                     color =
                         if (
-                            message ==
-                            "Séance enregistrée." ||
                             message ==
                             "Exercice ajouté à la séance." ||
                             message ==
@@ -479,6 +595,8 @@ private fun CatalogChoice(
 private fun SessionExerciseForm(
     key: String,
     exercise: ExerciseProfile,
+    initialForm: SessionDraftForm,
+    onFormChanged: (SessionDraftForm) -> Unit,
     onCancel: () -> Unit,
     onAdd:
         (SessionExerciseDraft) ->
@@ -489,27 +607,37 @@ private fun SessionExerciseForm(
 
     var setCountText by
         remember(key) {
-            mutableStateOf("3")
+            mutableStateOf(
+                initialForm.setCountText
+            )
         }
 
     var repsText by
         remember(key) {
-            mutableStateOf("3x10")
+            mutableStateOf(
+                initialForm.repsText
+            )
         }
 
     var durationText by
         remember(key) {
-            mutableStateOf("30")
+            mutableStateOf(
+                initialForm.durationText
+            )
         }
 
     var speedText by
         remember(key) {
-            mutableStateOf("")
+            mutableStateOf(
+                initialForm.speedText
+            )
         }
 
     var distanceText by
         remember(key) {
-            mutableStateOf("")
+            mutableStateOf(
+                initialForm.distanceText
+            )
         }
 
     var error by
@@ -547,6 +675,16 @@ private fun SessionExerciseForm(
                     onValueChange = {
                         repsText = it
                         error = null
+                        onFormChanged(
+                            currentForm(
+                                exercise,
+                                setCountText,
+                                it,
+                                durationText,
+                                speedText,
+                                distanceText,
+                            )
+                        )
                     },
                 )
 
@@ -565,6 +703,16 @@ private fun SessionExerciseForm(
                     onValueChange = {
                         setCountText = it
                         error = null
+                        onFormChanged(
+                            currentForm(
+                                exercise,
+                                it,
+                                repsText,
+                                durationText,
+                                speedText,
+                                distanceText,
+                            )
+                        )
                     },
                 )
 
@@ -576,6 +724,16 @@ private fun SessionExerciseForm(
                     onValueChange = {
                         durationText = it
                         error = null
+                        onFormChanged(
+                            currentForm(
+                                exercise,
+                                setCountText,
+                                repsText,
+                                it,
+                                speedText,
+                                distanceText,
+                            )
+                        )
                     },
                 )
             }
@@ -588,6 +746,16 @@ private fun SessionExerciseForm(
                 onValueChange = {
                     durationText = it
                     error = null
+                    onFormChanged(
+                        currentForm(
+                            exercise,
+                            setCountText,
+                            repsText,
+                            it,
+                            speedText,
+                            distanceText,
+                        )
+                    )
                 },
             )
 
@@ -604,6 +772,16 @@ private fun SessionExerciseForm(
                     onValueChange = {
                         speedText = it
                         error = null
+                        onFormChanged(
+                            currentForm(
+                                exercise,
+                                setCountText,
+                                repsText,
+                                durationText,
+                                it,
+                                distanceText,
+                            )
+                        )
                     },
                 )
             }
@@ -621,6 +799,16 @@ private fun SessionExerciseForm(
                     onValueChange = {
                         distanceText = it
                         error = null
+                        onFormChanged(
+                            currentForm(
+                                exercise,
+                                setCountText,
+                                repsText,
+                                durationText,
+                                speedText,
+                                it,
+                            )
+                        )
                     },
                 )
             }
@@ -681,6 +869,23 @@ private fun SessionExerciseForm(
         }
     }
 }
+
+private fun currentForm(
+    exercise: ExerciseProfile,
+    setCountText: String,
+    repsText: String,
+    durationText: String,
+    speedText: String,
+    distanceText: String,
+): SessionDraftForm =
+    SessionDraftForm(
+        selectedExercise = exercise,
+        setCountText = setCountText,
+        repsText = repsText,
+        durationText = durationText,
+        speedText = speedText,
+        distanceText = distanceText,
+    )
 
 @Composable
 private fun SessionNumberField(

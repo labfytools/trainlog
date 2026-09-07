@@ -4,7 +4,7 @@ Trainlog is a local-first workout and body-tracking system with two user
 interfaces:
 
 - a native Android application optimized for fast data entry during training;
-- a C17/ncursesw TUI used for durable history, editing, visualization,
+- a C17/Notcurses TUI used for durable history, editing, visualization,
   statistics, and synchronization.
 
 The desktop SQLite database is the canonical long-term history. Android keeps
@@ -18,6 +18,10 @@ TRAINLOG_FORMAT_V1=FROZEN
 
 DESKTOP_SCHEMA_V5=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
+ANDROID_LOCAL_DATABASE_V4=PASS
+ANDROID_SESSION_DRAFT_V1=PASS
+EXERCISE_EDIT_V1=PASS
+ANDROID_BANNER_PARITY_V1=PASS
 
 VARIABLE_REPETITION_SETS=PASS
 CONTINUOUS_ACTIVITY_TRACKING=PASS
@@ -29,7 +33,7 @@ ANDROID_TRIGGERED_SYNC=PASS
 ANDROID_SYNC_RECEIPT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
-DESKTOP_TESTS=21/21 PASS
+DESKTOP_TESTS=22/22 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -100,7 +104,7 @@ Actual repetition sets are stored independently. Compact input supports:
 
 ```text
 android/        native Kotlin/Compose Android client
-tui/            C17 ncursesw desktop application and core
+tui/            C17 Notcurses desktop application and core
 docs/           canonical project documentation
 format/         frozen Trainlog JSON v1 schema material
 examples/       valid frozen-format examples
@@ -122,6 +126,22 @@ git diff --check
 ```
 
 ## Android build
+
+Android keeps one durable in-progress workout in its local SQLite database.
+Home offers **Reprendre la séance en cours** after navigation, app switching,
+Activity recreation, process death or force-stop/relaunch. Added exercises and
+raw unfinished form text are retained. Removing an exercise affects only the
+draft; abandoning the draft requires confirmation. Final save atomically
+creates completed history and clears the draft. Drafts never enter mobile
+export or desktop synchronization as completed sessions.
+
+Schema v4 migrates additively from v3, preserving existing capture data. See
+[Android behavior](docs/android.md) and [validation](docs/tests.md).
+
+Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
+unchanged; completed history, an active draft, and synchronization therefore
+continue to resolve the same logical exercise. Referenced profiles are locked;
+only unreferenced catalog exercises may change their recording/tracking profile.
 
 The local Android SDK is intentionally not committed. Configure it with either
 `ANDROID_HOME` or `android/local.properties`.
@@ -226,5 +246,5 @@ BODY_ANALYTICS_V1=PASS
 BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=21/21 PASS
+DESKTOP_TESTS=22/22 PASS
 ```

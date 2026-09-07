@@ -37,6 +37,7 @@ Android local SQLite is a capture store, not a synchronization format.
 Responsibilities:
 
 - exercise catalog entry;
+- stable-ID exercise rename/editing;
 - workout-session recording;
 - performed set entry;
 - continuous-activity entry;
@@ -64,7 +65,9 @@ The C17 core owns:
 
 ### TUI
 
-The ncursesw layer owns interaction and rendering.
+The Notcurses layer owns interaction and rendering. It is confined to the
+desktop executable; persistence, synchronization, and core services have no
+terminal-library dependency.
 
 It consumes core services for:
 
@@ -132,12 +135,36 @@ body_observations
 
 ### Android
 
-Android has an independent local SQLite schema.
+Android has an independent local SQLite schema, currently v4.
 
 It mirrors domain concepts needed for capture, but its schema version is not
 coupled to the desktop schema.
 
 Synchronization exchanges domain artifacts rather than database files.
+
+`TrainlogRepository` owns a singleton active-session draft, its ordered exercise
+and actual-value children, and raw form text. Compose sends meaningful mutations
+to that repository; lifecycle callbacks are not the sole persistence boundary.
+Normal navigation never deletes the draft. Home restores the resume affordance
+from SQLite after process recreation.
+
+Drafts use separate tables from completed sessions and are never export sources.
+Finalization inserts the completed session and deletes the draft in one
+transaction; failures retain the draft. Catalog row references preserve draft
+identity through existing PC-catalog reconciliation. Missing editing-selection
+recovery preserves the raw fields and added exercises with a specific warning.
+
+`TrainlogRepository.editExercise()` owns all Android exercise edits. It changes
+the display name and normalized form in the existing catalog row identified by
+`exercise_id`; foreign-key ownership consequently preserves completed history
+and active drafts. A profile edit is admitted only before that row is referenced
+by either completed or active-draft data. Android and desktop same-ID catalog
+reconciliation apply name metadata in place and reject a collision with a
+different stable ID.
+
+Compose presentation has one `TrainlogScreen` header component for every page.
+It uses the TUI's compact accent `◆ TRAINLOG ◆` plaque and muted context line;
+screen navigation and data ownership remain independent from the header.
 
 ## 5. Compatibility boundaries
 

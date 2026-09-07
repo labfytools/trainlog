@@ -1,6 +1,6 @@
 # Current implementation state
 
-Canonical snapshot: 2026-09-06.
+Canonical snapshot: 2026-09-07.
 
 This document is the compact source of truth for the implemented Trainlog
 baseline. Detailed behavior belongs in the topic-specific documents.
@@ -15,7 +15,23 @@ GATE_2_PERSISTENCE_AND_USABLE_TUI=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 
 DESKTOP_SCHEMA_V5=PASS
-ANDROID_LOCAL_DATABASE_V3=PASS
+ANDROID_LOCAL_DATABASE_V4=PASS
+ANDROID_SESSION_DRAFT_V1=PASS
+ANDROID_DRAFT_DURABLE=PASS
+ANDROID_DRAFT_BACKGROUND_SURVIVAL=PASS
+ANDROID_DRAFT_PROCESS_DEATH_SURVIVAL=PASS
+ANDROID_DRAFT_FORCE_STOP_SURVIVAL=PASS
+ANDROID_SESSION_RESUME=PASS
+ANDROID_DRAFT_FORM_RESTORE=PASS
+ANDROID_DRAFT_EXERCISE_REMOVE=PASS
+ANDROID_DRAFT_DISCARD=PASS
+ANDROID_DRAFT_FINALIZE_ATOMIC=PASS
+ANDROID_DRAFT_NOT_EXPORTED_AS_SESSION=PASS
+EXERCISE_EDIT_V1=PASS
+EXERCISE_RENAME_STABLE_ID=PASS
+ANDROID_BANNER_PARITY_V1=PASS
+ANDROID_INSTALL_ADB=PASS
+ANDROID_USER_DATA_PRESERVED=PASS
 
 PROFILE_AWARE_EXERCISES=PASS
 CONTINUOUS_ACTIVITY=PASS
@@ -31,7 +47,7 @@ ANDROID_SYNC_RECEIPT=PASS
 TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
-DESKTOP_TESTS=21/21 PASS
+DESKTOP_TESTS=22/22 PASS
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=PASS
 ```
@@ -40,7 +56,7 @@ HARDWARE_SYNC_VALIDATION=PASS
 
 Implemented:
 
-- C17/ncursesw TUI;
+- C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
 - SQLite schema v5;
 - direct session entry;
 - persisted session detail and editing;
@@ -71,8 +87,11 @@ Primary navigation:
 Implemented:
 
 - native Kotlin/Compose application;
-- local SQLite database v3;
+- local SQLite database v4, with non-destructive v3 -> v4 migration;
+- one durable active-session draft, Home resume and raw-form restoration;
+- explicit confirmed discard and atomic completed-save/draft-clear;
 - exercise creation;
+- stable-ID exercise rename/editing with referenced-profile protection;
 - inline exercise creation during session entry;
 - profile-aware session recording;
 - heterogeneous repetition-set entry;
@@ -84,6 +103,17 @@ Implemented:
 - PC catalog application through a persistent SAF folder grant;
 - Android-triggered synchronization request;
 - synchronization receipt handling.
+
+The Android catalog exposes **Modifier** for every existing exercise. A rename
+updates `name` and `normalized_name` in the original row, never creates an ID,
+and remains valid for completed session and active-draft references. A profile
+change is only accepted while the row has neither completed-session nor draft
+references. Same-ID catalog reconciliation updates display metadata in place in
+both Android and desktop import directions.
+
+All Android screens use the shared compact `◆ TRAINLOG ◆` header: the
+Notcurses accent, muted context line, and flat touch layout reproduce the TUI
+plaque without literal terminal box drawing.
 
 ## Synchronization
 
@@ -120,7 +150,7 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-21/21 Meson tests PASS
+22/22 Meson tests PASS
 frozen JSON validator PASS
 import-contract validator PASS
 git diff --check PASS
@@ -130,13 +160,18 @@ Android:
 
 ```text
 assembleDebug PASS
+host repository tests 8/8 PASS
+device instrumentation 5/5 PASS
+real Samsung background/process-death/force-stop/resume matrix PASS
+real migration and original user-data preservation PASS
 real Samsung request -> daemon -> bidirectional sync -> receipt PASS
 multiple distinct request IDs consumed once each PASS
 ```
 
 ## Current implementation cursor
 
-No new feature is frozen by this documentation cleanup.
+The Android draft correction is implemented, device-validated and reviewed.
+No product-roadmap ordering changes were made.
 
 ```text
 MEASURED_MAX_V1=PASS
@@ -156,7 +191,7 @@ MEASURED_MAX_ONLY_FROM_MAX_TEST=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
-DESKTOP_TESTS=21/21 PASS
+DESKTOP_TESTS=22/22 PASS
 ```
 
 A measured maximum is derived only from explicit `max_test` sessions. Ordinary
@@ -177,7 +212,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=21/21 PASS
+DESKTOP_TESTS=22/22 PASS
 ```
 
 Android remains capture-only for this feature.

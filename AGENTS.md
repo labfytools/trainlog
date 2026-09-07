@@ -67,6 +67,13 @@ Display names are not identities.
 
 Import and synchronization paths must remain idempotent by stable IDs.
 
+Android exercise editing preserves `exercise_id`: a rename trims and
+re-normalizes display metadata in the existing row and must not create a second
+exercise. Profile changes are rejected once completed history or an active draft
+references the exercise; renaming remains safe. Same-ID catalog reconciliation
+updates name metadata in place and rejects different-ID normalized-name
+collisions.
+
 ## 5. Desktop implementation
 
 The desktop core is C17.
@@ -82,17 +89,15 @@ Current primary dependencies:
 - Ninja;
 - one active desktop terminal backend.
 
-For the authorized `TUI_NOTCURSES_V1` tranche:
+For the completed `TUI_NOTCURSES_V1` infrastructure checkpoint:
 
 ```text
-legacy backend = ncursesw
-target backend = Notcurses
+legacy backend = ncursesw (historical only)
+active backend = Notcurses
 ```
 
-During the migration, ncursesw may remain only as the pre-migration
-implementation being replaced. Once `TUI_NOTCURSES_V1=PASS`, active desktop TUI
-code and build wiring must use Notcurses and must not retain ncursesw as an
-unused permanent compatibility backend.
+`TUI_NOTCURSES_V1=PASS`. Active desktop TUI code and build wiring use
+Notcurses and do not retain ncursesw as an unused compatibility backend.
 
 Business logic, persistence, transport, and rendering remain separated.
 
@@ -158,6 +163,14 @@ It is not the canonical analytics store.
 
 The Android UI is driven by exercise metadata, never by exercise-name
 heuristics.
+
+Android local SQLite schema v4 owns exactly one durable active-session draft.
+Every meaningful draft/form mutation is persisted by the repository. Back,
+backgrounding and process death never delete the draft. Home offers explicit
+resume; whole-draft discard requires confirmation. Final completed-session
+insertion and draft deletion are one transaction. Drafts are excluded from
+completed history and mobile export. Preserve raw partial form input and use
+an explicit, non-destructive migration for future Android schema changes.
 
 ## 7. Synchronization architecture
 

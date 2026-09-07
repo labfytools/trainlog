@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.labfytools.trainlog.data.ActiveDraftLoadResult
+import com.labfytools.trainlog.data.ActiveDraftMutationResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.SyncExporter
 import com.labfytools.trainlog.data.CatalogInboxResult
@@ -50,6 +52,16 @@ fun TrainlogApp(
     var catalogRevision by
         remember {
             mutableIntStateOf(0)
+        }
+
+    var draftRevision by
+        remember {
+            mutableIntStateOf(0)
+        }
+
+    var draftMessage by
+        remember {
+            mutableStateOf<String?>(null)
         }
 
     var selectedSessionId by
@@ -99,11 +111,74 @@ fun TrainlogApp(
     }
 
     when (screen) {
-        TrainlogScreenId.HOME ->
+        TrainlogScreenId.HOME -> {
+            val draftLoad =
+                remember(
+                    draftRevision,
+                    catalogRevision,
+                ) {
+                    repository.loadActiveSessionDraft()
+                }
+
             HomeScreen(
+                activeDraft =
+                    (draftLoad as?
+                        ActiveDraftLoadResult.Loaded)
+                        ?.draft,
+                draftError =
+                    draftMessage
+                        ?: (draftLoad as?
+                            ActiveDraftLoadResult.Error)
+                            ?.message
+                        ?: (draftLoad as?
+                            ActiveDraftLoadResult.Loaded)
+                            ?.warning,
                 onSession = {
-                    screen =
-                        TrainlogScreenId.SESSION
+                    when (draftLoad) {
+                        is ActiveDraftLoadResult.Loaded -> {
+                            draftMessage = null
+                            screen = TrainlogScreenId.SESSION
+                        }
+
+                        ActiveDraftLoadResult.None -> {
+                            when (
+                                val result =
+                                    repository
+                                        .startActiveSessionDraft()
+                            ) {
+                                ActiveDraftMutationResult.Saved -> {
+                                    draftMessage = null
+                                    draftRevision += 1
+                                    screen =
+                                        TrainlogScreenId.SESSION
+                                }
+
+                                is ActiveDraftMutationResult.Error -> {
+                                    draftMessage = result.message
+                                }
+                            }
+                        }
+
+                        is ActiveDraftLoadResult.Error -> {
+                            draftMessage = draftLoad.message
+                        }
+                    }
+                },
+                onDiscardDraft = {
+                    when (
+                        val result =
+                            repository
+                                .discardActiveSessionDraft()
+                    ) {
+                        ActiveDraftMutationResult.Saved -> {
+                            draftMessage = null
+                            draftRevision += 1
+                        }
+
+                        is ActiveDraftMutationResult.Error -> {
+                            draftMessage = result.message
+                        }
+                    }
                 },
                 onExercise = {
                     exerciseReturnTarget =
@@ -125,6 +200,7 @@ fun TrainlogApp(
                         TrainlogScreenId.SYNC
                 },
             )
+        }
 
         TrainlogScreenId.SESSION ->
             SessionScreen(
@@ -132,6 +208,9 @@ fun TrainlogApp(
                 catalogRevision =
                     catalogRevision,
                 onBack = {
+                    /* WHY: Back changes routing only; the repository remains
+                     * the canonical owner of the in-progress workout. */
+                    draftRevision += 1
                     screen =
                         TrainlogScreenId.HOME
                 },
@@ -144,6 +223,7 @@ fun TrainlogApp(
                 },
                 onSessionSaved = {
                     exporter.exportMobileBundle()
+                    draftRevision += 1
                 },
             )
 
