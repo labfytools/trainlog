@@ -14,33 +14,40 @@
 #define TRAINLOG_UUID_TEXT_LENGTH 36U
 
 /**
- * Longest official v1 generated identifier:
- * two-character type prefix + '_' + UUID text + terminating NUL.
+ * Longest official generated identifier:
+ * three-character type prefix + '_' + UUID text + terminating NUL.
+ *
+ * CONTRACT: occurrence identities use the longer `sxe` prefix while the
+ * frozen v1 object identities retain their existing two-character prefixes.
  */
 #define TRAINLOG_GENERATED_ID_CAPACITY \
-    (2U + 1U + TRAINLOG_UUID_TEXT_LENGTH + 1U)
+    (3U + 1U + TRAINLOG_UUID_TEXT_LENGTH + 1U)
 
 /**
- * @brief Generate an official Trainlog v1 identifier using UUID version 4.
+ * @brief Generate an official Trainlog identifier using UUID version 4.
  *
- * The frozen v1 contract requires official creators to generate identifiers
- * in the form `<prefix>_<uuid-v4>`. The function accepts only the currently
- * reserved two-character prefixes:
+ * Official creators generate identifiers in the form
+ * `<prefix>_<uuid-v4>`. The function accepts only the currently reserved
+ * prefixes:
  *
  * - `ex` for exercises;
  * - `se` for sessions;
  * - `bo` for body observations.
+ * - `sy` for synchronization runs;
+ * - `sxe` for persisted session-exercise occurrences.
  *
  * Imported v1 documents may contain other schema-valid opaque identifiers;
  * this API defines creation policy, not import validation.
  *
- * @param prefix Two-character Trainlog object prefix.
+ * @param prefix Reserved Trainlog object prefix.
  * @param output Caller-owned output buffer.
  * @param output_size Size of @p output in bytes.
  *
  * @return TRAINLOG_STATUS_OK on success.
  * @return TRAINLOG_STATUS_INVALID_ARGUMENT for invalid pointers, prefix, or a
- *         buffer smaller than TRAINLOG_GENERATED_ID_CAPACITY.
+ *         buffer smaller than that prefix's exact identifier representation.
+ *         Existing two-character prefixes still require 40 bytes; `sxe`
+ *         requires TRAINLOG_GENERATED_ID_CAPACITY bytes.
  */
 TrainlogStatus trainlog_id_generate(
     const char *prefix,

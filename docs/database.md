@@ -3,8 +3,8 @@
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=7
-DATABASE_SCHEMA_V7=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=8
+DATABASE_SCHEMA_V8=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -23,7 +23,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-7
+8
 ```
 
 Supported historical databases are migrated explicitly through the implemented
@@ -35,6 +35,11 @@ Version 7 assigns `session_exercises.entry_id` to each stable occurrence.
 in a session. The v6 → v7 migration rebuilds the obsolete uniqueness
 constraint while retaining rows, sets, continuous activities, weights and
 equipment associations.
+
+Version 8 adds local `custom_equipment` definitions. The v7 → v8 migration is
+additive: it retains all historic occurrences and their `equipment_id` values.
+Supplied definitions continue to be generated from `catalog/equipment-v1.json`;
+custom definitions exist only in the desktop database.
 
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
@@ -99,13 +104,28 @@ target_sets
 target_reps
 target_duration_seconds
 target_weight_kg
-equipment_id         nullable canonical equipment identity
+equipment_id         nullable equipment identity
 notes
 ```
 
 Current desktop history snapshots `recording_mode` and `data_fields` in the
 session row. `tracking_mode` remains associated with the referenced exercise
 catalog identity.
+
+An occurrence `equipment_id` resolves to either a supplied manifest definition
+or a desktop-local `custom_equipment` definition. An ID that cannot be
+resolved is retained as historic data and is explicitly visible to the user;
+it is never silently converted to `NULL`.
+
+### `custom_equipment`
+
+Desktop-local custom equipment definitions. They supplement, but do not alter
+or replace, the supplied catalogue generated from `catalog/equipment-v1.json`.
+They synchronize through the separate `trainlog-equipment-definitions` v1
+artifact; session/mobile and association V2 artifacts retain their existing
+shapes. Definition reconciliation is additive: omission does not delete, an
+equal same-ID row is idempotent, a divergent same-ID row conflicts, and IDs in
+the supplied manifest are reserved.
 
 `SETS` rows support two target shapes in schema v5:
 
@@ -202,6 +222,7 @@ ex_   exercise
 se_   session
 bo_   body observation
 sy_   synchronization run
+sxe_  session-exercise occurrence
 ```
 
 All use random UUIDv4 values.
@@ -241,7 +262,7 @@ committing database changes.
 Properties:
 
 ```text
-schema-v5 aware
+schema-v5-through-v8 aware
 transactional
 idempotent by stable IDs
 profile-aware catalog reconciliation
@@ -249,6 +270,15 @@ heterogeneous performed sets preserved
 no fake target generated
 continuous activity kept separate
 ```
+
+For active V2 reconciliation, an identical normalized name never suffices by
+itself. Different exercise identities may coalesce only when recording and
+tracking modes match, other represented invariants remain compatible, and
+their bounded `data_fields` masks are comparable by inclusion. The existing
+desktop identity is deterministic canonical ownership. The mask union retains
+the richer capability, while `session_exercises.data_fields` and all child
+values remain unchanged. A missing historic optional value stays `NULL`.
+Incomparable masks or modes reject the entire mobile-import transaction.
 
 ## 8. Units
 
@@ -266,8 +296,10 @@ distance              km
 
 The Android SQLite database is independent.
 
-Current Android-local version: **4**. The explicit v3 -> v4 migration only adds
-structured draft tables; it does not rebuild or delete existing domain tables.
+Current Android-local version: **8**. The explicit migration chain adds the
+durable draft in v4, equipment references in v5, per-set load in v6, occurrence
+identity/multi-occurrence support in v7, and the widened custom-equipment
+definition graph in v8.
 
 | Table | Ownership |
 | --- | --- |
@@ -275,6 +307,8 @@ structured draft tables; it does not rebuild or delete existing domain tables.
 | `draft_session_exercises` | Ordered draft exercises and profile snapshots |
 | `draft_performed_sets` | Ordered heterogeneous repetition or duration actuals |
 | `draft_continuous_activity` | Duration and configured speed/distance without synthetic sets |
+| `equipment`, `equipment_aliases` | Supplied and user-created definitions used by selectors and occurrence FKs |
+| `exercise_equipment`, `catalog_exercise_equipment` | Persisted manifest relationship metadata retained across migrations and identity reconciliation |
 
 Foreign keys remain enabled. Draft deletion cascades only through draft child
 tables; it cannot delete catalog entries or completed history. The repository
@@ -282,10 +316,28 @@ commits completed-session insertion and draft removal together, rolling back
 both on failure. Repeating finalization after success cannot create another
 completed session. Completed `started_at` semantics are unchanged by this repair.
 
-Migration tests use a real v3-shaped fixture. The physical Samsung upgrade also
-preserved every existing domain row, with successful integrity and foreign-key
-checks. Device backup files are outside the repository; no SQLite files are
-used as synchronization artifacts.
+Migration tests cover historical v4 and v7 shapes rather than changing only
+`user_version`. The prior physical Samsung migration preserved every existing
+domain row, with successful integrity and foreign-key checks. Current
+reconciliation validation additionally uses coherent Android and desktop v8
+copies whose integrity and foreign keys are checked before and after import.
+SQLite files are never synchronization artifacts.
+
+The schemas deliberately differ where ownership differs. Desktop sessions own
+`ended_at`, notes, planned targets and session-specific load semantics; the
+Android capture schema does not. Desktop body observations may link to a
+session and carry notes; Android body observations contain capture metrics only.
+Android occurrences snapshot `tracking_mode` as well as recording mode and
+fields, whereas the current desktop schema resolves tracking mode through the
+catalog exercise. Desktop stores occurrence `equipment_id` as stable text so
+unknown historic IDs remain visible; Android stores a foreign key to its local
+equipment definition.
+
+Audit limitation: Android persists supplied exercise/equipment relationship
+tables, but the current session selector searches the complete equipment list
+instead of filtering or ranking it through those relations. The tables are
+retained because migration and identity reconciliation already preserve them;
+making them authoritative UI policy is future catalog work, not a v8 cleanup.
 
 Desktop and Android schema versions are not required to match.
 
@@ -302,13 +354,15 @@ Migration-specific regression coverage includes:
 
 ```text
 schema_v5_migration
+schema_v7_migration
+exercise_reconciliation
 ```
 
-The current normal desktop suite contains 25 tests.
+The current normal desktop suite contains 32 tests.
 
 ## 11. Measured-max derivation
 
-Measured maxima require no schema change beyond the current desktop schema v7.
+Measured maxima require no schema change beyond the current desktop schema v8.
 
 The existing `sessions.session_type = max_test` classification plus actual
 `performed_sets` are sufficient.
@@ -341,23 +395,31 @@ is the best max-test point using the same load mode.
 
 No extra maximum row is persisted; results are derived from canonical history.
 
-## 12. Body analytics persistence rule
+## 12. Equipment and occurrence migration
 
-## 13. Equipment and occurrence migration
-
-Desktop schema v6 added nullable `session_exercises.equipment_id`, which stores
-a canonical manifest ID rather than a local SQLite row ID. Schema v7 adds the
-non-null stable `entry_id` and removes the obsolete
+Desktop schema v6 added nullable `session_exercises.equipment_id`. Schema v7
+adds the non-null stable `entry_id` and removes the obsolete
 `UNIQUE(session_row_id, exercise_row_id)` constraint. The v6 -> v7 rebuild
 preserves primary keys, completed sessions, ordered sets, continuous activities,
 per-set weights and equipment values.
+
+Schema v8 adds local `custom_equipment` definitions through an additive v7 ->
+v8 migration. Existing occurrence links remain unchanged. They resolve through
+the supplied manifest or the local custom table; unknown historic references
+remain explicit rather than being discarded.
 
 Android schema v6 added nullable `weight_kg` to completed and durable draft
 set rows. Schema v7 assigns stable `entry_id` values to completed and draft
 occurrences. Actual per-set weights remain independent values, so heterogeneous
 sets and weights survive edit, finalization, reopen and V2 exchange.
 
-Body analytics require no schema change beyond schema v7.
+Android schema v8 non-destructively migrates the v7 equipment reference graph
+so custom definitions may use `load_semantics = none`. Historic completed
+occurrences, draft occurrences, and their equipment references remain intact.
+
+## 13. Body analytics persistence rule
+
+Body analytics require no schema change beyond schema v8.
 
 Canonical persistence continues to contain only measurements actually entered
 by the user.

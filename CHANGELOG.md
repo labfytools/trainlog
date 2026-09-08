@@ -9,12 +9,34 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- desktop equipment v8: a supplied catalogue generated from
+  `catalog/equipment-v1.json`, browse/search/detail views, and local custom
+  equipment creation/selection; occurrence links resolve supplied or local
+  definitions and show unknown historic references explicitly;
+
 - multi-occurrence session V2: stable per-occurrence `entry_id`, repeated
   catalogue exercises in one session, per-set actual weights, and occurrence
   equipment associations across Android, desktop, import and export;
 - shared versioned equipment catalogue, Android machine selection/search,
   Android-local custom equipment creation, and explicit rejection of unknown
   equipment identities rather than silent association loss;
+
+- `trainlog-equipment-definitions` v1, with directional Android-to-PC and
+  PC-to-Android filenames, strict stable definition fields, additive
+  reconciliation, reserved supplied-manifest IDs, and explicit divergence
+  conflicts;
+- explicit TUI/shared-engine synchronization actions: `a` Android -> PC, `p`
+  PC -> Android, and `b` inbound then outbound bidirectional synchronization;
+  each opens one direction-specific confirmation, `Enter` runs it once, `Esc`
+  cancels without an operation, `r` only refreshes device status, and the
+  former `s` shortcut is inert;
+- bounded V2 exercise reconciliation for distinct IDs with equal normalized
+  names: modes and represented invariants must match, field masks must be
+  comparable, desktop identity stays canonical, and the richer bit-mask union
+  is retained without changing historical occurrence snapshots;
+- regression coverage for identical/different-ID profiles, compatible
+  subset/superset masks, incompatible collisions, the real Marche identity
+  pair, full Android -> PC import and stable PC ↔ Android replay;
 
 - Android `EXERCISE_EDIT_V1`: visible catalog editing, stable-ID name rename,
   explicit invalid/conflict/profile/database results, and profile locking once
@@ -27,7 +49,7 @@ Detailed implementation chronology remains available in Git history and
 
 - native Kotlin/Compose Android capture client;
 - Android local exercise, session, continuous-activity, and body persistence;
-- C17/ncursesw desktop TUI with direct session entry and durable SQLite history;
+- C17/Notcurses desktop TUI with direct session entry and durable SQLite history;
 - profile-aware exercise model using recording mode, tracking mode, and
   supplemental fields;
 - continuous activity persistence without synthetic sets;
@@ -52,6 +74,12 @@ Detailed implementation chronology remains available in Git history and
 
 ### Changed
 
+- desktop and Android schema v8 preserve existing equipment references while
+  permitting custom definitions with `load_semantics = none`; Android's v7 ->
+  v8 migration is non-destructive;
+- custom definitions reconcile before V2 mobile/association artifacts in each
+  direction. The V2 mobile and association shapes are unchanged;
+
 - desktop SQLite schema v7 and Android SQLite schema v7 preserve historic rows
   while adding durable occurrence identities and occurrence-level equipment;
 - the active Android↔PC completed-session exchange is V2; frozen V1 artifacts
@@ -60,9 +88,9 @@ Detailed implementation chronology remains available in Git history and
 - synchronization invokes each local helper with the explicit XDG-resolved
   desktop database path and records the concrete equipment-import failure;
 
-- same-ID Android ↔ PC catalog reconciliation now updates display-name metadata
-  in place and rejects a different-ID normalized-name collision, preserving
-  synchronization identity and preventing renamed duplicates;
+- same-ID Android ↔ PC catalog reconciliation updates display-name metadata in
+  place. Compatible different-ID normalized-name collisions now merge through
+  the explicit V2 policy; incompatible collisions still reject atomically;
 
 - Android local SQLite v3 -> v4 additive migration for structured active drafts;
 - completed-session insertion and draft clearing are atomic; drafts remain
@@ -83,11 +111,24 @@ Detailed implementation chronology remains available in Git history and
 
 ### Fixed
 
+- synchronization summaries no longer add exercise reconciliations to the
+  `exercices ajoutés` value. A compatible different-ID lookup that makes no
+  persistent change is reported as an idempotent skip, while real insertions
+  and real reconciliation mutations retain distinct counters. A production
+  PC-exporter/Android-importer regression proves zero additions and exact
+  business-table stability on the second and third imports;
 - equipment companion import previously omitted its required `--database`
   argument and blocked synchronization after a successful session import;
 - PC catalogue/mobile export paths now accept schema v7 and preserve catalogue
   tracking metadata; Android completed-session equipment editing now targets
   the stable occurrence `entry_id`, not an ambiguous catalogue exercise ID;
+- Android scoped-storage suffix selection now covers equipment associations as
+  well as mobile/definition artifacts; a historic V1 snapshot cannot consume a
+  neighboring V2 equipment companion;
+- desktop-generated session occurrences now receive `sxe_<uuid-v4>` rather
+  than the synchronization-run `sy_` prefix; public generator capacity and C17
+  regression coverage include the three-character occurrence prefix;
+- TUI footer help now advertises every active direct function key through F5;
 
 - in-progress Android workout loss when leaving the foreground or recreating
   the Activity/process;
@@ -100,7 +141,7 @@ Detailed implementation chronology remains available in Git history and
 - synchronization failures that previously surfaced only as `error=unknown`;
 - Android folder-selection UX so a wrong SAF folder can be changed without
   clearing application data;
-- libmtp terminal output leaking into ncurses rendering.
+- libmtp terminal output leaking into terminal rendering.
 
 ### Validation
 
@@ -109,21 +150,23 @@ Current validated baseline:
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V7=PASS
-DESKTOP_TESTS=25/25 PASS
+DESKTOP_SCHEMA_V8=PASS
+DESKTOP_TESTS=32/32 PASS
 
 ANDROID_BUILD=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V7=PASS
-ANDROID_HOST_TESTS=8/8 PASS
-ANDROID_DEVICE_INSTRUMENTATION=5/5 PASS
+ANDROID_LOCAL_DATABASE_V8=PASS
+ANDROID_TEST_DEBUG_UNIT=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 
 USB_MTP_DETECTION=PASS
-MTP_ROUNDTRIP=PASS
+MTP_HARDWARE_ROUNDTRIP=HISTORICAL_PASS
+CURRENT_SANDBOX_LIBMTP_OPEN=BLOCKED
+REAL_ANDROID_ARTIFACT_COPY_ROUNDTRIP=PASS
+REAL_DATABASE_APPLICATION=BLOCKED_BY_SANDBOX_WRITE_BOUNDARY
 
-ANDROID_TO_PC_MTP=PASS
-PC_TO_ANDROID_MTP_PUBLISH=PASS
+ANDROID_TO_PC_MTP=HISTORICAL_PASS
+PC_TO_ANDROID_MTP_PUBLISH=HISTORICAL_PASS
 COMMON_SYNC_ENGINE=PASS
 TRAINLOG_SYNCD=PASS
 ANDROID_TRIGGERED_SYNC=PASS
@@ -132,6 +175,8 @@ TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
+EQUIPMENT_DEFINITIONS_V1=PASS
+EXERCISE_RECONCILIATION_V2=PASS
 ```
 
 ### Measured max v1

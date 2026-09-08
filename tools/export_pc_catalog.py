@@ -61,7 +61,10 @@ def main():
             "PRAGMA user_version;"
         ).fetchone()[0]
 
-        if version != 7:
+        # CONTRACT: v8 adds only desktop-local custom equipment.  The PC
+        # catalogue artifact is unchanged, but it must read the current
+        # canonical desktop schema rather than accept a stale pre-v8 database.
+        if version != 8:
             raise SystemExit(
                 "PC_CATALOG_EXPORT=FAIL "
                 f"schema={version}"

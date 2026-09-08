@@ -14,6 +14,8 @@ TUI_SYNC_LOG_SHOW=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
+EQUIPMENT_DEFINITIONS_V1=PASS
+EXERCISE_RECONCILIATION_V2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
@@ -40,14 +42,30 @@ Framework folder grant.
 | --- | --- | --- |
 | Android -> PC | `trainlog-mobile-export-v1.json` | `trainlog-mobile-export` v1 |
 | Android -> PC | `trainlog-mobile-export-v2.json` | `trainlog-mobile-export` v2 (active) |
+| Android -> PC | `trainlog-mobile-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | Android -> PC | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | PC -> Android | `trainlog-pc-catalog-v1.json` | `trainlog-pc-catalog` v1 |
+| PC -> Android | `trainlog-pc-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | PC -> Android | `trainlog-pc-mobile-export-v2.json` | `trainlog-mobile-export` v2 |
 | PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
 No SQLite file is transferred.
+
+Android scoped storage can preserve a prior MTP-created object and create a
+new artifact with the provider collision suffix, for example
+`trainlog-mobile-export-v2 (N).json` or
+`trainlog-mobile-equipment-definitions-v1 (N).json`, or
+`trainlog-equipment-associations-v2 (N).json`. For Android -> PC, the engine
+accepts only the canonical name and this exact suffix form, selects the newest
+MTP modification time (then the greatest suffix and a deterministic object-ID
+tie break), and validates that selected artifact normally. It never silently
+falls back to an older candidate when the newest one is malformed. Definitions
+reconcile before the V2 snapshot, so a valid custom `equipment_id` is known
+before a session may reference it. This prevents an older canonical object from
+being mistaken for Android's current data while preserving every file in
+`Download/Trainlog`.
 
 V2 is a separate format: every session entry has an `entry_id`, `position`,
 metrics, actual loads and optional equipment identity. This permits two
@@ -56,7 +74,33 @@ frozen contract. A V1 historical session is reconciled with V2 only when the
 exercise/order correspondence is unambiguous; otherwise the importer reports
 a conflict rather than silently overwriting data.
 
-## 4. Android -> PC mobile snapshot
+## 4. Equipment definitions V1
+
+User-created equipment definitions use the separate, directional
+`trainlog-equipment-definitions` v1 artifact. The Android-to-PC filename is
+`trainlog-mobile-equipment-definitions-v1.json`; the PC-to-Android filename is
+`trainlog-pc-equipment-definitions-v1.json`. The filenames identify direction;
+the JSON format and version are the same.
+
+The strict root has exactly `format`, `version`, `generated_at`, and
+`equipment`. Each `equipment` item has exactly:
+
+```text
+equipment_id
+display_name
+label_name
+equipment_type
+load_semantics       none | external | assistance
+```
+
+Definitions are additive snapshots, not deletion instructions: absence never
+deletes a local definition. A same-ID, field-for-field equal definition is an
+idempotent skip. A same-ID divergent definition is a conflict. IDs reserved by
+the supplied equipment manifest cannot appear in this artifact. These rules
+preserve the definition identity that V2 equipment associations reference;
+they do not change either V2 shape.
+
+## 5. Android -> PC mobile snapshot
 
 Header:
 
@@ -75,6 +119,12 @@ sessions
 body_observations
 ```
 
+Android captures its custom-definition V1 companion, this V2 snapshot, and
+the equipment-association companion before it publishes any of them.  It then
+publishes in that order: definitions, V2 snapshot, associations.  A malformed
+persisted custom definition aborts publication before a V2 file can advertise
+its reference; bundled manifest equipment is never copied into definitions V1.
+
 V2 session entries additionally carry:
 
 ```text
@@ -84,10 +134,11 @@ equipment_id         optional canonical equipment identity
 weight_kg            optional actual value on each set
 ```
 
-The desktop imports sessions first, preserving `entry_id`, then applies the
-equipment companion only after all referenced entries exist. Reimporting either
-artifact reconciles stable identities; it neither duplicates sessions nor
-regenerates occurrence IDs.
+The desktop imports sessions first, preserving `entry_id` and their equipment,
+then validates the equipment companion only after all referenced entries exist.
+The companion corroborates explicit `set`/`cleared` state; it does not overwrite
+a divergent occurrence. Reimporting either artifact reconciles stable
+identities; it neither duplicates sessions nor regenerates occurrence IDs.
 
 Exercise profile fields:
 
@@ -137,7 +188,7 @@ catalog reconciliation preserves active draft references.
 Same-ID catalog entries may update display-name metadata in their existing
 catalog row; a rename never creates a second exercise identity.
 
-## 5. Desktop mobile importer
+## 6. Desktop mobile importer
 
 Reference importer:
 
@@ -160,7 +211,38 @@ continuous activity kept separate
 
 The importer never invents a uniform target merely to fit desktop persistence.
 
-## 6. PC -> Android catalog
+### Exercise identity reconciliation
+
+The active V2/catalog path may reconcile distinct `exercise_id` values sharing
+one normalized name only when recording mode and tracking mode are equal, all
+other represented invariants are compatible, and one bounded `data_fields`
+mask contains the other. The existing desktop identity is deterministic
+canonical ownership; Android adopts that PC identity when applying the outbound
+catalog. The bitwise union keeps the richer compatible profile.
+
+All references move inside the relevant SQLite transaction. Session and
+occurrence IDs, position, sets, loads, continuous duration/speed/distance,
+equipment and draft data remain unchanged. Historical occurrence masks remain
+snapshots, so an optional field newly present in the catalog is not invented in
+old work. Replaying either direction is idempotent. A different mode,
+incomparable masks, conflicting overlapping equipment semantics, or any unsafe
+reference condition produces an explicit conflict. A normalized-name match by
+itself never authorizes a merge.
+
+The current Marche case is the compatible `1` (speed) versus `3` (speed and
+distance) subset/superset case. The canonical desktop definition is enriched
+to `3`; speed-only history stays speed-only and the Android occurrence keeps
+its real distance.
+
+Exercise import reporting separates persistent insertions, persistent
+reconciliation changes, and idempotent skips. Resolving a different incoming
+ID to an already-compatible canonical desktop row without changing that row is
+an idempotent lookup, not a new insertion or a repeated mutation. Accordingly,
+the TUI/history summary's `+N exercice(s)` value is exactly the number of new
+catalog rows inserted; detailed structured records retain the separate
+`exercises_reconciled` and `exercises_skipped` values.
+
+## 7. PC -> Android catalog
 
 The desktop publishes:
 
@@ -171,10 +253,13 @@ trainlog-pc-catalog-v1.json
 It is a canonical exercise catalog snapshot containing stable profile metadata.
 
 Android reconciles the received catalog into its local exercise catalog.
+Applying the same catalog again leaves a previously re-keyed exercise on the
+canonical PC identity and reports it as an identical skip. Session occurrences,
+active-draft references, and equipment links keep their existing row targets.
 
 This direction does not overload frozen Trainlog session JSON v1.
 
-## 7. Android sync request
+## 8. Android sync request
 
 Android writes:
 
@@ -201,7 +286,7 @@ The artifact also carries the request timestamp.
 
 A new `request_id` represents a new synchronization request.
 
-## 8. PC sync receipt
+## 9. PC sync receipt
 
 After processing an Android request, the PC publishes:
 
@@ -232,7 +317,7 @@ PC -> Android catalog count
 Android accepts a receipt only when its `request_id` matches the pending
 request.
 
-## 9. Shared desktop engine
+## 10. Shared desktop engine
 
 Canonical implementation:
 
@@ -256,21 +341,29 @@ Android request
 -> receipt
 ```
 
-One synchronization transaction performs:
+The engine has three explicit modes:
 
 ```text
-mobile snapshot download
--> mobile import
--> equipment companion import by (session_id, entry_id)
--> PC catalog export
--> PC mobile V2 export
--> PC equipment companion V2 export
--> PC catalog MTP publication
--> optional receipt publication
--> structured run history
+a   Android -> PC: definition V1 -> mobile V2 -> association V2; no publish
+p   PC -> Android: definition V1 -> catalog V1 -> mobile V2 (including bodies)
+    -> association V2; no receive
+b   bidirectional: complete inbound sequence, then complete outbound sequence
 ```
 
-## 10. Concurrency and request consumption
+In both directions, definitions are reconciled before V2 artifacts that may
+reference their IDs. A mode retains normal validation, transactions, conflict
+reporting, and structured history for the work it performs.
+
+## 11. Conflict reporting and preservation
+
+Synchronization does not silently overwrite a session, body observation,
+equipment association, or equipment definition when stable-identity content
+conflicts. The diagnostic identifies the affected stable identity and its
+source artifact/direction, then records a concise source summary in the run
+history. The conflicting persisted value remains preserved; resolution is an
+explicit correction or reconciliation, not a side effect of synchronization.
+
+## 12. Concurrency and request consumption
 
 Synchronization owns:
 
@@ -285,13 +378,19 @@ The TUI manual action waits for the active synchronization lock.
 After a request is completed and its receipt is published, the request ID is
 recorded locally so the same request is not processed as a new request again.
 
-## 11. Structured sync history
+## 13. Structured sync history
 
 Every real run has:
 
 ```text
 sy_<uuid-v4>
 ```
+
+Each structured run records the selected synchronization direction as `a`,
+`p`, or `b` together with its result summary. Thus every current local-history
+entry has a known direction. `direction inconnue` applies only to a legacy row
+whose historical representation did not record one; the direction is not
+inferred.
 
 Artifacts:
 
@@ -305,9 +404,10 @@ The TUI presents newest runs in a selectable list and opens the detail file with
 `Enter`.
 
 Legacy history rows without a `sync_id` remain readable as list entries but
-cannot have structured detail.
+cannot have structured detail; a legacy row also has `direction inconnue` only
+when its historical representation lacks a direction.
 
-## 12. PC user service
+## 14. PC user service
 
 Install or refresh:
 
@@ -330,7 +430,7 @@ tail -f ~/.local/state/trainlog/syncd.log
 
 No root privilege is required.
 
-## 13. Transport invariants
+## 15. Transport invariants
 
 Do not regress to:
 
@@ -343,25 +443,34 @@ fake uniform targets for heterogeneous actual sets
 overloading frozen Trainlog JSON v1
 ```
 
-## 14. Hardware validation
-
-## 15. Equipment associations V2 and legacy V1
+## 16. Equipment associations V2 and legacy V1
 
 `TRAINLOG_FORMAT_V1` remains frozen. The active companion is
 `trainlog-equipment-associations-v2.json`, format
 `trainlog-equipment-associations`, version `2`. Each row is identified by
 `(session_id, entry_id)` and contains `exercise_id` as consistency metadata,
 then either `state: set` with a canonical `equipment_id`, or `state: cleared`
-for an intentional removal. A missing companion conveys no equipment
-information and cannot clear a previously known choice. Unknown canonical IDs,
-unknown entries and ambiguous identities reject the companion transaction
-explicitly; an unknown equipment reference is never silently changed to null.
+for an intentional removal. In the current V2 flow, the mobile snapshot already
+carries the occurrence equipment value and the companion validates it. A
+missing companion conveys no equipment information and cannot clear a
+previously known choice. Unknown canonical IDs, unknown entries, ambiguous
+identities and divergent values reject processing explicitly; an unknown
+equipment reference is never silently changed to null.
+
+V2 association semantics are unchanged. A custom equipment ID is accepted only
+after its definition V1 artifact has reconciled it on the receiving side.
+Unknown IDs, unknown entries, ambiguous identities, and definition conflicts
+reject processing explicitly; they are never converted to null or silently
+overwritten.
 
 The historical V1 companion remains readable only where its
 `(session_id, exercise_id)` targeting is unambiguous. It cannot represent two
 occurrences of the same exercise in one session and is not redefined to do so.
 
-Validated on the physical Android device:
+## 17. Hardware validation
+
+The following is a prior hardware baseline; it does not claim device validation
+of the definitions V1 or three-mode synchronization change:
 
 ```text
 MTP device discovery PASS
@@ -375,3 +484,52 @@ trainlog-syncd processing PASS
 receipt publication/readback PASS
 multiple distinct Android request IDs PASS
 ```
+
+The current reconciliation checkpoint pulled the real Android v8 database and
+shared-storage artifacts through ADB for read-only inspection, then ran the
+production definition, V2 mobile, association, body and outbound exporters on a
+coherent desktop v8 copy. The second inbound/outbound replay was stable and both
+SQLite integrity checks passed. This is real-data importer/exporter evidence,
+not a claim that the current libmtp transport ran inside the sandbox.
+
+The PC-to-Android idempotence regression additionally feeds artifacts from all
+four production PC exporters into the production Android repository importers.
+Its first pass imports the missing fixture data; its second and third passes
+report zero session, exercise, body-observation, and equipment additions and
+leave exact snapshots of every Android business table unchanged. On the real
+device, `install -r` of the validated APK preserved the backed-up database hash,
+but the requested two live MTP runs remain unexecuted because the sandbox still
+fails `libusb_open()` before opening device storage.
+
+## 18. Audited protocol limitations
+
+Each mutating importer validates strictly and owns a SQLite transaction. The
+V2 association companion only corroborates equipment already imported in the
+mobile snapshot and refuses divergent state. A complete
+definitions/mobile/associations batch nevertheless has no common generation ID
+or cross-file transaction. Independent “newest artifact” selection can
+therefore observe a partially published generation; validation stops on a
+mismatch, but an earlier artifact may already have committed. Replay is
+idempotent and no conflicting local value is overwritten. A future atomic-batch
+design requires a new versioned manifest rather than a semantic change to any
+published format.
+
+Snapshots carry no exercise, session, body-observation, or equipment-definition
+tombstones. Omission therefore never deletes one of those objects. The only
+explicit removal operation is association V2 `state: cleared`, targeted to one
+`(session_id, entry_id)`.
+
+Custom equipment is reconciled by stable `equipment_id`, never by display
+name. Different custom IDs may coexist even when their names are conceptually
+similar; a name-only merge could corrupt load semantics or occurrence
+references and is intentionally forbidden.
+
+The Android PC-catalog V1 reader validates the required catalog identity and
+exercise-profile fields, but does not enforce an exact root/item key set as
+strictly as the newer mobile V2 and equipment companions. Tightening that
+published V1 reader requires a compatibility review.
+
+The historical V1 fallback never consumes a V2 equipment companion: V1 carries
+no occurrence-level equipment signal, so a neighboring V2 companion belongs to
+a different generation and is ignored. This preserves rather than clears
+existing equipment.

@@ -19,6 +19,21 @@ struct TrainlogDatabase {
     sqlite3 *connection;
 };
 
+static bool custom_equipment_exists(TrainlogDatabase *database, const char *equipment_id)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+    bool found = false;
+    if (database == NULL || equipment_id == NULL) return false;
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT 1 FROM custom_equipment WHERE equipment_id=?1;", -1, &statement, NULL);
+    if (rc != SQLITE_OK) return false;
+    (void)sqlite3_bind_text(statement, 1, equipment_id, -1, SQLITE_TRANSIENT);
+    found = sqlite3_step(statement) == SQLITE_ROW;
+    (void)sqlite3_finalize(statement);
+    return found;
+}
+
 static void set_open_diagnostic(
     char *output,
     size_t capacity,
@@ -28,15 +43,42 @@ static void set_open_diagnostic(
 )
 {
     const char *message;
+    int extended_status = sqlite_status;
 
     if (output == NULL || capacity == 0U) {
         return;
     }
 
-    message = connection != NULL
-        ? sqlite3_errmsg(connection)
-        : sqlite3_errstr(sqlite_status);
-    (void)snprintf(output, capacity, "%s: %s", operation, message);
+    if (connection != NULL) {
+        message = sqlite3_errmsg(connection);
+        sqlite_status = sqlite3_errcode(connection);
+        extended_status = sqlite3_extended_errcode(connection);
+    } else {
+        message = sqlite3_errstr(sqlite_status);
+    }
+    /* WHY: preserve the actionable SQLite result while the owning connection
+     * is still open; rollback/close may replace its diagnostic state. */
+    (void)snprintf(
+        output,
+        capacity,
+        "%s: SQLite rc=%d extended_rc=%d: %s",
+        operation,
+        sqlite_status,
+        extended_status,
+        message
+    );
+}
+
+static void set_application_diagnostic(
+    char *output,
+    size_t capacity,
+    const char *message
+)
+{
+    if (output == NULL || capacity == 0U) {
+        return;
+    }
+    (void)snprintf(output, capacity, "%s", message);
 }
 
 static const char *const SCHEMA_V7_SQL_A =
@@ -209,6 +251,17 @@ static const char *const MIGRATE_V6_TO_V7_SQL =
     "INSERT INTO continuous_activity SELECT * FROM continuous_activity_v6;"
     "DROP TABLE performed_sets_v6;DROP TABLE continuous_activity_v6;DROP TABLE session_exercises_v6;"
     "PRAGMA user_version = 7;COMMIT;PRAGMA foreign_keys = ON;";
+
+/* CONTRACT: v8 stores only user-created equipment definitions. Canonical
+ * equipment remains generated from the frozen manifest; historic IDs are not
+ * backfilled because an occurrence reference has no trustworthy metadata. */
+static const char *const MIGRATE_V7_TO_V8_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE custom_equipment ("
+    "equipment_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,"
+    "label_name TEXT NOT NULL,equipment_type TEXT NOT NULL,"
+    "load_semantics TEXT NOT NULL CHECK(load_semantics IN ('none','external','assistance'))"
+    ");PRAGMA user_version = 8;COMMIT;";
 
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
@@ -576,13 +629,13 @@ static TrainlogStatus initialize_or_validate_schema(
         version >
         TRAINLOG_DATABASE_SCHEMA_VERSION
     ) {
+        char message[128];
         (void)snprintf(
-            output_diagnostic,
-            output_diagnostic_capacity,
+            message, sizeof(message),
             "schema version %d is newer than supported version %d",
-            version,
-            TRAINLOG_DATABASE_SCHEMA_VERSION
-        );
+            version, TRAINLOG_DATABASE_SCHEMA_VERSION);
+        set_application_diagnostic(
+            output_diagnostic, output_diagnostic_capacity, message);
         return
             TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
     }
@@ -611,6 +664,13 @@ static TrainlogStatus initialize_or_validate_schema(
                     SCHEMA_V7_SQL_B
                 );
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V7_TO_V8_SQL);
+        }
+    } else if (version == 7) {
+        /* CONTRACT: v7 is the immediate historic schema and must open through
+         * its lossless custom-equipment-table migration. */
+        status = execute_sql(database, MIGRATE_V7_TO_V8_SQL);
     } else {
         if (version == 1) {
             status =
@@ -693,6 +753,13 @@ static TrainlogStatus initialize_or_validate_schema(
         } else if (version == 6) {
             status = TRAINLOG_STATUS_OK;
         } else {
+            char message[128];
+            (void)snprintf(
+                message, sizeof(message),
+                "schema version %d is unsupported (supported through version %d)",
+                version, TRAINLOG_DATABASE_SCHEMA_VERSION);
+            set_application_diagnostic(
+                output_diagnostic, output_diagnostic_capacity, message);
             return
                 TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
         }
@@ -725,6 +792,9 @@ static TrainlogStatus initialize_or_validate_schema(
         if (status == TRAINLOG_STATUS_OK) {
             status = execute_sql(database, MIGRATE_V6_TO_V7_SQL);
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V7_TO_V8_SQL);
+        }
     }
 
     if (
@@ -734,7 +804,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v7" : "migrate database to schema v7",
+            version == 0 ? "create schema v8" : "migrate database to schema v8",
             database->connection,
             SQLITE_ERROR
         );
@@ -894,6 +964,141 @@ TrainlogStatus trainlog_database_foreign_keys_enabled(
         "PRAGMA foreign_keys;",
         output_enabled
     );
+}
+
+TrainlogStatus trainlog_database_create_custom_equipment(
+    TrainlogDatabase *database,
+    const TrainlogCustomEquipment *equipment
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+
+    /* CONTRACT: custom IDs must not shadow frozen manifest identities. */
+    if (database == NULL || equipment == NULL || equipment->equipment_id[0] == '\0' ||
+        equipment->display_name[0] == '\0' || equipment->equipment_type[0] == '\0' ||
+        trainlog_equipment_catalog_lookup(equipment->equipment_id) != NULL ||
+        (strcmp(equipment->load_semantics, "none") != 0 &&
+         strcmp(equipment->load_semantics, "external") != 0 &&
+         strcmp(equipment->load_semantics, "assistance") != 0)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    rc = sqlite3_prepare_v2(database->connection,
+        "INSERT INTO custom_equipment(equipment_id,display_name,label_name,equipment_type,load_semantics) VALUES(?1,?2,?3,?4,?5);",
+        -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    (void)sqlite3_bind_text(statement, 1, equipment->equipment_id, -1, SQLITE_TRANSIENT);
+    (void)sqlite3_bind_text(statement, 2, equipment->display_name, -1, SQLITE_TRANSIENT);
+    (void)sqlite3_bind_text(statement, 3, equipment->label_name, -1, SQLITE_TRANSIENT);
+    (void)sqlite3_bind_text(statement, 4, equipment->equipment_type, -1, SQLITE_TRANSIENT);
+    (void)sqlite3_bind_text(statement, 5, equipment->load_semantics, -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(statement);
+    (void)sqlite3_finalize(statement);
+    return rc == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_list_custom_equipment(
+    TrainlogDatabase *database, TrainlogCustomEquipment *output,
+    size_t capacity, size_t *output_count
+)
+{
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    int rc;
+    if (database == NULL || output_count == NULL || (capacity > 0U && output == NULL))
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    *output_count = 0U;
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics FROM custom_equipment ORDER BY display_name COLLATE NOCASE,equipment_id;",
+        -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        if (count < capacity) {
+            TrainlogCustomEquipment *item = &output[count];
+            (void)memset(item, 0, sizeof(*item));
+            (void)snprintf(item->equipment_id, sizeof(item->equipment_id), "%s", sqlite3_column_text(statement, 0));
+            (void)snprintf(item->display_name, sizeof(item->display_name), "%s", sqlite3_column_text(statement, 1));
+            (void)snprintf(item->label_name, sizeof(item->label_name), "%s", sqlite3_column_text(statement, 2));
+            (void)snprintf(item->equipment_type, sizeof(item->equipment_type), "%s", sqlite3_column_text(statement, 3));
+            (void)snprintf(item->load_semantics, sizeof(item->load_semantics), "%s", sqlite3_column_text(statement, 4));
+        }
+        ++count;
+    }
+    (void)sqlite3_finalize(statement);
+    *output_count = count;
+    return rc == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_resolve_equipment(
+    TrainlogDatabase *database, const char *equipment_id,
+    TrainlogResolvedEquipment *output
+)
+{
+    const TrainlogEquipment *supplied;
+    sqlite3_stmt *statement = NULL;
+    int rc;
+    if (database == NULL || equipment_id == NULL || equipment_id[0] == '\0' ||
+        output == NULL) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    (void)memset(output, 0, sizeof(*output));
+    (void)snprintf(output->equipment_id, sizeof(output->equipment_id), "%s", equipment_id);
+    supplied = trainlog_equipment_catalog_lookup(equipment_id);
+    if (supplied != NULL) {
+        (void)snprintf(output->display_name, sizeof(output->display_name), "%s", supplied->display_name);
+        (void)snprintf(output->label_name, sizeof(output->label_name), "%s", supplied->label_name);
+        (void)snprintf(output->equipment_type, sizeof(output->equipment_type), "%s", supplied->equipment_type);
+        (void)snprintf(output->load_semantics, sizeof(output->load_semantics), "%s", supplied->load_semantics);
+        output->origin = TRAINLOG_EQUIPMENT_SUPPLIED;
+        return TRAINLOG_STATUS_OK;
+    }
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT display_name,label_name,equipment_type,load_semantics FROM custom_equipment WHERE equipment_id=?1;",
+        -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    (void)sqlite3_bind_text(statement, 1, equipment_id, -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        (void)snprintf(output->display_name, sizeof(output->display_name), "%s", sqlite3_column_text(statement, 0));
+        (void)snprintf(output->label_name, sizeof(output->label_name), "%s", sqlite3_column_text(statement, 1));
+        (void)snprintf(output->equipment_type, sizeof(output->equipment_type), "%s", sqlite3_column_text(statement, 2));
+        (void)snprintf(output->load_semantics, sizeof(output->load_semantics), "%s", sqlite3_column_text(statement, 3));
+        output->origin = TRAINLOG_EQUIPMENT_CUSTOM;
+    } else if (rc == SQLITE_DONE) {
+        /* INVARIANT: historic references survive catalogue changes visibly. */
+        (void)snprintf(output->display_name, sizeof(output->display_name), "Inconnu (%s)", equipment_id);
+        output->origin = TRAINLOG_EQUIPMENT_UNKNOWN;
+        rc = SQLITE_ROW;
+    }
+    (void)sqlite3_finalize(statement);
+    return rc == SQLITE_ROW ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_list_exercise_equipment(
+    TrainlogDatabase *database, const char *exercise_id,
+    TrainlogResolvedEquipment *output, size_t capacity, size_t *output_count
+)
+{
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    int rc;
+    if (database == NULL || exercise_id == NULL || output_count == NULL ||
+        (capacity > 0U && output == NULL)) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    *output_count = 0U;
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT DISTINCT se.equipment_id FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id WHERE e.exercise_id=?1 AND se.equipment_id IS NOT NULL AND se.equipment_id<>'' ORDER BY se.equipment_id;",
+        -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    (void)sqlite3_bind_text(statement, 1, exercise_id, -1, SQLITE_TRANSIENT);
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *id = (const char *)sqlite3_column_text(statement, 0);
+        if (count < capacity && trainlog_database_resolve_equipment(database, id, &output[count]) != TRAINLOG_STATUS_OK) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        ++count;
+    }
+    (void)sqlite3_finalize(statement);
+    *output_count = count;
+    return rc == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
 TrainlogStatus trainlog_database_begin(TrainlogDatabase *database)
@@ -1574,15 +1779,17 @@ static TrainlogStatus insert_session_exercise(
     }
 
     if (input->equipment_id[0] != '\0' &&
-        trainlog_equipment_catalog_lookup(input->equipment_id) == NULL) {
-        /* INVARIANT: a persisted occurrence only names a manifest identity. */
+        trainlog_equipment_catalog_lookup(input->equipment_id) == NULL &&
+        !custom_equipment_exists(database, input->equipment_id)) {
+        /* INVARIANT: a persisted occurrence names a known canonical or custom definition. */
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
-    /* Local TUI creation has no transport-supplied identity; allocate it once
+    /* WHY: entry_id, not position or exercise_id, is the durable identity of
+     * one occurrence. Local TUI creation therefore allocates it exactly once
      * at persistence, while imported V2 identities pass through unchanged. */
     if (input->entry_id[0] == '\0') {
-        status = trainlog_id_generate("sy", generated_entry_id,
+        status = trainlog_id_generate("sxe", generated_entry_id,
                                      sizeof(generated_entry_id));
         if (status != TRAINLOG_STATUS_OK) {
             return status;

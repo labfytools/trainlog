@@ -1,6 +1,6 @@
 /**
  * @file test_schema_v5_migration.c
- * @brief Direct v4 -> v7 migration regression test.
+ * @brief Direct v4 -> current migration regression test.
  */
 
 #include <stdbool.h>
@@ -27,10 +27,10 @@
         }                                                                    \
     } while (0)
 
-static bool test_v4_to_v7_preserves_session(void)
+static bool test_v4_to_current_preserves_session(void)
 {
     char path[] =
-        "/tmp/trainlog-schema-v4-v5-XXXXXX";
+        "/tmp/trainlog-schema-v4-current-XXXXXX";
 
     static const char *const V4_SQL =
         "CREATE TABLE exercises ("
@@ -187,9 +187,7 @@ static bool test_v4_to_v7_preserves_session(void)
         TRAINLOG_DATABASE_SCHEMA_VERSION
     );
 
-    CHECK(
-        version == 7
-    );
+    CHECK(version == 8);
 
     CHECK(
         trainlog_database_get_session_details(
@@ -228,7 +226,7 @@ static bool test_v4_to_v7_preserves_session(void)
 int main(void)
 {
     CHECK(
-        test_v4_to_v7_preserves_session()
+        test_v4_to_current_preserves_session()
     );
 
     (void)printf(

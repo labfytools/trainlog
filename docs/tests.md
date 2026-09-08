@@ -56,42 +56,54 @@ different ID + equivalent normalized name -> reject
 new unique identity -> create
 ```
 
+That command validates the frozen Trainlog JSON V1 importer contract. Active
+mobile V2 synchronization has a separate, stricter safe-reconciliation policy
+covered below; it does not modify the frozen V1 expectation.
+
 ## 4. Desktop Meson suite
 
-Current normal suite:
+Current registered set (Meson executes tests in parallel, so displayed order is
+not contractual):
 
 ```text
- 1  database
- 2  catalog
- 3  equipment_catalog
- 4  session_detail
- 5  duration
- 6  body_metrics
- 7  bodyviz
- 8  exercise_performance
- 9  session_type_schema
-10  session_edit
-11  body_observation_edit
-12  mtp
-13  continuous_session
-14  continuous_detail
-15  exercise_profile_schema
-16  usb
-17  reps
-18  variable_sets
-19  schema_v5_migration
-20  measured_max
-21  body_analytics
-22  terminal_input_event_type_policy
-23  mobile_import_multi_occurrence
-24  equipment_associations_exchange
-25  mobile_import_variable_sets
+database
+catalog
+equipment_catalog
+custom_equipment
+session_detail
+duration
+body_metrics
+bodyviz
+exercise_performance
+session_type_schema
+session_edit
+body_observation_edit
+usb
+mtp
+exercise_profile_schema
+continuous_session
+continuous_detail
+reps
+variable_sets
+schema_v5_migration
+schema_v7_migration
+mobile_import_variable_sets
+mobile_import_multi_occurrence
+equipment_associations_exchange
+equipment_definitions_exchange
+exercise_reconciliation
+sync_direction
+sync_history
+sync_screen_action
+measured_max
+body_analytics
+terminal_input_event_type_policy
 ```
 
-Validated checkpoint:
+Validated current suite:
 
 ```text
-25/25 PASS
+32/32 Meson tests PASS
 ```
 
 The desktop executable is additionally smoke-checked in isolated tmux PTYs at
@@ -107,7 +119,7 @@ Notable regression coverage:
 - profile-aware exercise constraints;
 - continuous activity without fake sets;
 - repetition shorthand/list/pyramid parsing;
-- direct v4 -> v7 database migration;
+- direct v4 -> v7 database migration and v7 -> v8 custom-equipment migration;
 - heterogeneous mobile-set import;
 - Notcurses input lifecycle translation: PRESS/REPEAT are actionable while a
   RELEASE event is consumed without creating a second navigation action.
@@ -120,6 +132,34 @@ Notable regression coverage:
   `--database` target, followed by the corrected complete V2 export chain.
 - stable-ID mobile-to-desktop rename reconciliation without duplicate catalog
   rows or historical-reference replacement.
+- supplied catalogue search/detail, local custom-equipment creation and
+  selection, resolution of supplied/local occurrence links, and explicit
+  visibility of an unknown historic equipment reference;
+- strict custom-equipment definitions V1 import/export: reserved supplied IDs,
+  additive omission, equal reimport, and divergent same-ID conflict;
+- three-mode shared-engine plans and their directional receive/publish bounds;
+- Sync-page action dispatch: direct `a`/`p`/`b` confirmation, one `Enter` run,
+  `Esc` cancellation without a run, refresh-only `r`, inert retired `s`, and
+  equivalent full/compact footer direction labels;
+- definition-first ordering before V2 artifacts, so associations can resolve
+  custom IDs without changing V2 shapes.
+- exercise reconciliation with identical profiles, compatible subset/superset
+  masks, explicit incomparable-profile rejection, current Marche identities,
+  preservation of two historic occurrences and their `entry_id`/continuous
+  values, ordered custom-equipment definitions/catalog/mobile/association
+  replay, complete definitions/mobile/associations/body import, outbound
+  publication, and stable second replay;
+- a production PC-exporter to Android-importer regression over definitions,
+  catalog, mobile V2, and association V2 artifacts: the fixture includes
+  Marche, Leg press, two Marche occurrences, per-set loads, body data, a
+  durable draft, and custom equipment; after the first import, both the second
+  and third imports report zero additions and an exact snapshot of every
+  Android business table remains unchanged;
+- synchronization summary reporting where a reconciliation-only result keeps
+  `+0 exercice(s)` and only an actual inserted row produces `+1`;
+- all fourteen body metrics through the same complete reconciliation import;
+- desktop-created occurrence identities use `sxe_<uuid-v4>`, not the `sy_`
+  synchronization-run prefix.
 
 ## 5. Build
 
@@ -141,7 +181,7 @@ cd android
 printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
 
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
-./gradlew assembleDebug
+./gradlew testDebugUnitTest assembleDebug
 ```
 
 Install to the connected device when hardware behavior changes:
@@ -183,6 +223,15 @@ MTP_LIST_FOLDER=PASS
 MTP_READ=PASS
 MTP_ROUNDTRIP=PASS
 ```
+
+The automated `sync_direction` regression also covers selection of the newest
+Android V2 export, equipment-definitions V1 artifact, and equipment-association
+V2 artifact when scoped storage has retained collision-suffixed sibling files.
+It rejects non-versioned/
+non-numeric names and uses deterministic ties; JSON validation remains part of
+the normal import path. `mobile_import_multi_occurrence` exercises the real
+definition importer before the V2 session importer, including idempotent
+reimport and rejection of a missing custom definition.
 
 ## 8. Bidirectional synchronization validation
 
@@ -263,10 +312,10 @@ Coverage proves:
 - external working loads round to the configured increment;
 - working-load percentages reject assistance.
 
-Current normal baseline:
+Validated current normal suite:
 
 ```text
-25/25 PASS
+32/32 Meson tests PASS
 ```
 
 ## 12. Body analytics regression
@@ -288,17 +337,18 @@ Coverage includes:
 - missing required circumference handling;
 - invalid estimation-profile rejection.
 
-Current normal baseline:
+Validated current normal suite:
 
 ```text
-25/25 PASS
+32/32 Meson tests PASS
 ```
 
 ## 13. Android session draft v1
 
 Android schema v4 introduced one durable active draft; the current additive
-chain reaches schema v7 without clearing completed history or the draft. The
-current host suite covers exercise
+chain reaches schema v8 without clearing completed history or the draft. The
+current `testDebugUnitTest` suite and `assembleDebug` pass. Host coverage
+includes exercise
 shapes and raw partial text, fresh repository restore, remove/discard, atomic
 finalization and repeated-finalize rejection, rollback, catalog reconciliation,
 missing-selection recovery, explicit DB-open failure, historical migration,
@@ -314,7 +364,9 @@ adb shell am instrument -w -e package com.labfytools.trainlog \
   com.labfytools.trainlog.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-The device instrumentation suite has **5 tests**: two real-SQLite repository
+The following device instrumentation evidence is a prior baseline, not a
+blanket device-validation claim for schema-v8 definitions or three-mode sync.
+That suite has **5 tests**: two real-SQLite repository
 checks and three production-screen Compose UI checks. Coverage includes exact
 raw form restoration through Activity recreation, cancellation and confirmation
 of discard, final save with no stale Resume after recreation, and refusal of a
@@ -341,5 +393,36 @@ no fictitious completed session was added to the user's history. Real migration
 and final state passed SQLite integrity/foreign-key checks. The pre-upgrade DB
 and preferences backup is outside the repository. No uninstall, package-data
 clear, desktop schema change or frozen artifact change is part of this repair.
+
+## 14. Current real-data reconciliation validation
+
+Before mutation, coherent desktop and Android v8 copies were created and passed
+`PRAGMA integrity_check` plus `PRAGMA foreign_key_check`. The newest real
+Android V2 artifacts were selected, including scoped-storage `(N)` siblings.
+The production tools then ran in protocol order on the desktop copy:
+
+```text
+equipment definitions -> exercise/session/body V2 -> equipment associations
+-> PC definitions/catalog/mobile/associations export -> second import
+```
+
+The result retained the desktop Marche identity with catalog
+`data_fields = 3`, both older speed-only Marche occurrences, the Android
+speed-and-distance occurrence, all original `entry_id`/positions, custom
+equipment, set weights and body observations. The retired Android Marche ID had
+no remaining desktop catalog/reference owner. The second replay changed no row
+counts and both integrity checks remained clean.
+
+This exercises real artifacts and production import/export code on copies. It
+does not substitute for a final direct-MTP run when USB ownership or sandbox
+permissions prevent libmtp access.
+
+For this checkpoint, the USB probe discovered the connected Samsung interface
+but libmtp failed at `libusb_open()`. The canonical desktop DB was also
+read-only to the sandbox; the first attempted definitions import failed before
+mutation, and a repeated dump hash plus integrity/FK checks proved it unchanged.
+The Android package remained force-stopped and ADB was used only for read-only
+inspection/pull. Applying the validated state to both real stores and running
+the two transport directions remains an out-of-sandbox hardware validation.
 
 Detailed retained evidence: [Android draft execution record](reviews/android_session_draft_v1_resume.md).

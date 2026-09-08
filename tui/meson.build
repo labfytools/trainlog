@@ -43,6 +43,7 @@ trainlog_core_sources = files(
   'src/reps.c',
   'src/measured_max.c',
   'src/sync.c',
+  'src/sync_history.c',
 )
 trainlog_core_sources += equipment_catalog_generated
 
@@ -76,6 +77,7 @@ trainlog_core_dep = declare_dependency(
 
 trainlog_tui_sources = files(
   'src/main.c',
+  'src/sync_screen_action.c',
   'src/terminal.c',
   'src/theme.c',
   'src/tui.c',
@@ -123,6 +125,14 @@ test_equipment_catalog = executable(
   c_args: strict_c_args,
 )
 test('equipment_catalog', test_equipment_catalog)
+
+test_custom_equipment = executable(
+  'test_custom_equipment',
+  'tests/test_custom_equipment.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('custom_equipment', test_custom_equipment)
 
 test_session_detail = executable(
   'test_session_detail',
@@ -341,6 +351,18 @@ test(
   test_schema_v5_migration,
 )
 
+test_schema_v7_migration = executable(
+  'test_schema_v7_migration',
+  'tests/test_schema_v7_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test(
+  'schema_v7_migration',
+  test_schema_v7_migration,
+)
+
 python3_trainlog_tests = find_program('python3')
 
 test(
@@ -362,6 +384,46 @@ test(
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_equipment_associations_exchange.py'],
 )
+
+test(
+  'equipment_definitions_exchange',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_equipment_definitions_exchange.py'],
+)
+
+test(
+  'exercise_reconciliation',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_exercise_reconciliation.py'],
+)
+
+test_sync_direction = executable(
+  'test_sync_direction',
+  'tests/test_sync_direction.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('sync_direction', test_sync_direction)
+
+test_sync_history = executable(
+  'test_sync_history',
+  'tests/test_sync_history.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('sync_history', test_sync_history)
+
+test_sync_screen_action = executable(
+  'test_sync_screen_action',
+  'tests/test_sync_screen_action.c',
+  'src/sync_screen_action.c',
+  dependencies: [trainlog_core_dep, notcurses_dep],
+  c_args: strict_c_args,
+)
+
+test('sync_screen_action', test_sync_screen_action)
 
 trainlog_sync_once = executable(
   'trainlog-sync-once',

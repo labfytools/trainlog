@@ -75,6 +75,8 @@ static bool test_generated_ids(void)
     char first[TRAINLOG_GENERATED_ID_CAPACITY];
     char second[TRAINLOG_GENERATED_ID_CAPACITY];
     char sync_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char entry_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char v1_exact_capacity[2U + 1U + TRAINLOG_UUID_TEXT_LENGTH + 1U];
 
     CHECK(
         trainlog_id_generate("ex", first, sizeof(first)) ==
@@ -85,9 +87,18 @@ static bool test_generated_ids(void)
         TRAINLOG_STATUS_OK
     );
     CHECK(strncmp(first, "ex_", 3U) == 0);
-    CHECK(strlen(first) == TRAINLOG_GENERATED_ID_CAPACITY - 1U);
+    CHECK(strlen(first) == 2U + 1U + TRAINLOG_UUID_TEXT_LENGTH);
     CHECK(strcmp(first, second) != 0);
     CHECK(first[3U + 14U] == '4');
+    /* ABI behavior: the new longer occurrence prefix must not invalidate the
+     * exact buffer size historically sufficient for two-character prefixes. */
+    CHECK(
+        trainlog_id_generate(
+            "se",
+            v1_exact_capacity,
+            sizeof(v1_exact_capacity)
+        ) == TRAINLOG_STATUS_OK
+    );
 
     /* TRAINLOG_SYNC_ID_PREFIX_TEST */
     CHECK(
@@ -111,6 +122,17 @@ static bool test_generated_ids(void)
         '4'
     );
 
+    CHECK(
+        trainlog_id_generate(
+            "sxe",
+            entry_id,
+            sizeof(entry_id)
+        ) == TRAINLOG_STATUS_OK
+    );
+    CHECK(strncmp(entry_id, "sxe_", 4U) == 0);
+    CHECK(strlen(entry_id) == TRAINLOG_GENERATED_ID_CAPACITY - 1U);
+    CHECK(entry_id[4U + 14U] == '4');
+
     return true;
 }
 
@@ -131,6 +153,8 @@ static bool test_session_insert(void)
     TrainlogSetInput sets[2];
     TrainlogSessionExerciseInput exercise;
     TrainlogSessionInput session;
+    TrainlogSessionSummary persisted_session;
+    TrainlogPersistedExerciseDetail persisted_exercises[1];
     size_t count = 0U;
 
     CHECK(
@@ -196,6 +220,19 @@ static bool test_session_insert(void)
         TRAINLOG_STATUS_OK
     );
     CHECK(count == 1U);
+    CHECK(
+        trainlog_database_get_session_details(
+            database,
+            "se_test",
+            &persisted_session,
+            persisted_exercises,
+            1U,
+            &count
+        ) == TRAINLOG_STATUS_OK
+    );
+    CHECK(count == 1U);
+    /* Regression: local occurrences are `sxe`, never synchronization runs. */
+    CHECK(strncmp(persisted_exercises[0].entry_id, "sxe_", 4U) == 0);
 
     trainlog_database_close(database);
     return true;

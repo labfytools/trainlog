@@ -11,7 +11,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
@@ -38,6 +42,8 @@ import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
+import java.text.Normalizer
+import java.util.Locale
 
 @Composable
 fun SessionScreen(
@@ -230,6 +236,21 @@ fun SessionScreen(
             )
         }
 
+        ExercisePicker(
+            exercises = exercises,
+            selectedExercise = currentDraft.form.selectedExercise,
+            onExerciseSelected = { exercise ->
+                /* CONTRACT: only a tapped catalogue result changes the durable
+                 * form identity. The transient query is never an exercise. */
+                persistDraft(
+                    currentDraft.copy(
+                        form = currentDraft.form.copy(selectedExercise = exercise),
+                    ),
+                    null,
+                )
+            },
+        )
+
         TrainlogFrame(
             title = "SEANCE EN COURS"
         ) {
@@ -314,55 +335,6 @@ fun SessionScreen(
                             },
                         )
                     }
-            }
-        }
-
-        TrainlogFrame(
-            title = "CATALOGUE",
-            active =
-                exercises.isNotEmpty(),
-        ) {
-            if (
-                exercises.isEmpty()
-            ) {
-                TrainlogInfo(
-                    "Aucun exercice."
-                )
-            } else {
-                exercises.forEach {
-                        exercise ->
-
-                    val alreadyAdded =
-                        currentDraft.exercises.any {
-                            it.exercise.exerciseId ==
-                                exercise.exerciseId
-                        }
-
-                    CatalogChoice(
-                        exercise =
-                            exercise,
-                        selected =
-                            currentDraft.form
-                                .selectedExercise
-                                ?.exerciseId ==
-                                exercise.exerciseId,
-                    disabled = false,
-                        onClick = {
-                            if (true) {
-                                persistDraft(
-                                    currentDraft.copy(
-                                        form =
-                                            currentDraft.form.copy(
-                                                selectedExercise =
-                                                    exercise
-                                            )
-                                    ),
-                                    null,
-                                )
-                            }
-                        },
-                    )
-                }
             }
         }
 
@@ -544,8 +516,8 @@ fun SessionScreen(
 private fun CatalogChoice(
     exercise: ExerciseProfile,
     selected: Boolean,
-    disabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -558,6 +530,7 @@ private fun CatalogChoice(
     Row(
         modifier =
             Modifier
+                .then(modifier)
                 .fillMaxWidth()
                 .padding(vertical = 2.dp)
                 .background(
@@ -568,7 +541,6 @@ private fun CatalogChoice(
                     }
                 )
                 .clickable(
-                    enabled = !disabled,
                     onClick = onClick,
                 )
                 .padding(
@@ -579,9 +551,7 @@ private fun CatalogChoice(
         BasicText(
             text =
                 (
-                    if (disabled) {
-                        "✓ "
-                    } else if (selected) {
+                    if (selected) {
                         "▌ "
                     } else {
                         "  "
@@ -593,9 +563,7 @@ private fun CatalogChoice(
             style =
                 TrainlogTypography.normal.copy(
                     color =
-                        if (disabled) {
-                            colors.muted
-                        } else if (selected) {
+                        if (selected) {
                             colors.warning
                         } else {
                             colors.text
@@ -610,6 +578,110 @@ private fun CatalogChoice(
         )
     }
 }
+
+/**
+ * WHY: the session picker keeps query state outside [SessionDraftForm] so
+ * typing and cancelling are harmless to the selected exercise and raw values.
+ * CONTRACT: matching is presentation-only prefix matching; it never changes
+ * stored names or treats query text as a catalogue identity.
+ * INVARIANT: [exercises] is the complete, stable repository catalogue, so a
+ * movement already used in this session remains selectable for another entry.
+ */
+@Composable
+private fun ExercisePicker(
+    exercises: List<ExerciseProfile>,
+    selectedExercise: ExerciseProfile?,
+    onExerciseSelected: (ExerciseProfile) -> Unit,
+) {
+    val colors = LocalTrainlogColors.current
+    var searchOpen by remember(selectedExercise?.exerciseId) {
+        mutableStateOf(selectedExercise == null)
+    }
+    var query by remember(selectedExercise?.exerciseId) { mutableStateOf("") }
+    val results = remember(exercises, query) { exercisePrefixMatches(exercises, query) }
+
+    TrainlogFrame(title = "EXERCICE", active = exercises.isNotEmpty()) {
+        if (exercises.isEmpty()) {
+            TrainlogInfo("Aucun exercice.")
+            return@TrainlogFrame
+        }
+
+        TrainlogAction(
+            label = selectedExercise?.name ?: "Choisir un exercice",
+            description = "Exercice sélectionné. Appuyer pour afficher les suggestions.",
+            accent = if (selectedExercise == null) colors.muted else colors.success,
+            modifier = Modifier.testTag("exercise-picker-open"),
+            onClick = { searchOpen = true },
+        )
+
+        TrainlogInputField(
+            label = "Rechercher un exercice…",
+            value = query,
+            onValueChange = {
+                query = it
+                searchOpen = true
+            },
+            testTag = "exercise-search-input",
+        )
+
+        if (!searchOpen) {
+            return@TrainlogFrame
+        }
+
+        if (results.isEmpty()) {
+            TrainlogInfo("Aucun exercice trouvé", color = colors.muted)
+        } else {
+            /* The viewport stays keyboard-friendly while LazyColumn preserves
+             * access to every prefix result instead of truncating it. */
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 280.dp).testTag("exercise-search-results"),
+            ) {
+                items(results, key = { it.exerciseId }) { exercise ->
+                    CatalogChoice(
+                        exercise = exercise,
+                        selected = selectedExercise?.exerciseId == exercise.exerciseId,
+                        modifier = Modifier.testTag("exercise-search-result-${exercise.exerciseId}"),
+                        onClick = {
+                            onExerciseSelected(exercise)
+                            query = ""
+                            searchOpen = false
+                        },
+                    )
+                }
+            }
+        }
+
+        if (selectedExercise != null) {
+            TrainlogAction(
+                label = "Annuler la recherche",
+                description = "Conserver ${selectedExercise.name} et les valeurs saisies.",
+                accent = colors.muted,
+                onClick = {
+                    query = ""
+                    searchOpen = false
+                },
+            )
+        }
+    }
+}
+
+internal fun exercisePrefixMatches(
+    exercises: List<ExerciseProfile>,
+    query: String,
+): List<ExerciseProfile> {
+    val normalizedQuery = normalizeExerciseSearchText(query)
+    return exercises.filter { exercise ->
+        normalizedQuery.isEmpty() ||
+            normalizeExerciseSearchText(exercise.name).startsWith(normalizedQuery)
+    }
+}
+
+private fun normalizeExerciseSearchText(value: String): String =
+    Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace("\\p{M}+".toRegex(), "")
+        .lowercase(Locale.ROOT)
+        .trim()
+        .replace("\\s+".toRegex(), " ")
 
 @Composable
 private fun SessionExerciseForm(

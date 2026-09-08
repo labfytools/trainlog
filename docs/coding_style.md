@@ -10,7 +10,7 @@ Avoid clever code when a straightforward implementation is easier to verify.
 
 The TUI uses C17.
 
-The project will initially target a strict warning profile similar to:
+Meson enforces C17, warning level 3 and `werror=true`. Desktop targets also use:
 
 ```text
 -Wall
@@ -63,6 +63,12 @@ Comments are required for:
 - error-handling decisions;
 - algorithms whose intent is not immediately obvious.
 
+For synchronization, persistence, stable identity, serialization, ownership,
+ABI boundaries, concurrency, and scientific interpretation, comments identify
+the relevant intent explicitly as `WHY`, `CONTRACT`, or `INVARIANT`. They belong
+in the same change as the behavior and explain the non-obvious rule rather than
+restating syntax.
+
 Bad:
 
 ```c
@@ -81,9 +87,9 @@ Good:
 
 ## 6. Formatting
 
-The project will use `clang-format`.
-
-A canonical `.clang-format` file will be added before substantial C implementation.
+The repository currently has no canonical `.clang-format` file. Do not apply a
+bulk formatter with tool-default behavior; introducing a format definition and
+any broad normalization requires a dedicated, reviewable change.
 
 Formatting changes should not be mixed with unrelated semantic changes when avoidable.
 

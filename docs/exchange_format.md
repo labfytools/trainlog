@@ -10,9 +10,9 @@ GATE_1=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
-This document defines the proposed final Trainlog v1 exchange contract.
-
-The format remains `DRAFT` until Gate 1 validation and mirror review complete.
+This document defines the frozen Trainlog v1 exchange contract. Gate 1
+validation and review are complete; incompatible new semantics require a new,
+separately versioned format.
 
 ## 2. Design goal
 

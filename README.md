@@ -16,9 +16,9 @@ desktop.
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V7=PASS
+DESKTOP_SCHEMA_V8=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V7=PASS
+ANDROID_LOCAL_DATABASE_V8=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
@@ -34,8 +34,10 @@ ANDROID_SYNC_RECEIPT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
+EQUIPMENT_DEFINITIONS_V1=PASS
+EXERCISE_RECONCILIATION_V2=PASS
 
-DESKTOP_TESTS=25/25 PASS
+DESKTOP_TESTS=32/32 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -109,6 +111,14 @@ occurrence, as do its actual per-set loads. `external` records an applied or
 machine-displayed load; `assistance` records assistance and is not interpreted
 as increasing strength.
 
+During V2 synchronization, a different-ID normalized-name collision is merged
+only when recording/tracking modes match, every other known invariant is
+compatible, and one `data_fields` mask contains the other. The desktop identity
+is retained as canonical, the bit-mask union preserves the richer capability,
+and historical occurrence snapshots remain unchanged; absent optional values
+stay absent. Incomparable profiles remain explicit conflicts. Name equality
+alone is never sufficient.
+
 ## Repository layout
 
 ```text
@@ -147,9 +157,10 @@ export or desktop synchronization as completed sessions.
 Schema v4 migrates additively from v3, preserving existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v7. Its additive v4 -> v7 chain adds the shared
-equipment catalogue, per-occurrence equipment links and durable occurrence
-identities without recreating completed history or the active draft.
+The current Android schema is v8. Its additive v4 -> v8 chain adds the shared
+equipment catalogue, per-occurrence equipment links, durable occurrence
+identities, and custom-equipment definition support without recreating completed
+history or the active draft.
 
 Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
 unchanged; completed history, an active draft, and synchronization therefore
@@ -272,5 +283,5 @@ BODY_ANALYTICS_V1=PASS
 BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=25/25 PASS
+DESKTOP_TESTS=32/32 PASS
 ```

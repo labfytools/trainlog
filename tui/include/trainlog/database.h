@@ -11,9 +11,59 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 7
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 8
 
 typedef struct TrainlogDatabase TrainlogDatabase;
+
+/* WHY: session occurrences retain an equipment ID, while custom definitions
+ * need durable presentation metadata. A reference alone is never a definition. */
+typedef struct TrainlogCustomEquipment {
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
+    char display_name[TRAINLOG_NAME_MAX + 1U];
+    char label_name[TRAINLOG_NAME_MAX + 1U];
+    char equipment_type[TRAINLOG_NAME_MAX + 1U];
+    char load_semantics[32];
+} TrainlogCustomEquipment;
+
+typedef enum TrainlogEquipmentOrigin {
+    TRAINLOG_EQUIPMENT_SUPPLIED = 0,
+    TRAINLOG_EQUIPMENT_CUSTOM,
+    TRAINLOG_EQUIPMENT_UNKNOWN
+} TrainlogEquipmentOrigin;
+
+typedef struct TrainlogResolvedEquipment {
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
+    char display_name[TRAINLOG_NAME_MAX + 1U];
+    char label_name[TRAINLOG_NAME_MAX + 1U];
+    char equipment_type[TRAINLOG_NAME_MAX + 1U];
+    char load_semantics[32];
+    TrainlogEquipmentOrigin origin;
+} TrainlogResolvedEquipment;
+
+TrainlogStatus trainlog_database_create_custom_equipment(
+    TrainlogDatabase *database,
+    const TrainlogCustomEquipment *equipment
+);
+TrainlogStatus trainlog_database_list_custom_equipment(
+    TrainlogDatabase *database,
+    TrainlogCustomEquipment *output,
+    size_t capacity,
+    size_t *output_count
+);
+/* CONTRACT: an occurrence ID always resolves to a visible value. Unknown IDs
+ * are returned verbatim with TRAINLOG_EQUIPMENT_UNKNOWN, never hidden. */
+TrainlogStatus trainlog_database_resolve_equipment(
+    TrainlogDatabase *database,
+    const char *equipment_id,
+    TrainlogResolvedEquipment *output
+);
+TrainlogStatus trainlog_database_list_exercise_equipment(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogResolvedEquipment *output,
+    size_t capacity,
+    size_t *output_count
+);
 
 TrainlogStatus trainlog_database_open(
     const char *path,

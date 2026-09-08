@@ -74,6 +74,7 @@ typedef struct TrainlogMtpEntry {
     uint32_t parent_id;
     uint32_t storage_id;
     uint64_t size_bytes;
+    uint64_t modification_unix_seconds;
     bool folder;
     char name[TRAINLOG_MTP_ENTRY_NAME_MAX + 1U];
 } TrainlogMtpEntry;

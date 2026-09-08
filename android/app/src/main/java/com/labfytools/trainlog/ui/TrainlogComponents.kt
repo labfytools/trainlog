@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -225,6 +226,7 @@ fun TrainlogInputField(
     onValueChange: (String) -> Unit,
     keyboardOptions: KeyboardOptions =
         KeyboardOptions.Default,
+    testTag: String? = null,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -276,6 +278,13 @@ fun TrainlogInputField(
                     .onFocusChanged {
                         focused = it.isFocused
                     }
+                    .then(
+                        if (testTag == null) {
+                            Modifier
+                        } else {
+                            Modifier.testTag(testTag)
+                        }
+                    )
                     .background(colors.surface)
                     .padding(
                         horizontal = 12.dp,

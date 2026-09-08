@@ -14,8 +14,8 @@ GATE_1=PASS
 GATE_2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
-DESKTOP_SCHEMA_V7=PASS
-ANDROID_LOCAL_DATABASE_V7=PASS
+DESKTOP_SCHEMA_V8=PASS
+ANDROID_LOCAL_DATABASE_V8=PASS
 
 DIRECT_MTP_TRANSPORT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
@@ -26,7 +26,7 @@ BODY_ANALYTICS_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
 
-DESKTOP_TESTS=25/25 PASS
+DESKTOP_TESTS=32/32 PASS
 TUI_NOTCURSES_V1=PASS
 NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
 NOTCURSES_TRUECOLOR_THEME=PASS
@@ -46,6 +46,8 @@ The current product baseline includes:
 - desktop body analytics;
 - direct USB/MTP transport;
 - bidirectional Android/PC synchronization;
+- safe V2 exercise-identity reconciliation with richer compatible profiles;
+- supplied and custom equipment definitions with occurrence-level links;
 - shared synchronization engine and `trainlog-syncd`.
 
 `EXERCISE_EDIT_V1` is a completed capture correction: Android permits

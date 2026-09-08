@@ -128,6 +128,7 @@ int main(
         trainlog_sync_run(
             trigger,
             request_only,
+            TRAINLOG_SYNC_BIDIRECTIONAL,
             &report
         );
 

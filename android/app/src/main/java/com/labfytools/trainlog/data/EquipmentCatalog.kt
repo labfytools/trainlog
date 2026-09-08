@@ -6,6 +6,7 @@ import java.text.Normalizer
 import java.util.Locale
 
 enum class EquipmentLoadSemantics {
+    NONE,
     EXTERNAL,
     ASSISTANCE,
     BODYWEIGHT,

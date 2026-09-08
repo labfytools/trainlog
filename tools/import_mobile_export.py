@@ -11,6 +11,11 @@ from pathlib import Path
 FORMAT = "trainlog-mobile-export"
 VERSION = 1
 KNOWN_DATA_FIELDS = 3
+DEFAULT_EQUIPMENT_CATALOG = (
+    Path(__file__).resolve().parents[1]
+    / "catalog"
+    / "equipment-v1.json"
+)
 
 TOP_LEVEL_KEYS = {
     "format",
@@ -236,6 +241,38 @@ def load_payload(path):
     return payload
 
 
+def load_supplied_equipment_ids(path):
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            catalog = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ImportFailure(
+            f"lecture catalogue équipement impossible: {error}"
+        ) from error
+
+    if (
+        not isinstance(catalog, dict)
+        or catalog.get("format") != "trainlog-equipment-catalog"
+        or catalog.get("version") != 1
+        or not isinstance(catalog.get("equipment"), list)
+    ):
+        raise ImportFailure("catalogue équipement v1 invalide")
+
+    known = set()
+    for index, item in enumerate(catalog["equipment"]):
+        if not isinstance(item, dict):
+            raise ImportFailure(
+                f"catalogue équipement v1 invalide: equipment[{index}]"
+            )
+        known.add(
+            require_nonempty_string(
+                item.get("id"),
+                f"catalogue.equipment[{index}].id",
+            )
+        )
+    return known
+
+
 def validate_profile(
     recording_mode,
     tracking_mode,
@@ -281,6 +318,7 @@ def validate_profile(
 
 def validate_exercises(payload):
     seen_ids = set()
+    profiles = {}
 
     for index, item in enumerate(
         payload["exercises"]
@@ -318,7 +356,9 @@ def validate_exercises(payload):
             label,
         )
 
-    return seen_ids
+        profiles[exercise_id] = item
+
+    return profiles
 
 
 def validate_set_item(
@@ -405,6 +445,19 @@ def validate_session_exercise(
         item["data_fields"],
         label,
     )
+
+    catalog_profile = known_exercise_ids[exercise_id]
+    if (
+        recording_mode != catalog_profile["recording_mode"]
+        or tracking_mode != catalog_profile["tracking_mode"]
+        or item["data_fields"] & ~catalog_profile["data_fields"]
+    ):
+        # CONTRACT: an occurrence snapshots the fields that actually existed
+        # when it was recorded.  It may omit later optional catalog fields, but
+        # it may never claim a field absent from the catalog profile.
+        raise ImportFailure(
+            f"{label}: snapshot incompatible avec le profil catalogue"
+        )
 
     if item["load_mode"] != "none":
         raise ImportFailure(
@@ -516,6 +569,7 @@ def validate_session_exercise(
 def validate_sessions(
     payload,
     known_exercise_ids,
+    known_equipment_ids,
 ):
     seen_ids = set()
 
@@ -581,6 +635,22 @@ def validate_sessions(
                 exercise_label,
                 known_exercise_ids,
             )
+
+            equipment_id = exercise.get("equipment_id")
+            # CONTRACT: mobile export v2 carries only references whose supplied
+            # or custom definition is already known. Validate before run_import
+            # opens a transaction so an unknown ID cannot create partial history.
+            if (
+                payload["version"] == 2
+                and equipment_id is not None
+                and equipment_id not in known_equipment_ids
+            ):
+                raise ImportFailure(
+                    "équipement inconnu "
+                    f"session_id={session_id} "
+                    f"entry_id={exercise['entry_id']} "
+                    f"equipment_id={equipment_id}"
+                )
 
             exercise_id = exercise["exercise_id"]
             identity = exercise.get("entry_id", exercise_id)
@@ -649,7 +719,7 @@ def validate_body(payload):
             )
 
 
-def validate_payload(payload):
+def validate_payload(payload, known_equipment_ids):
     exercise_ids = validate_exercises(
         payload
     )
@@ -657,19 +727,22 @@ def validate_payload(payload):
     validate_sessions(
         payload,
         exercise_ids,
+        known_equipment_ids,
     )
 
     validate_body(payload)
 
 
-def require_schema_v5(connection):
+def require_supported_schema(connection):
     version = connection.execute(
         "PRAGMA user_version;"
     ).fetchone()[0]
 
-    if version not in (5, 6, 7):
+    # CONTRACT: desktop startup migrates canonical databases through v8; the
+    # mobile-v2 tables used below retain their v7 shape in v8.
+    if version not in (5, 6, 7, 8):
         raise ImportFailure(
-            f"base desktop schema v5, v6 ou v7 attendue, version trouvée: {version}"
+            f"base desktop schema v5, v6, v7 ou v8 attendue, version trouvée: {version}"
         )
 
 
@@ -715,17 +788,94 @@ def lookup_exercise_by_normalized(
     ).fetchone()
 
 
-def profile_matches(
-    row,
-    exercise,
-):
+def data_fields_are_comparable(left, right):
+    """Return true only when either bounded field mask contains the other."""
+    return (left & ~right) == 0 or (right & ~left) == 0
+
+
+def trace_exercise_decision(enabled, exercise, lookup, decision):
+    """Emit an opt-in structured diagnostic without changing import state."""
+    if not enabled:
+        return
+    print(
+        "EXERCISE_DECISION=" + json.dumps(
+            {
+                "exercise_id": exercise["exercise_id"],
+                "name": exercise["name"],
+                "recording_mode": exercise["recording_mode"],
+                "tracking_mode": exercise["tracking_mode"],
+                "data_fields": exercise["data_fields"],
+                "lookup": lookup,
+                "decision": decision,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+
+
+def profiles_are_reconcilable(row, exercise):
+    """Check the complete exercise-profile boundary carried by mobile V2.
+
+    Name equality is deliberately checked by the caller: it is a collision
+    precondition, never sufficient identity evidence by itself.
+    """
     return (
-        row["tracking_mode"]
-        == exercise["tracking_mode"]
-        and row["recording_mode"]
-        == exercise["recording_mode"]
-        and row["data_fields"]
-        == exercise["data_fields"]
+        row["tracking_mode"] == exercise["tracking_mode"]
+        and row["recording_mode"] == exercise["recording_mode"]
+        and data_fields_are_comparable(
+            row["data_fields"], exercise["data_fields"]
+        )
+    )
+
+
+def profile_conflict(row, exercise):
+    return (
+        "profil incompatible entre identités "
+        f"{row['exercise_id']} et {exercise['exercise_id']}: "
+        f"desktop={row['recording_mode']}/{row['tracking_mode']}/"
+        f"data_fields={row['data_fields']}, "
+        f"entrant={exercise['recording_mode']}/{exercise['tracking_mode']}/"
+        f"data_fields={exercise['data_fields']}"
+    )
+
+
+def enrich_desktop_profile(connection, row, exercise):
+    """Retain the richer compatible capability without rewriting history."""
+    # CONTRACT: field values are a bit mask, not an ordered enumeration. The
+    # prior comparability check proves that this union is one existing superset.
+    richer_fields = row["data_fields"] | exercise["data_fields"]
+    if richer_fields != row["data_fields"]:
+        # INVARIANT: session_exercises.data_fields remains untouched.  Missing
+        # optional values therefore remain NULL instead of being invented.
+        connection.execute(
+            "UPDATE exercises SET data_fields=? WHERE id=?;",
+            (richer_fields, row["id"]),
+        )
+    return richer_fields
+
+
+def merge_desktop_exercise_rows(connection, canonical, retired):
+    """Move the complete current desktop FK graph before deleting a duplicate."""
+    # WHY: the current v8 desktop schema has exactly one exercise-row FK owner.
+    # Keeping this operation explicit makes a future schema addition fail its
+    # reconciliation tests instead of silently leaving a dangling identity.
+    connection.execute(
+        "UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?;",
+        (canonical["id"], retired["id"]),
+    )
+    remaining = connection.execute(
+        "SELECT COUNT(*) FROM session_exercises WHERE exercise_row_id=?;",
+        (retired["id"],),
+    ).fetchone()[0]
+    if remaining != 0:
+        raise ImportFailure(
+            f"références résiduelles vers {retired['exercise_id']}"
+        )
+    connection.execute(
+        "DELETE FROM exercises WHERE id=?;",
+        (retired["id"],),
     )
 
 
@@ -733,6 +883,7 @@ def import_exercises(
     connection,
     payload,
     report,
+    trace_exercises=False,
 ):
     mapping = {}
 
@@ -748,12 +899,18 @@ def import_exercises(
         )
 
         if by_id is not None:
-            if not profile_matches(
+            if not profiles_are_reconcilable(
                 by_id,
                 exercise,
             ):
+                trace_exercise_decision(
+                    trace_exercises,
+                    exercise,
+                    f"exercise_id:{by_id['exercise_id']}",
+                    "conflict",
+                )
                 raise ImportFailure(
-                    f"profil incompatible pour {exercise_id}"
+                    profile_conflict(by_id, exercise)
                 )
 
             by_name = lookup_exercise_by_normalized(
@@ -764,10 +921,46 @@ def import_exercises(
                 by_name is not None
                 and by_name["id"] != by_id["id"]
             ):
-                raise ImportFailure(
-                    "conflit de nom pour l'identité "
-                    + exercise_id
+                if not profiles_are_reconcilable(by_name, by_id):
+                    trace_exercise_decision(
+                        trace_exercises,
+                        exercise,
+                        "exercise_id:"
+                        f"{by_id['exercise_id']};normalized_name:"
+                        f"{by_name['exercise_id']}",
+                        "conflict",
+                    )
+                    raise ImportFailure(profile_conflict(by_name, by_id))
+
+                # CONTRACT: the row already owning the normalized desktop name
+                # is the deterministic canonical identity.  All row references
+                # move transactionally; entry_id/session_id and child values do
+                # not change.
+                richer_fields = (
+                    by_name["data_fields"]
+                    | by_id["data_fields"]
+                    | exercise["data_fields"]
                 )
+                connection.execute(
+                    "UPDATE exercises SET data_fields=? WHERE id=?;",
+                    (richer_fields, by_name["id"]),
+                )
+                merge_desktop_exercise_rows(connection, by_name, by_id)
+                mapping[exercise_id] = by_name["exercise_id"]
+                report["exercises_reconciled"] += 1
+                trace_exercise_decision(
+                    trace_exercises,
+                    exercise,
+                    "exercise_id:"
+                    f"{by_id['exercise_id']};normalized_name:"
+                    f"{by_name['exercise_id']}",
+                    "existing-reconciled",
+                )
+                continue
+
+            richer_fields = enrich_desktop_profile(
+                connection, by_id, exercise
+            )
 
             # CONTRACT: exercise_id is the synchronization identity. A rename
             # updates metadata in place, retaining every historical and draft
@@ -779,21 +972,33 @@ def import_exercises(
                 connection.execute(
                     """
                     UPDATE exercises
-                    SET name = ?, normalized_name = ?
+                    SET name = ?, normalized_name = ?, data_fields = ?
                     WHERE id = ?;
                     """,
                     (
                         exercise["name"],
                         normalized,
+                        richer_fields,
                         by_id["id"],
                     ),
                 )
                 report["exercises_reconciled"] += 1
+                decision = "existing-reconciled"
+            elif richer_fields != by_id["data_fields"]:
+                report["exercises_reconciled"] += 1
+                decision = "existing-reconciled"
             else:
                 report["exercises_skipped"] += 1
+                decision = "existing-identical"
 
             mapping[exercise_id] = (
                 by_id["exercise_id"]
+            )
+            trace_exercise_decision(
+                trace_exercises,
+                exercise,
+                f"exercise_id:{by_id['exercise_id']}",
+                decision,
             )
             continue
 
@@ -803,20 +1008,34 @@ def import_exercises(
         )
 
         if by_name is not None:
-            if not profile_matches(
-                by_name,
-                exercise,
-            ):
-                raise ImportFailure(
-                    "conflit de profil pour le nom "
-                    + exercise["name"]
+            if not profiles_are_reconcilable(by_name, exercise):
+                # Name equality alone remains insufficient: incompatible modes
+                # or incomparable optional-field masks are an explicit conflict.
+                trace_exercise_decision(
+                    trace_exercises,
+                    exercise,
+                    f"normalized_name:{by_name['exercise_id']}",
+                    "conflict",
                 )
+                raise ImportFailure(profile_conflict(by_name, exercise))
 
-            mapping[exercise_id] = (
-                by_name["exercise_id"]
+            richer_fields = enrich_desktop_profile(connection, by_name, exercise)
+            mapping[exercise_id] = by_name["exercise_id"]
+            if richer_fields != by_name["data_fields"]:
+                report["exercises_reconciled"] += 1
+                decision = "existing-reconciled"
+            else:
+                # INVARIANT: resolving an already-compatible creator ID to the
+                # persisted canonical row is idempotent lookup work, not a new
+                # persistent reconciliation on every snapshot replay.
+                report["exercises_skipped"] += 1
+                decision = "existing-identical"
+            trace_exercise_decision(
+                trace_exercises,
+                exercise,
+                f"normalized_name:{by_name['exercise_id']}",
+                decision,
             )
-
-            report["exercises_reconciled"] += 1
             continue
 
         connection.execute(
@@ -842,6 +1061,12 @@ def import_exercises(
 
         mapping[exercise_id] = exercise_id
         report["exercises_imported"] += 1
+        trace_exercise_decision(
+            trace_exercises,
+            exercise,
+            "none",
+            "inserted",
+        )
 
     return mapping
 
@@ -1037,7 +1262,17 @@ def import_sessions(
                 "SELECT s.id FROM sessions s WHERE s.session_id=?;",
                 (session["session_id"],)).fetchone()
             session_row_id = existing[0]
-            incoming = [(x["entry_id"], x["exercise_id"]) for x in session["exercises"]]
+            incoming = [
+                (
+                    item["entry_id"],
+                    exercise_mapping.get(item["exercise_id"]),
+                )
+                for item in session["exercises"]
+            ]
+            if any(exercise_id is None for _, exercise_id in incoming):
+                raise ImportFailure(
+                    "mapping exercice absent pour " + session["session_id"]
+                )
             rows = connection.execute(
                 "SELECT se.entry_id,e.exercise_id FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position;",
                 (session_row_id,)).fetchall()
@@ -1047,6 +1282,16 @@ def import_sessions(
             # unique. Any other identity disagreement is an explicit conflict.
             if current != incoming and not (legacy and [x[1] for x in current] == [x[1] for x in incoming]):
                 raise ImportFailure("conflit d'identités d'entrées pour " + session["session_id"])
+            if not legacy and session_semantically_matches(
+                connection,
+                session_row_id,
+                session,
+                exercise_mapping,
+            ):
+                report["sessions_skipped"] += 1
+                continue
+            if not legacy:
+                raise ImportFailure("conflit de contenu pour " + session["session_id"])
             # Explicit child deletion makes reconciliation safe even for old
             # databases which were created without enforced foreign keys.
             connection.execute("DELETE FROM performed_sets WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
@@ -1103,8 +1348,7 @@ def import_sessions(
                 != item["tracking_mode"]
                 or row["recording_mode"]
                 != item["recording_mode"]
-                or row["data_fields"]
-                != item["data_fields"]
+                or item["data_fields"] & ~row["data_fields"]
             ):
                 raise ImportFailure(
                     "snapshot de séance incompatible avec le catalogue desktop"
@@ -1133,6 +1377,47 @@ def import_sessions(
                 )
 
         report["sessions_imported"] += 1
+
+
+def session_semantically_matches(
+    connection,
+    session_row_id,
+    incoming,
+    exercise_mapping,
+):
+    header = connection.execute(
+        "SELECT started_at,session_type FROM sessions WHERE id=?", (session_row_id,)).fetchone()
+    if header is None or (header[0], header[1]) != (incoming["started_at"], incoming["session_type"]):
+        return False
+    rows = connection.execute(
+        "SELECT se.id,se.entry_id,se.position,e.exercise_id,se.recording_mode,e.tracking_mode,"
+        "se.data_fields,se.equipment_id FROM session_exercises se JOIN exercises e "
+        "ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position", (session_row_id,)).fetchall()
+    items = sorted(incoming["exercises"], key=lambda item: item["position"])
+    if len(rows) != len(items):
+        return False
+    for row, item in zip(rows, items):
+        canonical_exercise_id = exercise_mapping.get(item["exercise_id"])
+        if tuple(row[1:8]) != (item["entry_id"], item["position"], canonical_exercise_id,
+                               item["recording_mode"], item["tracking_mode"],
+                               item["data_fields"], item.get("equipment_id")):
+            return False
+        if item["recording_mode"] == "continuous":
+            current = connection.execute(
+                "SELECT duration_seconds,speed_kmh,distance_km FROM continuous_activity "
+                "WHERE session_exercise_row_id=?", (row[0],)).fetchone()
+            expected = item["continuous"]
+            if current is None or tuple(current) != (expected["duration_seconds"], expected.get("speed_kmh"), expected.get("distance_km")):
+                return False
+        else:
+            current = connection.execute(
+                "SELECT reps,duration_seconds,weight_kg FROM performed_sets "
+                "WHERE session_exercise_row_id=? ORDER BY position", (row[0],)).fetchall()
+            expected = [(value.get("reps"), value.get("duration_seconds"), value.get("weight_kg"))
+                        for value in item["sets"]]
+            if [tuple(value) for value in current] != expected:
+                return False
+    return True
 
 
 def body_exists(
@@ -1194,10 +1479,13 @@ def import_body(
     for observation in payload[
         "body_observations"
     ]:
-        if body_exists(
-            connection,
-            observation["observation_id"],
-        ):
+        existing = connection.execute(
+            f"SELECT observed_at,{','.join(metric_order)} FROM body_observations WHERE observation_id=?",
+            (observation["observation_id"],)).fetchone()
+        if existing is not None:
+            expected = [observation["observed_at"]] + [observation.get(metric) for metric in metric_order]
+            if list(existing) != expected:
+                raise ImportFailure("conflit observation corporelle: " + observation["observation_id"])
             report["body_skipped"] += 1
             continue
 
@@ -1223,6 +1511,7 @@ def run_import(
     payload,
     database_path,
     dry_run,
+    trace_exercises=False,
 ):
     if not database_path.exists():
         raise ImportFailure(
@@ -1251,7 +1540,7 @@ def run_import(
             "PRAGMA foreign_keys = ON;"
         )
 
-        require_schema_v5(
+        require_supported_schema(
             connection
         )
 
@@ -1263,6 +1552,7 @@ def run_import(
             connection,
             payload,
             report,
+            trace_exercises,
         )
 
         import_sessions(
@@ -1342,6 +1632,18 @@ def main():
         action="store_true",
     )
 
+    parser.add_argument(
+        "--catalog",
+        type=Path,
+        default=DEFAULT_EQUIPMENT_CATALOG,
+    )
+
+    parser.add_argument(
+        "--trace-exercises",
+        action="store_true",
+        help="journaliser les lookups et décisions catalogue sur stderr",
+    )
+
     args = parser.parse_args()
 
     try:
@@ -1349,14 +1651,20 @@ def main():
             args.json_path
         )
 
-        validate_payload(
-            payload
-        )
+        known_equipment_ids = load_supplied_equipment_ids(args.catalog)
+        if args.database.exists():
+            with sqlite3.connect(args.database) as connection:
+                if connection.execute("PRAGMA user_version").fetchone()[0] >= 8:
+                    known_equipment_ids.update(row[0] for row in connection.execute(
+                        "SELECT equipment_id FROM custom_equipment"))
+
+        validate_payload(payload, known_equipment_ids)
 
         report = run_import(
             payload,
             args.database,
             args.dry_run,
+            args.trace_exercises,
         )
 
         print_report(

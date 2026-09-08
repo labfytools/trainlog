@@ -129,6 +129,9 @@ class SyncCatalogInbox(
                         it.readText()
                     }
 
+            val definitionsError = importPcEquipmentDefinitions(directory)
+            if (definitionsError != null) return CatalogInboxResult.Error(definitionsError)
+
             when (
                 val result =
                     repository
@@ -181,6 +184,20 @@ class SyncCatalogInbox(
                 MobileSessionImportResult.DatabaseError -> "Erreur base locale séances V2."
             }
         } catch (error: Exception) { error.message ?: "Import séances V2 impossible." }
+    }
+
+    private fun importPcEquipmentDefinitions(directory: DocumentFile): String? {
+        val file = directory.findFile("trainlog-pc-equipment-definitions-v1.json") ?: return null
+        return try {
+            val json = appContext.contentResolver.openInputStream(file.uri)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: return "Lecture définitions équipement impossible."
+            when (val result = repository.applyPcEquipmentDefinitionsJson(json)) {
+                is EquipmentDefinitionImportResult.Applied -> null
+                is EquipmentDefinitionImportResult.Invalid -> result.message
+                EquipmentDefinitionImportResult.DatabaseError -> "Erreur base locale définitions équipement."
+            }
+        } catch (error: Exception) { error.message ?: "Import définitions équipement impossible." }
     }
 
     private fun importPcEquipmentAssociations(directory: DocumentFile): String? {

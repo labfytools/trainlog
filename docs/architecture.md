@@ -20,7 +20,7 @@ Android capture client
             shared desktop sync engine
                /               \
               /                 \
-     desktop SQLite       PC catalog artifact
+     desktop SQLite       directional PC artifacts
           |                      |
           v                      v
       desktop TUI             Android
@@ -120,7 +120,7 @@ Continuous work is persisted separately from performed sets.
 
 ### Desktop
 
-Desktop SQLite schema v7 is canonical long-term history. `session_exercises`
+Desktop SQLite schema v8 is canonical long-term history. `session_exercises`
 stores a stable occurrence `entry_id`; a catalogue `exercise_id` can therefore
 occur more than once in one session without identity fusion.
 
@@ -133,11 +133,12 @@ session_exercises
 performed_sets
 continuous_activity
 body_observations
+custom_equipment
 ```
 
 ### Android
 
-Android has an independent local SQLite schema, currently v7.
+Android has an independent local SQLite schema, currently v8.
 
 It mirrors domain concepts needed for capture, but its schema version is not
 coupled to the desktop schema.
@@ -160,9 +161,12 @@ recovery preserves the raw fields and added exercises with a specific warning.
 the display name and normalized form in the existing catalog row identified by
 `exercise_id`; foreign-key ownership consequently preserves completed history
 and active drafts. A profile edit is admitted only before that row is referenced
-by either completed or active-draft data. Android and desktop same-ID catalog
-reconciliation apply name metadata in place and reject a collision with a
-different stable ID.
+by either completed or active-draft data. Same-ID reconciliation applies name
+metadata in place. A different-ID normalized-name collision may merge only for
+equal recording/tracking modes, compatible represented invariants, and
+`data_fields` masks comparable by inclusion. Desktop ownership wins on both
+sides; the richer mask is retained and every occurrence/draft reference moves
+transactionally. Otherwise synchronization reports a conflict.
 
 Compose presentation has one `TrainlogScreen` header component for every page.
 It uses the TUI's compact accent `◆ TRAINLOG ◆` plaque and muted context line;
@@ -181,13 +185,25 @@ Synchronization uses separate formats:
 
 ```text
 trainlog-mobile-export v1
+trainlog-mobile-export v2
 trainlog-pc-catalog v1
+trainlog-equipment-associations v2
+trainlog-equipment-definitions v1
 trainlog-sync-request v1
 trainlog-sync-receipt v1
 ```
 
 A new domain requirement must not be forced into frozen v1 by using notes,
 synthetic sets, or data loss.
+
+The active occurrence-aware session exchange remains
+`trainlog-mobile-export` v2. The separate directional
+`trainlog-equipment-definitions` v1 artifacts carry user-created equipment
+definitions: `trainlog-mobile-equipment-definitions-v1.json` travels from
+Android to PC and `trainlog-pc-equipment-definitions-v1.json` travels from PC
+to Android. The filename identifies direction; the JSON format and version do
+not change. V1 historical artifacts remain readable under their frozen
+contracts.
 
 ## 6. Direct MTP transport
 
@@ -238,18 +254,44 @@ Android request
     -> receipt
 ```
 
-The engine performs:
+The same engine owns all supported directions. Its explicit modes are:
+
+```text
+a = Android -> PC only
+p = PC -> Android only
+b = Android -> PC, then PC -> Android
+```
+
+The Android-to-PC direction receives the mobile equipment-definitions v1
+artifact, mobile-export v2, and equipment-associations v2. The PC-to-Android
+direction publishes PC equipment-definitions v1 before dependent artifacts,
+then publishes the PC catalog v1, PC mobile-export v2 (including completed
+sessions and body observations), and equipment-associations v2.
+
+The engine performs the applicable direction steps:
 
 ```text
 1. direct-MTP device/storage discovery
 2. exchange-folder resolution
-3. mobile snapshot download
-4. strict transactional Android -> PC import
-5. PC catalog export
-6. direct-MTP PC catalog publication
+3. definition artifact transfer and reconciliation before dependent V2 data
+4. strict transactional Android -> PC import when selected
+5. PC catalog, mobile/body, and association export when selected
+6. direct-MTP publication of the selected PC -> Android artifacts
 7. optional request receipt publication
 8. structured run-history recording
 ```
+
+Synchronization is additive and reconciliatory: artifact absence never implies
+deletion of local content. Equal same-ID definitions are idempotent; divergent
+same-ID definitions, unknown references, and association conflicts are reported
+explicitly. The affected persisted content is preserved on conflict; the engine
+does not silently overwrite it.
+
+There is no exercise, session, body-observation, or equipment-definition
+tombstone in the current formats. Omitting one of those objects from a later
+snapshot is not a deletion request. The only explicit removal signal is
+equipment-association V2 `state: cleared`, scoped to one
+`(session_id, entry_id)` occurrence.
 
 ## 8. Synchronization concurrency
 
@@ -298,7 +340,7 @@ known errors with generic placeholders.
 ## 11. Layering rule
 
 ```text
-ncurses / Compose rendering
+Notcurses / Compose rendering
           |
           v
 application workflow
@@ -313,7 +355,7 @@ persistence / MTP transport
 
 Rendering does not own persistence rules.
 
-Persistence and MTP code do not depend on ncurses rendering.
+Persistence and MTP code do not depend on Notcurses rendering.
 
 ## 12. Body analytics boundary
 
@@ -345,3 +387,37 @@ with `~/.config` fallback.
 
 This profile is not synchronized to Android and does not require a SQLite
 schema change.
+
+## 13. Audited evolution constraints
+
+Each mutating importer has strict validation and a SQLite transaction. The V2
+association companion is a strict corroboration of the equipment already
+carried by the mobile snapshot and does not rewrite divergent state. However,
+one definitions/mobile/associations publication has no common generation
+manifest and is not one cross-artifact database transaction. A late association
+conflict can therefore follow a successfully committed definitions or mobile
+import; replay remains idempotent and existing conflicting content is not
+overwritten. A future batch protocol must be separately versioned rather than
+retrofitted into frozen formats.
+
+Android and desktop also have different stored name-normalization behavior:
+Android removes diacritics, while the frozen desktop/Python rule preserves them
+through NFC plus Unicode case folding. Correcting existing Android keys requires
+an explicit migration and collision policy. Finally, Android retains supplied
+exercise/equipment relationship tables, but its current picker searches the
+complete definition catalog; applying those relations as recommendations is
+future gym-catalog behavior.
+
+Custom-equipment reconciliation is deliberately ID-based. Different custom
+IDs are not merged by equal or similar display names because their load
+semantics and existing occurrence references may differ. The current PC
+catalog V1 Android reader also validates its required semantic fields without
+the exact-key rejection used by newer V2/companion readers; stricter V1 parsing
+needs an explicit compatibility review.
+
+The desktop model/API currently permits bounded supplemental field masks on a
+`SETS` profile, while Android creation and V2 inbox validation require those
+masks to be zero for `SETS`. The shipped catalog uses supplemental speed and
+distance only with `CONTINUOUS`; defining cross-platform behavior for a future
+set-based supplemental field is a model-contract decision, not part of this
+reconciliation.

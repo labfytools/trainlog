@@ -24,6 +24,7 @@ local.properties
 # Local user data
 /data/
 exports/
+.local-backups/
 
 # Python helpers
 __pycache__/

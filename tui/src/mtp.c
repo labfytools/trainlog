@@ -682,6 +682,16 @@ TrainlogStatus trainlog_mtp_list_folder(
             entry->size_bytes =
                 item->filesize;
 
+            /* MTP exposes this value with file metadata.  Keep the transport
+             * timestamp separate from the filename: callers use it only to
+             * choose the newest immutable exchange artifact, never as a
+             * domain timestamp.  A zero value means the device did not supply
+             * a usable modification time. */
+            if (item->modificationdate > 0) {
+                entry->modification_unix_seconds =
+                    (uint64_t)item->modificationdate;
+            }
+
             entry->folder =
                 item->filetype ==
                 LIBMTP_FILETYPE_FOLDER;

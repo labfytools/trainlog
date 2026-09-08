@@ -39,14 +39,26 @@ class SyncExporter(
             return SyncExportResult.Unsupported
         }
 
-        /* V2 is the authoritative mobile session exchange. V1 remains
-         * readable by desktop for historic devices but is not published here. */
-        val json = repository.buildMobileExportV2Json()
-
-        val bytes =
-            json.toByteArray(
-                Charsets.UTF_8
+        /* CONTRACT: capture all three artifacts before publishing any of
+         * them.  The files are separate for compatibility, but a user edit
+         * must not make a newly-written V2 reference a definition assembled
+         * from a different logical export state. */
+        val definitionsJson: String
+        val mobileJson: String
+        val associationsJson: String
+        try {
+            definitionsJson = repository.buildEquipmentDefinitionsJson()
+            /* V2 is the authoritative mobile session exchange. V1 remains
+             * readable by desktop for historic devices but is not published. */
+            mobileJson = repository.buildMobileExportV2Json()
+            associationsJson = repository.buildEquipmentAssociationsJson()
+        } catch (error: Exception) {
+            return SyncExportResult.Error(
+                error.message ?: "Préparation de l'export impossible.",
             )
+        }
+
+        val bytes = mobileJson.toByteArray(Charsets.UTF_8)
 
         val resolver =
             appContext.contentResolver
@@ -64,6 +76,11 @@ class SyncExporter(
 
         val displayName =
             "trainlog-mobile-export-v2.json"
+
+        /* Definitions are visible before any v2 file which may reference a
+         * custom ID; a failed definition write aborts the bundle. */
+        val definitionsError = writeEquipmentDefinitions(definitionsJson)
+        if (definitionsError != null) return SyncExportResult.Error(definitionsError)
 
         val existing =
             findExisting(
@@ -171,7 +188,7 @@ class SyncExporter(
                 )
             }
 
-            val companionError = writeEquipmentAssociations()
+            val companionError = writeEquipmentAssociations(associationsJson)
             if (companionError != null) {
                 return SyncExportResult.Error(companionError)
             }
@@ -201,7 +218,7 @@ class SyncExporter(
     }
 
     /** Publish the companion separately so frozen mobile-export-v1 stays byte-compatible. */
-    private fun writeEquipmentAssociations(): String? {
+    private fun writeEquipmentAssociations(json: String): String? {
         val resolver = appContext.contentResolver
         val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Trainlog/"
@@ -216,7 +233,7 @@ class SyncExporter(
         }) ?: return "Création de l'extension équipement impossible."
         return try {
             resolver.openOutputStream(uri, "wt")?.use {
-                it.write(repository.buildEquipmentAssociationsJson().toByteArray(Charsets.UTF_8))
+                it.write(json.toByteArray(Charsets.UTF_8))
                 it.flush()
             } ?: return "Écriture de l'extension équipement impossible."
             if (created) resolver.update(uri, ContentValues().apply {
@@ -226,6 +243,33 @@ class SyncExporter(
         } catch (error: Exception) {
             if (created) resolver.delete(uri, null, null)
             error.message ?: "Export extension équipement impossible."
+        }
+    }
+
+    private fun writeEquipmentDefinitions(json: String): String? {
+        val resolver = appContext.contentResolver
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Trainlog/"
+        val name = "trainlog-mobile-equipment-definitions-v1.json"
+        val existing = findExisting(collection, name, relativePath)
+        val created = existing == null
+        val uri = existing ?: resolver.insert(collection, ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }) ?: return "Création des définitions équipement impossible."
+        return try {
+            resolver.openOutputStream(uri, "wt")?.use {
+                it.write(json.toByteArray(Charsets.UTF_8)); it.flush()
+            } ?: return "Écriture des définitions équipement impossible."
+            if (created) resolver.update(uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }, null, null)
+            null
+        } catch (error: Exception) {
+            if (created) resolver.delete(uri, null, null)
+            error.message ?: "Export définitions équipement impossible."
         }
     }
 

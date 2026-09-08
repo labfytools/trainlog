@@ -21,7 +21,8 @@ static bool prefix_is_supported(const char *prefix)
     return strcmp(prefix, "ex") == 0 ||
            strcmp(prefix, "se") == 0 ||
            strcmp(prefix, "bo") == 0 ||
-           strcmp(prefix, "sy") == 0;
+           strcmp(prefix, "sy") == 0 ||
+           strcmp(prefix, "sxe") == 0;
 }
 
 TrainlogStatus trainlog_id_generate(
@@ -39,7 +40,7 @@ TrainlogStatus trainlog_id_generate(
     }
 
     if (!prefix_is_supported(prefix) ||
-        output_size < TRAINLOG_GENERATED_ID_CAPACITY) {
+        output_size < strlen(prefix) + 1U + TRAINLOG_UUID_TEXT_LENGTH + 1U) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 

@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "trainlog/id.h"
+#include "trainlog/sync_history.h"
 #include "trainlog/timeutil.h"
 
 #define SYNC_DEVICE_CAPACITY 8U
@@ -42,6 +43,12 @@ static const char *const PC_CATALOG_NAME =
 static const char *const EQUIPMENT_ASSOCIATIONS_NAME =
     "trainlog-equipment-associations-v2.json";
 
+static const char *const MOBILE_EQUIPMENT_DEFINITIONS_NAME =
+    "trainlog-mobile-equipment-definitions-v1.json";
+
+static const char *const PC_EQUIPMENT_DEFINITIONS_NAME =
+    "trainlog-pc-equipment-definitions-v1.json";
+
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
 
@@ -59,6 +66,15 @@ static const char *const PC_CATALOG_LOCAL =
 
 static const char *const EQUIPMENT_ASSOCIATIONS_LOCAL =
     "/tmp/trainlog-equipment-associations-v2.json";
+
+static const char *const MOBILE_EQUIPMENT_DEFINITIONS_LOCAL =
+    "/tmp/trainlog-mobile-equipment-definitions-v1.json";
+
+static const char *const PC_EQUIPMENT_DEFINITIONS_LOCAL =
+    "/tmp/trainlog-pc-equipment-definitions-v1.json";
+
+static const char *const EQUIPMENT_DEFINITIONS_RESULT =
+    "/tmp/trainlog-equipment-definitions-result.txt";
 
 static const char *const SYNC_REQUEST_LOCAL =
     "/tmp/trainlog-sync-request-v1.json";
@@ -80,6 +96,22 @@ typedef struct SyncSilence {
     int saved_stderr;
     int null_fd;
 } SyncSilence;
+
+TrainlogSyncDirectionPlan trainlog_sync_direction_plan(
+    TrainlogSyncDirection direction
+)
+{
+    TrainlogSyncDirectionPlan plan = {false, false};
+    if (direction == TRAINLOG_SYNC_ANDROID_TO_PC ||
+        direction == TRAINLOG_SYNC_BIDIRECTIONAL) {
+        plan.receive_android = true;
+    }
+    if (direction == TRAINLOG_SYNC_PC_TO_ANDROID ||
+        direction == TRAINLOG_SYNC_BIDIRECTIONAL) {
+        plan.publish_android = true;
+    }
+    return plan;
+}
 
 static bool ensure_directory(
     const char *path
@@ -673,6 +705,137 @@ static TrainlogStatus sync_find_child(
     return TRAINLOG_STATUS_NOT_FOUND;
 }
 
+static bool sync_android_artifact_ordinal(
+    const char *name,
+    const char *canonical_name,
+    uint32_t *output_ordinal
+)
+{
+    static const char suffix[] = ").json";
+    static const char extension[] = ".json";
+    size_t suffix_length;
+    size_t extension_length;
+    size_t canonical_length;
+    size_t stem_length;
+    size_t name_length;
+    size_t index;
+    uint32_t ordinal = 0U;
+
+    if (name == NULL || canonical_name == NULL || output_ordinal == NULL) {
+        return false;
+    }
+
+    if (strcmp(name, canonical_name) == 0) {
+        *output_ordinal = 0U;
+        return true;
+    }
+
+    suffix_length = sizeof(suffix) - 1U;
+    extension_length = sizeof(extension) - 1U;
+    canonical_length = strlen(canonical_name);
+    if (canonical_length <= extension_length ||
+        strcmp(canonical_name + canonical_length - extension_length,
+               extension) != 0) {
+        return false;
+    }
+
+    stem_length = canonical_length - extension_length;
+    name_length = strlen(name);
+    if (name_length < stem_length + 3U + suffix_length ||
+        strncmp(name, canonical_name, stem_length) != 0 ||
+        name[stem_length] != ' ' ||
+        name[stem_length + 1U] != '(' ||
+        strcmp(name + name_length - suffix_length, suffix) != 0) {
+        return false;
+    }
+
+    for (index = stem_length + 2U;
+         index < name_length - suffix_length;
+         ++index) {
+        unsigned int digit;
+
+        if (name[index] < '0' || name[index] > '9') {
+            return false;
+        }
+
+        digit = (unsigned int)(name[index] - '0');
+        if (ordinal > (UINT32_MAX - digit) / 10U) {
+            return false;
+        }
+
+        ordinal = ordinal * 10U + digit;
+    }
+
+    if (ordinal == 0U) {
+        return false;
+    }
+
+    *output_ordinal = ordinal;
+    return true;
+}
+
+bool trainlog_sync_select_android_artifact(
+    const TrainlogMtpEntry *entries,
+    size_t count,
+    const char *canonical_name,
+    size_t *output_index
+)
+{
+    bool found = false;
+    uint64_t best_modified = 0U;
+    uint32_t best_ordinal = 0U;
+    uint32_t best_item_id = 0U;
+    size_t best_index = 0U;
+    size_t index;
+
+    if (entries == NULL || count == 0U || canonical_name == NULL ||
+        canonical_name[0] == '\0' || output_index == NULL) {
+        return false;
+    }
+
+    for (index = 0U; index < count; ++index) {
+        uint32_t ordinal;
+        const TrainlogMtpEntry *entry = &entries[index];
+
+        if (entry->folder ||
+            !sync_android_artifact_ordinal(entry->name, canonical_name,
+                                           &ordinal)) {
+            continue;
+        }
+
+        if (!found ||
+            entry->modification_unix_seconds > best_modified ||
+            (entry->modification_unix_seconds == best_modified &&
+             ordinal > best_ordinal) ||
+            (entry->modification_unix_seconds == best_modified &&
+             ordinal == best_ordinal && entry->item_id < best_item_id)) {
+            found = true;
+            best_modified = entry->modification_unix_seconds;
+            best_ordinal = ordinal;
+            best_item_id = entry->item_id;
+            best_index = index;
+        }
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    *output_index = best_index;
+    return true;
+}
+
+bool trainlog_sync_select_mobile_export(
+    const TrainlogMtpEntry *entries,
+    size_t count,
+    size_t *output_index
+)
+{
+    return trainlog_sync_select_android_artifact(entries, count,
+                                                 MOBILE_EXPORT_NAME,
+                                                 output_index);
+}
+
 static TrainlogStatus sync_find_exchange_folder(
     const TrainlogSyncDeviceInfo *device,
     uint32_t *output_folder_id
@@ -769,6 +932,54 @@ static TrainlogStatus sync_receive_named(
     ) {
         *output_size =
             size_bytes;
+    }
+
+    return status;
+}
+
+static TrainlogStatus sync_receive_current_android_artifact(
+    const TrainlogSyncDeviceInfo *device,
+    uint32_t folder_id,
+    const char *canonical_name,
+    const char *local_path,
+    uint64_t *output_size
+)
+{
+    TrainlogMtpEntry entries[SYNC_ENTRY_CAPACITY];
+    size_t count = 0U;
+    size_t selected_index;
+    TrainlogStatus status;
+
+    if (device == NULL || canonical_name == NULL || local_path == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = trainlog_mtp_list_folder(
+        device->device.bus_number,
+        device->device.device_number,
+        device->storage.storage_id,
+        folder_id,
+        entries,
+        SYNC_ENTRY_CAPACITY,
+        &count
+    );
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+
+    if (!trainlog_sync_select_android_artifact(entries, count, canonical_name,
+                                               &selected_index)) {
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+
+    status = trainlog_mtp_receive_file(
+        device->device.bus_number,
+        device->device.device_number,
+        entries[selected_index].item_id,
+        local_path
+    );
+    if (status == TRAINLOG_STATUS_OK && output_size != NULL) {
+        *output_size = entries[selected_index].size_bytes;
     }
 
     return status;
@@ -1521,6 +1732,25 @@ static const char *sync_trigger_text(
     }
 }
 
+static const char *sync_direction_text(
+    TrainlogSyncDirection direction
+)
+{
+    switch (direction) {
+    case TRAINLOG_SYNC_ANDROID_TO_PC:
+        return "android_to_pc";
+
+    case TRAINLOG_SYNC_PC_TO_ANDROID:
+        return "pc_to_android";
+
+    case TRAINLOG_SYNC_BIDIRECTIONAL:
+        return "bidirectional";
+
+    default:
+        return NULL;
+    }
+}
+
 static bool sync_local_timestamp(
     char output[17]
 )
@@ -1654,6 +1884,37 @@ static bool sync_json_write_escaped(
         ) != EOF;
 }
 
+static bool sync_history_write_summary(
+    FILE *file,
+    const char *summary
+)
+{
+    size_t index;
+
+    if (file == NULL || summary == NULL) {
+        return false;
+    }
+
+    for (
+        index = 0U;
+        index < TRAINLOG_SYNC_SUMMARY_MAX && summary[index] != '\0';
+        ++index
+    ) {
+        const char value =
+            summary[index] == '\t' ||
+            summary[index] == '\r' ||
+            summary[index] == '\n'
+                ? ' '
+                : summary[index];
+
+        if (fputc((unsigned char)value, file) == EOF) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool sync_write_receipt(
     const TrainlogSyncReport *report
 )
@@ -1769,7 +2030,7 @@ static bool sync_write_receipt(
         fclose(file) == 0;
 }
 
-static bool sync_record_run(
+bool trainlog_sync_record_local_run(
     TrainlogSyncTrigger trigger,
     const TrainlogSyncReport *report
 )
@@ -1796,9 +2057,45 @@ static bool sync_record_run(
     FILE *detail_file;
     FILE *history_file;
     int written;
+    const char *direction_code;
+    const char *direction_text;
+    const char *direction_label;
+    TrainlogSyncHistoryEntry direction_entry;
+
+    (void)memset(
+        &direction_entry,
+        0,
+        sizeof(direction_entry)
+    );
+    if (report != NULL) {
+        direction_entry.direction_known = true;
+        direction_entry.direction = report->direction;
+    }
+
+    direction_code =
+        report == NULL
+            ? NULL
+            : trainlog_sync_history_direction_code(
+                report->direction
+            );
+    direction_text =
+        report == NULL
+            ? NULL
+            : sync_direction_text(
+                report->direction
+            );
+    direction_label =
+        report == NULL
+            ? NULL
+            : trainlog_sync_history_direction_label(
+                &direction_entry
+            );
 
     if (
         report == NULL ||
+        direction_code == NULL ||
+        direction_text == NULL ||
+        direction_label == NULL ||
         report->sync_id[0] == '\0' ||
         !sync_runs_directory(
             directory,
@@ -1911,6 +2208,21 @@ static bool sync_record_run(
     }
 
     (void)fputs(
+        ",\n  \"direction\":",
+        json_file
+    );
+
+    if (
+        !sync_json_write_escaped(
+            json_file,
+            direction_text
+        )
+    ) {
+        (void)fclose(json_file);
+        return false;
+    }
+
+    (void)fputs(
         ",\n  \"status\":",
         json_file
     );
@@ -2003,12 +2315,14 @@ static bool sync_record_run(
         detail_file,
         "SYNC %s\n\n"
         "Déclencheur : %s\n"
+        "Direction   : %s\n"
         "Début       : %s\n"
         "État        : %s\n",
         report->sync_id,
         sync_trigger_text(
             trigger
         ),
+        direction_label,
         local_timestamp,
         report->success
             ? "succès"
@@ -2078,17 +2392,30 @@ static bool sync_record_run(
         return false;
     }
 
-    (void)fprintf(
+    /* CONTRACT: direction is a dedicated field because failure summaries may
+     * be neutral or mention a different phase than the selected operation. */
+    written = fprintf(
         history_file,
-        "%s\t%s\t%d\t%.*s\n",
+        "%s\t%s\t%d\t%s\t",
         report->sync_id,
         local_timestamp,
         report->success
             ? 1
             : 0,
-        (int)TRAINLOG_SYNC_SUMMARY_MAX,
-        report->summary
+        direction_code
     );
+
+    if (
+        written < 0 ||
+        !sync_history_write_summary(
+            history_file,
+            report->summary
+        ) ||
+        fputc('\n', history_file) == EOF
+    ) {
+        (void)fclose(history_file);
+        return false;
+    }
 
     return
         fclose(
@@ -2096,7 +2423,7 @@ static bool sync_record_run(
         ) == 0;
 }
 
-static void sync_build_summary(
+void trainlog_sync_build_summary(
     TrainlogSyncReport *report
 )
 {
@@ -2105,16 +2432,24 @@ static void sync_build_summary(
     }
 
     if (report->success) {
-        (void)snprintf(
-            report->summary,
-            sizeof(report->summary),
-            "Android→PC +%zu séance(s), +%zu exercice(s), +%zu mesure(s) · PC→Android catalogue %zu exercice(s)",
-            report->sessions_imported,
-            report->exercises_imported +
-                report->exercises_reconciled,
-            report->body_imported,
-            report->catalog_published
-        );
+        if (report->direction == TRAINLOG_SYNC_ANDROID_TO_PC) {
+            (void)snprintf(report->summary, sizeof(report->summary),
+                "Android→PC +%zu séance(s), +%zu exercice(s), +%zu mesure(s), +%zu équipement(s)",
+                report->sessions_imported,
+                report->exercises_imported,
+                report->body_imported, report->equipment_definitions_imported);
+        } else if (report->direction == TRAINLOG_SYNC_PC_TO_ANDROID) {
+            (void)snprintf(report->summary, sizeof(report->summary),
+                "PC→Android catalogue %zu exercice(s), définitions/séances/mesures publiées",
+                report->catalog_published);
+        } else {
+            (void)snprintf(report->summary, sizeof(report->summary),
+                "PC↔Android import +%zu séance(s), +%zu exercice(s), +%zu mesure(s), +%zu équipement(s) · catalogue %zu publié(s)",
+                report->sessions_imported,
+                report->exercises_imported,
+                report->body_imported, report->equipment_definitions_imported,
+                report->catalog_published);
+        }
     } else {
         (void)snprintf(
             report->summary,
@@ -2209,6 +2544,7 @@ static void sync_parse_import_report(
 TrainlogStatus trainlog_sync_run(
     TrainlogSyncTrigger trigger,
     bool require_request,
+    TrainlogSyncDirection direction,
     TrainlogSyncReport *output
 )
 {
@@ -2236,8 +2572,11 @@ TrainlogStatus trainlog_sync_run(
     bool silence_active = false;
     bool run_started = false;
     bool receipt_published = false;
+    bool mobile_export_is_v2 = false;
 
-    if (output == NULL) {
+    if (output == NULL || direction < TRAINLOG_SYNC_ANDROID_TO_PC ||
+        direction > TRAINLOG_SYNC_BIDIRECTIONAL ||
+        (require_request && direction != TRAINLOG_SYNC_BIDIRECTIONAL)) {
         return
             TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
@@ -2247,6 +2586,7 @@ TrainlogStatus trainlog_sync_run(
         0,
         sizeof(*output)
     );
+    output->direction = direction;
 
     lock_fd =
         sync_lock_open(
@@ -2448,14 +2788,54 @@ TrainlogStatus trainlog_sync_run(
         goto finalize;
     }
 
-    status =
-        sync_receive_named(
-            &device,
-            folder_id,
-            MOBILE_EXPORT_NAME,
-            MOBILE_EXPORT_LOCAL,
-            &ignored_size
-        );
+    if (direction == TRAINLOG_SYNC_PC_TO_ANDROID) {
+        goto outbound;
+    }
+
+    /* Definitions must reconcile before either v2 reference artifact. A
+     * missing file is accepted only for historic snapshots with no custom ID. */
+    status = sync_receive_current_android_artifact(
+        &device,
+        folder_id,
+        MOBILE_EQUIPMENT_DEFINITIONS_NAME,
+        MOBILE_EQUIPMENT_DEFINITIONS_LOCAL,
+        &ignored_size
+    );
+    if (status == TRAINLOG_STATUS_OK) {
+        status = sync_run_python_tool("import_equipment_definitions.py",
+                                      MOBILE_EQUIPMENT_DEFINITIONS_LOCAL,
+                                      database_path,
+                                      EQUIPMENT_DEFINITIONS_RESULT,
+                                      tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK ||
+            strstr(tool_output, "EQUIPMENT_DEFINITIONS_IMPORT=PASS") == NULL) {
+            char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            (void)snprintf(output->error, sizeof(output->error),
+                           "Android→PC : définitions équipement : %s",
+                           useful[0] != '\0' ? useful : "import échoué");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+        output->equipment_definitions_imported =
+            sync_report_value(tool_output, "definitions_imported");
+        output->equipment_definitions_skipped =
+            sync_report_value(tool_output, "definitions_skipped");
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "Android→PC : lecture définitions équipement échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
+    status = sync_receive_current_android_artifact(
+        &device,
+        folder_id,
+        MOBILE_EXPORT_NAME,
+        MOBILE_EXPORT_LOCAL,
+        &ignored_size
+    );
+    mobile_export_is_v2 = status == TRAINLOG_STATUS_OK;
 
     if (
         status !=
@@ -2525,10 +2905,20 @@ TrainlogStatus trainlog_sync_run(
         output
     );
 
-    /* V1 exports carry no equipment signal. A missing companion therefore
-     * preserves existing desktop associations rather than clearing them. */
-    status = sync_receive_named(&device, folder_id, EQUIPMENT_ASSOCIATIONS_NAME,
-                                EQUIPMENT_ASSOCIATIONS_LOCAL, &ignored_size);
+    /* V1 exports carry no equipment signal. A V2 companion beside a historic
+     * V1 snapshot belongs to another generation and must not be applied. Its
+     * absence therefore preserves existing associations rather than clearing
+     * them. Scoped storage may suffix every V2 Android publication, so the V2
+     * path selects its newest candidate instead of an older canonical object. */
+    status = mobile_export_is_v2
+        ? sync_receive_current_android_artifact(
+            &device,
+            folder_id,
+            EQUIPMENT_ASSOCIATIONS_NAME,
+            EQUIPMENT_ASSOCIATIONS_LOCAL,
+            &ignored_size
+        )
+        : TRAINLOG_STATUS_NOT_FOUND;
     if (status == TRAINLOG_STATUS_OK) {
         char useful[
             TRAINLOG_SYNC_ERROR_MAX + 1U
@@ -2553,6 +2943,35 @@ TrainlogStatus trainlog_sync_run(
     } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
         (void)snprintf(output->error, sizeof(output->error),
                        "Android→PC : lecture extension équipement échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
+    if (direction == TRAINLOG_SYNC_ANDROID_TO_PC) {
+        output->success = true;
+        final_status = TRAINLOG_STATUS_OK;
+        goto finalize;
+    }
+
+outbound:
+    status = sync_run_python_tool("export_equipment_definitions.py",
+                                  PC_EQUIPMENT_DEFINITIONS_LOCAL,
+                                  database_path,
+                                  EQUIPMENT_DEFINITIONS_RESULT,
+                                  tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "EQUIPMENT_DEFINITIONS_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "PC→Android : export définitions équipement échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id,
+                                PC_EQUIPMENT_DEFINITIONS_LOCAL,
+                                PC_EQUIPMENT_DEFINITIONS_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "PC→Android : publication définitions équipement échouée.");
         final_status = status;
         goto finalize;
     }
@@ -2605,6 +3024,14 @@ TrainlogStatus trainlog_sync_run(
             "exercises"
         );
 
+    status = sync_publish_named(&device, folder_id, PC_CATALOG_LOCAL, PC_CATALOG_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+                       "PC→Android : publication MTP du catalogue échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     status = sync_run_python_tool("export_pc_mobile.py", PC_MOBILE_EXPORT_LOCAL,
                                   database_path,
                                   PC_CATALOG_RESULT, tool_output, sizeof(tool_output));
@@ -2616,29 +3043,6 @@ TrainlogStatus trainlog_sync_run(
     status = sync_publish_named(&device, folder_id, PC_MOBILE_EXPORT_LOCAL, PC_MOBILE_EXPORT_NAME);
     if (status != TRAINLOG_STATUS_OK) {
         (void)snprintf(output->error, sizeof(output->error), "PC→Android : publication séances V2 échouée.");
-        final_status = status;
-        goto finalize;
-    }
-
-    status =
-        sync_publish_named(
-            &device,
-            folder_id,
-            PC_CATALOG_LOCAL,
-            PC_CATALOG_NAME
-        );
-
-    if (
-        status !=
-        TRAINLOG_STATUS_OK
-    ) {
-        (void)snprintf(
-            output->error,
-            sizeof(output->error),
-            "%s",
-            "PC→Android : publication MTP du catalogue échouée."
-        );
-
         final_status = status;
         goto finalize;
     }
@@ -2670,7 +3074,7 @@ TrainlogStatus trainlog_sync_run(
         TRAINLOG_STATUS_OK;
 
 finalize:
-    sync_build_summary(
+    trainlog_sync_build_summary(
         output
     );
 
@@ -2711,13 +3115,13 @@ finalize:
             final_status =
                 TRAINLOG_STATUS_SYSTEM_ERROR;
 
-            sync_build_summary(
+            trainlog_sync_build_summary(
                 output
             );
         }
     }
 
-    (void)sync_record_run(
+    (void)trainlog_sync_record_local_run(
         trigger,
         output
     );

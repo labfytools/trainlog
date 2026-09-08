@@ -17,8 +17,9 @@ Large-layout primary navigation:
 1 Séance
 2 Historique
 3 Exercices
-4 Corps
-5 Sync
+4 Équipements
+5 Corps
+6 Sync
 ```
 
 Direct shortcuts include the matching function keys where implemented.
@@ -144,9 +145,24 @@ A failed replacement rolls back completely.
 Removing an exercise from one session does not remove the exercise from the
 catalog.
 
-## 7. Body tracking
+## 7. Equipment
 
-`4 Corps / F4` provides:
+`4 Équipements / F4` provides supplied-equipment browsing, search, detail, and
+custom-equipment creation and selection. Supplied definitions are generated
+from `catalog/equipment-v1.json`; user-created definitions persist in desktop
+SQLite and synchronize separately through definitions V1.
+
+Equipment can be selected while editing an exercise occurrence. Session detail,
+exercise history, and historical occurrence views resolve an `equipment_id`
+against the supplied manifest or a local custom definition. If an historic ID
+is no longer resolvable, the view shows that unknown reference explicitly.
+Session detail displays the selected occurrence's stable `entry_id` together
+with its resolved equipment, so repeated appearances of one exercise remain
+visibly distinct; `i` opens the resolved equipment detail.
+
+## 8. Body tracking
+
+`5 Corps / F5` provides:
 
 - newest-first body observations;
 - detail and correction;
@@ -157,7 +173,7 @@ catalog.
 
 Editing preserves observation identity, timestamp, and optional session link.
 
-## 8. Dashboard
+## 9. Dashboard
 
 The dashboard includes a rolling 12-month normalized body graph.
 
@@ -172,7 +188,7 @@ Rules include:
 
 Detailed raw observations remain in `Corps`.
 
-## 9. Exercise performance
+## 10. Exercise performance
 
 Exercise detail exposes recorded performance history.
 
@@ -193,9 +209,10 @@ assistance
 
 A best recorded set is not automatically a measured maximum.
 
-## 10. Sync page
+## 11. Sync page
 
-`5 Sync / F5` uses the shared synchronization engine.
+`6 Sync` uses the shared synchronization engine. The supported shortcut is the
+numeric `6` key.
 
 The page shows:
 
@@ -206,9 +223,36 @@ The page shows:
 Manual action:
 
 ```text
-s   run bidirectional synchronization
+a   run Android -> PC synchronization
+p   run PC -> Android synchronization
+b   run bidirectional synchronization
 r   refresh device status
 ```
+
+`a` imports definitions V1, mobile V2, and associations V2 only. `p` publishes
+definitions V1, catalog V1, mobile V2 (including body observations), and
+associations V2 only. `b` completes that inbound sequence before beginning the
+outbound sequence.
+
+The direction keys are direct actions: pressing `a`, `p`, or `b` opens one
+confirmation for that exact direction; there is no separate mode-selection
+step. `Enter` accepts the pending action and can invoke the shared engine only
+once. `Esc` cancels a pending confirmation without an operation; when no
+confirmation is pending, `Esc` returns from Sync. `r` only refreshes connected
+device status. The former `s` synchronization shortcut is retired and inert.
+
+The footer states the same contract in both layouts. At 100 columns or wider it
+reads `a Android→PC  p PC→Android  b PC↔Android  r actualiser  Échap retour`;
+the compact footer uses `a A→PC  p PC→A  b A↔PC  r act.  Échap retour` without
+changing any action or direction.
+
+Before a confirmed run, Sync identifies the selected direction in its progress
+feedback. It then shows the completed run summary on success, or a
+direction-prefixed diagnostic on failure. Each structured local history run
+persists its selected `a`, `p`, or `b` direction, and the history list displays
+that direction label alongside its summary. `direction inconnue` is used only
+for a legacy entry whose direction was never recorded, rather than being
+guessed.
 
 History behaves like a compact Git log:
 
@@ -231,7 +275,7 @@ summary
 error when applicable
 ```
 
-## 11. Shared sync engine
+## 12. Shared sync engine
 
 The TUI does not own a separate synchronization implementation.
 
@@ -246,7 +290,7 @@ The Android-triggered daemon calls the same engine.
 This keeps import/export, MTP publication, locking, history, and diagnostics in
 one implementation.
 
-## 12. Direct MTP
+## 13. Direct MTP
 
 Transport uses:
 
@@ -257,9 +301,9 @@ libmtp  -> storage/object operations
 
 No filesystem mount is required.
 
-Raw libmtp output is suppressed while ncurses owns the terminal.
+Raw libmtp output is suppressed while Notcurses owns the terminal.
 
-## 13. Error behavior
+## 14. Error behavior
 
 Input is validated before persistent mutation.
 
@@ -268,20 +312,25 @@ Escape cancels prompts without committing partial edits.
 Synchronization failure displays a useful final diagnostic and records the
 structured run when a transaction actually begins.
 
-## 14. Build and test
+Conflict diagnostics identify the stable affected identity, the source
+artifact/direction, and a concise source summary. They preserve existing
+session, body-observation, association, and definition data rather than silently
+overwriting it.
+
+## 15. Build and test
 
 ```bash
 meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-Current normal suite:
+Validated current normal suite:
 
 ```text
-19/19 PASS
+32/32 Meson tests PASS
 ```
 
-## 15. Measured max view
+## 16. Measured max view
 
 From `3 Exercices`, the selected exercise exposes:
 
@@ -321,9 +370,9 @@ less assistance = better
 No percentage-of-max working load is produced for assistance or no-load
 performance.
 
-## 16. Body analytics
+## 17. Body analytics
 
-`4 Corps` adds:
+`5 Corps` adds:
 
 ```text
 v   analyse corporelle

@@ -33,7 +33,7 @@ Accueil
 Android local database version:
 
 ```text
-7
+8
 ```
 
 Domain tables cover:
@@ -51,7 +51,7 @@ This database is Android-local. It is not copied to the PC.
 
 Schema v4 introduced `active_session_draft`, `draft_session_exercises`,
 `draft_performed_sets` and `draft_continuous_activity`. The implemented
-additive v4 -> v7 chain preserves catalog, completed sessions/actuals, body
+additive v4 -> v8 chain preserves catalog, completed sessions/actuals, body
 observations and the draft while adding the shared equipment catalogue,
 occurrence-level equipment links and stable completed/draft `entry_id` values.
 Exactly one active draft is supported; it is separate from completed history.
@@ -172,9 +172,16 @@ The existing completed-session save-time timestamp behavior is unchanged.
 PC catalog reconciliation preserves draft references through catalog row
 ownership. If an editing selection no longer resolves, only the selection is
 cleared; added exercises and raw text remain, with a specific diagnostic.
-When a received or exported catalog entry has the same `exercise_id`, a changed
-display name is reconciled in that same row. A different-ID normalized-name
-collision is rejected, so a rename cannot become a duplicate exercise.
+When a received catalog entry has the same `exercise_id`, a changed display
+name is reconciled in that same row. When the incoming PC identity differs but
+the normalized name matches, Android rekeys or merges only if recording and
+tracking modes match, the bounded `data_fields` masks are comparable by
+inclusion, and overlapping equipment metadata has the same load semantics.
+The incoming PC identity is canonical and the bit-mask union retains the richer
+profile. Completed and draft occurrence row IDs, `entry_id`, positions, values,
+equipment references and the active selection are moved transactionally. Any
+incompatible condition rejects the catalog transaction; name equality alone
+never authorizes a merge.
 
 ## 7. Session history
 
@@ -231,6 +238,14 @@ per-set weights. Android also publishes the V2 companion
 `trainlog-equipment-associations-v2.json`; its `set` and `cleared` states are
 targeted by `(session_id, entry_id)`.
 
+Before either V2 artifact, Android publishes its user-created equipment
+definitions as `trainlog-mobile-equipment-definitions-v1.json`. The strict
+`trainlog-equipment-definitions` v1 format uses stable IDs and the fields
+`equipment_id`, `display_name`, `label_name`, `equipment_type`, and
+`load_semantics`. Absence never deletes a definition; equal same-ID definitions
+are idempotent and divergent same-ID definitions conflict. Supplied-manifest
+IDs are reserved.
+
 The user does not need a separate manual export step before synchronization.
 
 An active draft is never included in completed history, session detail or this
@@ -277,6 +292,11 @@ The receipt is matched by `request_id`.
 On success Android then applies the latest PC catalog and displays the final
 result.
 
+Before applying the PC catalog or its V2 artifacts, Android applies
+`trainlog-pc-equipment-definitions-v1.json`. Thus custom definitions are known
+before a received V2 association references them. Android schema v8 provides
+the non-destructive v7 -> v8 migration required for `load_semantics = none`.
+
 A receipt belonging to another request is ignored as pending rather than
 misreported as the current result.
 
@@ -314,13 +334,16 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 `local.properties` is local machine configuration and must not be committed.
 
-Host regression suite: 8 tests. Device instrumentation: 5 tests (2 repository,
-3 production-screen UI tests using an isolated database and no shared export).
-The real device matrix additionally exercised production `MainActivity`,
+The prior host regression suite had 8 tests and the prior device
+instrumentation suite had 5 tests (2 repository, 3 production-screen UI tests
+using an isolated database and no shared export). That device matrix exercised
+production `MainActivity`,
 including verified process exit with `am kill`, force-stop, configuration
 relaunch, raw-form recovery, removal, discard and unchanged user data. Final-save
-UI checks use isolated data so fictitious workouts do not enter user history.
-See [tests](tests.md) for commands and the precise validation boundary.
+UI checks used isolated data so fictitious workouts did not enter user history.
+The schema-v8 definition change is recorded as targeted JVM validation, not a
+blanket device-validation claim. See [tests](tests.md) for commands and the
+precise validation boundary.
 
 ## 14. Non-goals
 
@@ -333,9 +356,7 @@ Android is not intended to own:
 - exercise-name heuristics;
 - a mounted-filesystem dependency.
 
-## 15. Test-max sessions
-
-## 16. Equipment and multi-occurrence exchange V2
+## 15. Equipment and multi-occurrence exchange V2
 
 During exercise entry, `Machine / équipement (optionnel)` searches the shared
 catalogue by display name, physical-machine label and aliases. The selected
@@ -354,11 +375,13 @@ be separated with `;`. Assisted equipment is explicitly labelled
 
 `Nouvelle machine` in that same selector creates a persistent local custom
 equipment entry with a generated stable `eq_…` ID and selects it immediately.
-The shared bundled catalogue is synchronized by canonical IDs; a custom ID is
-not silently converted to null on the PC and is rejected until its definition
-is available to the receiving catalogue.
+The shared bundled catalogue uses reserved canonical IDs. User-created IDs are
+exchanged first by definitions V1, so a V2 association can resolve them on the
+receiving side; conflicts remain explicit and are never converted to null.
 The active-session list exposes `Modifier <exercice>`; saving replaces that
 entry in place, while cancelling only discards the form and preserves it.
+
+## 16. Test-max sessions
 
 Android session entry exposes:
 
@@ -383,3 +406,33 @@ from large repetition or duration values.
 Android's current session form still records the exercise data fields it
 supports. Measured-max classification on the desktop uses only actual values
 that were truly captured and synchronized.
+
+## 17. Audited limitations
+
+Android's stored `normalized_name` currently removes diacritics, while the
+frozen desktop/Python normalization contract uses NFC, Unicode whitespace
+collapse and case folding without accent removal. Existing Marche/Leg press
+data is unaffected, but changing this safely requires an explicit Android
+schema migration that recomputes every normalized key and handles newly exposed
+collisions. It is not silently changed inside schema v8.
+
+The bundled exercise/equipment relationship metadata is seeded and preserved,
+including during exercise-identity reconciliation, but the current equipment
+picker searches all known supplied and custom definitions. Filtering or ranking
+that picker by exercise relation remains future gym-catalog policy.
+
+Custom equipment remains identified only by `equipment_id`: Android never
+coalesces two different custom IDs merely because their labels match. This can
+leave conceptually duplicated definitions created independently on two devices,
+but avoids guessing across potentially different load semantics and persisted
+occurrence references.
+
+The PC-catalog V1 inbox validates required IDs, modes, names, and bounded field
+masks, but unlike the newer mobile V2 and equipment-companion parsers it does
+not reject every unknown root or item key. Tightening this published V1 reader
+requires a compatibility decision rather than an incidental schema-v8 change.
+
+Android requires `data_fields = 0` for `SETS`, while the desktop model/API
+currently accepts known supplemental bits on either recording mode. Supplied
+profiles do not exercise this difference. Supporting a future set-based
+supplemental field requires an explicit shared-model decision.

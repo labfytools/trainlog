@@ -24,9 +24,13 @@ data_fields    = supplemental field bit mask
 Known supplemental fields:
 
 ```text
-SPEED_KMH
-DISTANCE_KM
+SPEED_KMH       bit 0, mask value 1
+DISTANCE_KM     bit 1, mask value 2
 ```
+
+Consequently `data_fields = 1` means speed only and `data_fields = 3`
+means speed plus distance. These meanings come from the shared C/Kotlin model
+constants and serializers; the masks are not ordinal profile numbers.
 
 Valid model-v1 combinations:
 
@@ -172,6 +176,11 @@ Current desktop tracking mode remains tied to the referenced exercise identity.
 Any future change to that historical contract requires an explicit schema
 decision rather than an implicit name-based migration.
 
+Catalog enrichment does not rewrite an occurrence snapshot. For example, a
+historic `data_fields = 1` walk remains a speed-only occurrence after its
+catalog definition becomes `data_fields = 3`. Its absent distance stays
+absent/`NULL`; synchronization does not infer it from duration and speed.
+
 ## 8. Android/TUI parity
 
 Both interfaces use the same metadata axes.
@@ -187,6 +196,29 @@ data_fields
 ```
 
 Creating an exercise inline on Android or desktop follows the same model rules.
+
+### Safe V2 identity reconciliation
+
+A normalized-name collision between distinct `exercise_id` values is eligible
+for automatic V2/catalog reconciliation only when:
+
+- the normalized name is identical under the receiving store's current rule;
+- `recording_mode` and `tracking_mode` are identical;
+- all other represented business invariants, including overlapping equipment
+  load semantics on Android, are compatible;
+- the `data_fields` masks are equal, or one is a bitwise subset of the other;
+- moving references loses no occurrence, actual value or metadata.
+
+The existing desktop identity is canonical. Android therefore adopts the PC
+identity when applying a PC catalog. The catalog stores the bitwise union (the
+compatible richer profile), while sessions retain their own `entry_id`, order,
+profile snapshot, sets, loads, continuous values and equipment. The operation
+is transactional and replay-safe. Different modes, incomparable masks, or any
+other incompatible invariant produce an explicit conflict. Equal names alone
+never establish identity.
+
+This is a synchronization-V2 policy. It does not relax or redefine the frozen
+Trainlog JSON v1 document rules.
 
 ## 9. Exchange boundaries
 
