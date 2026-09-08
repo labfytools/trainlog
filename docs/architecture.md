@@ -120,7 +120,7 @@ Continuous work is persisted separately from performed sets.
 
 ### Desktop
 
-Desktop SQLite schema v8 is canonical long-term history. `session_exercises`
+Desktop SQLite schema v9 is canonical long-term history. `session_exercises`
 stores a stable occurrence `entry_id`; a catalogue `exercise_id` can therefore
 occur more than once in one session without identity fusion.
 
@@ -132,13 +132,17 @@ sessions
 session_exercises
 performed_sets
 continuous_activity
+max_results
 body_observations
 custom_equipment
 ```
 
 ### Android
 
-Android has an independent local SQLite schema, currently v8.
+Android has an independent local SQLite schema, currently v9. Completed and
+draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
+resuming a completed Test max records its stable source session in the one
+durable draft.
 
 It mirrors domain concepts needed for capture, but its schema version is not
 coupled to the desktop schema.

@@ -236,9 +236,31 @@ Continuous activity must never be:
 
 `session_type = max_test` is an explicit semantic boundary.
 
-Measured max v1 never equates an ordinary best set with a measured maximum.
+An explicit weight maximum is an occurrence-owned result:
 
-For set-based exercises:
+```text
+exercise_id
+entry_id
+equipment_id optional
+max_weight_kg > 0
+position
+```
+
+It is mutually exclusive with `performed_sets` and `continuous_activity` for
+that occurrence. No `sets = 1` or `reps = 1` value is stored. This result mode
+does not change the frozen catalogue combinations: a catalogue exercise keeps
+its existing recording/tracking profile, while the containing `max_test`
+session selects the explicit MAX capture form.
+
+`exercise_id` owns the movement result. `equipment_id` identifies only the
+physical context, so two movements performed on the same combined machine have
+independent maxima.
+
+Measured max v1 never equates an ordinary best set with a measured maximum.
+Legacy `max_test` sets that cannot be migrated unambiguously remain available
+under their historical semantics.
+
+For those retained legacy set-based exercises:
 
 ```text
 external

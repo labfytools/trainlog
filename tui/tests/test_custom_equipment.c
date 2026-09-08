@@ -51,7 +51,7 @@ static bool test_custom_equipment_round_trip(void)
 
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 8);
+    CHECK(version == 9);
     (void)memset(&custom, 0, sizeof(custom));
     (void)snprintf(custom.equipment_id, sizeof(custom.equipment_id),
         "%s", "eq_123e4567-e89b-42d3-a456-426614174000");

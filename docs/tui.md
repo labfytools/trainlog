@@ -327,10 +327,27 @@ meson test -C build --print-errorlogs
 Validated current normal suite:
 
 ```text
-32/32 Meson tests PASS
+34/34 Meson tests PASS
 ```
 
 ## 16. Measured max view
+
+Creating or editing a `Test de max` session uses the existing exercise search
+and optional equipment selector, then asks only for `Poids max (kg)`. It does
+not prompt for sets or repetitions and persists the value in `max_results`.
+
+The history detail for a max-test session is a compact selectable table:
+
+```text
+Exercice                Machine                    Max
+Pec Fly                 Rear Delt / Pec Fly     100 kg
+Rear Delt Fly           Rear Delt / Pec Fly      86 kg
+```
+
+Equipment is occurrence context. The rows remain distinct by movement and
+stable `entry_id`; no machine-level maximum is calculated. A preserved
+non-MAX entry, such as continuous warm-up, remains visible with `—` in the MAX
+column.
 
 From `3 Exercices`, the selected exercise exposes:
 

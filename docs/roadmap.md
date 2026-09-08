@@ -14,19 +14,21 @@ GATE_1=PASS
 GATE_2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
-DESKTOP_SCHEMA_V8=PASS
-ANDROID_LOCAL_DATABASE_V8=PASS
+DESKTOP_SCHEMA_V9=PASS
+ANDROID_LOCAL_DATABASE_V9=PASS
 
 DIRECT_MTP_TRANSPORT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
 
 VARIABLE_REPETITION_SETS=PASS
 MEASURED_MAX_V1=PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
+MAX_TEST_RESUME_STABLE_ID=PASS
 BODY_ANALYTICS_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
 
-DESKTOP_TESTS=32/32 PASS
+DESKTOP_TESTS=34/34 PASS
 TUI_NOTCURSES_V1=PASS
 NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
 NOTCURSES_TRUECOLOR_THEME=PASS
@@ -43,6 +45,7 @@ The current product baseline includes:
 - session history and editing;
 - body measurements and body history;
 - measured-max sessions and measured-max analysis;
+- explicit max-weight capture without synthetic sets, with stable-ID continuation;
 - desktop body analytics;
 - direct USB/MTP transport;
 - bidirectional Android/PC synchronization;
@@ -97,7 +100,7 @@ Expected baseline:
 - first real training sessions;
 - Android used for capture;
 - Android -> PC synchronization after training;
-- measured max recorded only through explicit `max_test` sessions;
+- measured max recorded only through explicit `max_test` results;
 - no fictitious user data in the canonical databases.
 
 Gate:

@@ -75,6 +75,13 @@ typedef struct TrainlogSessionExerciseInput {
     bool target_has_weight;
     double target_weight_kg;
 
+    /*
+     * CONTRACT: max weight is an occurrence-owned result for max_test only.
+     * When present it is mutually exclusive with sets and continuous data.
+     */
+    bool has_max_weight;
+    double max_weight_kg;
+
     int continuous_duration_seconds;
     bool continuous_has_speed;
     double continuous_speed_kmh;

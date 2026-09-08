@@ -196,6 +196,15 @@ test(
   test_session_type_schema,
 )
 
+test_max_results = executable(
+  'test_max_results',
+  'tests/test_max_results.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('max_results', test_max_results)
+
 test_session_edit = executable(
   'test_session_edit',
   'tests/test_session_edit.c',
@@ -377,6 +386,12 @@ test(
   'mobile_import_multi_occurrence',
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_mobile_import_multi_occurrence.py'],
+)
+
+test(
+  'max_sync',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_max_sync.py'],
 )
 
 test(

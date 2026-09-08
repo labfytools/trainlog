@@ -11,6 +11,7 @@ import com.labfytools.trainlog.model.BodyObservationSummary
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.ExerciseEditInput
+import com.labfytools.trainlog.model.LatestExerciseMax
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
@@ -98,6 +99,7 @@ sealed interface MobileSessionImportResult {
         val sessionsSkipped: Int,
         val bodyObservationsAdded: Int,
         val bodyObservationsSkipped: Int,
+        val sessionsUpdated: Int = 0,
     ) : MobileSessionImportResult
     data class Invalid(val message: String) : MobileSessionImportResult
     data object DatabaseError : MobileSessionImportResult
@@ -536,8 +538,10 @@ class TrainlogRepository(
     ): ActiveDraftMutationResult {
         if (
             draft.exercises.any {
-                !validateSessionExercise(it)
+                !validateSessionExercise(it, draft.sessionType)
             } ||
+            (draft.sourceSessionId != null &&
+                (draft.sourceSessionId.isBlank() || draft.sessionType != SessionType.MAX_TEST)) ||
             /* exercise_id identifies the catalogue movement. Repeated passages
              * are valid; only their stable occurrence IDs must be unique. */
             draft.exercises
@@ -555,6 +559,8 @@ class TrainlogRepository(
             listOf(
                 draft.form.setCountText,
                 draft.form.repsText,
+                draft.form.weightText,
+                draft.form.maxWeightText,
                 draft.form.durationText,
                 draft.form.speedText,
                 draft.form.distanceText,
@@ -642,7 +648,7 @@ class TrainlogRepository(
             if (
                 completed.exercises.isEmpty() ||
                 completed.exercises.any {
-                    !validateSessionExercise(it)
+                    !validateSessionExercise(it, completed.sessionType)
                 }
             ) {
                 db.endTransaction()
@@ -656,6 +662,7 @@ class TrainlogRepository(
                 insertCompletedSession(
                     db,
                     completed,
+                    active.draft.sourceSessionId,
                 )
 
             /*
@@ -704,7 +711,7 @@ class TrainlogRepository(
         if (
             draft.exercises.isEmpty() ||
             draft.exercises.any {
-                !validateSessionExercise(it)
+                !validateSessionExercise(it, draft.sessionType)
             }
         ) {
             return SaveSessionResult.Invalid
@@ -815,7 +822,16 @@ class TrainlogRepository(
                         exerciseValues
                     )
 
-                if (
+                if (exerciseDraft.maxWeightKg != null) {
+                    db.insertOrThrow(
+                        "max_results",
+                        null,
+                        ContentValues().apply {
+                            put("session_exercise_row_id", sessionExerciseRowId)
+                            put("max_weight_kg", exerciseDraft.maxWeightKg)
+                        },
+                    )
+                } else if (
                     exerciseDraft.exercise
                         .recordingMode ==
                     RecordingMode.CONTINUOUS
@@ -953,6 +969,71 @@ class TrainlogRepository(
         }
 
         return output
+    }
+
+    /**
+     * Reopen an existing max_test as the one durable draft. The completed row
+     * remains the crash-safe baseline until finalization atomically replaces
+     * its children; session_id and started_at are never regenerated.
+     */
+    fun resumeMaxTestSession(sessionId: String): ActiveDraftMutationResult {
+        if (sessionId.isBlank()) {
+            return ActiveDraftMutationResult.Error("Identité de séance invalide.")
+        }
+        when (val active = loadActiveSessionDraft()) {
+            is ActiveDraftLoadResult.Loaded -> {
+                if (active.draft.sourceSessionId == sessionId) {
+                    return ActiveDraftMutationResult.Saved
+                }
+                /*
+                 * WHY: the application persists a singleton default draft, so
+                 * database-row presence alone does not mean user work exists.
+                 * CONTRACT: only the byte-for-byte default empty form may be
+                 * replaced implicitly; partial raw input remains protected.
+                 */
+                if (
+                    active.draft.exercises.isNotEmpty() ||
+                    active.draft.sourceSessionId != null ||
+                    active.draft.form != SessionDraftForm()
+                ) {
+                    return ActiveDraftMutationResult.Error(
+                        "Une autre séance est déjà en cours ; reprenez-la ou supprimez-la explicitement.",
+                    )
+                }
+            }
+            is ActiveDraftLoadResult.Error -> return ActiveDraftMutationResult.Error(active.message)
+            ActiveDraftLoadResult.None -> Unit
+        }
+
+        val detail = getSessionDetail(sessionId)
+            ?: return ActiveDraftMutationResult.Error("Séance introuvable.")
+        if (detail.summary.sessionType != SessionType.MAX_TEST) {
+            return ActiveDraftMutationResult.Error("Seul un Test max peut être repris.")
+        }
+        val profiles = listExercises().associateBy { it.exerciseId }
+        val exercises = detail.exercises.map { item ->
+            val profile = profiles[item.exerciseId]
+                ?: return ActiveDraftMutationResult.Error(
+                    "Profil d'exercice introuvable : ${item.exerciseId}",
+                )
+            SessionExerciseDraft(
+                entryId = item.entryId,
+                exercise = profile,
+                equipmentId = item.equipmentId,
+                maxWeightKg = item.maxWeightKg,
+                sets = item.sets,
+                continuousDurationSeconds = item.continuousDurationSeconds,
+                speedKmh = item.speedKmh,
+                distanceKm = item.distanceKm,
+            )
+        }
+        return saveActiveSessionDraft(
+            ActiveSessionDraft(
+                exercises = exercises,
+                sessionType = SessionType.MAX_TEST,
+                sourceSessionId = sessionId,
+            ),
+        )
     }
 
 
@@ -1554,10 +1635,13 @@ class TrainlogRepository(
         }
     }
 
-    fun buildMobileExportJson(): String {
+    fun buildMobileExportJson(): String = buildMobileExport(1)
+
+    private fun buildMobileExport(version: Int): String {
+        require(version == 1 || version == 2)
         val root = JSONObject()
         root.put("format", "trainlog-mobile-export")
-        root.put("version", 1)
+        root.put("version", version)
         root.put("generated_at", OffsetDateTime.now().toString())
 
         val exerciseArray = JSONArray()
@@ -1589,8 +1673,11 @@ class TrainlogRepository(
                     .put("session_type", sessions.getString(3))
                 val sessionExercises = JSONArray()
                 db.rawQuery(
-                    "SELECT se.id, e.exercise_id, e.name, se.recording_mode, se.tracking_mode, se.data_fields " +
+                    "SELECT se.id, e.exercise_id, e.name, se.recording_mode, se.tracking_mode, se.data_fields, " +
+                        "se.entry_id,se.position,eq.equipment_id,mr.max_weight_kg " +
                         "FROM session_exercises AS se JOIN exercises AS e ON e.id = se.exercise_row_id " +
+                        "LEFT JOIN equipment AS eq ON eq.id=se.equipment_row_id " +
+                        "LEFT JOIN max_results AS mr ON mr.session_exercise_row_id=se.id " +
                         "WHERE se.session_row_id = ? ORDER BY se.position ASC;",
                     arrayOf(sessionRowId.toString()),
                 ).use { exerciseCursor ->
@@ -1606,7 +1693,20 @@ class TrainlogRepository(
                             .put("data_fields", exerciseCursor.getInt(5))
                             .put("load_mode", "none")
                             .put("rest_seconds", 0)
-                        if (recording == "continuous") {
+                        if (version == 2) {
+                            item.put("entry_id", exerciseCursor.getString(6))
+                            item.put("position", exerciseCursor.getInt(7))
+                            if (exerciseCursor.isNull(8)) item.put("equipment_id", JSONObject.NULL)
+                            else item.put("equipment_id", exerciseCursor.getString(8))
+                        }
+                        if (!exerciseCursor.isNull(9)) {
+                            /* TRAINLOG_FORMAT_V1 is frozen and has no max
+                             * result shape. Refuse instead of inventing 1x1. */
+                            check(version == 2) {
+                                "Un résultat max explicite exige l'export mobile V2."
+                            }
+                            item.put("max_weight_kg", exerciseCursor.getDouble(9))
+                        } else if (recording == "continuous") {
                             db.query(
                                 "continuous_activity",
                                 arrayOf("duration_seconds", "speed_kmh", "distance_km"),
@@ -1631,7 +1731,7 @@ class TrainlogRepository(
                             val sets = JSONArray()
                             db.query(
                                 "performed_sets",
-                                arrayOf("reps", "duration_seconds"),
+                                arrayOf("reps", "duration_seconds", "weight_kg"),
                                 "session_exercise_row_id = ?",
                                 arrayOf(sessionExerciseRowId.toString()),
                                 null, null, "position ASC",
@@ -1642,6 +1742,9 @@ class TrainlogRepository(
                                         set.put("reps", setCursor.getInt(0))
                                     } else {
                                         set.put("duration_seconds", setCursor.getInt(1))
+                                    }
+                                    if (version == 2 && !setCursor.isNull(2)) {
+                                        set.put("weight_kg", setCursor.getDouble(2))
                                     }
                                     sets.put(set)
                                 }
@@ -1691,44 +1794,7 @@ class TrainlogRepository(
      * session occurrence carries its durable Android entry_id, ordering,
      * equipment and actual load so repeated catalogue exercises round-trip.
      */
-    fun buildMobileExportV2Json(): String {
-        val root = JSONObject(buildMobileExportJson())
-        root.put("version", 2)
-        val db = database.readableDatabase
-        val sessions = root.getJSONArray("sessions")
-        for (sessionIndex in 0 until sessions.length()) {
-            val session = sessions.getJSONObject(sessionIndex)
-            val items = session.getJSONArray("exercises")
-            db.rawQuery(
-                "SELECT se.id,se.entry_id,se.position,eq.equipment_id FROM session_exercises se " +
-                    "JOIN sessions s ON s.id=se.session_row_id LEFT JOIN equipment eq ON eq.id=se.equipment_row_id " +
-                    "WHERE s.session_id=? ORDER BY se.position ASC;",
-                arrayOf(session.getString("session_id")),
-            ).use { entries ->
-                var itemIndex = 0
-                while (entries.moveToNext()) {
-                    val item = items.getJSONObject(itemIndex++)
-                    val rowId = entries.getLong(0)
-                    item.put("entry_id", entries.getString(1))
-                    item.put("position", entries.getInt(2))
-                    if (entries.isNull(3)) item.put("equipment_id", JSONObject.NULL)
-                    else item.put("equipment_id", entries.getString(3))
-                    if (item.has("sets")) {
-                        val sets = item.getJSONArray("sets")
-                        db.query("performed_sets", arrayOf("weight_kg"),
-                            "session_exercise_row_id=?", arrayOf(rowId.toString()), null, null, "position ASC").use { cursor ->
-                            var setIndex = 0
-                            while (cursor.moveToNext()) {
-                                if (!cursor.isNull(0)) sets.getJSONObject(setIndex).put("weight_kg", cursor.getDouble(0))
-                                setIndex++
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return root.toString()
-    }
+    fun buildMobileExportV2Json(): String = buildMobileExport(2)
 
     /** Apply the same V2 session artifact emitted by desktop, keyed by entry_id. */
     fun applyPcMobileExportV2Json(json: String): MobileSessionImportResult {
@@ -1740,6 +1806,7 @@ class TrainlogRepository(
         val db = database.writableDatabase
         var sessionsAdded = 0
         var sessionsSkipped = 0
+        var sessionsUpdated = 0
         var bodyObservationsAdded = 0
         var bodyObservationsSkipped = 0
         return try {
@@ -1775,9 +1842,19 @@ class TrainlogRepository(
                         sessionsSkipped += 1
                         continue
                     }
-                    return MobileSessionImportResult.Invalid("Conflit de contenu pour la séance $sessionId")
+                    if (!pcResumedMaxUpdateIsSafe(db, existingRowId, session)) {
+                        return MobileSessionImportResult.Invalid("Conflit de contenu pour la séance $sessionId")
+                    }
+                    /* Child replacement is inside this import transaction;
+                     * entry identity/order may only be retained and appended. */
+                    db.delete(
+                        "session_exercises",
+                        "session_row_id=?",
+                        arrayOf(existingRowId.toString()),
+                    )
+                    sessionsUpdated += 1
                 }
-                val rowId = run {
+                val rowId = existingRowId ?: run {
                     val values = ContentValues().apply { put("session_id", sessionId); put("started_at", startedAt); put("session_type", type) }
                     db.insertOrThrow("sessions", null, values)
                 }
@@ -1809,7 +1886,12 @@ class TrainlogRepository(
                         if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                     }
                     val occurrence = db.insertOrThrow("session_exercises", null, values)
-                    if (recording == "continuous") {
+                    if (entry.has("max_weight_kg")) {
+                        db.insertOrThrow("max_results", null, ContentValues().apply {
+                            put("session_exercise_row_id", occurrence)
+                            put("max_weight_kg", entry.getDouble("max_weight_kg"))
+                        })
+                    } else if (recording == "continuous") {
                         val c = entry.optJSONObject("continuous") ?: return MobileSessionImportResult.Invalid("Activité continue manquante.")
                         db.insertOrThrow("continuous_activity", null, ContentValues().apply {
                             put("session_exercise_row_id", occurrence); put("duration_seconds", c.optInt("duration_seconds", 0))
@@ -1827,7 +1909,7 @@ class TrainlogRepository(
                         }
                     }
                 }
-                sessionsAdded += 1
+                if (existingRowId == null) sessionsAdded += 1
             }
             val body = root.optJSONArray("body_observations")
                 ?: return MobileSessionImportResult.Invalid("Mesures corporelles manquantes.")
@@ -1868,6 +1950,7 @@ class TrainlogRepository(
                 sessionsSkipped = sessionsSkipped,
                 bodyObservationsAdded = bodyObservationsAdded,
                 bodyObservationsSkipped = bodyObservationsSkipped,
+                sessionsUpdated = sessionsUpdated,
             )
         } catch (_: Exception) { MobileSessionImportResult.DatabaseError
         } finally { db.endTransaction() }
@@ -1920,7 +2003,12 @@ class TrainlogRepository(
                     val entry = entries.opt(entryIndex) as? JSONObject ?: return "Entrée de séance V2 invalide."
                     val recording = entry.value("recording_mode")
                     val tracking = entry.value("tracking_mode")
-                    val expectedKeys = entryBaseKeys + if (recording == "continuous") setOf("continuous") else setOf("sets")
+                    val hasMax = entry.has("max_weight_kg")
+                    val expectedKeys = entryBaseKeys + when {
+                        hasMax -> setOf("max_weight_kg")
+                        recording == "continuous" -> setOf("continuous")
+                        else -> setOf("sets")
+                    }
                     val entryId = entry.value("entry_id")
                     val exerciseId = entry.value("exercise_id")
                     val positionValue = entry.value("position")
@@ -1930,6 +2018,11 @@ class TrainlogRepository(
                         !positionValue.isJsonInt(0, 100000) || !positions.add((positionValue as Number).toInt()) ||
                         !(entry.value("equipment_id") === JSONObject.NULL || entry.value("equipment_id").isNonemptyJsonString())) {
                         return "Entrée de séance V2 invalide."
+                    }
+                    if (hasMax &&
+                        (session.getString("session_type") != "max_test" ||
+                            !entry.value("max_weight_kg").isPositiveJsonNumber())) {
+                        return "Résultat max V2 invalide."
                     }
                     val catalogProfile = exerciseProfiles[exerciseId]
                         ?: return "Exercice de séance V2 absent du catalogue."
@@ -1943,7 +2036,10 @@ class TrainlogRepository(
                          * rewrite an older occurrence snapshot. */
                         return "Profil historique V2 incompatible avec le catalogue."
                     }
-                    if (recording == "continuous") {
+                    if (hasMax) {
+                        /* The exact-key check above excludes set/continuous
+                         * shadows; max identity remains the exercise entry. */
+                    } else if (recording == "continuous") {
                         val continuous = entry.value("continuous") as? JSONObject ?: return "Activité continue V2 invalide."
                         val allowed = setOf("duration_seconds", "speed_kmh", "distance_km")
                         val fields = (entry.value("data_fields") as Number).toInt()
@@ -2044,7 +2140,13 @@ class TrainlogRepository(
                 item.optString("recording_mode"), item.optString("tracking_mode"), item.optInt("data_fields", -1),
                 if (item.isNull("equipment_id")) null else item.optString("equipment_id"))
             if (metadata[index] != expected) return false
-            if (item.optString("recording_mode") == "continuous") {
+            if (item.has("max_weight_kg")) {
+                val current = db.rawQuery(
+                    "SELECT max_weight_kg FROM max_results WHERE session_exercise_row_id=?",
+                    arrayOf(rows[index].toString()),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getDouble(0) else null }
+                if (current != item.getDouble("max_weight_kg")) return false
+            } else if (item.optString("recording_mode") == "continuous") {
                 val value = item.optJSONObject("continuous") ?: return false
                 val current = db.rawQuery("SELECT duration_seconds,speed_kmh,distance_km FROM continuous_activity WHERE session_exercise_row_id=?",
                     arrayOf(rows[index].toString())).use { cursor ->
@@ -2066,6 +2168,43 @@ class TrainlogRepository(
             }
         }
         return true
+    }
+
+    private fun pcResumedMaxUpdateIsSafe(
+        db: SQLiteDatabase,
+        rowId: Long,
+        session: JSONObject,
+    ): Boolean {
+        if (session.optString("session_type") != "max_test") return false
+        val headerMatches = db.rawQuery(
+            "SELECT started_at,session_type FROM sessions WHERE id=?",
+            arrayOf(rowId.toString()),
+        ).use {
+            it.moveToFirst() && it.getString(0) == session.optString("started_at") &&
+                it.getString(1) == "max_test"
+        }
+        if (!headerMatches) return false
+        val current = mutableListOf<Triple<String, Int, String>>()
+        db.rawQuery(
+            "SELECT se.entry_id,se.position,e.exercise_id FROM session_exercises se " +
+                "JOIN exercises e ON e.id=se.exercise_row_id WHERE se.session_row_id=? " +
+                "ORDER BY se.position;",
+            arrayOf(rowId.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                current += Triple(cursor.getString(0), cursor.getInt(1), cursor.getString(2))
+            }
+        }
+        val incoming = session.optJSONArray("exercises") ?: return false
+        if (incoming.length() < current.size) return false
+        return current.indices.all { index ->
+            val item = incoming.optJSONObject(index) ?: return@all false
+            current[index] == Triple(
+                item.optString("entry_id"),
+                item.optInt("position", -1),
+                item.optString("exercise_id"),
+            )
+        }
     }
 
     /**
@@ -2553,7 +2692,9 @@ class TrainlogRepository(
                 se.recording_mode,
                 se.tracking_mode,
                 se.data_fields,
-                eq.display_name
+                eq.equipment_id,
+                eq.display_name,
+                mr.max_weight_kg
             FROM session_exercises AS se
             JOIN sessions AS s
                 ON s.id = se.session_row_id
@@ -2561,6 +2702,8 @@ class TrainlogRepository(
                 ON e.id = se.exercise_row_id
             LEFT JOIN equipment AS eq
                 ON eq.id = se.equipment_row_id
+            LEFT JOIN max_results AS mr
+                ON mr.session_exercise_row_id = se.id
             WHERE s.session_id = ?
             ORDER BY se.position ASC;
             """.trimIndent(),
@@ -2598,9 +2741,24 @@ class TrainlogRepository(
 
                 val dataFields =
                     cursor.getInt(6)
-                val equipmentDisplayName = if (cursor.isNull(7)) null else cursor.getString(7)
+                val equipmentId = if (cursor.isNull(7)) null else cursor.getString(7)
+                val equipmentDisplayName = if (cursor.isNull(8)) null else cursor.getString(8)
+                val maxWeightKg = if (cursor.isNull(9)) null else cursor.getDouble(9)
 
-                if (
+                if (maxWeightKg != null) {
+                    exercises +=
+                        SessionExerciseDetail(
+                            entryId = entryId,
+                            exerciseId = exerciseId,
+                            exerciseName = name,
+                            equipmentId = equipmentId,
+                            equipmentDisplayName = equipmentDisplayName,
+                            recordingMode = recording,
+                            trackingMode = tracking,
+                            dataFields = dataFields,
+                            maxWeightKg = maxWeightKg,
+                        )
+                } else if (
                     recording ==
                     RecordingMode.CONTINUOUS
                 ) {
@@ -2637,6 +2795,7 @@ class TrainlogRepository(
                                 exerciseId = exerciseId,
                                 exerciseName =
                                     name,
+                                equipmentId = equipmentId,
                                 equipmentDisplayName = equipmentDisplayName,
                                 recordingMode =
                                     recording,
@@ -2728,6 +2887,7 @@ class TrainlogRepository(
                             exerciseId = exerciseId,
                             exerciseName =
                                 name,
+                            equipmentId = equipmentId,
                             equipmentDisplayName = equipmentDisplayName,
                             recordingMode =
                                 recording,
@@ -2745,6 +2905,51 @@ class TrainlogRepository(
             summary = summary,
             exercises = exercises,
         )
+    }
+
+    /**
+     * Return one newest explicit measured max per movement. Equipment is
+     * presentation context only and never participates in max identity.
+     */
+    fun listLatestExerciseMaxima(): List<LatestExerciseMax> {
+        val output = mutableListOf<LatestExerciseMax>()
+        database.readableDatabase.rawQuery(
+            """
+            SELECT e.exercise_id, e.name, mr.max_weight_kg, s.started_at,
+                   eq.display_name
+            FROM max_results AS mr
+            JOIN session_exercises AS se ON se.id = mr.session_exercise_row_id
+            JOIN sessions AS s ON s.id = se.session_row_id
+            JOIN exercises AS e ON e.id = se.exercise_row_id
+            LEFT JOIN equipment AS eq ON eq.id = se.equipment_row_id
+            WHERE s.session_type = 'max_test'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM max_results AS newer_mr
+                  JOIN session_exercises AS newer_se
+                    ON newer_se.id = newer_mr.session_exercise_row_id
+                  JOIN sessions AS newer_s ON newer_s.id = newer_se.session_row_id
+                  WHERE newer_se.exercise_row_id = se.exercise_row_id
+                    AND newer_s.session_type = 'max_test'
+                    AND (newer_s.started_at > s.started_at OR
+                         (newer_s.started_at = s.started_at AND
+                          newer_se.position > se.position))
+              )
+            ORDER BY e.name COLLATE NOCASE, e.exercise_id;
+            """.trimIndent(),
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                output += LatestExerciseMax(
+                    exerciseId = cursor.getString(0),
+                    exerciseName = cursor.getString(1),
+                    maxWeightKg = cursor.getDouble(2),
+                    startedAt = cursor.getString(3),
+                    equipmentDisplayName = if (cursor.isNull(4)) null else cursor.getString(4),
+                )
+            }
+        }
+        return output
     }
 
     fun setCompletedSessionEquipment(
@@ -2783,6 +2988,9 @@ class TrainlogRepository(
                     d.updated_at,
                     d.selected_exercise_label,
                     d.selected_equipment_id,
+                    d.weight_text,
+                    d.max_weight_text,
+                    d.source_session_id,
                     e.exercise_id,
                     e.name,
                     e.normalized_name,
@@ -2800,15 +3008,15 @@ class TrainlogRepository(
                     null
                 } else {
                     val missingSelection =
-                        cursor.isNull(9) &&
+                        cursor.isNull(12) &&
                             !cursor.isNull(7)
                     val selected =
-                        if (cursor.isNull(9)) {
+                        if (cursor.isNull(12)) {
                             null
                         } else {
                             exerciseProfileFromCursor(
                                 cursor,
-                                9,
+                                12,
                             )
                         }
 
@@ -2820,12 +3028,15 @@ class TrainlogRepository(
                         form = SessionDraftForm(
                             selectedExercise = selected,
                             selectedEquipmentId = if (cursor.isNull(8)) null else cursor.getString(8),
+                            weightText = cursor.getString(9),
+                            maxWeightText = cursor.getString(10),
                             setCountText = cursor.getString(1),
                             repsText = cursor.getString(2),
                             durationText = cursor.getString(3),
                             speedText = cursor.getString(4),
                             distanceText = cursor.getString(5),
                         ),
+                        sourceSessionId = if (cursor.isNull(11)) null else cursor.getString(11),
                         updatedAt =
                             cursor.getString(6),
                         warning =
@@ -2855,12 +3066,15 @@ class TrainlogRepository(
                 de.tracking_mode,
                 de.data_fields,
                 eq.equipment_id,
-                de.entry_id
+                de.entry_id,
+                mr.max_weight_kg
             FROM draft_session_exercises AS de
             JOIN exercises AS e
                 ON e.id = de.exercise_row_id
             LEFT JOIN equipment AS eq
                 ON eq.id = de.equipment_row_id
+            LEFT JOIN draft_max_results AS mr
+                ON mr.draft_exercise_row_id = de.id
             WHERE de.draft_id = ?
             ORDER BY de.position ASC;
             """.trimIndent(),
@@ -2888,8 +3102,17 @@ class TrainlogRepository(
                     )
                 val equipmentId = if (cursor.isNull(7)) null else cursor.getString(7)
                 val entryId = cursor.getString(8)
+                val maxWeightKg = if (cursor.isNull(9)) null else cursor.getDouble(9)
 
-                if (
+                if (maxWeightKg != null) {
+                    exercises +=
+                        SessionExerciseDraft(
+                            entryId = entryId,
+                            exercise = exercise,
+                            equipmentId = equipmentId,
+                            maxWeightKg = maxWeightKg,
+                        )
+                } else if (
                     exercise.recordingMode ==
                     RecordingMode.CONTINUOUS
                 ) {
@@ -2982,6 +3205,7 @@ class TrainlogRepository(
             draft = ActiveSessionDraft(
                 exercises = exercises,
                 sessionType = header.sessionType,
+                sourceSessionId = header.sourceSessionId,
                 form = header.form,
                 updatedAt = header.updatedAt,
             ),
@@ -3005,7 +3229,10 @@ class TrainlogRepository(
         val values =
             ContentValues().apply {
                 put("session_type", draft.sessionType.wireValue)
+                putOptionalString("source_session_id", draft.sourceSessionId)
                 putOptionalString("selected_equipment_id", draft.form.selectedEquipmentId)
+                put("weight_text", draft.form.weightText)
+                put("max_weight_text", draft.form.maxWeightText)
                 if (selectedRowId == null) {
                     putNull("selected_exercise_row_id")
                     putNull("selected_exercise_label")
@@ -3091,7 +3318,16 @@ class TrainlogRepository(
                     exerciseValues,
                 )
 
-            if (
+            if (exerciseDraft.maxWeightKg != null) {
+                db.insertOrThrow(
+                    "draft_max_results",
+                    null,
+                    ContentValues().apply {
+                        put("draft_exercise_row_id", draftExerciseRowId)
+                        put("max_weight_kg", exerciseDraft.maxWeightKg)
+                    },
+                )
+            } else if (
                 exerciseDraft.exercise.recordingMode ==
                 RecordingMode.CONTINUOUS
             ) {
@@ -3154,24 +3390,43 @@ class TrainlogRepository(
     private fun insertCompletedSession(
         db: SQLiteDatabase,
         draft: SessionDraft,
+        sourceSessionId: String? = null,
     ): String {
-        val sessionId =
-            "se_" + UUID.randomUUID().toString()
-        /* Preserve the existing Android meaning: started_at is assigned when
-         * the completed session is saved, not when its draft is first opened. */
-        val startedAt = OffsetDateTime.now().toString()
-        val sessionValues =
-            ContentValues().apply {
+        val sessionId: String
+        val sessionRowId: Long
+        if (sourceSessionId == null) {
+            sessionId = "se_" + UUID.randomUUID().toString()
+            /* Preserve the existing Android meaning: started_at is assigned
+             * when a new completed session is saved. */
+            val sessionValues = ContentValues().apply {
                 put("session_id", sessionId)
-                put("started_at", startedAt)
+                put("started_at", OffsetDateTime.now().toString())
                 put("session_type", draft.sessionType.wireValue)
             }
-        val sessionRowId =
-            db.insertOrThrow(
-                "sessions",
-                null,
-                sessionValues,
+            sessionRowId = db.insertOrThrow("sessions", null, sessionValues)
+        } else {
+            check(draft.sessionType == SessionType.MAX_TEST) {
+                "Seul un Test max peut remplacer une séance reprise."
+            }
+            sessionId = sourceSessionId
+            sessionRowId = db.rawQuery(
+                "SELECT id FROM sessions WHERE session_id=? AND session_type='max_test';",
+                arrayOf(sourceSessionId),
+            ).use { cursor ->
+                check(cursor.moveToFirst()) { "Séance Test max source introuvable." }
+                cursor.getLong(0)
+            }
+            check(resumedDraftIdentityIsSafe(db, sessionRowId, draft)) {
+                "Une séance reprise ne peut supprimer, réordonner ou réaffecter ses entrées existantes."
+            }
+            /* INVARIANT: child replacement and draft deletion are in the
+             * caller's transaction; failure restores the completed baseline. */
+            db.delete(
+                "session_exercises",
+                "session_row_id=?",
+                arrayOf(sessionRowId.toString()),
             )
+        }
 
         draft.exercises.forEachIndexed {
                 exerciseIndex,
@@ -3212,7 +3467,16 @@ class TrainlogRepository(
                     exerciseValues,
                 )
 
-            if (
+            if (exerciseDraft.maxWeightKg != null) {
+                db.insertOrThrow(
+                    "max_results",
+                    null,
+                    ContentValues().apply {
+                        put("session_exercise_row_id", sessionExerciseRowId)
+                        put("max_weight_kg", exerciseDraft.maxWeightKg)
+                    },
+                )
+            } else if (
                 exerciseDraft.exercise.recordingMode ==
                 RecordingMode.CONTINUOUS
             ) {
@@ -3261,6 +3525,31 @@ class TrainlogRepository(
         return sessionId
     }
 
+    private fun resumedDraftIdentityIsSafe(
+        db: SQLiteDatabase,
+        sessionRowId: Long,
+        draft: SessionDraft,
+    ): Boolean {
+        val current = mutableListOf<Pair<String, String>>()
+        db.rawQuery(
+            "SELECT se.entry_id,e.exercise_id FROM session_exercises se " +
+                "JOIN exercises e ON e.id=se.exercise_row_id " +
+                "WHERE se.session_row_id=? ORDER BY se.position;",
+            arrayOf(sessionRowId.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                current += cursor.getString(0) to cursor.getString(1)
+            }
+        }
+        if (draft.exercises.size < current.size) return false
+        return current.indices.all { index ->
+            draft.exercises[index].let { entry ->
+                entry.entryId == current[index].first &&
+                    entry.exercise.exerciseId == current[index].second
+            }
+        }
+    }
+
     private fun exerciseProfileFromCursor(
         cursor: android.database.Cursor,
         offset: Int,
@@ -3301,6 +3590,7 @@ class TrainlogRepository(
     private data class ActiveDraftHeader(
         val sessionType: SessionType,
         val form: SessionDraftForm,
+        val sourceSessionId: String?,
         val updatedAt: String,
         val warning: String?,
     )
@@ -3312,7 +3602,21 @@ class TrainlogRepository(
 
     private fun validateSessionExercise(
         draft: SessionExerciseDraft,
+        sessionType: SessionType,
     ): Boolean {
+        val maxWeight = draft.maxWeightKg
+        if (maxWeight != null) {
+            /* INVARIANT: max is a first-class result owned by the movement
+             * occurrence. No set or continuous payload shadows it. */
+            return sessionType == SessionType.MAX_TEST &&
+                maxWeight.isFinite() &&
+                maxWeight > 0.0 &&
+                draft.sets.isEmpty() &&
+                draft.continuousDurationSeconds == 0 &&
+                draft.speedKmh == null &&
+                draft.distanceKm == null
+        }
+
         return when (
             draft.exercise.recordingMode
         ) {
@@ -3469,7 +3773,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    8,
+    9,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -3565,6 +3869,11 @@ private class TrainlogDatabaseHelper(
              * pointing at exactly the same equipment records. */
             migrateEquipmentLoadSemanticsToVersionEight(db)
             version = 8
+        }
+
+        if (version < 9 && newVersion >= 9) {
+            migrateExplicitMaxResultsToVersionNine(db)
+            version = 9
         }
 
         if (version != newVersion) {
@@ -3866,6 +4175,18 @@ private class TrainlogDatabaseHelper(
             );
             """.trimIndent()
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS max_results(
+                session_exercise_row_id INTEGER PRIMARY KEY
+                    REFERENCES session_exercises(id)
+                    ON DELETE CASCADE,
+                max_weight_kg REAL NOT NULL
+                    CHECK(max_weight_kg > 0.0)
+            );
+            """.trimIndent()
+        )
     }
 
 
@@ -3949,6 +4270,9 @@ private class TrainlogDatabaseHelper(
                     ON DELETE SET NULL,
                 selected_exercise_label TEXT,
                 selected_equipment_id TEXT,
+                source_session_id TEXT,
+                weight_text TEXT NOT NULL DEFAULT '',
+                max_weight_text TEXT NOT NULL DEFAULT '',
                 set_count_text TEXT NOT NULL,
                 reps_text TEXT NOT NULL,
                 duration_text TEXT NOT NULL,
@@ -4047,6 +4371,18 @@ private class TrainlogDatabaseHelper(
             );
             """.trimIndent()
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS draft_max_results(
+                draft_exercise_row_id INTEGER PRIMARY KEY
+                    REFERENCES draft_session_exercises(id)
+                    ON DELETE CASCADE,
+                max_weight_kg REAL NOT NULL
+                    CHECK(max_weight_kg > 0.0)
+            );
+            """.trimIndent()
+        )
     }
 
     private fun createEquipmentTables(
@@ -4105,6 +4441,12 @@ private class TrainlogDatabaseHelper(
         db: SQLiteDatabase,
     ) {
         db.execSQL("PRAGMA defer_foreign_keys = ON;")
+
+        /* Older chained upgrades call the current table creators while still
+         * below v9. Those provisional empty result tables must not retain FKs
+         * to the v7 names that are rebuilt immediately below. */
+        db.execSQL("DROP TABLE IF EXISTS draft_max_results;")
+        db.execSQL("DROP TABLE IF EXISTS max_results;")
 
         db.execSQL("ALTER TABLE equipment_aliases RENAME TO equipment_aliases_v7;")
         db.execSQL("ALTER TABLE exercise_equipment RENAME TO exercise_equipment_v7;")
@@ -4177,6 +4519,110 @@ private class TrainlogDatabaseHelper(
         db.execSQL("DROP TABLE catalog_exercise_equipment_v7;")
         db.execSQL("DROP TABLE equipment_v7;")
     }
+
+    private fun migrateExplicitMaxResultsToVersionNine(
+        db: SQLiteDatabase,
+    ) {
+        /*
+         * CONTRACT: v9 introduces an occurrence-owned max result without
+         * changing exercise profiles or TRAINLOG_FORMAT_V1. A legacy max-test
+         * entry is converted only when its sole source row is exactly one
+         * successful rep with a positive load. Multiple attempts and every
+         * other shape remain byte-for-byte represented by performed_sets.
+         */
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS max_results(
+                session_exercise_row_id INTEGER PRIMARY KEY
+                    REFERENCES session_exercises(id) ON DELETE CASCADE,
+                max_weight_kg REAL NOT NULL CHECK(max_weight_kg > 0.0)
+            );
+            """.trimIndent(),
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS draft_max_results(
+                draft_exercise_row_id INTEGER PRIMARY KEY
+                    REFERENCES draft_session_exercises(id) ON DELETE CASCADE,
+                max_weight_kg REAL NOT NULL CHECK(max_weight_kg > 0.0)
+            );
+            """.trimIndent(),
+        )
+        if (!tableHasColumn(db, "active_session_draft", "weight_text")) {
+            db.execSQL(
+                "ALTER TABLE active_session_draft " +
+                    "ADD COLUMN weight_text TEXT NOT NULL DEFAULT '';",
+            )
+        }
+        if (!tableHasColumn(db, "active_session_draft", "max_weight_text")) {
+            db.execSQL(
+                "ALTER TABLE active_session_draft " +
+                    "ADD COLUMN max_weight_text TEXT NOT NULL DEFAULT '';",
+            )
+        }
+        if (!tableHasColumn(db, "active_session_draft", "source_session_id")) {
+            db.execSQL(
+                "ALTER TABLE active_session_draft ADD COLUMN source_session_id TEXT;",
+            )
+        }
+
+        db.execSQL(
+            """
+            INSERT INTO max_results(session_exercise_row_id, max_weight_kg)
+            SELECT se.id, ps.weight_kg
+            FROM session_exercises AS se
+            JOIN sessions AS s ON s.id = se.session_row_id
+            JOIN performed_sets AS ps ON ps.session_exercise_row_id = se.id
+            WHERE s.session_type = 'max_test'
+              AND se.recording_mode = 'sets'
+              AND ps.reps = 1
+              AND ps.duration_seconds IS NULL
+              AND ps.weight_kg > 0.0
+              AND (SELECT COUNT(*) FROM performed_sets AS all_ps
+                   WHERE all_ps.session_exercise_row_id = se.id) = 1;
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "DELETE FROM performed_sets WHERE session_exercise_row_id " +
+                "IN (SELECT session_exercise_row_id FROM max_results);",
+        )
+        db.execSQL(
+            """
+            INSERT INTO draft_max_results(draft_exercise_row_id, max_weight_kg)
+            SELECT de.id, ps.weight_kg
+            FROM draft_session_exercises AS de
+            JOIN active_session_draft AS d ON d.id = de.draft_id
+            JOIN draft_performed_sets AS ps ON ps.draft_exercise_row_id = de.id
+            WHERE d.session_type = 'max_test'
+              AND de.recording_mode = 'sets'
+              AND ps.reps = 1
+              AND ps.duration_seconds IS NULL
+              AND ps.weight_kg > 0.0
+              AND (SELECT COUNT(*) FROM draft_performed_sets AS all_ps
+                   WHERE all_ps.draft_exercise_row_id = de.id) = 1;
+            """.trimIndent(),
+        )
+        db.execSQL(
+            "DELETE FROM draft_performed_sets WHERE draft_exercise_row_id " +
+                "IN (SELECT draft_exercise_row_id FROM draft_max_results);",
+        )
+    }
+
+    private fun tableHasColumn(
+        db: SQLiteDatabase,
+        table: String,
+        column: String,
+    ): Boolean =
+        db.rawQuery("PRAGMA table_info($table);", null).use { cursor ->
+            var found = false
+            while (cursor.moveToNext()) {
+                if (cursor.getString(1) == column) {
+                    found = true
+                    break
+                }
+            }
+            found
+        }
 
     private fun addEquipmentReferenceColumns(
         db: SQLiteDatabase,

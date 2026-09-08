@@ -3,8 +3,8 @@
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=8
-DATABASE_SCHEMA_V8=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=9
+DATABASE_SCHEMA_V9=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -23,7 +23,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-8
+9
 ```
 
 Supported historical databases are migrated explicitly through the implemented
@@ -40,6 +40,12 @@ Version 8 adds local `custom_equipment` definitions. The v7 → v8 migration is
 additive: it retains all historic occurrences and their `equipment_id` values.
 Supplied definitions continue to be generated from `catalog/equipment-v1.json`;
 custom definitions exist only in the desktop database.
+
+Version 9 adds the one-to-one `max_results` table. The v8 → v9 migration
+converts a legacy `max_test` occurrence only when it contains exactly one
+performed set with `reps = 1`, no duration, and a positive weight. The stable
+session, occurrence, exercise, position, and equipment identities are retained.
+Multiple attempts and every other ambiguous shape remain as historical sets.
 
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
@@ -188,6 +194,19 @@ distance_km              nullable
 
 Continuous activity never creates a fake performed set.
 
+### `max_results`
+
+One-to-one explicit result for an occurrence in a `max_test` session.
+
+```text
+session_exercise_row_id  PRIMARY KEY, foreign key
+max_weight_kg            finite positive weight
+```
+
+The occurrence has no `performed_sets` or `continuous_activity` row. The
+referenced exercise owns the performance identity; nullable
+`session_exercises.equipment_id` remains contextual metadata.
+
 ### `body_observations`
 
 ```text
@@ -296,17 +315,21 @@ distance              km
 
 The Android SQLite database is independent.
 
-Current Android-local version: **8**. The explicit migration chain adds the
+Current Android-local version: **9**. The explicit migration chain adds the
 durable draft in v4, equipment references in v5, per-set load in v6, occurrence
 identity/multi-occurrence support in v7, and the widened custom-equipment
-definition graph in v8.
+definition graph in v8. Version 9 adds completed/draft explicit max rows, raw
+max and load form text, and the optional stable source session used to resume a
+completed Test max.
 
 | Table | Ownership |
 | --- | --- |
-| `active_session_draft` | Single `id = 1` row, session type, selected catalog row, raw form text, update time |
+| `active_session_draft` | Single `id = 1` row, session type, selected catalog row, raw form text including MAX, optional resumed source session, update time |
 | `draft_session_exercises` | Ordered draft exercises and profile snapshots |
 | `draft_performed_sets` | Ordered heterogeneous repetition or duration actuals |
 | `draft_continuous_activity` | Duration and configured speed/distance without synthetic sets |
+| `draft_max_results` | Positive explicit max weight, one-to-one with a draft occurrence |
+| `max_results` | Positive explicit max weight, one-to-one with a completed occurrence |
 | `equipment`, `equipment_aliases` | Supplied and user-created definitions used by selectors and occurrence FKs |
 | `exercise_equipment`, `catalog_exercise_equipment` | Persisted manifest relationship metadata retained across migrations and identity reconciliation |
 
@@ -317,11 +340,11 @@ both on failure. Repeating finalization after success cannot create another
 completed session. Completed `started_at` semantics are unchanged by this repair.
 
 Migration tests cover historical v4 and v7 shapes rather than changing only
-`user_version`. The prior physical Samsung migration preserved every existing
-domain row, with successful integrity and foreign-key checks. Current
-reconciliation validation additionally uses coherent Android and desktop v8
-copies whose integrity and foreign keys are checked before and after import.
-SQLite files are never synchronization artifacts.
+`user_version`. The physical Samsung and desktop v9 migrations preserved every
+existing domain row after fresh coherent backups, with successful integrity and
+foreign-key checks. Reconciliation validation also uses coherent Android and
+desktop v9 copies before applying migrations to the real stores. SQLite files
+are never synchronization artifacts.
 
 The schemas deliberately differ where ownership differs. Desktop sessions own
 `ended_at`, notes, planned targets and session-specific load semantics; the
@@ -337,7 +360,7 @@ Audit limitation: Android persists supplied exercise/equipment relationship
 tables, but the current session selector searches the complete equipment list
 instead of filtering or ranking it through those relations. The tables are
 retained because migration and identity reconciliation already preserve them;
-making them authoritative UI policy is future catalog work, not a v8 cleanup.
+making them authoritative UI policy is future catalog work, not a v9 cleanup.
 
 Desktop and Android schema versions are not required to match.
 
@@ -356,21 +379,24 @@ Migration-specific regression coverage includes:
 schema_v5_migration
 schema_v7_migration
 exercise_reconciliation
+max_results
+max_sync
 ```
 
-The current normal desktop suite contains 32 tests.
+The current normal desktop suite contains 34 tests.
 
-## 11. Measured-max derivation
+## 11. Explicit and legacy measured maxima
 
-Measured maxima require no schema change beyond the current desktop schema v8.
-
-The existing `sessions.session_type = max_test` classification plus actual
-`performed_sets` are sufficient.
+Schema v9 persists a weight maximum in `max_results`, separate from
+`performed_sets`. A new max occurrence therefore contains no repetition or set
+count. Only `sessions.session_type = max_test` may own this row.
 
 Exercise performance points carry the originating session type so the
 measured-max layer can distinguish explicit tests from ordinary training.
 
-Rules:
+The performance reader also preserves the prior measured-max interpretation for
+ambiguous legacy max-test sets that the migration deliberately did not convert.
+Rules for those legacy rows remain:
 
 ```text
 training session
@@ -388,12 +414,14 @@ max_test + no load
     greatest successful reps/duration
 ```
 
-A zero-repetition failed attempt is not a successful measurement.
+A zero-repetition failed legacy attempt is not a successful measurement.
 
 The current measured result is the newest successful max-test point. The record
 is the best max-test point using the same load mode.
 
-No extra maximum row is persisted; results are derived from canonical history.
+For explicit rows, `max_weight_kg` is the canonical result. Latest-max history
+groups by `exercise_id`, then reports date and occurrence equipment context;
+it never groups by machine.
 
 ## 12. Equipment and occurrence migration
 
@@ -408,6 +436,10 @@ v8 migration. Existing occurrence links remain unchanged. They resolve through
 the supplied manifest or the local custom table; unknown historic references
 remain explicit rather than being discarded.
 
+Schema v9 adds explicit max results through the bounded v8 -> v9 conversion
+described above. It never chooses among multiple one-repetition attempts and
+never deletes an ambiguous source row.
+
 Android schema v6 added nullable `weight_kg` to completed and durable draft
 set rows. Schema v7 assigns stable `entry_id` values to completed and draft
 occurrences. Actual per-set weights remain independent values, so heterogeneous
@@ -417,9 +449,15 @@ Android schema v8 non-destructively migrates the v7 equipment reference graph
 so custom definitions may use `load_semantics = none`. Historic completed
 occurrences, draft occurrences, and their equipment references remain intact.
 
+Android schema v9 applies the same bounded legacy conversion to completed and
+durable-draft occurrences. A resumed max-test draft preserves its source
+`session_id`; atomic finalization replaces that session's ordered children
+instead of generating a second session.
+
 ## 13. Body analytics persistence rule
 
-Body analytics require no schema change beyond schema v8.
+Body analytics still require no schema change beyond schema v8; schema v9 does
+not alter their storage.
 
 Canonical persistence continues to contain only measurements actually entered
 by the user.

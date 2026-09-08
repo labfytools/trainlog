@@ -11,7 +11,7 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 8
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 9
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
@@ -188,6 +188,9 @@ typedef struct TrainlogPersistedExerciseDetail {
     int has_target_weight;
     double target_weight_kg;
 
+    int has_max_weight;
+    double max_weight_kg;
+
     int continuous_duration_seconds;
     int has_continuous_speed;
     double continuous_speed_kmh;
@@ -271,9 +274,12 @@ typedef struct TrainlogExercisePerformancePoint {
     TrainlogLoadMode load_mode;
     size_t actual_set_count;
     int has_performance;
+    /* Explicit schema-v9 max: weight is the result; metric_value is internal. */
+    int has_explicit_max;
     int metric_value;
     int has_weight;
     double weight_kg;
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
 } TrainlogExercisePerformancePoint;
 
 /**
@@ -305,6 +311,8 @@ typedef struct TrainlogEditableExerciseRecord {
     char equipment_id[TRAINLOG_ID_MAX + 1U];
     char name[TRAINLOG_NAME_MAX + 1U];
     TrainlogTrackingMode tracking_mode;
+    TrainlogRecordingMode recording_mode;
+    TrainlogExerciseDataFields data_fields;
     TrainlogLoadMode load_mode;
     int rest_seconds;
     int target_sets;
@@ -312,6 +320,13 @@ typedef struct TrainlogEditableExerciseRecord {
     int target_duration_seconds;
     int has_target_weight;
     double target_weight_kg;
+    int has_max_weight;
+    double max_weight_kg;
+    int continuous_duration_seconds;
+    int has_continuous_speed;
+    double continuous_speed_kmh;
+    int has_continuous_distance;
+    double continuous_distance_km;
     char notes[TRAINLOG_NOTE_MAX + 1U];
     size_t set_offset;
     size_t set_count;

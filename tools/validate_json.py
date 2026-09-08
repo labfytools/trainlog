@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Validate Trainlog v1 JSON documents structurally and semantically."""
+"""Validate frozen Trainlog v1 and active mobile-export v2 documents."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import unicodedata
 from datetime import datetime
@@ -29,7 +30,7 @@ INVALID_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "invalid"
 
 
 class TrainlogSemanticError(ValueError):
-    """Raised when structurally valid JSON violates Trainlog v1 semantics."""
+    """Raised when structurally valid JSON violates its format semantics."""
 
 
 def load_json(path: Path) -> Any:
@@ -253,6 +254,15 @@ def validate_mobile_export_v2(document: Any) -> None:
                 raise TrainlogSemanticError("mobile export V2: duplicate entry or unknown exercise")
             if isinstance(entry.get("position"), bool) or not isinstance(entry.get("position"), int) or entry["position"] < 0 or entry["position"] in positions:
                 raise TrainlogSemanticError("mobile export V2: invalid/duplicate entry position")
+            has_max = "max_weight_kg" in entry
+            has_sets = "sets" in entry
+            has_continuous = "continuous" in entry
+            if sum((has_max, has_sets, has_continuous)) != 1:
+                raise TrainlogSemanticError("mobile export V2: exactly one result shape required")
+            if has_max:
+                value = entry["max_weight_kg"]
+                if session.get("session_type") != "max_test" or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or value <= 0:
+                    raise TrainlogSemanticError("mobile export V2: invalid explicit max")
             entry_ids.add(entry["entry_id"]); positions.add(entry["position"])
 def structural_errors(
     validator: jsonschema.Draft202012Validator,
@@ -347,7 +357,7 @@ def run_suite(validator: jsonschema.Draft202012Validator) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Validate Trainlog v1 JSON structurally and semantically."
+        description="Validate Trainlog v1 or mobile-export v2 JSON."
     )
     parser.add_argument(
         "paths",

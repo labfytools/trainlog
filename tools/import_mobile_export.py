@@ -54,7 +54,7 @@ SESSION_EXERCISE_KEYS = {
 }
 
 V2_SESSION_EXERCISE_KEYS = SESSION_EXERCISE_KEYS | {
-    "entry_id", "position", "equipment_id"
+    "entry_id", "position", "equipment_id", "max_weight_kg"
 }
 
 BODY_BASE_KEYS = {
@@ -405,13 +405,14 @@ def validate_session_exercise(
     item,
     label,
     known_exercise_ids,
+    session_type,
 ):
     is_v2 = "entry_id" in item or "position" in item or "equipment_id" in item
     require_exact_keys(
         item,
         V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS,
         (V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS)
-        - {"sets", "continuous"},
+        - {"sets", "continuous", "max_weight_kg"},
         label,
     )
 
@@ -468,6 +469,21 @@ def validate_session_exercise(
         raise ImportFailure(
             f"{label}: mobile export v1 exige rest_seconds=0"
         )
+
+    if "max_weight_kg" in item:
+        if not is_v2 or session_type != "max_test":
+            raise ImportFailure(
+                f"{label}: max_weight_kg exige mobile V2 et session max_test"
+            )
+        if "sets" in item or "continuous" in item:
+            raise ImportFailure(
+                f"{label}: max_weight_kg exclut sets et continuous"
+            )
+        require_positive_number(
+            item["max_weight_kg"],
+            f"{label}.max_weight_kg",
+        )
+        return
 
     if recording_mode == "continuous":
         if "sets" in item:
@@ -634,6 +650,7 @@ def validate_sessions(
                 exercise,
                 exercise_label,
                 known_exercise_ids,
+                session["session_type"],
             )
 
             equipment_id = exercise.get("equipment_id")
@@ -738,11 +755,11 @@ def require_supported_schema(connection):
         "PRAGMA user_version;"
     ).fetchone()[0]
 
-    # CONTRACT: desktop startup migrates canonical databases through v8; the
-    # mobile-v2 tables used below retain their v7 shape in v8.
-    if version not in (5, 6, 7, 8):
+    # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
+    # readable for legacy artifacts and are never made to fake that table.
+    if version not in (5, 6, 7, 8, 9):
         raise ImportFailure(
-            f"base desktop schema v5, v6, v7 ou v8 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v9 attendue, version trouvée: {version}"
         )
 
 
@@ -1244,6 +1261,46 @@ def import_continuous_session_exercise(
     )
 
 
+def import_max_session_exercise(
+    connection,
+    session_row_id,
+    position,
+    item,
+    exercise_row,
+):
+    """Persist a V2 max without manufacturing a performed set."""
+    schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+    if schema_version < 9:
+        raise ImportFailure(
+            "max_weight_kg exige le schéma desktop v9"
+        )
+    cursor = connection.execute(
+        """
+        INSERT INTO session_exercises(
+            entry_id, session_row_id, exercise_row_id, recording_mode,
+            data_fields, position, load_mode, rest_seconds,
+            target_sets, target_reps, target_duration_seconds,
+            target_weight_kg, notes, equipment_id
+        ) VALUES(?, ?, ?, ?, ?, ?, 'none', 0,
+                 NULL, NULL, NULL, NULL, NULL, ?);
+        """,
+        (
+            item["entry_id"],
+            session_row_id,
+            exercise_row,
+            item["recording_mode"],
+            item["data_fields"],
+            position,
+            item.get("equipment_id"),
+        ),
+    )
+    connection.execute(
+        "INSERT INTO max_results(session_exercise_row_id,max_weight_kg) "
+        "VALUES(?,?);",
+        (cursor.lastrowid, item["max_weight_kg"]),
+    )
+
+
 def import_sessions(
     connection,
     payload,
@@ -1278,9 +1335,24 @@ def import_sessions(
                 (session_row_id,)).fetchall()
             current = [(row[0], row[1]) for row in rows]
             legacy = all(value[0].startswith("sxe_legacy_") or value[0].startswith("sxe_v1_") for value in current)
+            header = connection.execute(
+                "SELECT started_at,session_type FROM sessions WHERE id=?;",
+                (session_row_id,),
+            ).fetchone()
+            resumable_max = (
+                header is not None
+                and tuple(header) == (session["started_at"], "max_test")
+                and session["session_type"] == "max_test"
+                and len(incoming) >= len(current)
+                and all(current[index] == incoming[index]
+                        for index in range(len(current)))
+            )
             # A v1 history may be upgraded only when exercise/order mapping is
             # unique. Any other identity disagreement is an explicit conflict.
-            if current != incoming and not (legacy and [x[1] for x in current] == [x[1] for x in incoming]):
+            if current != incoming and not (
+                (legacy and [x[1] for x in current] == [x[1] for x in incoming])
+                or resumable_max
+            ):
                 raise ImportFailure("conflit d'identités d'entrées pour " + session["session_id"])
             if not legacy and session_semantically_matches(
                 connection,
@@ -1290,12 +1362,18 @@ def import_sessions(
             ):
                 report["sessions_skipped"] += 1
                 continue
-            if not legacy:
+            if not legacy and not resumable_max:
                 raise ImportFailure("conflit de contenu pour " + session["session_id"])
+            # CONTRACT: a resumed max_test may edit existing max values and
+            # append occurrences, but cannot remove/reorder/rebind any stable
+            # entry. This bounded replacement makes tomorrow's continuation
+            # idempotent without turning arbitrary session conflicts into wins.
             # Explicit child deletion makes reconciliation safe even for old
             # databases which were created without enforced foreign keys.
             connection.execute("DELETE FROM performed_sets WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
             connection.execute("DELETE FROM continuous_activity WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
+            if connection.execute("PRAGMA user_version;").fetchone()[0] >= 9:
+                connection.execute("DELETE FROM max_results WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
             connection.execute("DELETE FROM session_exercises WHERE session_row_id=?;", (session_row_id,))
             report["sessions_reconciled"] += 1
         else:
@@ -1359,7 +1437,15 @@ def import_sessions(
                 desktop_id,
             )
 
-            if item["recording_mode"] == "continuous":
+            if "max_weight_kg" in item:
+                import_max_session_exercise(
+                    connection,
+                    session_row_id,
+                    position,
+                    item,
+                    row_id,
+                )
+            elif item["recording_mode"] == "continuous":
                 import_continuous_session_exercise(
                     connection,
                     session_row_id,
@@ -1402,7 +1488,15 @@ def session_semantically_matches(
                                item["recording_mode"], item["tracking_mode"],
                                item["data_fields"], item.get("equipment_id")):
             return False
-        if item["recording_mode"] == "continuous":
+        if "max_weight_kg" in item:
+            current = connection.execute(
+                "SELECT max_weight_kg FROM max_results "
+                "WHERE session_exercise_row_id=?",
+                (row[0],),
+            ).fetchone()
+            if current is None or current[0] != item["max_weight_kg"]:
+                return False
+        elif item["recording_mode"] == "continuous":
             current = connection.execute(
                 "SELECT duration_seconds,speed_kmh,distance_km FROM continuous_activity "
                 "WHERE session_exercise_row_id=?", (row[0],)).fetchone()
@@ -1543,6 +1637,15 @@ def run_import(
         require_supported_schema(
             connection
         )
+
+        schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+        has_explicit_max = any(
+            "max_weight_kg" in entry
+            for session in payload["sessions"]
+            for entry in session["exercises"]
+        )
+        if has_explicit_max and schema_version < 9:
+            raise ImportFailure("max_weight_kg exige le schéma desktop v9")
 
         connection.execute(
             "BEGIN IMMEDIATE;"

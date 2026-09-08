@@ -96,6 +96,8 @@ sync_direction
 sync_history
 sync_screen_action
 measured_max
+max_results
+max_sync
 body_analytics
 terminal_input_event_type_policy
 ```
@@ -103,7 +105,7 @@ terminal_input_event_type_policy
 Validated current suite:
 
 ```text
-32/32 Meson tests PASS
+34/34 Meson tests PASS
 ```
 
 The desktop executable is additionally smoke-checked in isolated tmux PTYs at
@@ -120,7 +122,9 @@ Notable regression coverage:
 - continuous activity without fake sets;
 - repetition shorthand/list/pyramid parsing;
 - direct v4 -> v7 database migration and v7 -> v8 custom-equipment migration;
+- bounded v8 -> v9 explicit-max migration, including ambiguous-attempt preservation;
 - heterogeneous mobile-set import;
+- V2 explicit-max Android -> desktop -> Android replay and resumed same-session update;
 - Notcurses input lifecycle translation: PRESS/REPEAT are actionable while a
   RELEASE event is consumed without creating a second navigation action.
 - targetless mobile SETS persistence;
@@ -315,7 +319,7 @@ Coverage proves:
 Validated current normal suite:
 
 ```text
-32/32 Meson tests PASS
+34/34 Meson tests PASS
 ```
 
 ## 12. Body analytics regression
@@ -340,19 +344,24 @@ Coverage includes:
 Validated current normal suite:
 
 ```text
-32/32 Meson tests PASS
+34/34 Meson tests PASS
 ```
 
 ## 13. Android session draft v1
 
 Android schema v4 introduced one durable active draft; the current additive
-chain reaches schema v8 without clearing completed history or the draft. The
+chain reaches schema v9 without clearing completed history or the draft. The
 current `testDebugUnitTest` suite and `assembleDebug` pass. Host coverage
 includes exercise
 shapes and raw partial text, fresh repository restore, remove/discard, atomic
 finalization and repeated-finalize rejection, rollback, catalog reconciliation,
 missing-selection recovery, explicit DB-open failure, historical migration,
 equipment selection and occurrence identity.
+
+Schema-v9 host coverage additionally proves French raw max-text persistence,
+explicit max creation/edit/finalization without sets, distinct movement values
+on the same equipment, latest-per-exercise history, V2 replay, stable-ID resume
+and bounded conversion that leaves multiple legacy attempts untouched.
 
 ```bash
 cd android

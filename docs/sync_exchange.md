@@ -16,6 +16,7 @@ MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
+EXPLICIT_MAX_RESULTS_V2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
@@ -132,6 +133,7 @@ entry_id             stable occurrence identity
 position             stable order within session
 equipment_id         optional canonical equipment identity
 weight_kg            optional actual value on each set
+max_weight_kg        optional explicit max-test result
 ```
 
 The desktop imports sessions first, preserving `entry_id` and their equipment,
@@ -181,6 +183,19 @@ continuous
 
 No synthetic set is created for continuous work.
 
+An explicit weight result uses the mutually exclusive shape:
+
+```text
+max_weight_kg        finite and > 0
+```
+
+It is valid only when the containing session has `session_type = max_test` and
+the entry has neither `sets` nor `continuous`. Android, desktop import, desktop
+export and the strict validator preserve `session_id`, `entry_id`,
+`exercise_id`, `position`, optional `equipment_id`, and the weight. Frozen V1
+is unchanged; Android refuses a V1 export containing explicit max data instead
+of inventing a `1 × 1` set or dropping the result.
+
 Android-local active-session drafts are excluded from this snapshot and remain
 local during synchronization. Only successful atomic finalization makes a draft
 a completed exportable session. The v1 artifact has no draft fields or tables;
@@ -207,6 +222,7 @@ profile conflict rejection
 heterogeneous performed-set preservation
 targetless schema-v5 import when no true target exists
 continuous activity kept separate
+explicit max result kept separate from sets
 ```
 
 The importer never invents a uniform target merely to fit desktop persistence.
@@ -363,6 +379,14 @@ source artifact/direction, then records a concise source summary in the run
 history. The conflicting persisted value remains preserved; resolution is an
 explicit correction or reconciliation, not a side effect of synchronization.
 
+The sole bounded session exception is continuation of the same `max_test`:
+`session_id` and `started_at` must match; every existing `entry_id`, movement,
+position and ordering prefix must remain; existing values may be corrected and
+new ordered entries may be appended. Removal, reorder, exercise rebinding,
+session-type change, or an unrelated same-ID divergence still conflicts. This
+rule permits an Android-resumed max test to update the canonical desktop and a
+subsequent PC snapshot to update Android without duplicating the session.
+
 ## 12. Concurrency and request consumption
 
 Synchronization owns:
@@ -485,12 +509,14 @@ receipt publication/readback PASS
 multiple distinct Android request IDs PASS
 ```
 
-The current reconciliation checkpoint pulled the real Android v8 database and
-shared-storage artifacts through ADB for read-only inspection, then ran the
-production definition, V2 mobile, association, body and outbound exporters on a
-coherent desktop v8 copy. The second inbound/outbound replay was stable and both
-SQLite integrity checks passed. This is real-data importer/exporter evidence,
-not a claim that the current libmtp transport ran inside the sandbox.
+The current reconciliation checkpoint first ran the production definition, V2
+mobile, association, body and outbound exporters on coherent Android and
+desktop copies. The explicit-max migration was then applied to the real stores:
+the identified session retained all stable identities, converted eight
+unambiguous rows, retained its continuous warm-up, and passed integrity and
+foreign-key checks. Two hardware bidirectional libmtp runs imported no duplicate
+session, exercise, measurement or equipment; both Android and PC V2 artifacts
+retained the eight explicit results without synthetic sets.
 
 The PC-to-Android idempotence regression additionally feeds artifacts from all
 four production PC exporters into the production Android repository importers.

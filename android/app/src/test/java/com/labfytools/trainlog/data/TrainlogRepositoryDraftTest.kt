@@ -1383,7 +1383,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(8, cursor.getInt(0))
+                assertEquals(9, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1510,7 +1510,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(8, cursor.getInt(0))
+                assertEquals(9, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -1518,6 +1518,188 @@ class TrainlogRepositoryDraftTest {
             }
             db.rawQuery("PRAGMA foreign_key_check;", null).use { cursor ->
                 assertFalse(cursor.moveToFirst())
+            }
+        }
+    }
+
+    @Test
+    fun explicitMaxDraftEditsReopensFinalizesAndKeepsMachineContextPerMovement() {
+        val first = openRepository()
+        val pecFly = createExercise(first, "Pec Fly", RecordingMode.SETS, TrackingMode.REPS)
+        val rearDelt = createExercise(first, "Rear Delt Fly", RecordingMode.SETS, TrackingMode.REPS)
+        val pecEntry = SessionExerciseDraft(
+            entryId = "sxe_max_pec",
+            exercise = pecFly,
+            equipmentId = "rear_delt_pec_fly",
+            maxWeightKg = 100.0,
+        )
+        val rearEntry = SessionExerciseDraft(
+            entryId = "sxe_max_rear",
+            exercise = rearDelt,
+            equipmentId = "rear_delt_pec_fly",
+            maxWeightKg = 86.0,
+        )
+        val draft = ActiveSessionDraft(
+            exercises = listOf(pecEntry, rearEntry),
+            sessionType = SessionType.MAX_TEST,
+            form = SessionDraftForm(
+                selectedExercise = rearDelt,
+                selectedEquipmentId = "rear_delt_pec_fly",
+                maxWeightText = "86,",
+            ),
+        )
+        assertEquals(ActiveDraftMutationResult.Saved, first.saveActiveSessionDraft(draft))
+        first.close(); repository = null
+
+        val reopened = openRepository()
+        val restored = loadDraft(reopened)
+        assertEquals("86,", restored.form.maxWeightText)
+        assertEquals(listOf(100.0, 86.0), restored.exercises.map { it.maxWeightKg })
+        assertTrue(restored.exercises.all { it.sets.isEmpty() })
+
+        val edited = restored.copy(
+            exercises = restored.exercises.map {
+                if (it.entryId == "sxe_max_pec") it.copy(maxWeightKg = 101.5) else it
+            },
+        )
+        assertEquals(ActiveDraftMutationResult.Saved, reopened.saveActiveSessionDraft(edited))
+        assertTrue(reopened.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+
+        val sessionId = reopened.listSessions().single().sessionId
+        val detail = reopened.getSessionDetail(sessionId)!!
+        assertEquals(SessionType.MAX_TEST, detail.summary.sessionType)
+        assertEquals(listOf("sxe_max_pec", "sxe_max_rear"), detail.exercises.map { it.entryId })
+        assertEquals(listOf(101.5, 86.0), detail.exercises.map { it.maxWeightKg })
+        assertTrue(detail.exercises.all { it.sets.isEmpty() })
+        assertEquals(2, reopened.listLatestExerciseMaxima().size)
+        try {
+            reopened.buildMobileExportJson()
+            fail("Frozen V1 must refuse explicit max data")
+        } catch (_: IllegalStateException) {
+            // Expected: V1 has no lossless explicit-max representation.
+        }
+
+        val exportedJson = reopened.buildMobileExportV2Json()
+        val exported = JSONObject(exportedJson)
+            .getJSONArray("sessions").getJSONObject(0)
+            .getJSONArray("exercises")
+        assertEquals(101.5, exported.getJSONObject(0).getDouble("max_weight_kg"), 0.0)
+        assertEquals(86.0, exported.getJSONObject(1).getDouble("max_weight_kg"), 0.0)
+        assertFalse(exported.getJSONObject(0).has("sets"))
+        assertFalse(exported.getJSONObject(1).has("sets"))
+        val replay = reopened.applyPcMobileExportV2Json(exportedJson)
+        assertTrue(replay is MobileSessionImportResult.Applied)
+        assertEquals(1, (replay as MobileSessionImportResult.Applied).sessionsSkipped)
+        assertEquals(1, reopened.listSessions().size)
+
+        /* The UI creates this harmless singleton before history is opened. */
+        assertEquals(
+            ActiveDraftMutationResult.Saved,
+            reopened.saveActiveSessionDraft(ActiveSessionDraft()),
+        )
+        assertEquals(ActiveDraftMutationResult.Saved, reopened.resumeMaxTestSession(sessionId))
+        val resumed = loadDraft(reopened)
+        assertEquals(sessionId, resumed.sourceSessionId)
+        assertEquals(listOf("sxe_max_pec", "sxe_max_rear"), resumed.exercises.map { it.entryId })
+        assertEquals(
+            ActiveDraftMutationResult.Saved,
+            reopened.saveActiveSessionDraft(
+                resumed.copy(
+                    exercises = resumed.exercises.map {
+                        if (it.entryId == "sxe_max_rear") it.copy(maxWeightKg = 87.0) else it
+                    },
+                ),
+            ),
+        )
+        val resumedResult = reopened.finalizeActiveSessionDraft()
+        assertTrue(resumedResult is FinalizeActiveDraftResult.Saved)
+        assertEquals(sessionId, (resumedResult as FinalizeActiveDraftResult.Saved).sessionId)
+        assertEquals(1, reopened.listSessions().size)
+        assertEquals(87.0, reopened.getSessionDetail(sessionId)!!.exercises[1].maxWeightKg!!, 0.0)
+
+        val pcUpdate = JSONObject(reopened.buildMobileExportV2Json())
+        pcUpdate.getJSONArray("sessions").getJSONObject(0)
+            .getJSONArray("exercises").getJSONObject(1)
+            .put("max_weight_kg", 88.0)
+        val appliedUpdate = reopened.applyPcMobileExportV2Json(pcUpdate.toString())
+        assertTrue(appliedUpdate is MobileSessionImportResult.Applied)
+        assertEquals(1, (appliedUpdate as MobileSessionImportResult.Applied).sessionsUpdated)
+        assertEquals(88.0, reopened.getSessionDetail(sessionId)!!.exercises[1].maxWeightKg!!, 0.0)
+
+        assertEquals(ActiveDraftMutationResult.Saved, reopened.resumeMaxTestSession(sessionId))
+        val unsafeRemoval = loadDraft(reopened).let { active ->
+            active.copy(exercises = active.exercises.dropLast(1))
+        }
+        assertEquals(ActiveDraftMutationResult.Saved, reopened.saveActiveSessionDraft(unsafeRemoval))
+        assertTrue(reopened.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.DatabaseError)
+        assertEquals(
+            listOf("sxe_max_pec", "sxe_max_rear"),
+            reopened.getSessionDetail(sessionId)!!.exercises.map { it.entryId },
+        )
+        assertEquals(sessionId, loadDraft(reopened).sourceSessionId)
+    }
+
+    @Test
+    fun versionNineConvertsOnlyUnambiguousLegacyMaxEntries() {
+        val initial = openRepository()
+        val unambiguous = createExercise(initial, "Max net", RecordingMode.SETS, TrackingMode.REPS)
+        val ambiguous = createExercise(initial, "Max ambigu", RecordingMode.SETS, TrackingMode.REPS)
+        initial.close(); repository = null
+
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(databaseName).path,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL("DROP TABLE draft_max_results;")
+            db.execSQL("DROP TABLE max_results;")
+            db.execSQL("PRAGMA user_version = 8;")
+            db.execSQL(
+                "INSERT INTO sessions(session_id,started_at,session_type) VALUES(?,?,?);",
+                arrayOf("se_max_migration", "2031-02-03T08:15:00+01:00", "max_test"),
+            )
+            val sessionRow = db.rawQuery(
+                "SELECT id FROM sessions WHERE session_id='se_max_migration';", null,
+            ).use { it.moveToFirst(); it.getLong(0) }
+            val rows = listOf(unambiguous to "sxe_unambiguous", ambiguous to "sxe_ambiguous").mapIndexed { index, (exercise, entryId) ->
+                val exerciseRow = db.rawQuery(
+                    "SELECT id FROM exercises WHERE exercise_id=?;", arrayOf(exercise.exerciseId),
+                ).use { it.moveToFirst(); it.getLong(0) }
+                db.execSQL(
+                    "INSERT INTO session_exercises(session_row_id,exercise_row_id,position,recording_mode,tracking_mode,data_fields,entry_id) VALUES(?,?,?,?,?,?,?);",
+                    arrayOf<Any>(sessionRow, exerciseRow, index, "sets", "reps", 0, entryId),
+                )
+                db.rawQuery("SELECT id FROM session_exercises WHERE entry_id=?;", arrayOf(entryId))
+                    .use { it.moveToFirst(); it.getLong(0) }
+            }
+            db.execSQL(
+                "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) VALUES(?,?,?,?);",
+                arrayOf<Any>(rows[0], 0, 1, 100.0),
+            )
+            db.execSQL(
+                "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) VALUES(?,?,?,?);",
+                arrayOf<Any>(rows[1], 0, 1, 80.0),
+            )
+            db.execSQL(
+                "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) VALUES(?,?,?,?);",
+                arrayOf<Any>(rows[1], 1, 1, 86.0),
+            )
+        }
+
+        val migrated = openRepository()
+        val details = migrated.getSessionDetail("se_max_migration")!!.exercises
+        assertEquals(100.0, details[0].maxWeightKg!!, 0.0)
+        assertTrue(details[0].sets.isEmpty())
+        assertEquals(null, details[1].maxWeightKg)
+        assertEquals(listOf(80.0, 86.0), details[1].sets.map { it.weightKg })
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(databaseName).path,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            db.rawQuery("PRAGMA foreign_key_check;", null).use { assertFalse(it.moveToFirst()) }
+            db.rawQuery("PRAGMA integrity_check;", null).use {
+                assertTrue(it.moveToFirst()); assertEquals("ok", it.getString(0))
             }
         }
     }

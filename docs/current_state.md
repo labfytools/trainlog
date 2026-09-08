@@ -14,8 +14,8 @@ GATE_2_PERSISTENCE_AND_USABLE_TUI=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V8=PASS
-ANDROID_LOCAL_DATABASE_V8=PASS
+DESKTOP_SCHEMA_V9=PASS
+ANDROID_LOCAL_DATABASE_V9=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 ANDROID_DRAFT_DURABLE=PASS
 ANDROID_DRAFT_BACKGROUND_SURVIVAL=PASS
@@ -32,6 +32,10 @@ EXERCISE_RENAME_STABLE_ID=PASS
 ANDROID_BANNER_PARITY_V1=PASS
 ANDROID_INSTALL_ADB=PASS
 ANDROID_USER_DATA_PRESERVED=PASS
+ANDROID_MAX_V9_INSTALL_ADB=PASS
+ANDROID_MAX_V9_REAL_DATA_MIGRATION=PASS
+DESKTOP_MAX_V9_REAL_DATA_MIGRATION=PASS
+REAL_DATABASE_APPLICATION=PASS
 
 PROFILE_AWARE_EXERCISES=PASS
 CONTINUOUS_ACTIVITY=PASS
@@ -50,10 +54,12 @@ MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
+MAX_TEST_RESUME_STABLE_ID=PASS
 
-DESKTOP_TESTS=32/32 PASS
+DESKTOP_TESTS=34/34 PASS
 ANDROID_BUILD=PASS
-HARDWARE_SYNC_VALIDATION=HISTORICAL_BASELINE_ONLY
+HARDWARE_SYNC_VALIDATION=PASS
 ```
 
 ## Desktop
@@ -61,9 +67,9 @@ HARDWARE_SYNC_VALIDATION=HISTORICAL_BASELINE_ONLY
 Implemented:
 
 - C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
-- SQLite schema v8, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v9, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
-  definitions;
+  definitions, plus occurrence-owned `max_results`;
 - direct session entry;
 - persisted session detail and editing;
 - exercise removal from a session through transactional child replacement;
@@ -215,10 +221,10 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-32/32 Meson tests PASS for the current desktop schema v8 baseline
+34/34 Meson tests PASS for the current desktop schema v9 baseline
 frozen JSON validator PASS
 import-contract validator PASS
-ASan/UBSan 32/32 Meson tests PASS
+ASan/UBSan 34/34 Meson tests PASS
 git diff --check PASS
 ```
 
@@ -257,6 +263,8 @@ ordering change was made by this corrective tranche.
 MEASURED_MAX_V1=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ANDROID_MAX_TEST_SESSION=PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
+MAX_TEST_RESUME_STABLE_ID=PASS
 CURRENT_OPERATIONAL_CURSOR=REAL_DATA_BASELINE_V1
 NEXT_FEATURE=GYM_CATALOG_V1
 ```
@@ -272,11 +280,22 @@ MEASURED_MAX_ONLY_FROM_MAX_TEST=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
-DESKTOP_TESTS=32/32 PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
+MAX_TEST_RESUME_STABLE_ID=PASS
+DESKTOP_TESTS=34/34 PASS
 ```
 
-A measured maximum is derived only from explicit `max_test` sessions. Ordinary
-training is never promoted implicitly.
+A measured maximum belongs to an exercise occurrence in an explicit `max_test`
+session. Schema v9 persists a positive `max_weight_kg` separately from sets;
+equipment is optional context, so one physical machine may carry independent
+Pec Fly and Rear Delt Fly results. Ordinary training is never promoted
+implicitly.
+
+The Android and TUI max forms request no set or repetition count. Android loads
+a completed Test max without changing `session_id`, existing `entry_id` values,
+order, exercise identity, or equipment context; finalization replaces that
+session's children atomically, permits explicit value/equipment corrections,
+and may append new entries.
 
 The current measured result is the newest successful max test. The historical
 record compares max tests using the same load mode.
@@ -293,7 +312,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=32/32 PASS
+DESKTOP_TESTS=34/34 PASS
 ```
 
 Android remains capture-only for this feature.

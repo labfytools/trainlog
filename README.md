@@ -16,9 +16,9 @@ desktop.
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V8=PASS
+DESKTOP_SCHEMA_V9=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V8=PASS
+ANDROID_LOCAL_DATABASE_V9=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
@@ -36,8 +36,9 @@ MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
 
-DESKTOP_TESTS=32/32 PASS
+DESKTOP_TESTS=34/34 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -111,6 +112,11 @@ occurrence, as do its actual per-set loads. `external` records an applied or
 machine-displayed load; `assistance` records assistance and is not interpreted
 as increasing strength.
 
+In a `max_test` session, an occurrence may instead own one explicit positive
+`max_weight_kg`. This result has no performed set, repetitions, or target-set
+count. Its identity remains the movement's `exercise_id` plus the occurrence's
+`entry_id`; optional equipment is context and never owns a shared maximum.
+
 During V2 synchronization, a different-ID normalized-name collision is merged
 only when recording/tracking modes match, every other known invariant is
 compatible, and one `data_fields` mask contains the other. The desktop identity
@@ -154,13 +160,14 @@ draft; abandoning the draft requires confirmation. Final save atomically
 creates completed history and clears the draft. Drafts never enter mobile
 export or desktop synchronization as completed sessions.
 
-Schema v4 migrates additively from v3, preserving existing capture data. See
+Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v8. Its additive v4 -> v8 chain adds the shared
+The current Android schema is v9. Its additive v4 -> v9 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
-identities, and custom-equipment definition support without recreating completed
-history or the active draft.
+identities, custom-equipment definition support, explicit MAX results and
+stable-source Test max resumption without recreating completed history or
+discarding the active draft.
 
 Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
 unchanged; completed history, an active draft, and synchronization therefore
@@ -247,7 +254,9 @@ remain readable as legacy artifacts; they are not silently redefined as V2.
 
 ## Measured max
 
-Explicit `max_test` sessions are the only source of measured maxima.
+Explicit `max_test` sessions are the only source of measured maxima. Schema v9
+stores each new weight result in a one-to-one `max_results` row; it no longer
+encodes a maximum as a synthetic `1 × 1` set.
 
 Ordinary training best sets remain ordinary performance even when they exceed a
 previous max-test result.
@@ -257,12 +266,16 @@ result, same-mode record, test history, a dedicated graph, and 60/70/80/90%
 working loads for external resistance. Working loads are rounded to a selectable
 practical increment and are not calculated for assistance.
 
-Android can explicitly save a session as `Entraînement` or `Test max`.
+Android and the TUI expose a dedicated `Test max` form containing exercise,
+optional equipment, and `Poids max (kg)`. Android can reopen an existing Test
+max and atomically replace its ordered entries while preserving the original
+session and occurrence identities.
 
 ```text
 MEASURED_MAX_V1=PASS
 WORKING_LOAD_PERCENTAGES=PASS
 ANDROID_MAX_TEST_SESSION=PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
 ```
 
 ## Body analytics
@@ -283,5 +296,5 @@ BODY_ANALYTICS_V1=PASS
 BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=32/32 PASS
+DESKTOP_TESTS=34/34 PASS
 ```

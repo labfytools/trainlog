@@ -55,6 +55,7 @@ CREATE TABLE continuous_activity(
  session_exercise_row_id INTEGER NOT NULL UNIQUE REFERENCES session_exercises(id) ON DELETE CASCADE,
  duration_seconds INTEGER NOT NULL, speed_kmh REAL, distance_km REAL
 );
+CREATE TABLE max_results(session_exercise_row_id INTEGER PRIMARY KEY,max_weight_kg REAL NOT NULL);
 CREATE TABLE body_observations(
  id INTEGER PRIMARY KEY, observation_id TEXT NOT NULL UNIQUE, observed_at TEXT NOT NULL,
  session_row_id INTEGER, body_weight_kg REAL, neck_cm REAL, shoulders_cm REAL,
@@ -66,7 +67,7 @@ CREATE TABLE custom_equipment(
  equipment_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, label_name TEXT NOT NULL,
  equipment_type TEXT NOT NULL, load_semantics TEXT NOT NULL
 );
-PRAGMA user_version=8;
+PRAGMA user_version=9;
 """
 
 

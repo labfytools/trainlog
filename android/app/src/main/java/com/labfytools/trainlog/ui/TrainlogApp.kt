@@ -285,6 +285,10 @@ fun TrainlogApp(
                     screen =
                         TrainlogScreenId.HISTORY
                 },
+                onResumeMaxTest = {
+                    draftRevision += 1
+                    screen = TrainlogScreenId.SESSION
+                },
             )
 
         TrainlogScreenId.SYNC ->

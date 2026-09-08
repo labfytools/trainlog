@@ -8,6 +8,7 @@
 #include "trainlog/equipment_catalog.h"
 #include "trainlog/id.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -262,6 +263,32 @@ static const char *const MIGRATE_V7_TO_V8_SQL =
     "label_name TEXT NOT NULL,equipment_type TEXT NOT NULL,"
     "load_semantics TEXT NOT NULL CHECK(load_semantics IN ('none','external','assistance'))"
     ");PRAGMA user_version = 8;COMMIT;";
+
+/*
+ * WHY: a measured maximum is not a performed set with invented cardinality.
+ * CONTRACT: conversion is limited to the only legacy shape whose successful
+ * result is unambiguous: one max_test set, one rep, positive weight. Multiple
+ * attempts and every other shape remain in performed_sets without data loss.
+ */
+static const char *const MIGRATE_V8_TO_V9_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE max_results ("
+    "session_exercise_row_id INTEGER PRIMARY KEY "
+    "REFERENCES session_exercises(id) ON DELETE CASCADE,"
+    "max_weight_kg REAL NOT NULL CHECK(max_weight_kg > 0.0)"
+    ");"
+    "INSERT INTO max_results(session_exercise_row_id,max_weight_kg) "
+    "SELECT se.id,ps.weight_kg FROM session_exercises se "
+    "JOIN sessions s ON s.id=se.session_row_id "
+    "JOIN performed_sets ps ON ps.session_exercise_row_id=se.id "
+    "WHERE s.session_type='max_test' AND se.recording_mode='sets' "
+    "AND ps.reps=1 AND ps.duration_seconds IS NULL "
+    "AND ps.weight_kg>0.0 AND "
+    "(SELECT COUNT(*) FROM performed_sets all_ps "
+    " WHERE all_ps.session_exercise_row_id=se.id)=1;"
+    "DELETE FROM performed_sets WHERE session_exercise_row_id IN "
+    "(SELECT session_exercise_row_id FROM max_results);"
+    "PRAGMA user_version = 9;COMMIT;";
 
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
@@ -667,10 +694,18 @@ static TrainlogStatus initialize_or_validate_schema(
         if (status == TRAINLOG_STATUS_OK) {
             status = execute_sql(database, MIGRATE_V7_TO_V8_SQL);
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
+        }
     } else if (version == 7) {
         /* CONTRACT: v7 is the immediate historic schema and must open through
          * its lossless custom-equipment-table migration. */
         status = execute_sql(database, MIGRATE_V7_TO_V8_SQL);
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
+        }
+    } else if (version == 8) {
+        status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
     } else {
         if (version == 1) {
             status =
@@ -795,6 +830,9 @@ static TrainlogStatus initialize_or_validate_schema(
         if (status == TRAINLOG_STATUS_OK) {
             status = execute_sql(database, MIGRATE_V7_TO_V8_SQL);
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
+        }
     }
 
     if (
@@ -804,7 +842,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v8" : "migrate database to schema v8",
+            version == 0 ? "create schema v9" : "migrate database to schema v9",
             database->connection,
             SQLITE_ERROR
         );
@@ -1814,7 +1852,21 @@ static TrainlogStatus insert_session_exercise(
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
-    if (input->recording_mode ==
+    if (input->has_max_weight) {
+        if (!isfinite(input->max_weight_kg) ||
+            input->max_weight_kg <= 0.0 ||
+            input->rest_seconds != 0 ||
+            input->target_sets != 0 ||
+            input->target_reps != 0 ||
+            input->target_duration_seconds != 0 ||
+            input->target_has_weight ||
+            input->set_count != 0U ||
+            input->continuous_duration_seconds != 0 ||
+            input->continuous_has_speed ||
+            input->continuous_has_distance) {
+            return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
+    } else if (input->recording_mode ==
         TRAINLOG_RECORDING_CONTINUOUS) {
         bool speed_required =
             (input->data_fields &
@@ -2240,9 +2292,50 @@ static TrainlogStatus insert_performed_set(
         : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
+static TrainlogStatus insert_max_result(
+    TrainlogDatabase *database,
+    sqlite3_int64 session_exercise_row_id,
+    double max_weight_kg
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+
+    if (database == NULL || database->connection == NULL ||
+        !isfinite(max_weight_kg) || max_weight_kg <= 0.0) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        "INSERT INTO max_results(session_exercise_row_id,max_weight_kg) "
+        "VALUES(?1,?2);",
+        -1, &statement, NULL
+    );
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_int64(statement, 1, session_exercise_row_id);
+    }
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_double(statement, 2, max_weight_kg);
+    }
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_step(statement);
+    }
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return rc == SQLITE_CONSTRAINT
+            ? TRAINLOG_STATUS_CONFLICT
+            : TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return sqlite3_finalize(statement) == SQLITE_OK
+        ? TRAINLOG_STATUS_OK
+        : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
 static TrainlogStatus insert_session_children(
     TrainlogDatabase *database,
     sqlite3_int64 session_row_id,
+    TrainlogSessionType session_type,
     const TrainlogSessionExerciseInput *exercises,
     size_t exercise_count
 )
@@ -2266,6 +2359,11 @@ static TrainlogStatus insert_session_children(
         size_t set_index;
         TrainlogStatus status;
 
+        if (exercise->has_max_weight &&
+            session_type != TRAINLOG_SESSION_MAX_TEST) {
+            return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
+
         status = insert_session_exercise(
             database,
             session_row_id,
@@ -2276,6 +2374,18 @@ static TrainlogStatus insert_session_children(
 
         if (status != TRAINLOG_STATUS_OK) {
             return status;
+        }
+
+        if (exercise->has_max_weight) {
+            status = insert_max_result(
+                database,
+                session_exercise_row_id,
+                exercise->max_weight_kg
+            );
+            if (status != TRAINLOG_STATUS_OK) {
+                return status;
+            }
+            continue;
         }
 
         if (exercise->recording_mode ==
@@ -2349,6 +2459,7 @@ TrainlogStatus trainlog_database_insert_session(
         status = insert_session_children(
             database,
             session_row_id,
+            session->session_type,
             session->exercises,
             session->exercise_count
         );
@@ -2377,6 +2488,7 @@ TrainlogStatus trainlog_database_replace_session_exercises(
 {
     sqlite3_int64 session_row_id;
     sqlite3_stmt *statement = NULL;
+    TrainlogSessionType session_type;
     TrainlogStatus status;
     int rc;
 
@@ -2402,6 +2514,32 @@ TrainlogStatus trainlog_database_replace_session_exercises(
     if (status != TRAINLOG_STATUS_OK) {
         (void)trainlog_database_rollback(database);
         return status;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        "SELECT session_type FROM sessions WHERE id=?1;",
+        -1, &statement, NULL
+    );
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_int64(statement, 1, session_row_id);
+    }
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_step(statement);
+    }
+    if (rc != SQLITE_ROW ||
+        !session_type_from_sql(
+            (const char *)sqlite3_column_text(statement, 0),
+            &session_type)) {
+        (void)sqlite3_finalize(statement);
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_finalize(statement);
+    statement = NULL;
+    if (rc != SQLITE_OK) {
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
     rc = sqlite3_prepare_v2(
@@ -2441,6 +2579,7 @@ TrainlogStatus trainlog_database_replace_session_exercises(
     status = insert_session_children(
         database,
         session_row_id,
+        session_type,
         exercises,
         exercise_count
     );
@@ -3058,6 +3197,7 @@ TrainlogStatus trainlog_database_get_session_details(
         "COALESCE(se.target_duration_seconds, 0), "
         "se.target_weight_kg, "
         "ca.duration_seconds, ca.speed_kmh, ca.distance_km, "
+        "mr.max_weight_kg, "
         "se.equipment_id, "
         "se.entry_id, "
         "se.id "
@@ -3068,6 +3208,8 @@ TrainlogStatus trainlog_database_get_session_details(
         "  ON e.id = se.exercise_row_id "
         "LEFT JOIN continuous_activity AS ca "
         "  ON ca.session_exercise_row_id = se.id "
+        "LEFT JOIN max_results AS mr "
+        "  ON mr.session_exercise_row_id = se.id "
         "WHERE s.session_id = ?1 "
         "ORDER BY se.position ASC;";
 
@@ -3230,10 +3372,10 @@ TrainlogStatus trainlog_database_get_session_details(
                 sqlite3_column_text(exercises, 4);
 
             sqlite3_int64 session_exercise_row_id =
-                sqlite3_column_int64(exercises, 15);
+                sqlite3_column_int64(exercises, 16);
             const unsigned char *equipment_id =
-                sqlite3_column_text(exercises, 13);
-            const unsigned char *entry_id = sqlite3_column_text(exercises, 14);
+                sqlite3_column_text(exercises, 14);
+            const unsigned char *entry_id = sqlite3_column_text(exercises, 15);
 
             TrainlogStatus status;
 
@@ -3334,7 +3476,22 @@ TrainlogStatus trainlog_database_get_session_details(
                     )
                     : 0.0;
 
-            if (detail->recording_mode ==
+            detail->has_max_weight =
+                sqlite3_column_type(exercises, 13) != SQLITE_NULL;
+            detail->max_weight_kg =
+                detail->has_max_weight != 0
+                    ? sqlite3_column_double(exercises, 13)
+                    : 0.0;
+
+            if (detail->has_max_weight != 0) {
+                detail->actual_set_count = 0U;
+                (void)snprintf(
+                    detail->actual_summary,
+                    sizeof(detail->actual_summary),
+                    "Max %.2f kg",
+                    detail->max_weight_kg
+                );
+            } else if (detail->recording_mode ==
                 TRAINLOG_RECORDING_CONTINUOUS) {
                 bool speed_required =
                     (detail->data_fields &
@@ -3761,7 +3918,9 @@ TrainlogStatus trainlog_database_list_exercise_performance(
         "ps.id, "
         "ps.reps, "
         "ps.duration_seconds, "
-        "ps.weight_kg "
+        "ps.weight_kg, "
+        "mr.max_weight_kg, "
+        "COALESCE(se.equipment_id, '') "
         "FROM session_exercises AS se "
         "JOIN sessions AS s "
         "  ON s.id = se.session_row_id "
@@ -3769,11 +3928,13 @@ TrainlogStatus trainlog_database_list_exercise_performance(
         "  ON e.id = se.exercise_row_id "
         "LEFT JOIN performed_sets AS ps "
         "  ON ps.session_exercise_row_id = se.id "
+        "LEFT JOIN max_results AS mr "
+        "  ON mr.session_exercise_row_id = se.id "
         "WHERE e.exercise_id = ?1 "
         "ORDER BY "
         "s.started_at DESC, "
         "s.id DESC, "
-        "ps.position ASC;";
+        "se.position ASC, ps.position ASC;";
 
     sqlite3_stmt *statement = NULL;
     TrainlogExercisePerformancePoint *current = NULL;
@@ -3864,6 +4025,8 @@ TrainlogStatus trainlog_database_list_exercise_performance(
             );
 
         bool new_session;
+        const unsigned char *equipment_id =
+            sqlite3_column_text(statement, 10);
 
         if (
             session_id == NULL ||
@@ -3871,6 +4034,8 @@ TrainlogStatus trainlog_database_list_exercise_performance(
             session_type == NULL ||
             tracking_mode == NULL ||
             load_mode == NULL
+            || equipment_id == NULL
+            || (size_t)sqlite3_column_bytes(statement, 10) > TRAINLOG_ID_MAX
         ) {
             (void)sqlite3_finalize(
                 statement
@@ -3949,7 +4114,29 @@ TrainlogStatus trainlog_database_list_exercise_performance(
             }
         }
 
-        if (
+        if (current != NULL &&
+            sqlite3_column_type(statement, 9) != SQLITE_NULL) {
+            double max_weight = sqlite3_column_double(statement, 9);
+            if (!isfinite(max_weight) || max_weight <= 0.0) {
+                (void)sqlite3_finalize(statement);
+                return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+            /* Explicit max results participate in measured-max history without
+             * synthesizing a rep/set count. Repeated movement occurrences in
+             * one session reduce to the greatest recorded max. */
+            if (current->has_performance == 0 ||
+                max_weight > current->weight_kg) {
+                current->load_mode = TRAINLOG_LOAD_EXTERNAL;
+                current->has_performance = 1;
+                current->has_explicit_max = 1;
+                current->metric_value = 1;
+                current->has_weight = 1;
+                current->weight_kg = max_weight;
+                (void)snprintf(current->equipment_id,
+                    sizeof(current->equipment_id), "%s",
+                    (const char *)equipment_id);
+            }
+        } else if (
             current != NULL &&
             sqlite3_column_type(
                 statement,
@@ -4013,12 +4200,16 @@ TrainlogStatus trainlog_database_list_exercise_performance(
                 )
             ) {
                 current->has_performance = 1;
+                current->has_explicit_max = 0;
                 current->metric_value =
                     metric_value;
                 current->has_weight =
                     has_weight;
                 current->weight_kg =
                     weight_kg;
+                (void)snprintf(current->equipment_id,
+                    sizeof(current->equipment_id), "%s",
+                    (const char *)equipment_id);
             }
         }
     }
@@ -4079,12 +4270,18 @@ TrainlogStatus trainlog_database_load_session_editable(
         "COALESCE(se.target_duration_seconds, 0), "
         "se.target_weight_kg, "
         "COALESCE(se.notes, ''), "
-        "COALESCE(se.equipment_id, ''), se.entry_id "
+        "COALESCE(se.equipment_id, ''), se.entry_id, mr.max_weight_kg, "
+        "se.recording_mode, se.data_fields, "
+        "ca.duration_seconds, ca.speed_kmh, ca.distance_km "
         "FROM session_exercises AS se "
         "JOIN sessions AS s "
         "ON s.id = se.session_row_id "
         "JOIN exercises AS e "
         "ON e.id = se.exercise_row_id "
+        "LEFT JOIN max_results AS mr "
+        "ON mr.session_exercise_row_id = se.id "
+        "LEFT JOIN continuous_activity AS ca "
+        "ON ca.session_exercise_row_id = se.id "
         "WHERE s.session_id = ?1 "
         "ORDER BY se.position ASC;";
 
@@ -4348,6 +4545,22 @@ TrainlogStatus trainlog_database_load_session_editable(
                 (const char *)tracking
             );
 
+        record->recording_mode = recording_mode_from_sql(
+            (const char *)sqlite3_column_text(exercise_statement, 14));
+        {
+            sqlite3_int64 data_fields =
+                sqlite3_column_int64(exercise_statement, 15);
+            if (data_fields < 0 ||
+                (uint64_t)data_fields > (uint64_t)UINT32_MAX ||
+                (((TrainlogExerciseDataFields)data_fields) &
+                 ~TRAINLOG_EXERCISE_DATA_KNOWN_MASK) != 0U) {
+                (void)sqlite3_finalize(exercise_statement);
+                return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+            record->data_fields =
+                (TrainlogExerciseDataFields)data_fields;
+        }
+
         record->load_mode =
             detail_load_mode_from_text(
                 (const char *)load
@@ -4390,6 +4603,35 @@ TrainlogStatus trainlog_database_load_session_editable(
                     9
                 )
                 : 0.0;
+
+        record->has_max_weight =
+            sqlite3_column_type(exercise_statement, 13) != SQLITE_NULL;
+        record->max_weight_kg =
+            record->has_max_weight != 0
+                ? sqlite3_column_double(exercise_statement, 13)
+                : 0.0;
+
+        /*
+         * CONTRACT: persisted-session editing must round-trip a continuous
+         * occurrence exactly; otherwise replacing a mixed max-test session
+         * could discard or invalidate its warm-up entry.
+         */
+        if (sqlite3_column_type(exercise_statement, 16) != SQLITE_NULL) {
+            record->continuous_duration_seconds =
+                sqlite3_column_int(exercise_statement, 16);
+            record->has_continuous_speed =
+                sqlite3_column_type(exercise_statement, 17) != SQLITE_NULL;
+            record->continuous_speed_kmh =
+                record->has_continuous_speed != 0
+                    ? sqlite3_column_double(exercise_statement, 17)
+                    : 0.0;
+            record->has_continuous_distance =
+                sqlite3_column_type(exercise_statement, 18) != SQLITE_NULL;
+            record->continuous_distance_km =
+                record->has_continuous_distance != 0
+                    ? sqlite3_column_double(exercise_statement, 18)
+                    : 0.0;
+        }
 
         (void)snprintf(
             record->notes,

@@ -19,6 +19,10 @@ fun HistoryScreen(
         remember {
             repository.listSessions()
         }
+    val latestMaxima =
+        remember {
+            repository.listLatestExerciseMaxima()
+        }
 
     TrainlogScreen(
         subtitle = "H I S T O R I Q U E"
@@ -69,6 +73,28 @@ fun HistoryScreen(
                             } else {
                                 colors.accent
                             },
+                    )
+                }
+            }
+        }
+
+        TrainlogFrame(
+            title = "DERNIERS MAX",
+            active = latestMaxima.isNotEmpty(),
+        ) {
+            if (latestMaxima.isEmpty()) {
+                TrainlogInfo("Aucun max explicite enregistré.")
+            } else {
+                latestMaxima.forEach { max ->
+                    val weight = "%.2f".format(java.util.Locale.FRANCE, max.maxWeightKg)
+                        .trimEnd('0').trimEnd(',')
+                    TrainlogInfo(
+                        text = "${max.exerciseName} · $weight kg · ${formatStartedAt(max.startedAt).take(10)}",
+                        color = colors.warning,
+                    )
+                    TrainlogInfo(
+                        text = "Équipement : ${max.equipmentDisplayName ?: "aucun"}",
+                        color = colors.muted,
                     )
                 }
             }

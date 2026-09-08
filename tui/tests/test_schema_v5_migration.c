@@ -187,7 +187,7 @@ static bool test_v4_to_current_preserves_session(void)
         TRAINLOG_DATABASE_SCHEMA_VERSION
     );
 
-    CHECK(version == 8);
+    CHECK(version == 9);
 
     CHECK(
         trainlog_database_get_session_details(

@@ -312,28 +312,30 @@ fun SessionScreen(
                             },
                         )
 
-                        TrainlogAction(
-                            label =
-                                "Retirer ${draft.exercise.name}",
-                            description =
-                                "Supprimer cet exercice de la séance en cours.",
-                            accent =
-                                colors.error,
-                            onClick = {
-                                persistDraft(
-                                    currentDraft.copy(
-                                        exercises =
-                                            currentDraft.exercises
-                                                .filterIndexed {
-                                                        itemIndex,
-                                                        _ ->
-                                                    itemIndex != index
-                                                }
-                                    ),
-                                    "Exercice retiré de la séance.",
-                                )
-                            },
-                        )
+                        if (currentDraft.sourceSessionId == null) {
+                            TrainlogAction(
+                                label =
+                                    "Retirer ${draft.exercise.name}",
+                                description =
+                                    "Supprimer cet exercice de la séance en cours.",
+                                accent =
+                                    colors.error,
+                                onClick = {
+                                    persistDraft(
+                                        currentDraft.copy(
+                                            exercises =
+                                                currentDraft.exercises
+                                                    .filterIndexed {
+                                                            itemIndex,
+                                                            _ ->
+                                                        itemIndex != index
+                                                    }
+                                        ),
+                                        "Exercice retiré de la séance.",
+                                    )
+                                },
+                            )
+                        }
                     }
             }
         }
@@ -344,10 +346,12 @@ fun SessionScreen(
         if (editingExercise != null) {
             SessionExerciseForm(
                 key =
-                    editingExercise.exerciseId,
+                    "${editingExercise.exerciseId}:${currentDraft.sessionType.wireValue}:" +
+                        currentDraft.form.editingEntryId.orEmpty(),
                 repository = repository,
                 exercise =
                     editingExercise,
+                sessionType = currentDraft.sessionType,
                 initialForm =
                     currentDraft.form,
                 onFormChanged = {
@@ -688,6 +692,7 @@ private fun SessionExerciseForm(
     key: String,
     repository: TrainlogRepository,
     exercise: ExerciseProfile,
+    sessionType: SessionType,
     initialForm: SessionDraftForm,
     onFormChanged: (SessionDraftForm) -> Unit,
     onCancel: () -> Unit,
@@ -717,6 +722,11 @@ private fun SessionExerciseForm(
             mutableStateOf(
                 initialForm.weightText
             )
+        }
+
+    var maxWeightText by
+        remember(key) {
+            mutableStateOf(initialForm.maxWeightText)
         }
 
     var durationText by
@@ -760,10 +770,7 @@ private fun SessionExerciseForm(
             "SAISIE — ${exercise.name}"
     ) {
         TrainlogInfo(
-            text =
-                exerciseProfileLabel(
-                    exercise
-                ),
+            text = if (sessionType == SessionType.MAX_TEST) "TEST MAX" else exerciseProfileLabel(exercise),
             color = colors.accent,
         )
 
@@ -787,7 +794,7 @@ private fun SessionExerciseForm(
                         customEquipmentName = ""
                         equipmentRevision += 1
                         selectedEquipmentId = result.equipment.equipmentId
-                        onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText))
+                        onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText, maxWeightText))
                     }
                     CreateEquipmentResult.Invalid -> error = "Donnez un nom de machine valide."
                     CreateEquipmentResult.Conflict -> error = "Cette machine existe déjà."
@@ -803,7 +810,7 @@ private fun SessionExerciseForm(
                 accent = colors.success,
                 onClick = {
                     selectedEquipmentId = null
-                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, null, weightText))
+                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, null, weightText, maxWeightText))
                 },
             )
         }
@@ -814,12 +821,32 @@ private fun SessionExerciseForm(
                 accent = if (equipment.equipmentId == selectedEquipmentId) colors.success else colors.muted,
                 onClick = {
                     selectedEquipmentId = equipment.equipmentId
-                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, equipment.equipmentId, weightText))
+                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, equipment.equipmentId, weightText, maxWeightText))
                 },
             )
         }
 
-        if (
+        if (sessionType == SessionType.MAX_TEST) {
+            SessionNumberField(
+                label = "Poids max (kg)",
+                value = maxWeightText,
+                onValueChange = {
+                    maxWeightText = it
+                    error = null
+                    onFormChanged(
+                        currentForm(
+                            exercise, setCountText, repsText, durationText,
+                            speedText, distanceText, selectedEquipmentId,
+                            weightText, it,
+                        )
+                    )
+                },
+            )
+            TrainlogInfo(
+                text = "Valeur strictement positive, virgule française acceptée.",
+                color = colors.muted,
+            )
+        } else if (
             exercise.recordingMode ==
             RecordingMode.SETS
         ) {
@@ -1021,6 +1048,7 @@ private fun SessionExerciseForm(
                     buildSessionExerciseDraft(
                         exercise =
                             exercise,
+                        sessionType = sessionType,
                         setCountText =
                             setCountText,
                         repsText =
@@ -1033,12 +1061,17 @@ private fun SessionExerciseForm(
                             distanceText,
                         equipmentId = selectedEquipmentId,
                         weightText = weightText,
+                        maxWeightText = maxWeightText,
                         entryId = initialForm.editingEntryId,
                     )
 
                 if (draft == null) {
                     error =
-                        "Valeurs invalides."
+                        if (sessionType == SessionType.MAX_TEST) {
+                            "Saisissez un poids max strictement positif (ex. 100 ou 86,5)."
+                        } else {
+                            "Valeurs invalides."
+                        }
                 } else {
                     onAdd(draft)
                 }
@@ -1077,6 +1110,7 @@ private fun currentForm(
     distanceText: String,
     equipmentId: String? = null,
     weightText: String = "",
+    maxWeightText: String = "",
 ): SessionDraftForm =
     SessionDraftForm(
         selectedExercise = exercise,
@@ -1084,6 +1118,7 @@ private fun currentForm(
         setCountText = setCountText,
         repsText = repsText,
         weightText = weightText,
+        maxWeightText = maxWeightText,
         durationText = durationText,
         speedText = speedText,
         distanceText = distanceText,
@@ -1259,6 +1294,7 @@ private fun parseRepSequence(
 
 private fun buildSessionExerciseDraft(
     exercise: ExerciseProfile,
+    sessionType: SessionType,
     setCountText: String,
     repsText: String,
     durationText: String,
@@ -1266,8 +1302,22 @@ private fun buildSessionExerciseDraft(
     distanceText: String,
     equipmentId: String? = null,
     weightText: String = "",
+    maxWeightText: String = "",
     entryId: String? = null,
 ): SessionExerciseDraft? {
+    if (sessionType == SessionType.MAX_TEST) {
+        val maxWeight = maxWeightText.trim().replace(',', '.').toDoubleOrNull()
+        if (maxWeight == null || !maxWeight.isFinite() || maxWeight <= 0.0) {
+            return null
+        }
+        return SessionExerciseDraft(
+            entryId = entryId ?: "sxe_" + java.util.UUID.randomUUID().toString(),
+            exercise = exercise,
+            equipmentId = equipmentId,
+            maxWeightKg = maxWeight,
+        )
+    }
+
     return if (
         exercise.recordingMode ==
         RecordingMode.CONTINUOUS
@@ -1404,6 +1454,7 @@ private fun formForExistingExercise(
         editingExerciseIndex = index,
         editingEntryId = draft.entryId,
         selectedEquipmentId = draft.equipmentId,
+        maxWeightText = draft.maxWeightKg?.let(::formatMaxWeight).orEmpty(),
         setCountText = draft.sets.size.toString(),
         repsText = if (draft.exercise.trackingMode == TrackingMode.REPS) {
             draft.sets.joinToString(",") { it.reps.toString() }
@@ -1440,7 +1491,9 @@ private fun parseWeightSequence(text: String, count: Int): List<Double?>? {
 private fun draftSummary(
     draft: SessionExerciseDraft,
 ): String {
-    return if (
+    return if (draft.maxWeightKg != null) {
+        "${draft.exercise.name} · Max : ${formatMaxWeight(draft.maxWeightKg)} kg"
+    } else if (
         draft.exercise.recordingMode ==
         RecordingMode.CONTINUOUS
     ) {
@@ -1508,6 +1561,12 @@ private fun draftSummary(
         )
     }
 }
+
+private fun formatMaxWeight(value: Double): String =
+    java.math.BigDecimal.valueOf(value)
+        .stripTrailingZeros()
+        .toPlainString()
+        .replace('.', ',')
 
 private fun exerciseProfileLabel(
     exercise: ExerciseProfile,

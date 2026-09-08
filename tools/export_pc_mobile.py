@@ -30,8 +30,8 @@ def main():
     con = sqlite3.connect(args.database)
     con.row_factory = sqlite3.Row
     try:
-        if con.execute("PRAGMA user_version").fetchone()[0] != 8:
-            raise ValueError("schema desktop v8 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] != 9:
+            raise ValueError("schema desktop v9 requis")
         known_equipment = supplied_equipment_ids()
         known_equipment.update(row[0] for row in con.execute(
             "SELECT equipment_id FROM custom_equipment"))
@@ -45,7 +45,7 @@ def main():
             payload["exercises"] = []
             # INVARIANT: tracking mode is catalogue metadata. v7 occurrences
             # retain their stable entry_id but do not duplicate that field.
-            sql = "SELECT se.id,se.entry_id,se.position,se.recording_mode,e.tracking_mode,se.data_fields,se.equipment_id,e.exercise_id,e.name FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position"
+            sql = "SELECT se.id,se.entry_id,se.position,se.recording_mode,e.tracking_mode,se.data_fields,se.equipment_id,e.exercise_id,e.name,mr.max_weight_kg FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id WHERE se.session_row_id=? ORDER BY se.position"
             for entry in con.execute(sql, (session["id"],)):
                 # CONTRACT: references remain in mobile-export v2 unchanged;
                 # definitions-v1 travels first and makes custom IDs resolvable.
@@ -60,7 +60,11 @@ def main():
                         "recording_mode": entry["recording_mode"], "tracking_mode": entry["tracking_mode"],
                         "data_fields": entry["data_fields"], "load_mode": "none", "rest_seconds": 0,
                         "equipment_id": entry["equipment_id"]}
-                if entry["recording_mode"] == "continuous":
+                if entry["max_weight_kg"] is not None:
+                    # CONTRACT: explicit max is an occurrence result, never a
+                    # synthetic one-repetition performed set.
+                    item["max_weight_kg"] = entry["max_weight_kg"]
+                elif entry["recording_mode"] == "continuous":
                     activity = con.execute("SELECT duration_seconds,speed_kmh,distance_km FROM continuous_activity WHERE session_exercise_row_id=?", (entry["id"],)).fetchone()
                     if activity is None: raise ValueError("activité continue absente")
                     item["continuous"] = {key: activity[key] for key in activity.keys() if activity[key] is not None}

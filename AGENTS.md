@@ -164,7 +164,7 @@ It is not the canonical analytics store.
 The Android UI is driven by exercise metadata, never by exercise-name
 heuristics.
 
-Android local SQLite schema v4 owns exactly one durable active-session draft.
+Android local SQLite schema v9 owns exactly one durable active-session draft.
 Every meaningful draft/form mutation is persisted by the repository. Back,
 backgrounding and process death never delete the draft. Home offers explicit
 resume; whole-draft discard requires confirmation. Final completed-session
@@ -220,7 +220,8 @@ Desktop SQLite schema is versioned with:
 PRAGMA user_version;
 ```
 
-The current desktop schema is v5.
+The current desktop schema is v9. Schema v9 adds an occurrence-owned explicit
+maximum result without changing `TRAINLOG_FORMAT_V1`.
 
 Every incompatible schema evolution requires an explicit migration and
 regression coverage.

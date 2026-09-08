@@ -664,6 +664,12 @@ static void exercise_short_date(
     output[10] = '\0';
 }
 
+static void format_compact_max_weight(
+    double value,
+    char *output,
+    size_t output_size
+);
+
 static void exercise_format_performance(
     const TrainlogExercisePerformancePoint *point,
     char *output,
@@ -683,6 +689,13 @@ static void exercise_format_performance(
             "%s",
             "aucune série réussie"
         );
+        return;
+    }
+
+    if (point->has_explicit_max != 0) {
+        char weight[32];
+        format_compact_max_weight(point->weight_kg, weight, sizeof(weight));
+        (void)snprintf(output, output_size, "%s kg", weight);
         return;
     }
 
@@ -1754,6 +1767,8 @@ static void screen_exercise_measured_max(
             char record_text[128];
             char current_date[11];
             char record_date[11];
+            TrainlogResolvedEquipment current_equipment;
+            const char *current_equipment_label = "aucun";
 
             exercise_format_performance(
                 &summary.current,
@@ -1777,13 +1792,23 @@ static void screen_exercise_measured_max(
                 record_date
             );
 
+            if (summary.current.equipment_id[0] != '\0') {
+                current_equipment_label =
+                    trainlog_database_resolve_equipment(database,
+                        summary.current.equipment_id, &current_equipment) ==
+                        TRAINLOG_STATUS_OK
+                    ? current_equipment.display_name
+                    : summary.current.equipment_id;
+            }
+
             trainlog_terminal_printf(tui_terminal,
                 summary_top + 3,
                 5,
-                "Actuel : %s · %.*s",
+                "Actuel : %s · %s · Machine : %.*s",
                 current_date,
-                trainlog_terminal_columns(tui_terminal) - 32,
-                current_text
+                current_text,
+                trainlog_terminal_columns(tui_terminal) - 48,
+                current_equipment_label
             );
 
             trainlog_terminal_printf(tui_terminal,
@@ -5145,6 +5170,7 @@ static DashboardAction screen_dashboard(
 
 static bool build_session_exercise(
     TrainlogDatabase *database,
+    TrainlogSessionType session_type,
     TrainlogSessionExerciseInput *output,
     TrainlogSetInput *set_storage,
     size_t set_capacity
@@ -5192,6 +5218,36 @@ static bool build_session_exercise(
     if (!choose_equipment(database, output->equipment_id,
             sizeof(output->equipment_id))) {
         return false;
+    }
+
+    if (session_type == TRAINLOG_SESSION_MAX_TEST) {
+        bool has_max = false;
+        double max_weight = 0.0;
+
+        draw_shell(
+            exercise.name,
+            "Échap annuler · Test de max"
+        );
+        if (!prompt_optional_double(
+                4,
+                "Poids max (kg) : ",
+                &has_max,
+                &max_weight
+            ) || !has_max || max_weight <= 0.0) {
+            status_line(
+                "Poids max requis et strictement positif.",
+                TRAINLOG_COLOR_ERROR
+            );
+            return false;
+        }
+
+        /* CONTRACT: the max result has no hidden series/repetition payload. */
+        output->has_max_weight = true;
+        output->max_weight_kg = max_weight;
+        output->load_mode = TRAINLOG_LOAD_NONE;
+        output->sets = NULL;
+        output->set_count = 0U;
+        return true;
     }
 
     if (exercise.recording_mode ==
@@ -6005,6 +6061,7 @@ static bool draft_lookup_exercise(
 
 static bool draft_build_exercise(
     TrainlogDatabase *database,
+    TrainlogSessionType session_type,
     TrainlogSessionDraftExercise *draft,
     const char *preserved_notes
 )
@@ -6031,6 +6088,7 @@ static bool draft_build_exercise(
 
     if (!build_session_exercise(
             database,
+            session_type,
             &input,
             sets,
             MAX_SETS_PER_EXERCISE
@@ -6155,7 +6213,21 @@ static void draft_set_summary(
         return;
     }
 
-    if (draft->input.load_mode ==
+    if (draft->input.has_max_weight) {
+        char weight[32];
+
+        format_compact_max_weight(
+            draft->input.max_weight_kg,
+            weight,
+            sizeof(weight)
+        );
+        (void)snprintf(
+            output,
+            output_size,
+            "Max %s kg",
+            weight
+        );
+    } else if (draft->input.load_mode ==
         TRAINLOG_LOAD_EXTERNAL) {
         (void)snprintf(
             output,
@@ -6456,6 +6528,7 @@ static bool edit_session_draft(
 
             if (draft_build_exercise(
                     database,
+                    session_type,
                     &drafts[*count],
                     NULL
                 )) {
@@ -6475,9 +6548,18 @@ static bool edit_session_draft(
 
             if (draft_build_exercise(
                     database,
+                    session_type,
                     &replacement,
                     drafts[selected].notes
                 )) {
+                /* INVARIANT: editing replaces values, never occurrence
+                 * identity. Sync idempotency depends on stable entry_id. */
+                (void)snprintf(
+                    replacement.input.entry_id,
+                    sizeof(replacement.input.entry_id),
+                    "%s",
+                    drafts[selected].input.entry_id
+                );
                 drafts[selected] =
                     replacement;
 
@@ -6593,6 +6675,11 @@ static bool load_persisted_draft(
         draft->tracking_mode =
             record->tracking_mode;
 
+        draft->input.recording_mode =
+            record->recording_mode;
+        draft->input.data_fields =
+            record->data_fields;
+
         draft->input.load_mode =
             record->load_mode;
 
@@ -6613,6 +6700,35 @@ static bool load_persisted_draft(
 
         draft->input.target_weight_kg =
             record->target_weight_kg;
+
+        draft->input.has_max_weight =
+            record->has_max_weight != 0;
+        draft->input.max_weight_kg =
+            record->max_weight_kg;
+
+        draft->input.continuous_duration_seconds =
+            record->continuous_duration_seconds;
+        draft->input.continuous_has_speed =
+            record->has_continuous_speed != 0;
+        draft->input.continuous_speed_kmh =
+            record->continuous_speed_kmh;
+        draft->input.continuous_has_distance =
+            record->has_continuous_distance != 0;
+        draft->input.continuous_distance_km =
+            record->continuous_distance_km;
+
+        (void)snprintf(
+            draft->input.entry_id,
+            sizeof(draft->input.entry_id),
+            "%s",
+            record->entry_id
+        );
+        (void)snprintf(
+            draft->input.equipment_id,
+            sizeof(draft->input.equipment_id),
+            "%s",
+            record->equipment_id
+        );
 
         (void)snprintf(
             draft->notes,
@@ -6811,6 +6927,7 @@ static void screen_new_session(
      */
     if (draft_build_exercise(
             database,
+            session_type,
             &drafts[0],
             NULL
         )) {
@@ -6975,6 +7092,110 @@ static const char *session_detail_load_label(TrainlogLoadMode mode)
     }
 }
 
+static void format_compact_max_weight(
+    double value,
+    char *output,
+    size_t output_size
+)
+{
+    size_t length;
+
+    if (output == NULL || output_size == 0U) {
+        return;
+    }
+
+    (void)snprintf(output, output_size, "%.2f", value);
+    length = strlen(output);
+    while (length > 0U && output[length - 1U] == '0') {
+        output[--length] = '\0';
+    }
+    if (length > 0U && output[length - 1U] == '.') {
+        output[--length] = '\0';
+    }
+}
+
+static void draw_max_test_table(
+    TrainlogDatabase *database,
+    const TrainlogPersistedExerciseDetail *exercises,
+    size_t count,
+    size_t selected,
+    bool decorated
+)
+{
+    int header_row = decorated ? 18 : 7;
+    int first_row = header_row + 1;
+    int last_row = trainlog_terminal_rows(tui_terminal) - 3;
+    size_t visible = last_row >= first_row
+        ? (size_t)(last_row - first_row + 1)
+        : 1U;
+    size_t start = selected >= visible
+        ? selected - visible + 1U
+        : 0U;
+    size_t end = start + visible < count ? start + visible : count;
+    size_t index;
+    size_t max_count = 0U;
+    int column = decorated ? 5 : 4;
+
+    for (index = 0U; index < count; ++index) {
+        if (exercises[index].has_max_weight != 0) {
+            ++max_count;
+        }
+    }
+
+    trainlog_terminal_style_on(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+    trainlog_terminal_printf(tui_terminal, decorated ? 16 : 6, column,
+        "Test de max — %zu résultat(s) MAX", max_count);
+    trainlog_terminal_style_off(tui_terminal,
+        TRAINLOG_TEXT_BOLD |
+        trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+
+    trainlog_terminal_printf(tui_terminal, header_row, column,
+        decorated
+            ? "%-28s  %-30s  %10s"
+            : "%-20s  %-27s  %12s",
+        "Exercice", "Machine", "Max");
+
+    for (index = start; index < end; ++index) {
+        TrainlogResolvedEquipment resolved;
+        const char *equipment_label = "—";
+        char max_text[32] = "";
+        char max_label[40] = "—";
+
+        if (exercises[index].equipment_id[0] != '\0') {
+            equipment_label =
+                trainlog_database_resolve_equipment(database,
+                    exercises[index].equipment_id, &resolved) ==
+                    TRAINLOG_STATUS_OK
+                ? resolved.display_name
+                : exercises[index].equipment_id;
+        }
+        if (exercises[index].has_max_weight != 0) {
+            format_compact_max_weight(exercises[index].max_weight_kg,
+                max_text, sizeof(max_text));
+            (void)snprintf(max_label, sizeof(max_label), "%s kg", max_text);
+        }
+
+        if (index == selected) {
+            trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_REVERSE |
+                trainlog_theme_style(TRAINLOG_COLOR_SUCCESS));
+        }
+        trainlog_terminal_printf(tui_terminal,
+            first_row + (int)(index - start), column,
+            decorated
+                ? "%-28.28s  %-30.30s  %10.10s"
+                : "%-20.20s  %-27.27s  %12.12s",
+            exercises[index].name, equipment_label, max_label);
+        if (index == selected) {
+            trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_REVERSE |
+                trainlog_theme_style(TRAINLOG_COLOR_SUCCESS));
+        }
+    }
+}
+
 static void screen_session_detail(
     TrainlogDatabase *database,
     const char *session_id
@@ -7089,6 +7310,10 @@ static void screen_session_detail(
                     session.session_type
                 )
             );
+        } else if (session.session_type == TRAINLOG_SESSION_MAX_TEST) {
+            /* CONTRACT: max history is exercise-indexed; equipment is only
+             * rendered as occurrence context and never owns the value. */
+            draw_max_test_table(database, exercises, count, selected, decorated);
         } else {
             draw_shell(
                 "TRAINLOG — Détail séance",
@@ -7149,7 +7374,43 @@ static void screen_session_detail(
                 exercise->entry_id,
                 equipment_label);
 
-            if (exercise->recording_mode ==
+            if (exercise->has_max_weight != 0) {
+                int title_row = decorated ? 16 : 6;
+                int header_row = decorated ? 20 : 10;
+                int value_row = decorated ? 21 : 11;
+
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+                trainlog_terminal_printf(tui_terminal,
+                    title_row,
+                    decorated ? 5 : 4,
+                    "Exercice %zu/%zu — Test de max",
+                    selected + 1U,
+                    count);
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+
+                trainlog_terminal_printf(tui_terminal,
+                    header_row,
+                    decorated ? 5 : 4,
+                    "%-28s  %-30s  %10s",
+                    "Exercice", "Machine", "Max");
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(TRAINLOG_COLOR_SUCCESS));
+                trainlog_terminal_printf(tui_terminal,
+                    value_row,
+                    decorated ? 5 : 4,
+                    "%-28.28s  %-30.30s  %7.2f kg",
+                    exercise->name,
+                    equipment_label,
+                    exercise->max_weight_kg);
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_BOLD |
+                    trainlog_theme_style(TRAINLOG_COLOR_SUCCESS));
+            } else if (exercise->recording_mode ==
                 TRAINLOG_RECORDING_CONTINUOUS) {
                 char duration_text[64];
 

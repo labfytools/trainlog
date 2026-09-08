@@ -294,7 +294,7 @@ result.
 
 Before applying the PC catalog or its V2 artifacts, Android applies
 `trainlog-pc-equipment-definitions-v1.json`. Thus custom definitions are known
-before a received V2 association references them. Android schema v8 provides
+before a received V2 association references them. Android schema v9 provides
 the non-destructive v7 -> v8 migration required for `load_semantics = none`.
 
 A receipt belonging to another request is ignored as pending rather than
@@ -403,9 +403,23 @@ History and detail visibly identify max-test sessions.
 Selecting `Test max` is explicit metadata; Trainlog does not infer max tests
 from large repetition or duration values.
 
-Android's current session form still records the exercise data fields it
-supports. Measured-max classification on the desktop uses only actual values
-that were truly captured and synchronized.
+Its exercise form contains only the existing exercise search, optional
+machine/equipment selection, and `Poids max (kg)`. French decimal commas are
+accepted; empty is distinct from zero and only a finite positive value can be
+saved. Each saved line is immediately visible as `Exercice · Max : N kg`, can
+be edited in place with the same `entry_id`, or cancelled without mutation.
+Several movement results may be appended successively.
+
+Schema v9 stores the result in `max_results` or `draft_max_results`, never in a
+synthetic one-repetition set. Equipment remains occurrence context. History
+also lists the newest explicit maximum for each `exercise_id`, with date and
+equipment used.
+
+A completed max-test detail exposes `Reprendre ce Test max`. The one durable
+draft then records the source `session_id` and retains all existing occurrence
+IDs, order, movement IDs and equipment. Finalization atomically replaces that
+same completed session and may append new occurrences. The completed source is
+left intact as the crash-safe baseline until finalization.
 
 ## 17. Audited limitations
 
@@ -414,7 +428,7 @@ frozen desktop/Python normalization contract uses NFC, Unicode whitespace
 collapse and case folding without accent removal. Existing Marche/Leg press
 data is unaffected, but changing this safely requires an explicit Android
 schema migration that recomputes every normalized key and handles newly exposed
-collisions. It is not silently changed inside schema v8.
+collisions. It is not silently changed inside schema v9.
 
 The bundled exercise/equipment relationship metadata is seeded and preserved,
 including during exercise-identity reconciliation, but the current equipment
@@ -430,7 +444,7 @@ occurrence references.
 The PC-catalog V1 inbox validates required IDs, modes, names, and bounded field
 masks, but unlike the newer mobile V2 and equipment-companion parsers it does
 not reject every unknown root or item key. Tightening this published V1 reader
-requires a compatibility decision rather than an incidental schema-v8 change.
+requires a compatibility decision rather than an incidental schema-v9 change.
 
 Android requires `data_fields = 0` for `SETS`, while the desktop model/API
 currently accepts known supplemental bits on either recording mode. Supplied

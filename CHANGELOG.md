@@ -9,6 +9,19 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- explicit MAX result mode for `max_test` sessions: exercise, optional
+  equipment context and positive `max_weight_kg`, with no synthetic set or
+  repetition;
+- Android and TUI max-only entry/edit/detail flows, Android latest max per
+  exercise, and stable-ID continuation of a completed Test max;
+- V2 round-trip of explicit max results in both directions, including bounded
+  reconciliation of an appended or corrected continuation of the same
+  max-test session;
+- desktop and Android schema v9 migrations that convert only an unambiguous
+  sole `1 rep × positive load` legacy result and preserve ambiguous attempts;
+- explicit-max persistence, migration, sync and same-machine/different-movement
+  regression coverage;
+
 - desktop equipment v8: a supplied catalogue generated from
   `catalog/equipment-v1.json`, browse/search/detail views, and local custom
   equipment creation/selection; occurrence links resolve supplied or local
@@ -74,6 +87,9 @@ Detailed implementation chronology remains available in Git history and
 
 ### Changed
 
+- desktop and Android schema v9 add one-to-one completed/draft max-result rows;
+  `TRAINLOG_FORMAT_V1` remains frozen and V1 export refuses explicit MAX data
+  rather than losing or fabricating it;
 - desktop and Android schema v8 preserve existing equipment references while
   permitting custom definitions with `load_semantics = none`; Android's v7 ->
   v8 migration is non-destructive;
@@ -150,14 +166,16 @@ Current validated baseline:
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V8=PASS
-DESKTOP_TESTS=32/32 PASS
+DESKTOP_SCHEMA_V9=PASS
+DESKTOP_TESTS=34/34 PASS
 
 ANDROID_BUILD=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V8=PASS
+ANDROID_LOCAL_DATABASE_V9=PASS
 ANDROID_TEST_DEBUG_UNIT=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
+ANDROID_MAX_V9_REAL_DATA_MIGRATION=PASS
+ANDROID_MAX_V9_INSTALL_ADB=PASS
 
 USB_MTP_DETECTION=PASS
 MTP_HARDWARE_ROUNDTRIP=HISTORICAL_PASS
@@ -177,6 +195,7 @@ MULTI_OCCURRENCE_SESSION_V2=PASS
 EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
+EXPLICIT_MAX_RESULTS_V1=PASS
 ```
 
 ### Measured max v1

@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.data.ActiveDraftMutationResult
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionExerciseDetail
@@ -18,6 +19,7 @@ fun SessionDetailScreen(
     repository: TrainlogRepository,
     sessionId: String?,
     onBack: () -> Unit,
+    onResumeMaxTest: () -> Unit,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -25,6 +27,7 @@ fun SessionDetailScreen(
     var revision by remember(sessionId) { mutableStateOf(0) }
     var editingEntryId by remember(sessionId) { mutableStateOf<String?>(null) }
     var equipmentQuery by remember(sessionId) { mutableStateOf("") }
+    var resumeMessage by remember(sessionId) { mutableStateOf<String?>(null) }
 
     val detail =
         remember(sessionId, revision) {
@@ -93,6 +96,21 @@ fun SessionDetailScreen(
             TrainlogInfo(
                 "${detail.summary.exerciseCount} exercice(s)"
             )
+
+            if (detail.summary.sessionType == SessionType.MAX_TEST) {
+                TrainlogAction(
+                    label = "Reprendre ce Test max",
+                    description = "Continuer la même séance en conservant son identifiant et sa date.",
+                    accent = colors.success,
+                    onClick = {
+                        when (val result = repository.resumeMaxTestSession(detail.summary.sessionId)) {
+                            ActiveDraftMutationResult.Saved -> onResumeMaxTest()
+                            is ActiveDraftMutationResult.Error -> resumeMessage = result.message
+                        }
+                    },
+                )
+                resumeMessage?.let { TrainlogInfo(it, color = colors.error) }
+            }
         }
 
         detail.exercises
@@ -143,7 +161,14 @@ fun SessionDetailScreen(
                             onClick = { editingEntryId = exercise.entryId },
                         )
                     }
-                    if (
+                    if (exercise.maxWeightKg != null) {
+                        val rendered = "%.2f".format(java.util.Locale.FRANCE, exercise.maxWeightKg)
+                            .trimEnd('0').trimEnd(',')
+                        TrainlogInfo(
+                            text = "Max : $rendered kg",
+                            color = colors.warning,
+                        )
+                    } else if (
                         exercise.recordingMode ==
                         RecordingMode.CONTINUOUS
                     ) {

@@ -21,9 +21,10 @@ CREATE TABLE sessions(id INTEGER PRIMARY KEY,session_id TEXT UNIQUE,started_at T
 CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,entry_id TEXT NOT NULL UNIQUE,session_row_id INTEGER,exercise_row_id INTEGER,recording_mode TEXT,data_fields INTEGER,position INTEGER,load_mode TEXT,rest_seconds INTEGER,target_sets INTEGER,target_reps INTEGER,target_duration_seconds INTEGER,target_weight_kg REAL,equipment_id TEXT,notes TEXT,UNIQUE(session_row_id,position));
 CREATE TABLE performed_sets(id INTEGER PRIMARY KEY,session_exercise_row_id INTEGER,position INTEGER,reps INTEGER,duration_seconds INTEGER,weight_kg REAL);
 CREATE TABLE continuous_activity(id INTEGER PRIMARY KEY,session_exercise_row_id INTEGER UNIQUE,duration_seconds INTEGER,speed_kmh REAL,distance_km REAL);
+CREATE TABLE max_results(session_exercise_row_id INTEGER PRIMARY KEY,max_weight_kg REAL NOT NULL);
 CREATE TABLE body_observations(id INTEGER PRIMARY KEY,observation_id TEXT UNIQUE,observed_at TEXT,session_row_id INTEGER,body_weight_kg REAL,neck_cm REAL,shoulders_cm REAL,chest_cm REAL,waist_cm REAL,hips_cm REAL,left_arm_cm REAL,right_arm_cm REAL,left_forearm_cm REAL,right_forearm_cm REAL,left_thigh_cm REAL,right_thigh_cm REAL,left_calf_cm REAL,right_calf_cm REAL,notes TEXT);
 CREATE TABLE custom_equipment(equipment_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,label_name TEXT NOT NULL,equipment_type TEXT NOT NULL,load_semantics TEXT NOT NULL);
-PRAGMA user_version=8;
+PRAGMA user_version=9;
 """
 
 def payload():

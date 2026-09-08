@@ -103,7 +103,7 @@ static bool test_v7_migrates_and_v8_reopens(void)
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 8);
+    CHECK(version == 9);
     trainlog_database_close(database);
     CHECK(verify_preserved_values(path));
 
@@ -145,7 +145,7 @@ static bool test_v7_migration_sqlite_failure_has_diagnostic(void)
 
 static bool test_newer_schema_has_application_diagnostic(void)
 {
-    char path[] = "/tmp/trainlog-schema-v9-XXXXXX";
+    char path[] = "/tmp/trainlog-schema-v10-XXXXXX";
     char diagnostic[256];
     sqlite3 *raw = NULL;
     TrainlogDatabase *database = NULL;
@@ -154,12 +154,12 @@ static bool test_newer_schema_has_application_diagnostic(void)
     CHECK(fd >= 0);
     CHECK(close(fd) == 0);
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(sqlite3_exec(raw, "PRAGMA user_version=9;", NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw, "PRAGMA user_version=10;", NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic,
         sizeof(diagnostic)) == TRAINLOG_STATUS_SCHEMA_UNSUPPORTED);
     CHECK(database == NULL);
-    CHECK(strstr(diagnostic, "schema version 9 is newer") != NULL);
+    CHECK(strstr(diagnostic, "schema version 10 is newer") != NULL);
     CHECK(strstr(diagnostic, "SQLite") == NULL);
     CHECK(unlink(path) == 0);
     return true;
