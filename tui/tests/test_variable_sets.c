@@ -188,6 +188,7 @@ static bool test_targetless_variable_sets(void)
         ) == 0
     );
 
+    trainlog_database_free_session_details(detail, detail_count);
     trainlog_database_close(
         database
     );

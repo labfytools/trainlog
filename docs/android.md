@@ -109,9 +109,21 @@ Session entry is profile-aware.
 
 ### Sets + repetitions
 
-Actual set values may be heterogeneous.
+Actual set values may be heterogeneous. The `SETS + REPS` editor presents
+ordered rows, each with its own repetitions and optional load. **Ajouter une
+série** appends one blank row and **Supprimer la série** removes only the chosen
+row; editing or removing a row does not alter the remaining row values.
 
-Compact entry supports:
+The load heading is **Charge (kg)** for external resistance and
+**Assistance (kg)** for assistance equipment. A blank load is no recorded load,
+not `0`; an entered load is finite and non-negative, and French decimal commas
+are accepted. The durable raw form preserves
+partial row input (including a blank row or a fragment such as `32,`) across
+draft save and restore, and a failed validation or draft write presents a
+specific error without claiming the row was saved.
+
+When an older compact raw draft is reopened, its repetition text can be
+expanded into the row editor from:
 
 ```text
 5x10
@@ -140,17 +152,20 @@ it does not merge or alter another passage of the same exercise.
 `Machine / équipement (optionnel)` searches the shared manifest by display
 name, physical-machine label and aliases. A selected equipment identity is
 stored on that occurrence in both the active draft and completed session.
-For `SETS + REPS`, `Charge (kg)` accepts one value for all sets or `;`-separated
-per-set values; French decimal commas are accepted. `Assistance (kg)` is an
-explicit alternative load semantic, not an external charge. Empty load and an
-entered zero remain distinct.
+For `SETS + REPS`, the form is a row editor: every set owns an independently
+editable repetitions field and optional load field, and rows can be added or
+deleted without changing their neighbours. French decimal commas are accepted.
+`Assistance (kg)` is an explicit alternative load semantic, not an external
+charge. Empty load and an entered zero remain distinct. The completed-session
+detail renders the persisted rows in order with the matching Charge or
+Assistance heading, including an explicit empty-load marker.
 
 ## 6. Session draft editing
 
 The repository durably saves every meaningful mutation, including session type,
-exercise selection/addition/removal, actual values and raw form edits. Partial
-text such as `4,5,6,` is retained without normalization. A failed write displays
-a specific error and does not claim the latest change was saved.
+exercise selection/addition/removal, actual values and raw per-set form edits.
+Partial row text such as `32,` is retained without normalization. A failed write
+displays a specific error and does not claim the latest change was saved.
 
 Home shows **Reprendre la séance en cours** and an exercise-count/type summary.
 The ordinary new-session action opens an existing draft without overwriting it.

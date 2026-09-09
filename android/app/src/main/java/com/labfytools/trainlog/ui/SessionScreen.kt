@@ -710,17 +710,33 @@ private fun SessionExerciseForm(
             )
         }
 
+    val initialSetRows =
+        remember(key) {
+            rawSetRowsFromForm(initialForm)
+        }
+
     var repsText by
         remember(key) {
             mutableStateOf(
-                initialForm.repsText
+                encodeRawReps(initialSetRows)
             )
         }
 
     var weightText by
         remember(key) {
             mutableStateOf(
-                initialForm.weightText
+                encodeRawWeights(initialSetRows)
+            )
+        }
+
+    /* CONTRACT: SETS + REPS is edited as occurrence-owned rows. The raw
+     * strings (including blanks and invalid fragments) are mirrored into the
+     * durable form after every mutation, while the saved occurrence is only
+     * replaced when the user confirms with "Ajouter à la séance". */
+    var setRows by
+        remember(key) {
+            mutableStateOf(
+                initialSetRows
             )
         }
 
@@ -854,56 +870,98 @@ private fun SessionExerciseForm(
                 exercise.trackingMode ==
                 TrackingMode.REPS
             ) {
-                SessionNumberField(
-                    label =
-                        "Séries / répétitions",
-                    value =
-                        repsText,
-                    onValueChange = {
-                        repsText = it
-                        error = null
-                        onFormChanged(
-                            currentForm(
-                                exercise,
-                                setCountText,
-                                it,
-                                durationText,
-                                speedText,
-                                distanceText,
-                                selectedEquipmentId,
-                                weightText,
-                            )
-                        )
-                    },
-                )
-
                 TrainlogInfo(
-                    text =
-                        "Formats : 5x10 · 4,5,6,7 · 4..10..4",
-                    color =
-                        colors.muted,
+                    text = "Chaque série conserve ses propres répétitions et sa propre charge.",
+                    color = colors.muted,
                 )
-
-                SessionNumberField(
-                    label = if (selectedEquipment?.loadSemantics == EquipmentLoadSemantics.ASSISTANCE) {
+                val loadLabel =
+                    if (selectedEquipment?.loadSemantics == EquipmentLoadSemantics.ASSISTANCE) {
                         "Assistance (kg)"
                     } else {
                         "Charge (kg)"
-                    },
-                    value = weightText,
-                    onValueChange = {
-                        weightText = it
-                        error = null
-                        onFormChanged(
-                            currentForm(
-                                exercise, setCountText, repsText, durationText,
-                                speedText, distanceText, selectedEquipmentId, it,
+                    }
+                setRows.forEachIndexed { index, row ->
+                    TrainlogInfo(
+                        text = "Série ${index + 1}",
+                        color = colors.accent,
+                    )
+                    SessionNumberField(
+                        label = "Série ${index + 1} — Répétitions",
+                        value = row.repsText,
+                        testTag = "session-set-$index-reps",
+                        onValueChange = { value ->
+                            val updated = setRows.replaceAt(index, row.copy(repsText = value))
+                            setRows = updated
+                            repsText = encodeRawReps(updated)
+                            weightText = encodeRawWeights(updated)
+                            error = null
+                            onFormChanged(
+                                currentForm(
+                                    exercise, setCountText, repsText, durationText,
+                                    speedText, distanceText, selectedEquipmentId, weightText,
+                                )
                             )
-                        )
+                        },
+                    )
+                    SessionNumberField(
+                        label = "Série ${index + 1} — $loadLabel",
+                        value = row.weightText,
+                        testTag = "session-set-$index-weight",
+                        onValueChange = { value ->
+                            val updated = setRows.replaceAt(index, row.copy(weightText = value))
+                            setRows = updated
+                            repsText = encodeRawReps(updated)
+                            weightText = encodeRawWeights(updated)
+                            error = null
+                            onFormChanged(
+                                currentForm(
+                                    exercise, setCountText, repsText, durationText,
+                                    speedText, distanceText, selectedEquipmentId, weightText,
+                                )
+                            )
+                        },
+                    )
+                    TrainlogAction(
+                        label = "Supprimer la série ${index + 1}",
+                        description = "Retirer uniquement cette série.",
+                        accent = colors.error,
+                        onClick = {
+                            val updated = setRows.filterIndexed { rowIndex, _ -> rowIndex != index }
+                            setRows = updated
+                            repsText = encodeRawReps(updated)
+                            weightText = encodeRawWeights(updated)
+                            error = null
+                            onFormChanged(
+                                currentForm(
+                                    exercise, setCountText, repsText, durationText,
+                                    speedText, distanceText, selectedEquipmentId, weightText,
+                                )
+                            )
+                        },
+                    )
+                }
+                TrainlogAction(
+                    label = "Ajouter une série",
+                    description = "Ajouter une ligne vide sans modifier les autres séries.",
+                    accent = colors.success,
+                    onClick = {
+                        if (setRows.size < MAX_SESSION_SETS) {
+                            val updated = setRows + RawSetRow()
+                            setRows = updated
+                            repsText = encodeRawReps(updated)
+                            weightText = encodeRawWeights(updated)
+                            error = null
+                            onFormChanged(
+                                currentForm(
+                                    exercise, setCountText, repsText, durationText,
+                                    speedText, distanceText, selectedEquipmentId, weightText,
+                                )
+                            )
+                        }
                     },
                 )
                 TrainlogInfo(
-                    text = "Une valeur par série séparée par ; (ex. 12,5;15). Une seule valeur s'applique à toutes les séries.",
+                    text = "Charge facultative ; virgule française acceptée. Une case vide n'est pas zéro.",
                     color = colors.muted,
                 )
             } else {
@@ -1063,12 +1121,18 @@ private fun SessionExerciseForm(
                         weightText = weightText,
                         maxWeightText = maxWeightText,
                         entryId = initialForm.editingEntryId,
+                        rawSetRows = setRows,
                     )
 
                 if (draft == null) {
                     error =
                         if (sessionType == SessionType.MAX_TEST) {
                             "Saisissez un poids max strictement positif (ex. 100 ou 86,5)."
+                        } else if (
+                            exercise.recordingMode == RecordingMode.SETS &&
+                            exercise.trackingMode == TrackingMode.REPS
+                        ) {
+                            setRowValidationError(setRows)
                         } else {
                             "Valeurs invalides."
                         }
@@ -1129,17 +1193,110 @@ private fun SessionNumberField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
+    testTag: String? = null,
 ) {
     TrainlogInputField(
         label = label,
         value = value,
         onValueChange =
             onValueChange,
+        testTag = testTag,
     )
 }
 
 private const val MAX_SESSION_SETS = 64
 private const val MAX_REPS_PER_SET = 10000
+
+internal data class RawSetRow(
+    val repsText: String = "",
+    val weightText: String = "",
+)
+
+internal fun List<RawSetRow>.replaceAt(index: Int, value: RawSetRow): List<RawSetRow> =
+    mapIndexed { rowIndex, existing -> if (rowIndex == index) value else existing }
+
+internal fun encodeRawReps(rows: List<RawSetRow>): String =
+    rows.joinToString(";") { it.repsText }
+
+internal fun encodeRawWeights(rows: List<RawSetRow>): String =
+    rows.joinToString(";") { it.weightText }
+
+/**
+ * WHY: schema v9 already has durable raw form columns. Parallel token strings
+ * preserve row order and interior blanks without inventing a schema migration.
+ * Legacy compact rep expressions are expanded once when the row editor opens.
+ */
+internal fun rawSetRowsFromForm(form: SessionDraftForm): List<RawSetRow> {
+    val repTokens =
+        if (';' in form.repsText) {
+            form.repsText.split(';')
+        } else if (',' in form.repsText) {
+            /* Legacy compact lists may end in an unfinished token. Keep that
+             * blank row instead of normalizing it away during first reopen. */
+            form.repsText.split(',')
+        } else {
+            val compact = parseRepSequence(form.repsText)
+            if (compact != null) {
+                compact.map(Int::toString)
+            } else {
+                listOf(form.repsText)
+            }
+        }
+    val weightTokens =
+        if (';' in form.weightText) {
+            form.weightText.split(';')
+        } else {
+            listOf(form.weightText)
+        }
+
+    if (repTokens.isEmpty()) return listOf(RawSetRow())
+    return repTokens.mapIndexed { index, reps ->
+        RawSetRow(
+            repsText = reps,
+            /* Compatibility only: a legacy single compact load was broadcast
+             * by the old editor. New edits always persist one token per row. */
+            weightText =
+                if (weightTokens.size == 1) weightTokens.single()
+                else weightTokens.getOrElse(index) { "" },
+        )
+    }
+}
+
+internal fun parseRawSetRows(rows: List<RawSetRow>): List<SessionSetDraft>? {
+    if (rows.isEmpty() || rows.size > MAX_SESSION_SETS) return null
+    return rows.map { row ->
+        val reps = row.repsText.trim().toIntOrNull()
+        if (reps == null || reps !in 0..MAX_REPS_PER_SET) return null
+
+        val rawWeight = row.weightText.trim()
+        val weight =
+            if (rawWeight.isEmpty()) {
+                null
+            } else {
+                rawWeight.replace(',', '.').toDoubleOrNull()
+                    ?.takeIf { it.isFinite() && it >= 0.0 }
+                    ?: return null
+            }
+        SessionSetDraft(reps = reps, weightKg = weight)
+    }
+}
+
+internal fun setRowValidationError(rows: List<RawSetRow>): String {
+    if (rows.isEmpty()) return "Ajoutez au moins une série."
+    rows.forEachIndexed { index, row ->
+        val reps = row.repsText.trim().toIntOrNull()
+        if (reps == null || reps !in 0..MAX_REPS_PER_SET) {
+            return "Série ${index + 1} : saisissez des répétitions entre 0 et $MAX_REPS_PER_SET."
+        }
+        if (row.weightText.isNotBlank()) {
+            val weight = row.weightText.trim().replace(',', '.').toDoubleOrNull()
+            if (weight == null || !weight.isFinite() || weight < 0.0) {
+                return "Série ${index + 1} : saisissez une charge non négative ou laissez la case vide."
+            }
+        }
+    }
+    return "Valeurs de séries invalides."
+}
 
 private fun parseRepSequence(
     text: String,
@@ -1304,6 +1461,7 @@ private fun buildSessionExerciseDraft(
     weightText: String = "",
     maxWeightText: String = "",
     entryId: String? = null,
+    rawSetRows: List<RawSetRow>? = null,
 ): SessionExerciseDraft? {
     if (sessionType == SessionType.MAX_TEST) {
         val maxWeight = maxWeightText.trim().replace(',', '.').toDoubleOrNull()
@@ -1391,24 +1549,18 @@ private fun buildSessionExerciseDraft(
         exercise.trackingMode ==
         TrackingMode.REPS
     ) {
-        val reps =
-            parseRepSequence(
-                repsText
+        val parsedSets =
+            parseRawSetRows(
+                rawSetRows ?: rawSetRowsFromForm(
+                    SessionDraftForm(repsText = repsText, weightText = weightText)
+                )
             ) ?: return null
-
-        val weights = parseWeightSequence(weightText, reps.size) ?: return null
 
         SessionExerciseDraft(
             entryId = entryId ?: "sxe_" + java.util.UUID.randomUUID().toString(),
             exercise = exercise,
             equipmentId = equipmentId,
-            sets =
-                reps.mapIndexed { index, rep ->
-                    SessionSetDraft(
-                        reps = rep,
-                        weightKg = weights[index],
-                    )
-                },
+            sets = parsedSets,
         )
     } else {
         val count =
@@ -1445,7 +1597,7 @@ private fun buildSessionExerciseDraft(
 
 /** Reconstruct editable text from the entry itself; editing never mutates a
  * different entry or the global exercise definition. */
-private fun formForExistingExercise(
+internal fun formForExistingExercise(
     draft: SessionExerciseDraft,
     index: Int,
 ): SessionDraftForm =
@@ -1461,7 +1613,11 @@ private fun formForExistingExercise(
         } else {
             "3x10"
         },
-        weightText = draft.sets.mapNotNull { it.weightKg }.joinToString(";") { "%g".format(java.util.Locale.FRANCE, it) },
+        /* INVARIANT: keep one load token per performed-set row. mapNotNull
+         * would shift later weights left when an earlier row is blank. */
+        weightText = draft.sets.joinToString(";") {
+            it.weightKg?.let(::formatMaxWeight).orEmpty()
+        },
         durationText = if (draft.exercise.recordingMode == RecordingMode.CONTINUOUS) {
             (draft.continuousDurationSeconds / 60).toString()
         } else {
@@ -1470,23 +1626,6 @@ private fun formForExistingExercise(
         speedText = draft.speedKmh?.toString().orEmpty(),
         distanceText = draft.distanceKm?.toString().orEmpty(),
     )
-
-/** Accept French decimal commas without confusing them with the set separator.
- * CONTRACT: blank means no load recorded; zero is a real explicit value. */
-private fun parseWeightSequence(text: String, count: Int): List<Double?>? {
-    if (text.trim().isEmpty()) return List(count) { null }
-    val values = text.split(';').map { token ->
-        token.trim().replace(',', '.').toDoubleOrNull()
-    }
-    if (values.any { it == null || !it.isFinite() || it < 0.0 }) return null
-    @Suppress("UNCHECKED_CAST")
-    val parsed = values as List<Double>
-    return when {
-        parsed.size == 1 -> List(count) { parsed.single() }
-        parsed.size == count -> parsed
-        else -> null
-    }
-}
 
 private fun draftSummary(
     draft: SessionExerciseDraft,
@@ -1531,6 +1670,7 @@ private fun draftSummary(
 
         if (
             reps.isNotEmpty() &&
+            draft.sets.all { it.weightKg == null } &&
             reps.all {
                 it == reps.first()
             }
@@ -1544,10 +1684,12 @@ private fun draftSummary(
             (
                 "${draft.exercise.name} · " +
                 "${reps.size} séries · " +
-                reps.joinToString(
-                    separator = ","
-                ) +
-                " reps"
+                draft.sets.joinToString(separator = " ; ") { set ->
+                    buildString {
+                        append("${set.reps} reps")
+                        set.weightKg?.let { append(" @ ${formatMaxWeight(it)} kg") }
+                    }
+                }
             )
         }
     } else {

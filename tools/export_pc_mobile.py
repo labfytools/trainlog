@@ -30,8 +30,8 @@ def main():
     con = sqlite3.connect(args.database)
     con.row_factory = sqlite3.Row
     try:
-        if con.execute("PRAGMA user_version").fetchone()[0] != 9:
-            raise ValueError("schema desktop v9 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] != 10:
+            raise ValueError("schema desktop v10 requis")
         known_equipment = supplied_equipment_ids()
         known_equipment.update(row[0] for row in con.execute(
             "SELECT equipment_id FROM custom_equipment"))

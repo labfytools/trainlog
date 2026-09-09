@@ -2,6 +2,7 @@ package com.labfytools.trainlog.ui
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -76,15 +77,13 @@ class SessionDraftUiInstrumentedTest {
     }
 
     @Test
-    fun resumeRestoresRawFormAfterActivityRecreation() {
+    fun resumeRestoresSetRowsAfterActivityRecreation() {
         compose.onNodeWithText(
             "Reprendre la séance en cours"
         ).assertIsDisplayed()
             .performClick()
-        compose.onNodeWithText(
-            "4,5,6,"
-        ).performScrollTo()
-            .assertIsDisplayed()
+        compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("4")
+        compose.onNodeWithTag("session-set-2-reps").performScrollTo().assertTextEquals("6")
 
         compose.activityRule.scenario.recreate()
 
@@ -92,10 +91,8 @@ class SessionDraftUiInstrumentedTest {
             "Reprendre la séance en cours"
         ).assertIsDisplayed()
             .performClick()
-        compose.onNodeWithText(
-            "4,5,6,"
-        ).performScrollTo()
-            .assertIsDisplayed()
+        compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("4")
+        compose.onNodeWithTag("session-set-2-reps").performScrollTo().assertTextEquals("6")
         compose.onNodeWithText(
             "Retirer Test UI"
         ).performScrollTo()
@@ -220,9 +217,30 @@ class SessionDraftUiInstrumentedTest {
         compose.onNodeWithText("Annuler la recherche").performClick()
 
         compose.onNodeWithTag("exercise-picker-open").assertIsDisplayed()
-        compose.onNodeWithText("4,5,6,")
-            .performScrollTo()
-            .assertIsDisplayed()
+        compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("4")
+        compose.onNodeWithTag("session-set-2-reps").performScrollTo().assertTextEquals("6")
+    }
+
+    @Test
+    fun rowEditFrenchWeightDeleteAndAddPersistAcrossRecreation() {
+        compose.onNodeWithText("Reprendre la séance en cours").performClick()
+        compose.onNodeWithTag("session-set-1-reps")
+            .performScrollTo().performTextClearance()
+        compose.onNodeWithTag("session-set-1-reps").performTextInput("9")
+        compose.onNodeWithTag("session-set-1-weight")
+            .performScrollTo().performTextInput("32,5")
+        compose.onNodeWithText("Supprimer la série 1").performScrollTo().performClick()
+        compose.onNodeWithText("Ajouter une série").performScrollTo().performClick()
+
+        compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("9")
+        compose.onNodeWithTag("session-set-0-weight").performScrollTo().assertTextEquals("32,5")
+        compose.onNodeWithTag("session-set-3-reps").performScrollTo().assertTextEquals("")
+
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithText("Reprendre la séance en cours").performClick()
+        compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("9")
+        compose.onNodeWithTag("session-set-0-weight").performScrollTo().assertTextEquals("32,5")
+        compose.onNodeWithTag("session-set-3-reps").performScrollTo().assertTextEquals("")
     }
 
     @Test

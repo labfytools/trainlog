@@ -23,8 +23,8 @@ def main():
     connection = sqlite3.connect(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9):
-            raise ValueError("schema desktop v8 ou v9 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10):
+            raise ValueError("schema desktop v8, v9 ou v10 requis")
         equipment = [dict(row) for row in connection.execute(
             "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics "
             "FROM custom_equipment ORDER BY equipment_id")]

@@ -360,6 +360,15 @@ test(
   test_schema_v5_migration,
 )
 
+test_schema_v9_migration = executable(
+  'test_schema_v9_migration',
+  'tests/test_schema_v9_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('schema_v9_migration', test_schema_v9_migration)
+
 test_schema_v7_migration = executable(
   'test_schema_v7_migration',
   'tests/test_schema_v7_migration.c',
@@ -484,3 +493,14 @@ test(
   'terminal_input_event_type_policy',
   test_terminal_input,
 )
+
+test_tui_workflows = executable(
+  'test_tui_workflows',
+  'tests/test_tui_workflows.c',
+  'src/theme.c',
+  'src/sync_screen_action.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('tui_workflows', test_tui_workflows)

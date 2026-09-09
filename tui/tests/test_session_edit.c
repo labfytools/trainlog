@@ -498,10 +498,115 @@ static bool test_remove_exercise_from_session(void)
     return true;
 }
 
+static bool test_per_set_correction_sequence(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogSetInput created[3];
+    TrainlogSetInput corrected[3];
+    TrainlogSetInput loaded_sets[8];
+    TrainlogSessionExerciseInput exercise;
+    TrainlogSessionInput session;
+    TrainlogSessionSummary loaded_session;
+    TrainlogEditableExerciseRecord records[2];
+    TrainlogPersistedExerciseDetail details[2];
+    size_t exercise_count = 0U;
+    size_t set_count = 0U;
+    size_t detail_count = 0U;
+
+    CHECK(trainlog_database_open(":memory:", &database) ==
+        TRAINLOG_STATUS_OK);
+    CHECK(add_exercises(database));
+
+    (void)memset(created, 0, sizeof(created));
+    created[0].reps = 10;
+    created[0].has_weight = true;
+    created[0].weight_kg = 52.25;
+    created[1].reps = 9;
+    created[1].has_weight = true;
+    created[1].weight_kg = 57.5;
+    created[2].reps = 8;
+    created[2].has_weight = false;
+
+    bind_reps_exercise(&exercise, created, 3U, 55.0);
+    exercise.load_mode = TRAINLOG_LOAD_ASSISTANCE;
+    /* bind_reps_exercise initializes uniform values; restore the deliberately
+     * heterogeneous actual rows after occurrence metadata is initialized. */
+    created[0].reps = 10;
+    created[0].weight_kg = 52.25;
+    created[1].reps = 9;
+    created[1].weight_kg = 57.5;
+    created[2].reps = 8;
+    created[2].has_weight = false;
+    created[2].weight_kg = 0.0;
+
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
+        "se_per_set_edit");
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s",
+        "2026-09-09T08:00:00+02:00");
+    session.session_type = TRAINLOG_SESSION_TRAINING;
+    session.exercises = &exercise;
+    session.exercise_count = 1U;
+    CHECK(trainlog_database_insert_session(database, &session) ==
+        TRAINLOG_STATUS_OK);
+
+    CHECK(trainlog_database_load_session_editable(database,
+        "se_per_set_edit", &loaded_session, records, 2U, &exercise_count,
+        loaded_sets, 8U, &set_count) == TRAINLOG_STATUS_OK);
+    CHECK(set_count == 3U);
+    CHECK(loaded_sets[1].weight_kg > 57.49);
+    CHECK(!loaded_sets[2].has_weight);
+
+    /* CONTRACT: model the row editor sequence: edit row 2, delete row 1,
+     * preserve the untouched row 3, then append a new (originally row 4)
+     * blank-load set. Replacement persists positions 0..N-1 in this order. */
+    corrected[0] = loaded_sets[1];
+    corrected[0].reps = 11;
+    corrected[0].weight_kg = 58.75;
+    corrected[1] = loaded_sets[2];
+    (void)memset(&corrected[2], 0, sizeof(corrected[2]));
+    corrected[2].reps = 7;
+    corrected[2].has_weight = false;
+
+    exercise.sets = corrected;
+    exercise.set_count = 3U;
+    (void)snprintf(exercise.entry_id, sizeof(exercise.entry_id), "%s",
+        records[0].entry_id);
+    CHECK(trainlog_database_replace_session_exercises(database,
+        "se_per_set_edit", &exercise, 1U) == TRAINLOG_STATUS_OK);
+
+    CHECK(trainlog_database_load_session_editable(database,
+        "se_per_set_edit", &loaded_session, records, 2U, &exercise_count,
+        loaded_sets, 8U, &set_count) == TRAINLOG_STATUS_OK);
+    CHECK(set_count == 3U);
+    CHECK(loaded_sets[0].reps == 11);
+    CHECK(loaded_sets[0].weight_kg > 58.74);
+    CHECK(loaded_sets[0].weight_kg < 58.76);
+    CHECK(loaded_sets[1].reps == 8);
+    CHECK(!loaded_sets[1].has_weight);
+    CHECK(loaded_sets[2].reps == 7);
+    CHECK(!loaded_sets[2].has_weight);
+    CHECK(records[0].load_mode == TRAINLOG_LOAD_ASSISTANCE);
+
+    CHECK(trainlog_database_get_session_details(database, "se_per_set_edit",
+        &loaded_session, details, 2U, &detail_count) == TRAINLOG_STATUS_OK);
+    CHECK(detail_count == 1U);
+    CHECK(details[0].actual_set_count == 3U);
+    CHECK(details[0].actual_sets[0].reps == 11);
+    CHECK(details[0].actual_sets[1].reps == 8);
+    CHECK(details[0].actual_sets[2].reps == 7);
+    CHECK(details[0].load_mode == TRAINLOG_LOAD_ASSISTANCE);
+
+    trainlog_database_free_session_details(details, detail_count);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void)
 {
     CHECK(test_load_replace_and_rollback());
     CHECK(test_remove_exercise_from_session());
+    CHECK(test_per_set_correction_sequence());
 
     (void)printf(
         "PASS session_edit\n"

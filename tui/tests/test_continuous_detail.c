@@ -156,6 +156,11 @@ int main(void)
         ) == 0
     );
 
+    trainlog_database_free_session_details(
+        details,
+        count
+    );
+
     trainlog_database_close(
         database
     );

@@ -263,6 +263,21 @@ def validate_mobile_export_v2(document: Any) -> None:
                 value = entry["max_weight_kg"]
                 if session.get("session_type") != "max_test" or isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or value <= 0:
                     raise TrainlogSemanticError("mobile export V2: invalid explicit max")
+            if has_sets:
+                sets = entry["sets"]
+                if not isinstance(sets, list):
+                    raise TrainlogSemanticError("mobile export V2: invalid sets")
+                for actual_set in sets:
+                    if not isinstance(actual_set, dict):
+                        raise TrainlogSemanticError("mobile export V2: invalid set")
+                    if "weight_kg" in actual_set:
+                        value = actual_set["weight_kg"]
+                        if (isinstance(value, bool) or
+                                not isinstance(value, (int, float)) or
+                                not math.isfinite(float(value)) or value < 0):
+                            raise TrainlogSemanticError(
+                                "mobile export V2: invalid actual-set weight"
+                            )
             entry_ids.add(entry["entry_id"]); positions.add(entry["position"])
 def structural_errors(
     validator: jsonschema.Draft202012Validator,

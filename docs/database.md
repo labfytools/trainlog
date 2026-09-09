@@ -3,8 +3,8 @@
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=9
-DATABASE_SCHEMA_V9=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=10
+DATABASE_SCHEMA_V10=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -23,8 +23,14 @@ PRAGMA user_version;
 Current value:
 
 ```text
-9
+10
 ```
+
+The independent actual-set loads documented in the current desktop, Android
+and V2 flows use the existing ordered `performed_sets.weight_kg` field and the
+corresponding durable draft-set field. The per-set column itself pre-existed,
+but desktop v10 is required: v9 -> v10 rebuilds `performed_sets` solely to
+widen actual `weight_kg` from finite `> 0` to finite `>= 0`.
 
 Supported historical databases are migrated explicitly through the implemented
 migration chain. A database newer than the running binary understands is
@@ -46,6 +52,14 @@ converts a legacy `max_test` occurrence only when it contains exactly one
 performed set with `reps = 1`, no duration, and a positive weight. The stable
 session, occurrence, exercise, position, and equipment identities are retained.
 Multiple attempts and every other ambiguous shape remain as historical sets.
+
+Version 10 rebuilds only `performed_sets`. Its explicit projection preserves
+every row ID, owning occurrence, position, repetitions-or-duration, and
+existing `NULL` or positive `weight_kg` value unchanged; it permits a new
+explicit zero actual load. The migration is transactional. Regression coverage
+checks lossless migration, rollback after an injected rebuild-name collision,
+`PRAGMA integrity_check`, `PRAGMA foreign_key_check`, restored foreign-key
+enforcement, and rejection of negative loads or invalid metric shapes.
 
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
@@ -179,7 +193,12 @@ duration_seconds
 Actual repetitions may be zero.
 
 Each row is independent; heterogeneous repetition sequences are first-class
-data.
+data. Its nullable `weight_kg` is likewise occurrence-set data: blank is
+distinct from an explicit zero and from a planned target weight. When present,
+an actual weight is finite and `>= 0`.
+
+Planned `target_weight_kg` remains distinct planning metadata and, when
+present, is finite and `> 0`; it is never copied into an actual set.
 
 ### `continuous_activity`
 

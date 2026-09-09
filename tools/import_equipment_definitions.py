@@ -60,8 +60,8 @@ def main():
     definitions = validate(json.loads(args.artifact.read_text(encoding="utf-8")), supplied_ids(args.catalog))
     connection = sqlite3.connect(args.database)
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9):
-            fail("schema desktop v8 ou v9 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10):
+            fail("schema desktop v8, v9 ou v10 requis")
         imported = skipped = 0
         # Validate every same-ID row before inserting any definition.
         for definition in definitions:

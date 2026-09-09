@@ -67,7 +67,7 @@ CREATE TABLE custom_equipment(
  equipment_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, label_name TEXT NOT NULL,
  equipment_type TEXT NOT NULL, load_semantics TEXT NOT NULL
 );
-PRAGMA user_version=9;
+PRAGMA user_version=10;
 """
 
 

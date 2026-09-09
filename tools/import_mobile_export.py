@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -153,10 +154,21 @@ def require_positive_number(value, label):
 
     parsed = float(value)
 
-    if parsed <= 0.0:
+    if not math.isfinite(parsed) or parsed <= 0.0:
         raise ImportFailure(
             f"{label}: nombre positif attendu"
         )
+
+    return parsed
+
+
+def require_nonnegative_number(value, label):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ImportFailure(f"{label}: nombre attendu")
+
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0.0:
+        raise ImportFailure(f"{label}: nombre non négatif attendu")
 
     return parsed
 
@@ -367,6 +379,13 @@ def validate_set_item(
     label,
 ):
     allowed_weight = {"weight_kg"}
+    # CONTRACT: absent actual load is omitted/SQL NULL; when present it is a
+    # finite nonnegative observation, including an explicit zero.
+    if "weight_kg" in value:
+        require_nonnegative_number(
+            value["weight_kg"],
+            f"{label}.weight_kg",
+        )
     if tracking_mode == "reps":
         require_exact_keys(
             value,
@@ -757,9 +776,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9):
+    if version not in (5, 6, 7, 8, 9, 10):
         raise ImportFailure(
-            f"base desktop schema v5 à v9 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v10 attendue, version trouvée: {version}"
         )
 
 
@@ -1646,6 +1665,17 @@ def run_import(
         )
         if has_explicit_max and schema_version < 9:
             raise ImportFailure("max_weight_kg exige le schéma desktop v9")
+        has_explicit_zero_set_weight = any(
+            set_item.get("weight_kg") == 0
+            for session in payload["sessions"]
+            for entry in session["exercises"]
+            for set_item in entry.get("sets", [])
+            if "weight_kg" in set_item
+        )
+        if has_explicit_zero_set_weight and schema_version < 10:
+            raise ImportFailure(
+                "weight_kg=0 exige le schéma desktop v10; import annulé"
+            )
 
         connection.execute(
             "BEGIN IMMEDIATE;"

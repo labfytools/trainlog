@@ -120,7 +120,10 @@ Continuous work is persisted separately from performed sets.
 
 ### Desktop
 
-Desktop SQLite schema v9 is canonical long-term history. `session_exercises`
+Desktop SQLite schema v10 is canonical long-term history. Its v9 -> v10
+migration losslessly rebuilds only `performed_sets` so actual `weight_kg` may
+be finite `>= 0`; the column already existed and targets/max results retain
+their strictly-positive contracts. `session_exercises`
 stores a stable occurrence `entry_id`; a catalogue `exercise_id` can therefore
 occur more than once in one session without identity fusion.
 

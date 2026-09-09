@@ -51,7 +51,7 @@ static bool test_custom_equipment_round_trip(void)
 
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 9);
+    CHECK(version == 10);
     (void)memset(&custom, 0, sizeof(custom));
     (void)snprintf(custom.equipment_id, sizeof(custom.equipment_id),
         "%s", "eq_123e4567-e89b-42d3-a456-426614174000");
@@ -100,6 +100,7 @@ static bool test_custom_equipment_round_trip(void)
     CHECK(count == 1U);
     CHECK(strcmp(detail[0].entry_id, exercise.entry_id) == 0);
     CHECK(strcmp(detail[0].equipment_id, custom.equipment_id) == 0);
+    trainlog_database_free_session_details(detail, count);
     CHECK(trainlog_database_list_exercise_equipment(database, exercise.exercise_id,
         used, 2U, &count) == TRAINLOG_STATUS_OK);
     CHECK(count == 1U);

@@ -101,6 +101,8 @@ static bool test_explicit_max_round_trip_and_identity(void)
     CHECK(details[2].has_continuous_speed != 0 &&
         details[2].continuous_speed_kmh == 5.5);
 
+    trainlog_database_free_session_details(details, count);
+
     CHECK(trainlog_database_load_session_editable(database, "se_explicit_max",
         &summary, editable, 3U, &count, NULL, 0U, &set_count) ==
         TRAINLOG_STATUS_OK);
@@ -124,6 +126,8 @@ static bool test_explicit_max_round_trip_and_identity(void)
     CHECK(details[0].max_weight_kg == 101.5);
     CHECK(strcmp(details[0].entry_id, "sxe_pec") == 0);
 
+    trainlog_database_free_session_details(details, count);
+
     session.session_type = TRAINLOG_SESSION_TRAINING;
     (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
         "se_invalid_training_max");
@@ -146,9 +150,11 @@ static bool test_v8_migration_refuses_to_guess_multiple_attempts(void)
         "INSERT INTO sessions VALUES(1,'max_test');"
         "INSERT INTO session_exercises VALUES(10,1,'sets');"
         "INSERT INTO session_exercises VALUES(11,1,'sets');"
+        "INSERT INTO session_exercises VALUES(12,1,'sets');"
         "INSERT INTO performed_sets VALUES(20,10,0,1,NULL,100.0);"
         "INSERT INTO performed_sets VALUES(21,11,0,1,NULL,80.0);"
         "INSERT INTO performed_sets VALUES(22,11,1,1,NULL,86.0);"
+        "INSERT INTO performed_sets VALUES(23,12,0,1,NULL,0.0);"
         "PRAGMA user_version=8;";
     char path[] = "/tmp/trainlog-max-v8-XXXXXX";
     sqlite3 *raw = NULL;
@@ -170,6 +176,15 @@ static bool test_v8_migration_refuses_to_guess_multiple_attempts(void)
     CHECK(sqlite3_step(statement) == SQLITE_ROW);
     CHECK(sqlite3_column_int(statement, 0) == 10);
     CHECK(sqlite3_column_double(statement, 1) == 100.0);
+    CHECK(sqlite3_step(statement) == SQLITE_DONE);
+    CHECK(sqlite3_finalize(statement) == SQLITE_OK);
+    CHECK(sqlite3_prepare_v2(raw,
+        "SELECT reps,weight_kg FROM performed_sets "
+        "WHERE session_exercise_row_id=12;",
+        -1, &statement, NULL) == SQLITE_OK);
+    CHECK(sqlite3_step(statement) == SQLITE_ROW);
+    CHECK(sqlite3_column_int(statement, 0) == 1);
+    CHECK(sqlite3_column_double(statement, 1) == 0.0);
     CHECK(sqlite3_step(statement) == SQLITE_DONE);
     CHECK(sqlite3_finalize(statement) == SQLITE_OK);
     CHECK(sqlite3_prepare_v2(raw,

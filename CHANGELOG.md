@@ -30,6 +30,10 @@ Detailed implementation chronology remains available in Git history and
 - multi-occurrence session V2: stable per-occurrence `entry_id`, repeated
   catalogue exercises in one session, per-set actual weights, and occurrence
   equipment associations across Android, desktop, import and export;
+- structured Android and Notcurses per-set row editing: independent actual
+  repetitions and nullable Charge/Assistance values, ordered add/delete/edit
+  operations, and ordered history/detail presentation without target-value
+  substitution;
 - shared versioned equipment catalogue, Android machine selection/search,
   Android-local custom equipment creation, and explicit rejection of unknown
   equipment identities rather than silent association loss;
@@ -66,8 +70,8 @@ Detailed implementation chronology remains available in Git history and
 - profile-aware exercise model using recording mode, tracking mode, and
   supplemental fields;
 - continuous activity persistence without synthetic sets;
-- variable repetition-set input including `5x10`, explicit lists, and pyramid
-  shorthand such as `4..10..4`;
+- explicit table-based desktop actual-set entry, with independently added rows
+  and no compact performed-repetition input;
 - persisted desktop session editing and exercise removal;
 - Android current-session draft exercise removal;
 - body-observation history, editing, graphs, and normalized overlays;
@@ -87,6 +91,10 @@ Detailed implementation chronology remains available in Git history and
 
 ### Changed
 
+- desktop schema v10 losslessly rebuilds only `performed_sets` to accept an
+  explicit zero actual `weight_kg`; historic NULL and positive actual loads
+  remain unchanged, while planned targets and explicit MAX results stay
+  strictly positive;
 - desktop and Android schema v9 add one-to-one completed/draft max-result rows;
   `TRAINLOG_FORMAT_V1` remains frozen and V1 export refuses explicit MAX data
   rather than losing or fabricating it;
@@ -166,8 +174,8 @@ Current validated baseline:
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V9=PASS
-DESKTOP_TESTS=34/34 PASS
+DESKTOP_SCHEMA_V10=PASS
+DESKTOP_TESTS=36/36 PASS
 
 ANDROID_BUILD=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS

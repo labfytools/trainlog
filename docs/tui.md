@@ -99,15 +99,38 @@ Unicode-aware normalized-name uniqueness prevents duplicate logical names.
 
 The TUI can record sessions directly.
 
-Set-based entry supports planned targets and actual work.
+Set-based entry supports planned targets and actual work. Planned target values
+remain planning metadata: they are never copied into an actual performed set.
 
-For repetition work, compact actual-set input supports:
+For a normal `SETS` occurrence, creation collects planning metadata only: it
+does not accept a compact performed-repetitions expression, a performed set
+count, sequential performed durations, or a pre-table performed load. It starts
+with zero actual rows, then opens the ordered, keyboard-first actual-set table
+as the sole path for creating actual work. Each row contains its actual
+repetitions (or duration) and, when the occurrence has a load mode, its
+independently optional Charge or Assistance value. The table uses:
 
 ```text
-5x10
-4,5,6,7,8,9,10,9,8,7,6,5,4
-4..10..4
+Up/Down          select a row
+Left/Right/Tab    select metric or load cell
+Enter            edit the selected cell
+a                append a row and enter its required actual metric
+d/Delete         delete the selected set
+Escape           cancel the active cell, or leave the table
+f/b              finish the table
 ```
+
+Adding a row requires an explicit actual repetitions/duration value and creates
+no actual load; an empty load cell remains absent rather than inheriting the
+target. An entered actual load is finite and non-negative;
+the planned target remains a separate, strictly positive planning value. The
+current-session summary is assembled from each
+actual row, so mixed repetitions, optional loads and assistance values are not
+collapsed into one target value.
+
+Finishing a normal `SETS` draft with zero actual rows is blocked with an
+explicit diagnostic. This guard does not apply to `MAX` or continuous entries,
+whose distinct persistence contracts contain no performed-set rows.
 
 For timed work, the shared duration parser accepts forms such as:
 
@@ -130,6 +153,11 @@ without set/rest/load prompts.
 History is keyboard navigable.
 
 `Enter` opens full session detail.
+
+For set-based occurrences, detail displays an ordered, scrollable table of the
+persisted rows with series number, repetitions or duration, and Charge or
+Assistance. It exposes every stored per-set value, including absent loads,
+rather than only a compact aggregate.
 
 Persisted session editing preserves the parent session identity and timestamps
 while replacing child exercise/set data transactionally.
@@ -327,7 +355,7 @@ meson test -C build --print-errorlogs
 Validated current normal suite:
 
 ```text
-34/34 Meson tests PASS
+36/36 Meson tests PASS
 ```
 
 ## 16. Measured max view

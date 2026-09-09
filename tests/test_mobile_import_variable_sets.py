@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 IMPORTER = ROOT / "tools" / "import_mobile_export.py"
+EXPORTER = ROOT / "tools" / "export_pc_mobile.py"
 
 EXPECTED_REPS = [
     4,
@@ -55,6 +56,7 @@ CREATE TABLE sessions (
 
 CREATE TABLE session_exercises (
     id INTEGER PRIMARY KEY,
+    entry_id TEXT NOT NULL UNIQUE,
     session_row_id INTEGER NOT NULL
         REFERENCES sessions(id) ON DELETE CASCADE,
     exercise_row_id INTEGER NOT NULL
@@ -68,7 +70,8 @@ CREATE TABLE session_exercises (
     target_reps INTEGER,
     target_duration_seconds INTEGER,
     target_weight_kg REAL,
-    notes TEXT
+    notes TEXT,
+    equipment_id TEXT
 );
 
 CREATE TABLE performed_sets (
@@ -78,7 +81,7 @@ CREATE TABLE performed_sets (
     position INTEGER NOT NULL,
     reps INTEGER,
     duration_seconds INTEGER,
-    weight_kg REAL
+    weight_kg REAL CHECK(weight_kg >= 0.0)
 );
 
 CREATE TABLE continuous_activity (
@@ -112,8 +115,32 @@ CREATE TABLE body_observations (
     notes TEXT
 );
 
-PRAGMA user_version=5;
+CREATE TABLE max_results (
+    session_exercise_row_id INTEGER PRIMARY KEY,
+    max_weight_kg REAL NOT NULL CHECK(max_weight_kg > 0)
+);
+
+CREATE TABLE custom_equipment (
+    equipment_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    label_name TEXT NOT NULL,
+    equipment_type TEXT NOT NULL,
+    load_semantics TEXT NOT NULL
+);
+
+PRAGMA user_version=10;
 """
+
+EXPECTED_SETS = [
+    (
+        reps,
+        32.5 if index == 0 else
+        0.0 if index == 1 else
+        None if index in (2, 6) else
+        40.25 + index * 1.5,
+    )
+    for index, reps in enumerate(EXPECTED_REPS)
+]
 
 
 def payload() -> dict:
@@ -121,7 +148,7 @@ def payload() -> dict:
         "format":
             "trainlog-mobile-export",
         "version":
-            1,
+            2,
         "generated_at":
             "2026-09-06T16:00:00+02:00",
         "exercises": [
@@ -148,6 +175,10 @@ def payload() -> dict:
                     "training",
                 "exercises": [
                     {
+                        "entry_id":
+                            "sxe_mobile_pyramid",
+                        "position":
+                            0,
                         "exercise_id":
                             "ex_mobile_pyramid",
                         "name":
@@ -162,12 +193,12 @@ def payload() -> dict:
                             "none",
                         "rest_seconds":
                             0,
+                        "equipment_id":
+                            None,
                         "sets": [
-                            {
-                                "reps": reps
-                            }
-                            for reps
-                            in EXPECTED_REPS
+                            ({"reps": reps} if weight is None else
+                             {"reps": reps, "weight_kg": weight})
+                            for reps, weight in EXPECTED_SETS
                         ],
                     }
                 ],
@@ -202,6 +233,64 @@ def run_import(
         )
 
     return result.stdout
+
+
+def run_export(output_path: Path, database_path: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, str(EXPORTER), str(output_path),
+         "--database", str(database_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError("export failed:\n" + result.stdout + result.stderr)
+
+
+def database_contents(database_path: Path) -> tuple:
+    """Capture durable rows so rejected payloads prove transaction atomicity."""
+    with sqlite3.connect(database_path) as connection:
+        return tuple(
+            tuple(connection.execute(
+                f"SELECT * FROM {table} ORDER BY rowid"
+            ).fetchall())
+            for table in (
+                "exercises", "sessions", "session_exercises",
+                "performed_sets", "continuous_activity",
+                "body_observations", "max_results",
+            )
+        )
+
+
+def require_weight_rejection(
+    base: Path,
+    database_path: Path,
+    value,
+    suffix: str,
+) -> None:
+    rejected = payload()
+    rejected["sessions"][0]["session_id"] = f"se_rejected_{suffix}"
+    rejected["sessions"][0]["exercises"][0]["sets"][0]["weight_kg"] = value
+    rejected_path = base / f"invalid-weight-{suffix}.json"
+    rejected_path.write_text(
+        json.dumps(rejected, ensure_ascii=False, allow_nan=True),
+        encoding="utf-8",
+    )
+    before = database_contents(database_path)
+    result = subprocess.run(
+        [sys.executable, str(IMPORTER), str(rejected_path),
+         "--database", str(database_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0 or "weight_kg" not in result.stderr:
+        raise AssertionError(
+            f"invalid set weight accepted ({suffix}):\n"
+            + result.stdout + result.stderr
+        )
+    if database_contents(database_path) != before:
+        raise AssertionError(f"invalid set weight mutated database ({suffix})")
 
 
 def main() -> int:
@@ -285,7 +374,7 @@ def main() -> int:
         try:
             rows = connection.execute(
                 """
-                SELECT ps.reps
+                SELECT ps.reps, ps.weight_kg
                 FROM performed_sets ps
                 JOIN session_exercises se
                   ON se.id =
@@ -298,14 +387,9 @@ def main() -> int:
                 """
             ).fetchall()
 
-            reps = [
-                row[0]
-                for row in rows
-            ]
-
-            if reps != EXPECTED_REPS:
+            if rows != EXPECTED_SETS:
                 raise AssertionError(
-                    f"reps mismatch: {reps!r}"
+                    f"ordered sets mismatch: {rows!r}"
                 )
 
             target = connection.execute(
@@ -349,6 +433,74 @@ def main() -> int:
                 )
         finally:
             connection.close()
+
+        exported_path = base / "desktop-v2.json"
+        roundtrip_db = base / "roundtrip.db"
+        run_export(exported_path, database_path)
+        exported = json.loads(exported_path.read_text(encoding="utf-8"))
+        exported_sets = exported["sessions"][0]["exercises"][0]["sets"]
+        expected_json_sets = [
+            ({"reps": reps} if weight is None else
+             {"reps": reps, "weight_kg": weight})
+            for reps, weight in EXPECTED_SETS
+        ]
+        if exported_sets != expected_json_sets:
+            raise AssertionError(f"V2 export changed sets: {exported_sets!r}")
+
+        with sqlite3.connect(roundtrip_db) as connection:
+            connection.executescript(SCHEMA)
+        imported = run_import(exported_path, roundtrip_db)
+        if "sessions_imported=1" not in imported:
+            raise AssertionError("V2 reimport failed:\n" + imported)
+        replay = run_import(exported_path, roundtrip_db)
+        if "sessions_skipped=1" not in replay:
+            raise AssertionError("V2 replay not idempotent:\n" + replay)
+        with sqlite3.connect(roundtrip_db) as connection:
+            roundtrip_sets = connection.execute(
+                "SELECT reps,weight_kg FROM performed_sets ORDER BY position"
+            ).fetchall()
+        if roundtrip_sets != EXPECTED_SETS:
+            raise AssertionError(f"V2 reimport changed sets: {roundtrip_sets!r}")
+
+        # INVARIANT: all validation precedes mutation; every invalid optional
+        # set weight therefore rejects the complete artifact atomically.
+        for invalid_weight, suffix in (
+            (-1.5, "negative"),
+            (True, "bool"),
+            ("20", "string"),
+            (float("nan"), "nan"),
+            (float("inf"), "infinity"),
+        ):
+            require_weight_rejection(
+                base, database_path, invalid_weight, suffix
+            )
+
+        # A migration-era v9 database cannot represent explicit zero. Reject
+        # before beginning the import instead of collapsing zero into NULL or
+        # leaving a partially inserted graph.
+        v9_database = base / "unmigrated-v9.db"
+        with sqlite3.connect(v9_database) as connection:
+            connection.executescript(
+                SCHEMA.replace(
+                    "weight_kg REAL CHECK(weight_kg >= 0.0)",
+                    "weight_kg REAL CHECK(weight_kg > 0.0)",
+                ).replace("PRAGMA user_version=10", "PRAGMA user_version=9")
+            )
+        before_v9 = database_contents(v9_database)
+        rejected_v9 = subprocess.run(
+            [sys.executable, str(IMPORTER), str(exported_path),
+             "--database", str(v9_database)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if rejected_v9.returncode == 0 or "schéma desktop v10" not in rejected_v9.stderr:
+            raise AssertionError(
+                "zero-bearing V2 artifact did not fail explicitly on v9:\n" +
+                rejected_v9.stdout + rejected_v9.stderr
+            )
+        if database_contents(v9_database) != before_v9:
+            raise AssertionError("zero-bearing V2 artifact mutated v9 database")
 
     print(
         "PASS mobile_import_variable_sets"

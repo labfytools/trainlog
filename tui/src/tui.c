@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <locale.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -540,7 +541,25 @@ static bool parse_double_positive(const char *text, double *output)
     }
 
     value = strtod(text, &end);
-    if (end == text || *end != '\0' || value <= 0.0) {
+    if (end == text || *end != '\0' || !isfinite(value) || value <= 0.0) {
+        return false;
+    }
+
+    *output = value;
+    return true;
+}
+
+static bool parse_double_nonnegative(const char *text, double *output)
+{
+    char *end = NULL;
+    double value;
+
+    if (text == NULL || output == NULL || text[0] == '\0') {
+        return false;
+    }
+
+    value = strtod(text, &end);
+    if (end == text || *end != '\0' || !isfinite(value) || value < 0.0) {
         return false;
     }
 
@@ -614,6 +633,36 @@ static bool prompt_optional_double(
         }
 
         status_line("Nombre positif invalide.", TRAINLOG_COLOR_ERROR);
+        trainlog_terminal_render(tui_terminal);
+    }
+}
+
+static bool prompt_optional_nonnegative_double(
+    int row,
+    const char *label,
+    bool *present,
+    double *output
+)
+{
+    char buffer[64];
+
+    for (;;) {
+        if (!prompt_text(row, label, buffer, sizeof(buffer), true)) {
+            return false;
+        }
+
+        if (buffer[0] == '\0') {
+            *present = false;
+            *output = 0.0;
+            return true;
+        }
+
+        if (parse_double_nonnegative(buffer, output)) {
+            *present = true;
+            return true;
+        }
+
+        status_line("Nombre non négatif invalide.", TRAINLOG_COLOR_ERROR);
         trainlog_terminal_render(tui_terminal);
     }
 }
@@ -5181,13 +5230,8 @@ static bool build_session_exercise(
     int target_sets = 3;
     int target_metric;
     int rest_seconds = 60;
-    int actual_sets = 0;
-    int rep_values[MAX_SETS_PER_EXERCISE];
-    size_t rep_count = 0U;
-    char rep_sequence[512];
     bool target_has_weight = false;
     double target_weight = 0.0;
-    size_t set_index;
 
     if (!choose_exercise(
             database,
@@ -5357,9 +5401,14 @@ static bool build_session_exercise(
     }
 
     if (load_mode != 1) {
+        const char *target_load_prompt =
+            load_mode == 3
+                ? "Assistance cible kg : "
+                : "Charge cible kg : ";
+
         if (!prompt_optional_double(
                 5,
-                "Charge cible kg : ",
+                target_load_prompt,
                 &target_has_weight,
                 &target_weight
             ) ||
@@ -5415,53 +5464,6 @@ static bool build_session_exercise(
         return false;
     }
 
-    if (
-        exercise.tracking_mode ==
-        TRAINLOG_TRACKING_REPS
-    ) {
-        for (;;) {
-            if (!prompt_text(
-                    9,
-                    "Séries réalisées (5x10 | 4,5,6,... | 4..10..4) : ",
-                    rep_sequence,
-                    sizeof(rep_sequence),
-                    false
-                )) {
-                return false;
-            }
-
-            if (
-                trainlog_reps_parse_sequence(
-                    rep_sequence,
-                    rep_values,
-                    set_capacity,
-                    &rep_count
-                ) ==
-                TRAINLOG_STATUS_OK
-            ) {
-                break;
-            }
-
-            status_line(
-                "Séries invalides. Exemples : 5x10 · 4,5,6,7 · 4..10..4",
-                TRAINLOG_COLOR_ERROR
-            );
-
-            trainlog_terminal_render(tui_terminal);
-        }
-    } else {
-        if (!prompt_int_value(
-                9,
-                "Séries réellement faites",
-                0,
-                (int)set_capacity,
-                target_sets,
-                &actual_sets
-            )) {
-            return false;
-        }
-    }
-
     output->load_mode =
         load_mode == 1
             ? TRAINLOG_LOAD_NONE
@@ -5493,118 +5495,7 @@ static bool build_session_exercise(
         target_weight;
 
     output->sets = set_storage;
-    output->set_count =
-        exercise.tracking_mode ==
-            TRAINLOG_TRACKING_REPS
-            ? rep_count
-            : (size_t)actual_sets;
-
-    for (set_index = 0U;
-         set_index < output->set_count;
-         ++set_index) {
-        int actual_metric =
-            target_metric;
-
-        (void)memset(
-            &set_storage[set_index],
-            0,
-            sizeof(set_storage[set_index])
-        );
-
-        if (
-            exercise.tracking_mode ==
-                TRAINLOG_TRACKING_DURATION ||
-            target_has_weight
-        ) {
-            draw_shell(
-                exercise.name,
-                "Échap annuler · Durées : 90, 90s, 1:30, 1m30, 2m"
-            );
-
-            trainlog_terminal_printf(tui_terminal,
-                3,
-                4,
-                "Série %zu / %zu",
-                set_index + 1U,
-                output->set_count
-            );
-        }
-
-        if (
-            exercise.tracking_mode ==
-            TRAINLOG_TRACKING_REPS
-        ) {
-            actual_metric =
-                rep_values[set_index];
-
-            set_storage[set_index].reps =
-                actual_metric;
-        } else {
-            if (!prompt_duration_value(
-                    5,
-                    "Durée réalisée",
-                    1,
-                    86400,
-                    target_metric,
-                    &actual_metric
-                )) {
-                return false;
-            }
-
-            set_storage[
-                set_index
-            ].duration_seconds =
-                actual_metric;
-        }
-
-        if (target_has_weight) {
-            char buffer[64];
-            char prompt[128];
-            double actual_weight =
-                target_weight;
-
-            (void)snprintf(
-                prompt,
-                sizeof(prompt),
-                "Charge kg [%.1f] : ",
-                target_weight
-            );
-
-            if (!prompt_text(
-                    6,
-                    prompt,
-                    buffer,
-                    sizeof(buffer),
-                    true
-                )) {
-                return false;
-            }
-
-            if (buffer[0] != '\0' &&
-                !parse_double_positive(
-                    buffer,
-                    &actual_weight
-                )) {
-                status_line(
-                    "Charge invalide.",
-                    TRAINLOG_COLOR_ERROR
-                );
-
-                wait_key();
-                return false;
-            }
-
-            set_storage[
-                set_index
-            ].has_weight =
-                true;
-
-            set_storage[
-                set_index
-            ].weight_kg =
-                actual_weight;
-        }
-    }
+    output->set_count = 0U;
 
     return true;
 }
@@ -6165,6 +6056,292 @@ static void draft_bind_input(
             : NULL;
 }
 
+static void draft_format_set_metric(
+    const TrainlogSessionDraftExercise *draft,
+    const TrainlogSetInput *set,
+    char *output,
+    size_t output_size
+)
+{
+    if (draft->tracking_mode == TRAINLOG_TRACKING_DURATION) {
+        if (trainlog_duration_format(
+                set->duration_seconds,
+                output,
+                output_size
+            ) != TRAINLOG_STATUS_OK) {
+            (void)snprintf(output, output_size, "%d s",
+                set->duration_seconds);
+        }
+    } else {
+        (void)snprintf(output, output_size, "%d", set->reps);
+    }
+}
+
+static bool draft_edit_set_cell(
+    TrainlogSessionDraftExercise *draft,
+    size_t row,
+    size_t field,
+    bool require_metric_input
+)
+{
+    TrainlogSetInput candidate;
+
+    if (draft == NULL || row >= draft->input.set_count) {
+        return false;
+    }
+
+    candidate = draft->sets[row];
+
+    if (field == 0U) {
+        int value = draft->tracking_mode == TRAINLOG_TRACKING_DURATION
+            ? candidate.duration_seconds
+            : candidate.reps;
+        bool accepted;
+
+        if (require_metric_input) {
+            char buffer[64];
+            const char *label =
+                draft->tracking_mode == TRAINLOG_TRACKING_DURATION
+                    ? "Durée réalisée (requise) : "
+                    : "Répétitions réalisées (requises) : ";
+
+            for (;;) {
+                if (!prompt_text(6, label, buffer, sizeof(buffer), false)) {
+                    accepted = false;
+                    break;
+                }
+                if (draft->tracking_mode == TRAINLOG_TRACKING_DURATION) {
+                    accepted =
+                        trainlog_duration_parse(buffer, &value) ==
+                            TRAINLOG_STATUS_OK &&
+                        value >= 1 && value <= 86400;
+                } else {
+                    accepted = parse_int(buffer, 0, 10000, &value);
+                }
+                if (accepted) {
+                    break;
+                }
+                status_line("Valeur réalisée invalide.",
+                    TRAINLOG_COLOR_ERROR);
+                trainlog_terminal_render(tui_terminal);
+            }
+        } else {
+            accepted = draft->tracking_mode == TRAINLOG_TRACKING_DURATION
+                ? prompt_duration_value(6, "Durée réalisée", 1, 86400,
+                    value > 0 ? value : 1, &value)
+                : prompt_int_value(6, "Répétitions réalisées", 0, 10000,
+                    value >= 0 ? value : 0, &value);
+        }
+
+        if (!accepted) {
+            /* CONTRACT: Escape cancels the active cell; the candidate was
+             * edited off to the side, so the draft remains byte-for-byte. */
+            return false;
+        }
+
+        if (draft->tracking_mode == TRAINLOG_TRACKING_DURATION) {
+            candidate.duration_seconds = value;
+        } else {
+            candidate.reps = value;
+        }
+    } else {
+        bool has_weight = false;
+        double weight = 0.0;
+
+        if (!prompt_optional_nonnegative_double(
+                6,
+                draft->input.load_mode == TRAINLOG_LOAD_ASSISTANCE
+                    ? "Assistance kg (vide = aucune) : "
+                    : "Charge kg (vide = aucune) : ",
+                &has_weight,
+                &weight
+            )) {
+            return false;
+        }
+
+        candidate.has_weight = has_weight;
+        candidate.weight_kg = has_weight ? weight : 0.0;
+    }
+
+    draft->sets[row] = candidate;
+    return true;
+}
+
+static bool draft_append_incomplete_set(
+    TrainlogSessionDraftExercise *draft
+)
+{
+    TrainlogSetInput *added;
+    size_t appended_index;
+
+    if (draft == NULL ||
+        draft->input.set_count >= MAX_SETS_PER_EXERCISE) {
+        return false;
+    }
+
+    appended_index = draft->input.set_count;
+    added = &draft->sets[appended_index];
+    (void)memset(added, 0, sizeof(*added));
+    ++draft->input.set_count;
+
+    /* INVARIANT: targets are planning metadata. A new actual row exists only
+     * if its metric prompt is accepted; cancellation rolls the append back. */
+    if (!draft_edit_set_cell(draft, appended_index, 0U, true)) {
+        --draft->input.set_count;
+        (void)memset(added, 0, sizeof(*added));
+        return false;
+    }
+
+    return true;
+}
+
+static void draft_edit_sets(
+    TrainlogSessionDraftExercise *draft
+)
+{
+    size_t selected = 0U;
+    size_t field = 0U;
+
+    if (draft == NULL ||
+        draft->input.recording_mode != TRAINLOG_RECORDING_SETS ||
+        draft->input.has_max_weight) {
+        return;
+    }
+
+    for (;;) {
+        size_t index;
+        size_t top = 0U;
+        size_t visible;
+        int first_row = 7;
+        int rows = trainlog_terminal_rows(tui_terminal);
+        int key;
+        bool has_load = draft->input.load_mode != TRAINLOG_LOAD_NONE;
+        const char *metric_label =
+            draft->tracking_mode == TRAINLOG_TRACKING_DURATION
+                ? "Durée"
+                : "Reps";
+        const char *load_label =
+            draft->input.load_mode == TRAINLOG_LOAD_ASSISTANCE
+                ? "Assistance"
+                : "Charge";
+
+        visible = rows > first_row + 3
+            ? (size_t)(rows - first_row - 3)
+            : 1U;
+
+        if (draft->input.set_count > 0U &&
+            selected >= draft->input.set_count) {
+            selected = draft->input.set_count - 1U;
+        }
+        if (selected >= visible) {
+            top = selected - visible + 1U;
+        }
+
+        draw_shell(
+            draft->name,
+            "↑↓ série  ←→/Tab champ  Entrée modifier  a ajouter  d supprimer  f/b terminer"
+        );
+        trainlog_terminal_printf(tui_terminal, 3, 4,
+            "Valeurs réellement effectuées — cible indicative, jamais recopiée");
+        trainlog_terminal_style_on(tui_terminal, TRAINLOG_TEXT_BOLD);
+        trainlog_terminal_printf(tui_terminal, 5, 4,
+            has_load ? "%-8s  %-20s  %-20s" : "%-8s  %-20s",
+            "Série", metric_label, has_load ? load_label : "");
+        trainlog_terminal_style_off(tui_terminal, TRAINLOG_TEXT_BOLD);
+
+        if (draft->input.set_count == 0U) {
+            trainlog_terminal_printf(tui_terminal, first_row, 4,
+                "Aucune série. a = ajouter une série.");
+        }
+
+        for (index = top;
+             index < draft->input.set_count && index - top < visible;
+             ++index) {
+            char metric[64];
+            char weight[64];
+            int row = first_row + (int)(index - top);
+
+            draft_format_set_metric(draft, &draft->sets[index], metric,
+                sizeof(metric));
+            if (draft->sets[index].has_weight) {
+                (void)snprintf(weight, sizeof(weight), "%.2f kg",
+                    draft->sets[index].weight_kg);
+            } else {
+                (void)snprintf(weight, sizeof(weight), "—");
+            }
+
+            if (index == selected) {
+                trainlog_terminal_style_on(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+            }
+            trainlog_terminal_printf(tui_terminal, row, 4,
+                has_load ? "%c %-6zu  %-20.20s  %-20.20s"
+                         : "%c %-6zu  %-20.20s",
+                index == selected ? (field == 0U ? '>' : '*') : ' ',
+                index + 1U, metric, has_load ? weight : "");
+            if (index == selected) {
+                trainlog_terminal_style_off(tui_terminal,
+                    TRAINLOG_TEXT_REVERSE |
+                    trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+            }
+        }
+
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+
+        if (key == 'f' || key == 'F' || key == 'b' || key == 'B' ||
+            key == 27 || key == TRAINLOG_KEY_ESCAPE) {
+            return;
+        }
+        if (key == TRAINLOG_KEY_UP && draft->input.set_count > 0U) {
+            selected = selected > 0U ? selected - 1U
+                : draft->input.set_count - 1U;
+            continue;
+        }
+        if (key == TRAINLOG_KEY_DOWN && draft->input.set_count > 0U) {
+            selected = selected + 1U < draft->input.set_count
+                ? selected + 1U : 0U;
+            continue;
+        }
+        if (has_load && (key == TRAINLOG_KEY_LEFT ||
+            key == TRAINLOG_KEY_RIGHT || key == TRAINLOG_KEY_TAB ||
+            key == TRAINLOG_KEY_SHIFT_TAB)) {
+            field = field == 0U ? 1U : 0U;
+            continue;
+        }
+        if ((key == '\n' || key == TRAINLOG_KEY_ENTER) &&
+            draft->input.set_count > 0U) {
+            (void)draft_edit_set_cell(draft, selected, field, false);
+            continue;
+        }
+        if ((key == 'a' || key == 'A') &&
+            draft->input.set_count < MAX_SETS_PER_EXERCISE) {
+            selected = draft->input.set_count;
+            field = 0U;
+            (void)draft_append_incomplete_set(draft);
+            if (draft->input.set_count == 0U ||
+                selected >= draft->input.set_count) {
+                selected = draft->input.set_count > 0U
+                    ? draft->input.set_count - 1U : 0U;
+            }
+            continue;
+        }
+        if ((key == 'd' || key == 'D' || key == TRAINLOG_KEY_DELETE) &&
+            draft->input.set_count > 0U) {
+            for (index = selected; index + 1U < draft->input.set_count;
+                 ++index) {
+                draft->sets[index] = draft->sets[index + 1U];
+            }
+            --draft->input.set_count;
+            if (draft->input.set_count > 0U &&
+                selected >= draft->input.set_count) {
+                selected = draft->input.set_count - 1U;
+            }
+        }
+    }
+}
+
 static void draft_delete_exercise(
     TrainlogSessionDraftExercise *drafts,
     size_t *count,
@@ -6207,6 +6384,9 @@ static void draft_set_summary(
     size_t output_size
 )
 {
+    size_t index;
+    size_t used = 0U;
+
     if (draft == NULL ||
         output == NULL ||
         output_size == 0U) {
@@ -6227,33 +6407,56 @@ static void draft_set_summary(
             "Max %s kg",
             weight
         );
-    } else if (draft->input.load_mode ==
-        TRAINLOG_LOAD_EXTERNAL) {
-        (void)snprintf(
-            output,
-            output_size,
-            "%zu séries · %.1f kg",
-            draft->input.set_count,
-            draft->input.target_weight_kg
+    } else if (draft->input.recording_mode ==
+        TRAINLOG_RECORDING_CONTINUOUS) {
+        char duration[64];
+        (void)trainlog_duration_format(
+            draft->input.continuous_duration_seconds,
+            duration,
+            sizeof(duration)
         );
-    } else if (
-        draft->input.load_mode ==
-        TRAINLOG_LOAD_ASSISTANCE
-    ) {
-        (void)snprintf(
-            output,
-            output_size,
-            "%zu séries · %.1f kg aide",
-            draft->input.set_count,
-            draft->input.target_weight_kg
-        );
+        (void)snprintf(output, output_size, "Continu · %s", duration);
     } else {
-        (void)snprintf(
-            output,
-            output_size,
-            "%zu séries",
-            draft->input.set_count
-        );
+        int written = snprintf(output, output_size, "%zu séries · ",
+            draft->input.set_count);
+        if (written < 0) {
+            output[0] = '\0';
+            return;
+        }
+        used = (size_t)written < output_size
+            ? (size_t)written : output_size - 1U;
+
+        /* CONTRACT: the in-progress summary reflects each actual row. It
+         * must not collapse heterogeneous loads back to the target weight. */
+        for (index = 0U; index < draft->input.set_count && used + 1U < output_size;
+             ++index) {
+            char metric[64];
+            char fragment[96];
+            draft_format_set_metric(draft, &draft->sets[index], metric,
+                sizeof(metric));
+            if (draft->input.load_mode == TRAINLOG_LOAD_NONE) {
+                written = snprintf(fragment, sizeof(fragment), "%s%s",
+                    index > 0U ? " / " : "", metric);
+            } else {
+                written = snprintf(fragment, sizeof(fragment), "%s%s×%s%s",
+                    index > 0U ? " / " : "", metric,
+                    draft->sets[index].has_weight ? "" : "—",
+                    draft->sets[index].has_weight ? "kg" : "");
+                if (draft->sets[index].has_weight) {
+                    written = snprintf(fragment, sizeof(fragment),
+                        "%s%s×%.2fkg%s",
+                        index > 0U ? " / " : "", metric,
+                        draft->sets[index].weight_kg,
+                        draft->input.load_mode == TRAINLOG_LOAD_ASSISTANCE
+                            ? " aide" : "");
+                }
+            }
+            if (written < 0) {
+                break;
+            }
+            (void)snprintf(output + used, output_size - used, "%s", fragment);
+            used = strlen(output);
+        }
     }
 }
 
@@ -6376,7 +6579,7 @@ static bool edit_session_draft(
                 2,
                 "%.*s",
                 trainlog_terminal_columns(tui_terminal) - 4,
-                "↑↓ choisir  e/Entrée modifier  a ajouter  d supprimer  f enregistrer  q/Échap abandonner"
+                "↑↓ choisir  e/Entrée séries  r remplacer  a ajouter  d supprimer  f enregistrer  q/Échap abandonner"
             );
 
             trainlog_terminal_style_off(tui_terminal,
@@ -6387,7 +6590,7 @@ static bool edit_session_draft(
         } else {
             draw_shell(
                 "TRAINLOG — Séance en cours",
-                "↑↓ choisir  e/Entrée modifier  a ajouter  d supprimer  f enregistrer  q/Échap abandonner"
+                "↑↓ choisir  e/Entrée séries  r remplacer  a ajouter  d supprimer  f enregistrer  q/Échap abandonner"
             );
         }
 
@@ -6480,6 +6683,8 @@ static bool edit_session_draft(
 
         if (key == 'f' ||
             key == 'F') {
+            size_t draft_index;
+
             if (*count == 0U) {
                 status_line(
                     "Ajoutez au moins un exercice avant d'enregistrer.",
@@ -6488,6 +6693,28 @@ static bool edit_session_draft(
 
                 trainlog_terminal_render(tui_terminal);
                 (void)trainlog_terminal_get_key(tui_terminal);
+                continue;
+            }
+
+            for (draft_index = 0U; draft_index < *count; ++draft_index) {
+                if (drafts[draft_index].input.recording_mode ==
+                        TRAINLOG_RECORDING_SETS &&
+                    !drafts[draft_index].input.has_max_weight &&
+                    drafts[draft_index].input.set_count == 0U) {
+                    char message[192];
+
+                    selected = draft_index;
+                    (void)snprintf(message, sizeof(message),
+                        "Ajoutez au moins une série réalisée pour %s.",
+                        drafts[draft_index].name);
+                    status_line(message, TRAINLOG_COLOR_WARNING);
+                    trainlog_terminal_render(tui_terminal);
+                    (void)trainlog_terminal_get_key(tui_terminal);
+                    break;
+                }
+            }
+
+            if (draft_index < *count) {
                 continue;
             }
 
@@ -6534,6 +6761,7 @@ static bool edit_session_draft(
                 )) {
                 selected = *count;
                 ++(*count);
+                draft_edit_sets(&drafts[selected]);
             }
 
             continue;
@@ -6544,6 +6772,11 @@ static bool edit_session_draft(
              key == '\n' ||
              key == TRAINLOG_KEY_ENTER) &&
             *count > 0U) {
+            draft_edit_sets(&drafts[selected]);
+            continue;
+        }
+
+        if ((key == 'r' || key == 'R') && *count > 0U) {
             TrainlogSessionDraftExercise replacement;
 
             if (draft_build_exercise(
@@ -6932,6 +7165,7 @@ static void screen_new_session(
             NULL
         )) {
         exercise_count = 1U;
+        draft_edit_sets(&drafts[0]);
     }
 
     if (!edit_session_draft(
@@ -7207,6 +7441,7 @@ static void screen_session_detail(
 
     size_t count = 0U;
     size_t selected = 0U;
+    size_t set_top = 0U;
     TrainlogStatus status;
 
     status =
@@ -7277,7 +7512,7 @@ static void screen_session_detail(
                 2,
                 "%.*s",
                 trainlog_terminal_columns(tui_terminal) - 4,
-                "←→/↑↓ exercice précédent/suivant  i fiche équipement  e modifier  b/Échap retour"
+                "←→/↑↓ exercice  PgUp/PgDn séries  i équipement  e modifier  b/Échap retour"
             );
 
             trainlog_terminal_style_off(tui_terminal,
@@ -7317,7 +7552,7 @@ static void screen_session_detail(
         } else {
             draw_shell(
                 "TRAINLOG — Détail séance",
-                "←→/↑↓ naviguer  i fiche équipement  e modifier  b/Échap retour"
+                "←→/↑↓ exercice  PgUp/PgDn séries  i équipement  e modifier  b/Échap retour"
             );
 
             trainlog_terminal_printf(tui_terminal,
@@ -7531,11 +7766,10 @@ static void screen_session_detail(
                 int actual_row =
                     decorated ? 23 : 13;
 
-                int summary_row =
+                int table_header_row =
                     decorated ? 25 : 15;
-
-                int warning_row =
-                    decorated ? 27 : 17;
+                int table_last_row =
+                    trainlog_terminal_rows(tui_terminal) - 4;
 
                 if (trainlog_duration_format(
                         exercise->rest_seconds,
@@ -7631,14 +7865,18 @@ static void screen_session_detail(
                     trainlog_terminal_printf(tui_terminal,
                         weight_row,
                         decorated ? 5 : 4,
-                        "Charge cible : %.1f kg",
+                        "%s cible : %.1f kg",
+                        exercise->load_mode == TRAINLOG_LOAD_ASSISTANCE
+                            ? "Assistance" : "Charge",
                         exercise->target_weight_kg
                     );
                 } else {
                     trainlog_terminal_printf(tui_terminal,
                         weight_row,
                         decorated ? 5 : 4,
-                        "Charge cible : —"
+                        "%s cible : —",
+                        exercise->load_mode == TRAINLOG_LOAD_ASSISTANCE
+                            ? "Assistance" : "Charge"
                     );
                 }
 
@@ -7663,34 +7901,72 @@ static void screen_session_detail(
                     )
                 );
 
+                trainlog_terminal_style_on(tui_terminal, TRAINLOG_TEXT_BOLD);
                 trainlog_terminal_printf(tui_terminal,
-                    summary_row,
+                    table_header_row,
                     decorated ? 5 : 4,
-                    "%.*s",
-                    trainlog_terminal_columns(tui_terminal) - 10,
-                    exercise->actual_summary
+                    "%-8s  %-18s  %-18s",
+                    "Série",
+                    exercise->tracking_mode == TRAINLOG_TRACKING_REPS
+                        ? "Reps" : "Durée",
+                    exercise->load_mode == TRAINLOG_LOAD_ASSISTANCE
+                        ? "Assistance" : "Charge"
                 );
+                trainlog_terminal_style_off(tui_terminal, TRAINLOG_TEXT_BOLD);
 
-                if (exercise->load_mode ==
-                    TRAINLOG_LOAD_ASSISTANCE) {
-                    trainlog_terminal_style_on(tui_terminal,
-                        trainlog_theme_style(
-                            TRAINLOG_COLOR_WARNING
-                        )
-                    );
+                {
+                    size_t set_index;
+                    size_t visible_sets = table_last_row > table_header_row
+                        ? (size_t)(table_last_row - table_header_row)
+                        : 0U;
 
-                    trainlog_terminal_printf(tui_terminal,
-                        warning_row,
-                        decorated ? 5 : 4,
-                        "Assistance : plus de kg = davantage d'aide."
-                    );
+                    if (exercise->actual_set_count == 0U) {
+                        set_top = 0U;
+                    } else if (set_top >= exercise->actual_set_count) {
+                        set_top = exercise->actual_set_count - 1U;
+                    }
 
-                    trainlog_terminal_style_off(tui_terminal,
-                        trainlog_theme_style(
-                            TRAINLOG_COLOR_WARNING
-                        )
-                    );
+                    for (set_index = set_top;
+                         set_index < exercise->actual_set_count &&
+                         set_index - set_top < visible_sets;
+                         ++set_index) {
+                        char metric[64];
+                        char weight[64];
+                        const TrainlogSetInput *set =
+                            &exercise->actual_sets[set_index];
+
+                        if (exercise->tracking_mode ==
+                            TRAINLOG_TRACKING_DURATION) {
+                            if (trainlog_duration_format(
+                                    set->duration_seconds,
+                                    metric,
+                                    sizeof(metric)
+                                ) != TRAINLOG_STATUS_OK) {
+                                (void)snprintf(metric, sizeof(metric), "%d s",
+                                    set->duration_seconds);
+                            }
+                        } else {
+                            (void)snprintf(metric, sizeof(metric), "%d",
+                                set->reps);
+                        }
+
+                        if (set->has_weight) {
+                            (void)snprintf(weight, sizeof(weight), "%.2f kg",
+                                set->weight_kg);
+                        } else {
+                            (void)snprintf(weight, sizeof(weight), "—");
+                        }
+
+                        trainlog_terminal_printf(tui_terminal,
+                            table_header_row + 1 +
+                                (int)(set_index - set_top),
+                            decorated ? 5 : 4,
+                            "%-8zu  %-18.18s  %-18.18s",
+                            set_index + 1U, metric, weight);
+                    }
+
                 }
+
             }
         }
 
@@ -7700,6 +7976,7 @@ static void screen_session_detail(
         if (key == 'b' ||
             key == 'B' ||
             key == 27) {
+            trainlog_database_free_session_details(exercises, count);
             return;
         }
 
@@ -7710,6 +7987,7 @@ static void screen_session_detail(
                 session_id
             );
 
+            trainlog_database_free_session_details(exercises, count);
             return;
         }
 
@@ -7723,6 +8001,17 @@ static void screen_session_detail(
             continue;
         }
 
+        if (count > 0U && key == TRAINLOG_KEY_PAGE_UP) {
+            set_top = set_top > 0U ? set_top - 1U : 0U;
+            continue;
+        }
+
+        if (count > 0U && key == TRAINLOG_KEY_PAGE_DOWN &&
+            set_top + 1U < exercises[selected].actual_set_count) {
+            ++set_top;
+            continue;
+        }
+
         if (count > 0U &&
             (key == TRAINLOG_KEY_RIGHT ||
              key == TRAINLOG_KEY_DOWN)) {
@@ -7730,6 +8019,7 @@ static void screen_session_detail(
                 selected + 1U < count
                     ? selected + 1U
                     : 0U;
+            set_top = 0U;
         } else if (
             count > 0U &&
             (key == TRAINLOG_KEY_LEFT ||
@@ -7739,6 +8029,7 @@ static void screen_session_detail(
                 selected > 0U
                     ? selected - 1U
                     : count - 1U;
+            set_top = 0U;
         }
     }
 }

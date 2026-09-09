@@ -290,6 +290,37 @@ static const char *const MIGRATE_V8_TO_V9_SQL =
     "(SELECT session_exercise_row_id FROM max_results);"
     "PRAGMA user_version = 9;COMMIT;";
 
+/*
+ * WHY: actual load absence and an explicit zero are distinct observations.
+ * CONTRACT: v10 changes only performed_sets.weight_kg from strictly positive
+ * to nonnegative. The explicit projection preserves every row ID, owning
+ * occurrence, position, metric value and NULL/positive load byte-for-byte.
+ */
+static const char *const MIGRATE_V9_TO_V10_SQL =
+    "PRAGMA foreign_keys = OFF;"
+    "BEGIN IMMEDIATE;"
+    "ALTER TABLE performed_sets RENAME TO performed_sets_v9;"
+    "CREATE TABLE performed_sets ("
+    "id INTEGER PRIMARY KEY,"
+    "session_exercise_row_id INTEGER NOT NULL "
+    "REFERENCES session_exercises(id) ON DELETE CASCADE,"
+    "position INTEGER NOT NULL CHECK(position >= 0),"
+    "reps INTEGER CHECK(reps >= 0),"
+    "duration_seconds INTEGER CHECK(duration_seconds > 0),"
+    "weight_kg REAL CHECK(weight_kg >= 0.0),"
+    "UNIQUE(session_exercise_row_id,position),"
+    "CHECK((reps IS NOT NULL AND duration_seconds IS NULL) OR "
+    "(reps IS NULL AND duration_seconds IS NOT NULL))"
+    ");"
+    "INSERT INTO performed_sets("
+    "id,session_exercise_row_id,position,reps,duration_seconds,weight_kg"
+    ") SELECT id,session_exercise_row_id,position,reps,duration_seconds,weight_kg "
+    "FROM performed_sets_v9;"
+    "DROP TABLE performed_sets_v9;"
+    "PRAGMA user_version = 10;"
+    "COMMIT;"
+    "PRAGMA foreign_keys = ON;";
+
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
     "ALTER TABLE sessions "
@@ -697,6 +728,9 @@ static TrainlogStatus initialize_or_validate_schema(
         if (status == TRAINLOG_STATUS_OK) {
             status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
+        }
     } else if (version == 7) {
         /* CONTRACT: v7 is the immediate historic schema and must open through
          * its lossless custom-equipment-table migration. */
@@ -704,8 +738,16 @@ static TrainlogStatus initialize_or_validate_schema(
         if (status == TRAINLOG_STATUS_OK) {
             status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
+        }
     } else if (version == 8) {
         status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
+        }
+    } else if (version == 9) {
+        status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
     } else {
         if (version == 1) {
             status =
@@ -833,6 +875,9 @@ static TrainlogStatus initialize_or_validate_schema(
         if (status == TRAINLOG_STATUS_OK) {
             status = execute_sql(database, MIGRATE_V8_TO_V9_SQL);
         }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
+        }
     }
 
     if (
@@ -842,13 +887,23 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v9" : "migrate database to schema v9",
+            version == 0 ? "create schema v10" : "migrate database to schema v10",
             database->connection,
             SQLITE_ERROR
         );
         (void)sqlite3_exec(
             database->connection,
             "ROLLBACK;",
+            NULL,
+            NULL,
+            NULL
+        );
+        /* MIGRATE_V9_TO_V10_SQL disables foreign keys outside its transaction;
+         * a failed statement must not leave the live handle with enforcement
+         * disabled after the rollback. */
+        (void)sqlite3_exec(
+            database->connection,
+            "PRAGMA foreign_keys = ON;",
             NULL,
             NULL,
             NULL
@@ -2239,6 +2294,15 @@ static TrainlogStatus insert_performed_set(
     sqlite3_stmt *statement = NULL;
     int rc;
 
+    if (database == NULL || database->connection == NULL || input == NULL ||
+        position > (size_t)INT64_MAX ||
+        (input->has_weight &&
+         (!isfinite(input->weight_kg) || input->weight_kg < 0.0))) {
+        /* CONTRACT: blank is represented by has_weight=false/SQL NULL;
+         * explicit zero is a finite, observed load and must survive exactly. */
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
     rc = sqlite3_prepare_v2(
         database->connection,
         "INSERT INTO performed_sets("
@@ -2426,6 +2490,40 @@ static TrainlogStatus insert_session_children(
     return TRAINLOG_STATUS_OK;
 }
 
+static TrainlogStatus validate_actual_set_weights(
+    const TrainlogSessionExerciseInput *exercises,
+    size_t exercise_count
+)
+{
+    size_t exercise_index;
+
+    if ((exercise_count > 0U && exercises == NULL) ||
+        exercise_count > (size_t)INT64_MAX) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    for (exercise_index = 0U; exercise_index < exercise_count;
+         ++exercise_index) {
+        const TrainlogSessionExerciseInput *exercise =
+            &exercises[exercise_index];
+        size_t set_index;
+
+        if (exercise->set_count > (size_t)INT64_MAX ||
+            (exercise->set_count > 0U && exercise->sets == NULL)) {
+            return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
+        for (set_index = 0U; set_index < exercise->set_count; ++set_index) {
+            const TrainlogSetInput *set = &exercise->sets[set_index];
+            if (set->has_weight &&
+                (!isfinite(set->weight_kg) || set->weight_kg < 0.0)) {
+                return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
+        }
+    }
+
+    return TRAINLOG_STATUS_OK;
+}
+
 TrainlogStatus trainlog_database_insert_session(
     TrainlogDatabase *database,
     const TrainlogSessionInput *session
@@ -2442,6 +2540,14 @@ TrainlogStatus trainlog_database_insert_session(
         (session->exercise_count > 0U &&
          session->exercises == NULL)) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = validate_actual_set_weights(
+        session->exercises,
+        session->exercise_count
+    );
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
     }
 
     status = trainlog_database_begin(database);
@@ -2498,6 +2604,11 @@ TrainlogStatus trainlog_database_replace_session_exercises(
         session_id[0] == '\0' ||
         (exercise_count > 0U && exercises == NULL)) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = validate_actual_set_weights(exercises, exercise_count);
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
     }
 
     status = trainlog_database_begin(database);
@@ -3022,9 +3133,46 @@ static TrainlogStatus detail_fill_sets(
         "ORDER BY position ASC;";
 
     sqlite3_stmt *statement = NULL;
+    sqlite3_stmt *count_statement = NULL;
     size_t used = 0U;
     size_t count = 0U;
     int rc;
+
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT COUNT(*) FROM performed_sets "
+        "WHERE session_exercise_row_id = ?1;", -1, &count_statement, NULL);
+    if (rc != SQLITE_OK ||
+        sqlite3_bind_int64(count_statement, 1, session_exercise_row_id) !=
+            SQLITE_OK ||
+        sqlite3_step(count_statement) != SQLITE_ROW) {
+        (void)sqlite3_finalize(count_statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    {
+        sqlite3_int64 persisted_count = sqlite3_column_int64(count_statement, 0);
+        if (persisted_count < 0 ||
+            (uint64_t)persisted_count >
+                (uint64_t)(SIZE_MAX / sizeof(*detail->actual_sets))) {
+            (void)sqlite3_finalize(count_statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        count = (size_t)persisted_count;
+    }
+    if (sqlite3_finalize(count_statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    count_statement = NULL;
+
+    /* WHY: performed_sets has no schema/domain maximum. Exact occurrence-owned
+     * storage bounds memory to the selected session without limiting history. */
+    if (count > 0U) {
+        detail->actual_sets = calloc(count, sizeof(*detail->actual_sets));
+        if (detail->actual_sets == NULL) {
+            return TRAINLOG_STATUS_SYSTEM_ERROR;
+        }
+    }
+    detail->actual_set_count = count;
+    count = 0U;
 
     rc = sqlite3_prepare_v2(
         database->connection,
@@ -3034,6 +3182,9 @@ static TrainlogStatus detail_fill_sets(
         NULL
     );
     if (rc != SQLITE_OK) {
+        free(detail->actual_sets);
+        detail->actual_sets = NULL;
+        detail->actual_set_count = 0U;
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
@@ -3044,6 +3195,9 @@ static TrainlogStatus detail_fill_sets(
     );
     if (rc != SQLITE_OK) {
         (void)sqlite3_finalize(statement);
+        free(detail->actual_sets);
+        detail->actual_sets = NULL;
+        detail->actual_set_count = 0U;
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
@@ -3059,6 +3213,33 @@ static TrainlogStatus detail_fill_sets(
         int has_weight =
             sqlite3_column_type(statement, 2) != SQLITE_NULL;
 
+        /* INVARIANT: COUNT and SELECT observe the same connection operation;
+         * any mismatch is corruption/concurrent mutation, never truncation. */
+        if (count >= detail->actual_set_count) {
+            (void)sqlite3_finalize(statement);
+            free(detail->actual_sets);
+            detail->actual_sets = NULL;
+            detail->actual_set_count = 0U;
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+
+        /* INVARIANT: array index is persisted position order. Nullable load
+         * stays explicit instead of inheriting occurrence target metadata. */
+        detail->actual_sets[count].reps =
+            has_reps != 0
+                ? sqlite3_column_int(statement, 0)
+                : 0;
+        detail->actual_sets[count].duration_seconds =
+            has_duration != 0
+                ? sqlite3_column_int(statement, 1)
+                : 0;
+        detail->actual_sets[count].has_weight =
+            has_weight != 0;
+        detail->actual_sets[count].weight_kg =
+            has_weight != 0
+                ? sqlite3_column_double(statement, 2)
+                : 0.0;
+
         if (count > 0U) {
             TrainlogStatus status = detail_append_text(
                 detail->actual_summary,
@@ -3069,6 +3250,9 @@ static TrainlogStatus detail_fill_sets(
 
             if (status != TRAINLOG_STATUS_OK) {
                 (void)sqlite3_finalize(statement);
+                free(detail->actual_sets);
+                detail->actual_sets = NULL;
+                detail->actual_set_count = 0U;
                 return status;
             }
         }
@@ -3103,6 +3287,9 @@ static TrainlogStatus detail_fill_sets(
                     sizeof(duration_text)
                 ) != TRAINLOG_STATUS_OK) {
                 (void)sqlite3_finalize(statement);
+                free(detail->actual_sets);
+                detail->actual_sets = NULL;
+                detail->actual_set_count = 0U;
                 return TRAINLOG_STATUS_DATABASE_ERROR;
             }
 
@@ -3124,12 +3311,18 @@ static TrainlogStatus detail_fill_sets(
             }
         } else {
             (void)sqlite3_finalize(statement);
+            free(detail->actual_sets);
+            detail->actual_sets = NULL;
+            detail->actual_set_count = 0U;
             return TRAINLOG_STATUS_DATABASE_ERROR;
         }
 
         if (written < 0 ||
             (size_t)written >= sizeof(fragment)) {
             (void)sqlite3_finalize(statement);
+            free(detail->actual_sets);
+            detail->actual_sets = NULL;
+            detail->actual_set_count = 0U;
             return TRAINLOG_STATUS_DATABASE_ERROR;
         }
 
@@ -3143,6 +3336,9 @@ static TrainlogStatus detail_fill_sets(
 
             if (status != TRAINLOG_STATUS_OK) {
                 (void)sqlite3_finalize(statement);
+                free(detail->actual_sets);
+                detail->actual_sets = NULL;
+                detail->actual_set_count = 0U;
                 return status;
             }
         }
@@ -3152,14 +3348,25 @@ static TrainlogStatus detail_fill_sets(
 
     if (rc != SQLITE_DONE) {
         (void)sqlite3_finalize(statement);
+        free(detail->actual_sets);
+        detail->actual_sets = NULL;
+        detail->actual_set_count = 0U;
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
     if (sqlite3_finalize(statement) != SQLITE_OK) {
+        free(detail->actual_sets);
+        detail->actual_sets = NULL;
+        detail->actual_set_count = 0U;
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
-    detail->actual_set_count = count;
+    if (count != detail->actual_set_count) {
+        free(detail->actual_sets);
+        detail->actual_sets = NULL;
+        detail->actual_set_count = 0U;
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
 
     if (count == 0U) {
         (void)snprintf(
@@ -3171,6 +3378,23 @@ static TrainlogStatus detail_fill_sets(
     }
 
     return TRAINLOG_STATUS_OK;
+}
+
+void trainlog_database_free_session_details(
+    TrainlogPersistedExerciseDetail *exercises,
+    size_t exercise_count
+)
+{
+    size_t index;
+
+    if (exercises == NULL) {
+        return;
+    }
+    for (index = 0U; index < exercise_count; ++index) {
+        free(exercises[index].actual_sets);
+        exercises[index].actual_sets = NULL;
+        exercises[index].actual_set_count = 0U;
+    }
 }
 
 TrainlogStatus trainlog_database_get_session_details(
@@ -3219,6 +3443,10 @@ TrainlogStatus trainlog_database_get_session_details(
     size_t total = 0U;
     int rc;
 
+    if (output_exercise_count != NULL) {
+        *output_exercise_count = 0U;
+    }
+
     if (database == NULL ||
         database->connection == NULL ||
         session_id == NULL ||
@@ -3235,8 +3463,6 @@ TrainlogStatus trainlog_database_get_session_details(
         0,
         sizeof(*output_session)
     );
-
-    *output_exercise_count = 0U;
 
     rc = sqlite3_prepare_v2(
         database->connection,
@@ -3389,6 +3615,7 @@ TrainlogStatus trainlog_database_get_session_details(
                 (((TrainlogExerciseDataFields)data_fields) &
                  ~TRAINLOG_EXERCISE_DATA_KNOWN_MASK) != 0U) {
                 (void)sqlite3_finalize(exercises);
+                trainlog_database_free_session_details(output_exercises, copied);
                 return TRAINLOG_STATUS_DATABASE_ERROR;
             }
 
@@ -3404,6 +3631,8 @@ TrainlogStatus trainlog_database_get_session_details(
                                (const char *)equipment_id);
             }
             if (entry_id == NULL) {
+                (void)sqlite3_finalize(exercises);
+                trainlog_database_free_session_details(output_exercises, copied);
                 return TRAINLOG_STATUS_DATABASE_ERROR;
             }
             (void)snprintf(detail->entry_id, sizeof(detail->entry_id), "%s",
@@ -3506,6 +3735,7 @@ TrainlogStatus trainlog_database_get_session_details(
                         10
                     ) == SQLITE_NULL) {
                     (void)sqlite3_finalize(exercises);
+                    trainlog_database_free_session_details(output_exercises, copied);
                     return TRAINLOG_STATUS_DATABASE_ERROR;
                 }
 
@@ -3548,6 +3778,7 @@ TrainlogStatus trainlog_database_get_session_details(
                     (detail->has_continuous_distance != 0) !=
                         distance_required) {
                     (void)sqlite3_finalize(exercises);
+                    trainlog_database_free_session_details(output_exercises, copied);
                     return TRAINLOG_STATUS_DATABASE_ERROR;
                 }
 
@@ -3568,6 +3799,7 @@ TrainlogStatus trainlog_database_get_session_details(
 
                 if (status != TRAINLOG_STATUS_OK) {
                     (void)sqlite3_finalize(exercises);
+                    trainlog_database_free_session_details(output_exercises, copied);
                     return status;
                 }
             }
@@ -3580,10 +3812,12 @@ TrainlogStatus trainlog_database_get_session_details(
 
     if (rc != SQLITE_DONE) {
         (void)sqlite3_finalize(exercises);
+        trainlog_database_free_session_details(output_exercises, copied);
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
     if (sqlite3_finalize(exercises) != SQLITE_OK) {
+        trainlog_database_free_session_details(output_exercises, copied);
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 

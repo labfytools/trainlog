@@ -4,6 +4,7 @@
  */
 
 #include <stdbool.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -150,7 +151,7 @@ static bool seed_exercise(TrainlogDatabase *database)
 static bool test_session_insert(void)
 {
     TrainlogDatabase *database = NULL;
-    TrainlogSetInput sets[2];
+    TrainlogSetInput sets[3];
     TrainlogSessionExerciseInput exercise;
     TrainlogSessionInput session;
     TrainlogSessionSummary persisted_session;
@@ -166,8 +167,12 @@ static bool test_session_insert(void)
     (void)memset(sets, 0, sizeof(sets));
     sets[0].reps = 5;
     sets[0].has_weight = true;
-    sets[0].weight_kg = 80.0;
+    sets[0].weight_kg = 32.5;
     sets[1] = sets[0];
+    sets[1].weight_kg = 0.0;
+    sets[2] = sets[0];
+    sets[2].has_weight = false;
+    sets[2].weight_kg = 0.0;
 
     (void)memset(&exercise, 0, sizeof(exercise));
     (void)snprintf(
@@ -178,12 +183,12 @@ static bool test_session_insert(void)
     );
     exercise.load_mode = TRAINLOG_LOAD_EXTERNAL;
     exercise.rest_seconds = 60;
-    exercise.target_sets = 2;
+    exercise.target_sets = 3;
     exercise.target_reps = 5;
     exercise.target_has_weight = true;
     exercise.target_weight_kg = 80.0;
     exercise.sets = sets;
-    exercise.set_count = 2U;
+    exercise.set_count = 3U;
 
     (void)memset(&session, 0, sizeof(session));
     (void)snprintf(
@@ -233,6 +238,28 @@ static bool test_session_insert(void)
     CHECK(count == 1U);
     /* Regression: local occurrences are `sxe`, never synchronization runs. */
     CHECK(strncmp(persisted_exercises[0].entry_id, "sxe_", 4U) == 0);
+    CHECK(persisted_exercises[0].actual_set_count == 3U);
+    CHECK(persisted_exercises[0].actual_sets[0].has_weight);
+    CHECK(persisted_exercises[0].actual_sets[0].weight_kg == 32.5);
+    CHECK(persisted_exercises[0].actual_sets[1].has_weight);
+    CHECK(persisted_exercises[0].actual_sets[1].weight_kg == 0.0);
+    CHECK(!persisted_exercises[0].actual_sets[2].has_weight);
+
+    trainlog_database_free_session_details(persisted_exercises, count);
+
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
+        "se_negative_weight");
+    sets[0].weight_kg = -0.5;
+    CHECK(trainlog_database_insert_session(database, &session) ==
+        TRAINLOG_STATUS_INVALID_ARGUMENT);
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
+        "se_nonfinite_weight");
+    sets[0].weight_kg = INFINITY;
+    CHECK(trainlog_database_insert_session(database, &session) ==
+        TRAINLOG_STATUS_INVALID_ARGUMENT);
+    CHECK(trainlog_database_session_count(database, &count) ==
+        TRAINLOG_STATUS_OK);
+    CHECK(count == 1U);
 
     trainlog_database_close(database);
     return true;

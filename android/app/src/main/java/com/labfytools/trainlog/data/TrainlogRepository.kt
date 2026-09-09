@@ -2061,7 +2061,7 @@ class TrainlogRepository(
                             val maximum = if (tracking == "reps") 10000 else 86400
                             if (!set.hasOnlyKeys(setOf(valueKey, "weight_kg"), setOf(valueKey)) ||
                                 !set.value(valueKey).isJsonInt(minimum, maximum) ||
-                                (set.has("weight_kg") && !set.value("weight_kg").isPositiveJsonNumber())) {
+                                (set.has("weight_kg") && !set.value("weight_kg").isNonnegativeJsonNumber())) {
                                 return "Série V2 invalide."
                             }
                         }
@@ -2114,6 +2114,8 @@ class TrainlogRepository(
         return number.isFinite() && number % 1.0 == 0.0 && number >= minimum && number <= maximum
     }
     private fun Any?.isPositiveJsonNumber(): Boolean = this is Number && toDouble().isFinite() && toDouble() > 0.0
+    private fun Any?.isNonnegativeJsonNumber(): Boolean =
+        this is Number && toDouble().isFinite() && toDouble() >= 0.0
 
     private fun pcSessionV2Matches(db: SQLiteDatabase, rowId: Long, session: JSONObject): Boolean {
         val headerMatches = db.rawQuery("SELECT started_at,session_type FROM sessions WHERE id=?", arrayOf(rowId.toString())).use {
@@ -3667,13 +3669,17 @@ class TrainlogRepository(
                         TrackingMode.REPS ->
                             draft.sets.all {
                                 it.reps >= 0 &&
-                                    it.durationSeconds == 0
+                                    it.durationSeconds == 0 &&
+                                    (it.weightKg == null ||
+                                        (it.weightKg.isFinite() && it.weightKg >= 0.0))
                             }
 
                         TrackingMode.DURATION ->
                             draft.sets.all {
                                 it.durationSeconds > 0 &&
-                                    it.reps == 0
+                                    it.reps == 0 &&
+                                    (it.weightKg == null ||
+                                        (it.weightKg.isFinite() && it.weightKg >= 0.0))
                             }
                     }
                 }

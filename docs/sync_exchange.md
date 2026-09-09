@@ -142,6 +142,17 @@ The companion corroborates explicit `set`/`cleared` state; it does not overwrite
 a divergent occurrence. Reimporting either artifact reconciles stable
 identities; it neither duplicates sessions nor regenerates occurrence IDs.
 
+Within an ordered `sets[]` array, `weight_kg` belongs to that individual set,
+not to the occurrence or its planned target. Each set therefore replays its own
+repetitions-or-duration and nullable load in its original order. A replay is
+idempotent: it preserves historic heterogeneous values and does not replace
+blank loads with zero, a target value, or another set's load.
+
+An omitted `weight_kg` remains a null/absent actual load. When present, V2
+requires a finite value `>= 0`, including explicit zero. This does not alter
+the separate strictly-positive `max_weight_kg`/`max_results` contract, V2's
+version number, or frozen `TRAINLOG_FORMAT_V1`.
+
 Exercise profile fields:
 
 ```text

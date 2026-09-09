@@ -97,6 +97,39 @@ typedef struct SyncSilence {
     int null_fd;
 } SyncSilence;
 
+static void sync_compose_diagnostic(
+    char *output,
+    size_t output_size,
+    const char *prefix,
+    const char *detail
+)
+{
+    size_t written = 0U;
+
+    if (output == NULL || output_size == 0U) {
+        return;
+    }
+
+    /* CONTRACT: diagnostics retain their specific context and as much of the
+     * underlying failure as fits. INVARIANT: output is always NUL-terminated,
+     * even when an external tool supplies the maximum-length error. */
+    while (prefix != NULL && prefix[written] != '\0' &&
+           written + 1U < output_size) {
+        output[written] = prefix[written];
+        written += 1U;
+    }
+    if (detail != NULL) {
+        size_t detail_index = 0U;
+        while (detail[detail_index] != '\0' &&
+               written + 1U < output_size) {
+            output[written] = detail[detail_index];
+            written += 1U;
+            detail_index += 1U;
+        }
+    }
+    output[written] = '\0';
+}
+
 TrainlogSyncDirectionPlan trainlog_sync_direction_plan(
     TrainlogSyncDirection direction
 )
@@ -2451,10 +2484,10 @@ void trainlog_sync_build_summary(
                 report->catalog_published);
         }
     } else {
-        (void)snprintf(
+        sync_compose_diagnostic(
             report->summary,
             sizeof(report->summary),
-            "%s",
+            "",
             report->error[0] != '\0'
                 ? report->error
                 : "Synchronisation échouée."
@@ -2811,9 +2844,12 @@ TrainlogStatus trainlog_sync_run(
             strstr(tool_output, "EQUIPMENT_DEFINITIONS_IMPORT=PASS") == NULL) {
             char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
             sync_last_nonempty_line(tool_output, useful, sizeof(useful));
-            (void)snprintf(output->error, sizeof(output->error),
-                           "Android→PC : définitions équipement : %s",
-                           useful[0] != '\0' ? useful : "import échoué");
+            sync_compose_diagnostic(
+                output->error,
+                sizeof(output->error),
+                "Android→PC : définitions équipement : ",
+                useful[0] != '\0' ? useful : "import échoué"
+            );
             final_status = TRAINLOG_STATUS_DATABASE_ERROR;
             goto finalize;
         }
@@ -2886,10 +2922,10 @@ TrainlogStatus trainlog_sync_run(
             sizeof(useful)
         );
 
-        (void)snprintf(
+        sync_compose_diagnostic(
             output->error,
             sizeof(output->error),
-            "Android→PC : %s",
+            "Android→PC : ",
             useful[0] != '\0'
                 ? useful
                 : "import mobile échoué"
@@ -2932,11 +2968,14 @@ TrainlogStatus trainlog_sync_run(
         if (status != TRAINLOG_STATUS_OK ||
             strstr(tool_output, "EQUIPMENT_ASSOCIATIONS_IMPORT=PASS") == NULL) {
             sync_last_nonempty_line(tool_output, useful, sizeof(useful));
-            (void)snprintf(output->error, sizeof(output->error),
-                           "Android→PC : import équipement : %s",
-                           useful[0] != '\0'
-                               ? useful
-                               : "échec sans diagnostic du script");
+            sync_compose_diagnostic(
+                output->error,
+                sizeof(output->error),
+                "Android→PC : import équipement : ",
+                useful[0] != '\0'
+                    ? useful
+                    : "échec sans diagnostic du script"
+            );
             final_status = TRAINLOG_STATUS_DATABASE_ERROR;
             goto finalize;
         }
@@ -3004,10 +3043,10 @@ outbound:
             sizeof(useful)
         );
 
-        (void)snprintf(
+        sync_compose_diagnostic(
             output->error,
             sizeof(output->error),
-            "PC→Android : %s",
+            "PC→Android : ",
             useful[0] != '\0'
                 ? useful
                 : "export catalogue échoué"

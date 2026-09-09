@@ -26,7 +26,7 @@
 static bool test_session_details(void)
 {
     TrainlogDatabase *database = NULL;
-    TrainlogSetInput sets[3];
+    TrainlogSetInput sets[80];
     TrainlogSessionExerciseInput exercise;
     TrainlogSessionInput session;
     TrainlogSessionSummary summary;
@@ -52,15 +52,22 @@ static bool test_session_details(void)
 
     (void)memset(sets, 0, sizeof(sets));
 
+    for (size_t index = 0U; index < 80U; ++index) {
+        sets[index].reps = (int)index + 1;
+    }
+
     sets[0].reps = 5;
     sets[0].has_weight = true;
-    sets[0].weight_kg = 80.0;
+    sets[0].weight_kg = 78.25;
 
     sets[1] = sets[0];
+    sets[1].reps = 4;
+    sets[1].has_weight = false;
+    sets[1].weight_kg = 0.0;
 
     sets[2].reps = 3;
     sets[2].has_weight = true;
-    sets[2].weight_kg = 80.0;
+    sets[2].weight_kg = 81.75;
 
     (void)memset(
         &exercise,
@@ -78,14 +85,14 @@ static bool test_session_details(void)
                    "%s", "leg_press");
 
     exercise.load_mode =
-        TRAINLOG_LOAD_EXTERNAL;
+        TRAINLOG_LOAD_ASSISTANCE;
     exercise.rest_seconds = 60;
     exercise.target_sets = 3;
     exercise.target_reps = 5;
     exercise.target_has_weight = true;
     exercise.target_weight_kg = 80.0;
     exercise.sets = sets;
-    exercise.set_count = 3U;
+    exercise.set_count = 80U;
 
     (void)memset(
         &session,
@@ -147,14 +154,21 @@ static bool test_session_details(void)
     CHECK(details[0].target_reps == 5);
     CHECK(details[0].rest_seconds == 60);
     CHECK(strcmp(details[0].equipment_id, "leg_press") == 0);
-    CHECK(details[0].actual_set_count == 3U);
-    CHECK(
-        strcmp(
-            details[0].actual_summary,
-            "5@80.0 / 5@80.0 / 3@80.0"
-        ) == 0
-    );
+    CHECK(details[0].actual_set_count == 80U);
+    CHECK(details[0].load_mode == TRAINLOG_LOAD_ASSISTANCE);
+    CHECK(details[0].actual_sets[0].reps == 5);
+    CHECK(details[0].actual_sets[0].has_weight);
+    CHECK(details[0].actual_sets[0].weight_kg > 78.24);
+    CHECK(details[0].actual_sets[0].weight_kg < 78.26);
+    CHECK(details[0].actual_sets[1].reps == 4);
+    CHECK(!details[0].actual_sets[1].has_weight);
+    CHECK(details[0].actual_sets[2].reps == 3);
+    CHECK(details[0].actual_sets[2].weight_kg > 81.74);
+    CHECK(details[0].actual_sets[2].weight_kg < 81.76);
+    CHECK(details[0].actual_sets[64].reps == 65);
+    CHECK(details[0].actual_sets[79].reps == 80);
 
+    trainlog_database_free_session_details(details, count);
     trainlog_database_close(database);
     return true;
 }

@@ -11,7 +11,7 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 9
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 10
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
@@ -198,13 +198,20 @@ typedef struct TrainlogPersistedExerciseDetail {
     double continuous_distance_km;
 
     size_t actual_set_count;
+    /* CONTRACT: history consumes this occurrence-owned ordered snapshot;
+     * rendering must not reach into SQLite or impose a global dataset cap. */
+    TrainlogSetInput *actual_sets;
     char actual_summary[TRAINLOG_SET_SUMMARY_MAX + 1U];
 } TrainlogPersistedExerciseDetail;
 
 /**
  * @brief Load one session header plus ordered exercise details.
  *
- * The function is read-only and allocates nothing.
+ * Callers must release a prior successful result before reusing its array.
+ * On success, each copied detail owns actual_sets until released with
+ * trainlog_database_free_session_details(). On failure, the function releases
+ * every partial allocation and, when output_exercise_count is non-NULL, sets
+ * it to zero. A nonzero capacity requires a non-NULL output_exercises array.
  */
 TrainlogStatus trainlog_database_get_session_details(
     TrainlogDatabase *database,
@@ -213,6 +220,12 @@ TrainlogStatus trainlog_database_get_session_details(
     TrainlogPersistedExerciseDetail *output_exercises,
     size_t exercise_capacity,
     size_t *output_exercise_count
+);
+
+/* Safe for zero-initialized details and details returned by the loader. */
+void trainlog_database_free_session_details(
+    TrainlogPersistedExerciseDetail *exercises,
+    size_t exercise_count
 );
 
 

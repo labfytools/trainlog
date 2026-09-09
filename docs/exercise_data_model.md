@@ -92,29 +92,25 @@ equivalence across different machines.
 
 `SETS + REPS` stores one performed-set row per actual set.
 
-Actual repetitions can differ across sets.
-
-Accepted compact repetition input includes:
-
-```text
-5x10
-4,5,6,7,8,9,10,9,8,7,6,5,4
-4..10..4
-```
-
-The pyramid shorthand:
-
-```text
-4..10..4
-```
-
-expands to:
-
-```text
-4,5,6,7,8,9,10,9,8,7,6,5,4
-```
+Each ordered performed set independently owns its repetitions and an optional
+`weight_kg`. Actual repetitions and actual loads can therefore differ from one
+set to the next. A missing load is not a zero load and is not filled from a
+planned target. When supplied, an actual load is finite and `>= 0`; an explicit
+zero is preserved as an observed value.
 
 Each performed row is the source of truth for actual work.
+
+New normal desktop set work is created only as explicit actual rows. Compact
+performed-repetition expressions are not an active desktop entry form; Android
+legacy-draft decoding is a separate compatibility behavior documented in
+`docs/android.md`.
+
+Existing historical rows retain their stored repetitions, optional loads and
+order unchanged. Editing or exchanging a session never normalizes heterogeneous
+actual values into a uniform prescription.
+
+This per-set capture contract does not introduce volume/tonnage, estimated 1RM,
+or progression calculations.
 
 `SETS + DURATION` likewise stores one actual duration per performed set.
 

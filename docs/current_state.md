@@ -1,6 +1,6 @@
 # Current implementation state
 
-Canonical snapshot: 2026-09-08.
+Canonical snapshot: 2026-09-09.
 
 This document is the compact source of truth for the implemented Trainlog
 baseline. Detailed behavior belongs in the topic-specific documents.
@@ -14,7 +14,7 @@ GATE_2_PERSISTENCE_AND_USABLE_TUI=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V9=PASS
+DESKTOP_SCHEMA_V10=PASS
 ANDROID_LOCAL_DATABASE_V9=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 ANDROID_DRAFT_DURABLE=PASS
@@ -57,7 +57,7 @@ EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 MAX_TEST_RESUME_STABLE_ID=PASS
 
-DESKTOP_TESTS=34/34 PASS
+DESKTOP_TESTS=36/36 PASS
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=PASS
 ```
@@ -67,10 +67,15 @@ HARDWARE_SYNC_VALIDATION=PASS
 Implemented:
 
 - C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
-- SQLite schema v9, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v10, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
-  definitions, plus occurrence-owned `max_results`;
+  definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
+  rebuilds only `performed_sets` to permit explicit zero actual loads while
+  preserving historic NULL and positive rows;
 - direct session entry;
+- normal desktop SETS planning followed by the table-only explicit actual-row
+  editor; zero-row completion is rejected while MAX and continuous entries keep
+  their separate no-set contracts;
 - persisted session detail and editing;
 - exercise removal from a session through transactional child replacement;
 - exercise catalog;
@@ -104,7 +109,7 @@ Primary navigation:
 Implemented:
 
 - native Kotlin/Compose application;
-- local SQLite database v8, with non-destructive v3 -> v8 migration;
+- local SQLite database v9, with non-destructive v3 -> v9 migration;
 - one durable active-session draft, Home resume and raw-form restoration;
 - explicit confirmed discard and atomic completed-save/draft-clear;
 - exercise creation;
@@ -221,17 +226,17 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-34/34 Meson tests PASS for the current desktop schema v9 baseline
-frozen JSON validator PASS
-import-contract validator PASS
-ASan/UBSan 34/34 Meson tests PASS
+36/36 Meson tests PASS for the current desktop schema v10 baseline
+JSON valid/invalid checks PASS
+import-contract validator 6/6 PASS
+ASan/UBSan 14/14 Meson tests PASS postrepair
 git diff --check PASS
 ```
 
 Android:
 
 ```text
-testDebugUnitTest PASS
+37 Android unit tests PASS
 assembleDebug PASS
 ```
 
@@ -282,11 +287,11 @@ ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 MAX_TEST_RESUME_STABLE_ID=PASS
-DESKTOP_TESTS=34/34 PASS
+DESKTOP_TESTS=36/36 PASS
 ```
 
 A measured maximum belongs to an exercise occurrence in an explicit `max_test`
-session. Schema v9 persists a positive `max_weight_kg` separately from sets;
+session. Schema v9 introduced the positive `max_weight_kg` separately from sets;
 equipment is optional context, so one physical machine may carry independent
 Pec Fly and Rear Delt Fly results. Ordinary training is never promoted
 implicitly.
@@ -312,7 +317,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=34/34 PASS
+DESKTOP_TESTS=36/36 PASS
 ```
 
 Android remains capture-only for this feature.

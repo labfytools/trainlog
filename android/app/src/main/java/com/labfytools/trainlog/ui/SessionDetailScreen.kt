@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
+import com.labfytools.trainlog.data.EquipmentLoadSemantics
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionExerciseDetail
@@ -36,6 +37,10 @@ fun SessionDetailScreen(
                     it
                 )
             }
+        }
+    val equipmentEntries =
+        remember(sessionId, revision) {
+            repository.listEquipment()
         }
 
     TrainlogScreen(
@@ -177,7 +182,10 @@ fun SessionDetailScreen(
                         )
                     } else {
                         SetsDetail(
-                            exercise
+                            exercise = exercise,
+                            loadSemantics = equipmentEntries
+                                .firstOrNull { it.equipmentId == exercise.equipmentId }
+                                ?.loadSemantics,
                         )
                     }
                 }
@@ -188,6 +196,7 @@ fun SessionDetailScreen(
 @Composable
 private fun SetsDetail(
     exercise: SessionExerciseDetail,
+    loadSemantics: EquipmentLoadSemantics?,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -205,6 +214,18 @@ private fun SetsDetail(
         color = colors.accent,
     )
 
+    if (exercise.trackingMode == TrackingMode.REPS) {
+        val loadHeading =
+            if (loadSemantics == EquipmentLoadSemantics.ASSISTANCE) {
+                "Assistance (kg)"
+            } else {
+                "Charge (kg)"
+            }
+        /* Readable row table: history must expose every persisted value and
+         * distinguish an absent load from an explicit zero. */
+        TrainlogInfo("Série | Répétitions | $loadHeading", color = colors.muted)
+    }
+
     exercise.sets
         .forEachIndexed {
                 index,
@@ -215,13 +236,10 @@ private fun SetsDetail(
                     exercise.trackingMode ==
                     TrackingMode.REPS
                 ) {
-                    buildString {
-                        append("Série ${index + 1} : ${set.reps} reps")
-                        set.weightKg?.let {
-                            val rendered = "%.2f".format(java.util.Locale.FRANCE, it).trimEnd('0').trimEnd(',')
-                            append(" · $rendered kg")
-                        }
-                    }
+                    val renderedWeight = set.weightKg?.let {
+                        "%.2f".format(java.util.Locale.FRANCE, it).trimEnd('0').trimEnd(',')
+                    } ?: "—"
+                    "${index + 1} | ${set.reps} | $renderedWeight"
                 } else {
                     "Série ${index + 1} : ${formatDuration(set.durationSeconds)}"
                 }

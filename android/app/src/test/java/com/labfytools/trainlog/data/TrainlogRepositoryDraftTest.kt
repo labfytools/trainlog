@@ -105,6 +105,115 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
+    fun actualSetWeightsPreservePositiveZeroAndAbsentAcrossDraftFinalizeAndExport() {
+        val first = openRepository()
+        val exercise = createExercise(first, "Charges exactes", RecordingMode.SETS, TrackingMode.REPS)
+        val expectedSets = listOf(
+            SessionSetDraft(reps = 8, weightKg = 32.5),
+            SessionSetDraft(reps = 7, weightKg = 0.0),
+            SessionSetDraft(reps = 6, weightKg = null),
+        )
+        assertEquals(
+            ActiveDraftMutationResult.Saved,
+            first.saveActiveSessionDraft(
+                ActiveSessionDraft(
+                    exercises = listOf(SessionExerciseDraft(exercise = exercise, sets = expectedSets)),
+                ),
+            ),
+        )
+        first.close()
+        repository = null
+
+        val reopened = openRepository()
+        assertEquals(expectedSets, loadDraft(reopened).exercises.single().sets)
+        assertTrue(reopened.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+        val exportedSets = JSONObject(reopened.buildMobileExportV2Json())
+            .getJSONArray("sessions").getJSONObject(0)
+            .getJSONArray("exercises").getJSONObject(0).getJSONArray("sets")
+        assertEquals(32.5, exportedSets.getJSONObject(0).getDouble("weight_kg"), 0.0)
+        assertTrue(exportedSets.getJSONObject(1).has("weight_kg"))
+        assertEquals(0.0, exportedSets.getJSONObject(1).getDouble("weight_kg"), 0.0)
+        assertFalse(exportedSets.getJSONObject(2).has("weight_kg"))
+
+        val invalidDraft = SessionExerciseDraft(
+            exercise = exercise,
+            sets = listOf(SessionSetDraft(reps = 5, weightKg = Double.NaN)),
+        )
+        assertTrue(reopened.saveSession(SessionDraft(listOf(invalidDraft))) is SaveSessionResult.Invalid)
+        assertTrue(
+            reopened.saveActiveSessionDraft(ActiveSessionDraft(exercises = listOf(invalidDraft)))
+                is ActiveDraftMutationResult.Error,
+        )
+    }
+
+    @Test
+    fun pcMobileV2AcceptsZeroWeightAndRejectsInvalidWeightsAtomically() {
+        val repo = openRepository()
+        val localExercise = createExercise(repo, "Charge V2", RecordingMode.SETS, TrackingMode.REPS)
+
+        fun artifact(weight: Any, sessionId: String, max: Boolean = false): JSONObject {
+            val exercise = JSONObject()
+                .put("exercise_id", localExercise.exerciseId)
+                .put("name", "Charge V2")
+                .put("recording_mode", "sets")
+                .put("tracking_mode", "reps")
+                .put("data_fields", 0)
+            val entry = JSONObject()
+                .put("entry_id", "sxe_$sessionId")
+                .put("position", 0)
+                .put("exercise_id", localExercise.exerciseId)
+                .put("name", "Charge V2")
+                .put("recording_mode", "sets")
+                .put("tracking_mode", "reps")
+                .put("data_fields", 0)
+                .put("load_mode", "none")
+                .put("rest_seconds", 0)
+                .put("equipment_id", JSONObject.NULL)
+            if (max) {
+                entry.put("max_weight_kg", weight)
+            } else {
+                entry.put("sets", org.json.JSONArray().put(JSONObject().put("reps", 5).put("weight_kg", weight)))
+            }
+            return JSONObject()
+                .put("format", "trainlog-mobile-export")
+                .put("version", 2)
+                .put("generated_at", "2026-09-09T10:00:00+02:00")
+                .put("exercises", org.json.JSONArray().put(exercise))
+                .put(
+                    "sessions",
+                    org.json.JSONArray().put(
+                        JSONObject()
+                            .put("session_id", sessionId)
+                            .put("started_at", "2026-09-09T10:00:00+02:00")
+                            .put("session_type", if (max) "max_test" else "training")
+                            .put("exercises", org.json.JSONArray().put(entry)),
+                    ),
+                )
+                .put("body_observations", org.json.JSONArray())
+        }
+
+        val accepted = artifact(0.0, "se_zero_v2")
+        assertEquals(MobileSessionImportResult.Applied(1, 0, 0, 0), repo.applyPcMobileExportV2Json(accepted.toString()))
+        assertEquals(MobileSessionImportResult.Applied(0, 1, 0, 0), repo.applyPcMobileExportV2Json(accepted.toString()))
+        val before = JSONObject(repo.buildMobileExportV2Json()).getJSONArray("sessions").toString()
+        listOf(-1.0, true, "0").forEachIndexed { index, value ->
+            assertTrue(
+                repo.applyPcMobileExportV2Json(artifact(value, "se_invalid_$index").toString())
+                    is MobileSessionImportResult.Invalid,
+            )
+            assertEquals(before, JSONObject(repo.buildMobileExportV2Json()).getJSONArray("sessions").toString())
+        }
+        listOf("NaN", "Infinity", "-Infinity").forEachIndexed { index, token ->
+            val invalidJson = artifact(1.234567, "se_nonfinite_$index").toString()
+                .replace("1.234567", token)
+            assertTrue(repo.applyPcMobileExportV2Json(invalidJson) is MobileSessionImportResult.Invalid)
+            assertEquals(before, JSONObject(repo.buildMobileExportV2Json()).getJSONArray("sessions").toString())
+        }
+        assertTrue(repo.applyPcMobileExportV2Json(artifact(0.0, "se_zero_max", max = true).toString()) is MobileSessionImportResult.Invalid)
+        assertEquals(before, JSONObject(repo.buildMobileExportV2Json()).getJSONArray("sessions").toString())
+    }
+
+    @Test
     fun removingExerciseAndDiscardingDraftDoNotDeleteCatalog() {
         val repo = openRepository()
         val kept = createExercise(repo, "Vélo", RecordingMode.CONTINUOUS, TrackingMode.DURATION)
@@ -215,9 +324,18 @@ class TrainlogRepositoryDraftTest {
         val draft = ActiveSessionDraft(
             exercises = listOf(SessionExerciseDraft(
                 exercise = exercise, equipmentId = equipmentId,
-                sets = listOf(SessionSetDraft(10, weightKg = 12.5), SessionSetDraft(8, weightKg = 15.0)),
+                sets = listOf(
+                    SessionSetDraft(10, weightKg = 12.5),
+                    SessionSetDraft(8, weightKg = null),
+                    SessionSetDraft(6, weightKg = 15.0),
+                ),
             )),
-            form = SessionDraftForm(selectedExercise = exercise, selectedEquipmentId = equipmentId, weightText = "12,5;15"),
+            form = SessionDraftForm(
+                selectedExercise = exercise,
+                selectedEquipmentId = equipmentId,
+                repsText = "10;8;6",
+                weightText = "12,5;;15",
+            ),
         )
         assertEquals(ActiveDraftMutationResult.Saved, repo.saveActiveSessionDraft(draft))
         repo.close(); repository = null
@@ -226,7 +344,8 @@ class TrainlogRepositoryDraftTest {
         assertTrue(reopened.listEquipment().any { it.equipmentId == equipmentId })
         assertTrue(reopened.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
         val detail = reopened.getSessionDetail(reopened.listSessions().single().sessionId)!!
-        assertEquals(listOf(12.5, 15.0), detail.exercises.single().sets.map { it.weightKg })
+        assertEquals(listOf(10, 8, 6), detail.exercises.single().sets.map { it.reps })
+        assertEquals(listOf(12.5, null, 15.0), detail.exercises.single().sets.map { it.weightKg })
     }
 
     @Test

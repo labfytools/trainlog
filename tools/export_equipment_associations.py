@@ -27,8 +27,8 @@ def main():
     args = parser.parse_args()
     connection = sqlite3.connect(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9):
-            raise ValueError("schema desktop v8 ou v9 requis")
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10):
+            raise ValueError("schema desktop v8, v9 ou v10 requis")
         known_equipment = load_supplied_equipment_ids(args.catalog)
         known_equipment.update(row[0] for row in connection.execute(
             "SELECT equipment_id FROM custom_equipment"))

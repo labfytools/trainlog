@@ -92,6 +92,14 @@ int main(void)
     report.exercises_imported = 1U;
     trainlog_sync_build_summary(&report);
     CHECK(strstr(report.summary, "+1 exercice(s)") != NULL);
+
+    report.success = false;
+    memset(report.error, 'x', TRAINLOG_SYNC_ERROR_MAX);
+    report.error[TRAINLOG_SYNC_ERROR_MAX] = '\0';
+    trainlog_sync_build_summary(&report);
+    CHECK(strlen(report.summary) == TRAINLOG_SYNC_SUMMARY_MAX);
+    CHECK(report.summary[TRAINLOG_SYNC_SUMMARY_MAX] == '\0');
+    CHECK(report.summary[0] == 'x');
     puts("PASS sync direction plan");
     return 0;
 }

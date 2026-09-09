@@ -22,7 +22,7 @@ CREATE TABLE continuous_activity(id INTEGER PRIMARY KEY,session_exercise_row_id 
 CREATE TABLE max_results(session_exercise_row_id INTEGER PRIMARY KEY,max_weight_kg REAL NOT NULL CHECK(max_weight_kg>0));
 CREATE TABLE body_observations(id INTEGER PRIMARY KEY,observation_id TEXT UNIQUE,observed_at TEXT,session_row_id INTEGER,body_weight_kg REAL,neck_cm REAL,shoulders_cm REAL,chest_cm REAL,waist_cm REAL,hips_cm REAL,left_arm_cm REAL,right_arm_cm REAL,left_forearm_cm REAL,right_forearm_cm REAL,left_thigh_cm REAL,right_thigh_cm REAL,left_calf_cm REAL,right_calf_cm REAL,notes TEXT);
 CREATE TABLE custom_equipment(equipment_id TEXT PRIMARY KEY,display_name TEXT NOT NULL,label_name TEXT NOT NULL,equipment_type TEXT NOT NULL,load_semantics TEXT NOT NULL);
-PRAGMA user_version=9;
+PRAGMA user_version=10;
 """
 
 

@@ -16,7 +16,7 @@ desktop.
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V9=PASS
+DESKTOP_SCHEMA_V10=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
 ANDROID_LOCAL_DATABASE_V9=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
@@ -38,7 +38,7 @@ EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 
-DESKTOP_TESTS=34/34 PASS
+DESKTOP_TESTS=36/36 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -97,20 +97,20 @@ SETS + DURATION
 CONTINUOUS + DURATION
 ```
 
-Actual repetition sets are stored independently. Compact input supports:
-
-```text
-5x10
-4,5,6,7,8,9,10,9,8,7,6,5,4
-4..10..4
-```
+Actual repetition sets are stored independently. The Notcurses desktop flow
+collects planning only, then creates actual work in an ordered table: the user
+explicitly adds every row and enters its actual repetitions (or duration) and
+optional load. It does not accept compact performed-repetition input; normal
+set sessions cannot finish with zero actual rows.
 
 A session may contain several ordered occurrences of the same catalogue
 exercise. Each occurrence has a stable `entry_id`, distinct from the stable
 `exercise_id` of the catalogue item. Equipment selection belongs to that
 occurrence, as do its actual per-set loads. `external` records an applied or
 machine-displayed load; `assistance` records assistance and is not interpreted
-as increasing strength.
+as increasing strength. An actual load is either absent or finite and
+non-negative, so an explicit zero remains distinct from no recorded load;
+planned targets remain strictly positive and are never substituted for actuals.
 
 In a `max_test` session, an occurrence may instead own one explicit positive
 `max_weight_kg`. This result has no performed set, repetitions, or target-set
@@ -296,5 +296,5 @@ BODY_ANALYTICS_V1=PASS
 BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=34/34 PASS
+DESKTOP_TESTS=36/36 PASS
 ```
