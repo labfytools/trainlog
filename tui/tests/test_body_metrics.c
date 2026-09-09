@@ -98,7 +98,9 @@ static bool test_body_metrics(void)
 
 int main(void)
 {
-    CHECK(test_body_metrics());
+    if (!test_body_metrics()) {
+        return 1;
+    }
     (void)printf("PASS body_metrics\n");
     return 0;
 }

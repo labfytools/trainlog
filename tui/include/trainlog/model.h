@@ -14,6 +14,7 @@
 #define TRAINLOG_NAME_MAX 200U
 #define TRAINLOG_TIMESTAMP_MAX 40U
 #define TRAINLOG_NOTE_MAX 4000U
+#define TRAINLOG_ZONE_ID_MAX 64U
 
 typedef enum TrainlogTrackingMode {
     TRAINLOG_TRACKING_REPS = 0,
@@ -51,6 +52,19 @@ typedef struct TrainlogExercise {
     TrainlogRecordingMode recording_mode;
     TrainlogExerciseDataFields data_fields;
 } TrainlogExercise;
+
+typedef enum TrainlogBodyZoneRole {
+    TRAINLOG_BODY_ZONE_PRIMARY = 0,
+    TRAINLOG_BODY_ZONE_SECONDARY
+} TrainlogBodyZoneRole;
+
+/* CONTRACT: zone_id is a stable manifest identity. Database readers copy
+ * relations into caller-owned fixed-width records; display names never cross
+ * this persistence API. */
+typedef struct TrainlogExerciseBodyZone {
+    char zone_id[TRAINLOG_ZONE_ID_MAX + 1U];
+    TrainlogBodyZoneRole role;
+} TrainlogExerciseBodyZone;
 
 typedef struct TrainlogSetInput {
     int reps;

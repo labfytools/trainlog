@@ -141,6 +141,11 @@ static bool test_explicit_max_round_trip_and_identity(void)
 static bool test_v8_migration_refuses_to_guess_multiple_attempts(void)
 {
     static const char *const SQL =
+        /* A real v8 database always owns the exercise table even though this
+         * MAX-only fixture has no exercise rows. */
+        "CREATE TABLE exercises(id INTEGER PRIMARY KEY,exercise_id TEXT NOT NULL UNIQUE,"
+        "name TEXT NOT NULL,normalized_name TEXT NOT NULL UNIQUE,tracking_mode TEXT NOT NULL,"
+        "recording_mode TEXT NOT NULL,data_fields INTEGER NOT NULL);"
         "CREATE TABLE sessions(id INTEGER PRIMARY KEY,session_type TEXT);"
         "CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,"
         "session_row_id INTEGER,recording_mode TEXT);"

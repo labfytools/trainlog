@@ -49,4 +49,19 @@ TrainlogStatus trainlog_catalog_create_exercise_profiled(
     TrainlogExercise *output_exercise
 );
 
+/* CONTRACT: creation and its zone relations commit as one user operation.
+ * A NULL primary is reserved for explicit unclassified/historic workflows;
+ * interactive strength creation supplies one assignable manifest zone. */
+TrainlogStatus trainlog_catalog_create_exercise_profiled_with_zones(
+    TrainlogDatabase *database,
+    const char *name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields,
+    const char *primary_zone_id,
+    const char *const *secondary_zone_ids,
+    size_t secondary_count,
+    TrainlogExercise *output_exercise
+);
+
 #endif

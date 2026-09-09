@@ -3,8 +3,8 @@
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=10
-DATABASE_SCHEMA_V10=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=11
+DATABASE_SCHEMA_V11=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -23,7 +23,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-10
+11
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -61,6 +61,13 @@ checks lossless migration, rollback after an injected rebuild-name collision,
 `PRAGMA integrity_check`, `PRAGMA foreign_key_check`, restored foreign-key
 enforcement, and rejection of negative loads or invalid metric shapes.
 
+Version 11 is additive. It creates `exercise_body_zones` and the private
+`exercise_body_zone_sync` comparison baseline, then inserts only the exact
+stable-ID mappings declared with evidence in `catalog/body-zones-v1.json`.
+There is no exercise-ID, occurrence-ID, session, performed-set, MAX, equipment
+or body-observation rewrite. The migration is one transaction and uncertain
+historical exercises remain valid with no relation.
+
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
 
@@ -95,6 +102,31 @@ Rules include:
 - continuous implies duration tracking;
 - unknown supplemental field bits are rejected;
 - normalized names remain unique.
+
+### `exercise_body_zones`
+
+Direct exercise-to-zone relations:
+
+```text
+exercise_row_id      foreign key -> exercises(id), cascade delete
+zone_id              stable ID from body-zones-v1.json
+role                 primary | secondary
+PRIMARY KEY          exercise_row_id, zone_id
+partial UNIQUE       one role=primary row per exercise
+```
+
+The composite key prevents one zone from being both primary and secondary.
+Public writers validate that every ID exists and is not a group. An exercise
+with no rows is explicitly unclassified; a secondary-only state is rejected as
+corruption. Parent relations are derived from the manifest during filtering
+and are not stored here.
+
+`exercise_body_zone_sync(exercise_row_id, synced_state)` is internal sync
+metadata, not domain data. Its deterministic state records a nullable primary
+and byte-sorted secondary IDs so one-sided edits can be distinguished from a
+simultaneous conflict. It is never exposed as a translated value or used to
+merge secondary sets by union. The publishing peer records the exact snapshot
+as its baseline only after the companion has been published successfully.
 
 ### `sessions`
 
@@ -292,6 +324,10 @@ A failed replacement rolls back to the previously persisted session.
 Body-observation editing preserves its stable identity, timestamp, and optional
 session link.
 
+Exercise creation/editing and replacement of all direct body-zone relations is
+one transaction. Invalid or duplicate IDs leave both exercise metadata and the
+prior relation set unchanged.
+
 ## 7. Mobile import semantics
 
 `tools/import_mobile_export.py` validates the complete mobile snapshot before
@@ -300,7 +336,7 @@ committing database changes.
 Properties:
 
 ```text
-schema-v5-through-v8 aware
+schema-v5-through-v11 aware
 transactional
 idempotent by stable IDs
 profile-aware catalog reconciliation
@@ -317,6 +353,8 @@ desktop identity is deterministic canonical ownership. The mask union retains
 the richer capability, while `session_exercises.data_fields` and all child
 values remain unchanged. A missing historic optional value stays `NULL`.
 Incomparable masks or modes reject the entire mobile-import transaction.
+On v11, a safe duplicate-row merge also preserves the only non-empty body-zone
+state. Different non-empty states conflict; no relation list is unioned.
 
 ## 8. Units
 
@@ -334,12 +372,16 @@ distance              km
 
 The Android SQLite database is independent.
 
-Current Android-local version: **9**. The explicit migration chain adds the
+Current Android-local version: **10**. The explicit migration chain adds the
 durable draft in v4, equipment references in v5, per-set load in v6, occurrence
 identity/multi-occurrence support in v7, and the widened custom-equipment
 definition graph in v8. Version 9 adds completed/draft explicit max rows, raw
 max and load form text, and the optional stable source session used to resume a
 completed Test max.
+
+Version 10 adds `exercise_body_zones` and `exercise_body_zone_sync`, validates
+IDs against the shared manifest asset, and seeds the same stable-ID mappings as
+desktop v11 without modifying completed or draft work.
 
 | Table | Ownership |
 | --- | --- |
@@ -351,6 +393,8 @@ completed Test max.
 | `max_results` | Positive explicit max weight, one-to-one with a completed occurrence |
 | `equipment`, `equipment_aliases` | Supplied and user-created definitions used by selectors and occurrence FKs |
 | `exercise_equipment`, `catalog_exercise_equipment` | Persisted manifest relationship metadata retained across migrations and identity reconciliation |
+| `exercise_body_zones` | Direct primary/secondary stable zone IDs; no derived parent rows |
+| `exercise_body_zone_sync` | Private common-state baseline for explicit conflict detection |
 
 Foreign keys remain enabled. Draft deletion cascades only through draft child
 tables; it cannot delete catalog entries or completed history. The repository
@@ -397,12 +441,15 @@ Migration-specific regression coverage includes:
 ```text
 schema_v5_migration
 schema_v7_migration
+body_zones
+body_zone_catalog_validation
+body_zone_sync
 exercise_reconciliation
 max_results
 max_sync
 ```
 
-The current normal desktop suite contains 34 tests.
+The current normal desktop suite contains 39 tests.
 
 ## 11. Explicit and legacy measured maxima
 
@@ -473,10 +520,14 @@ durable-draft occurrences. A resumed max-test draft preserves its source
 `session_id`; atomic finalization replaces that session's ordered children
 instead of generating a second session.
 
+Desktop schema v11 and Android schema v10 then add only body-zone relation and
+sync-baseline tables. Both seed exact manifest mappings by stable exercise ID;
+neither migration changes the occurrence/equipment/MAX graph described above.
+
 ## 13. Body analytics persistence rule
 
-Body analytics still require no schema change beyond schema v8; schema v9 does
-not alter their storage.
+Body analytics still require no dedicated schema change; schemas v9 through
+v11 do not alter their measurement storage.
 
 Canonical persistence continues to contain only measurements actually entered
 by the user.

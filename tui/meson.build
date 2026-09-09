@@ -23,6 +23,13 @@ equipment_catalog_generated = custom_target(
   command: [find_program('python3'), meson.project_source_root() / 'tools/generate_equipment_catalog.py', '@INPUT@', '@OUTPUT@'],
 )
 
+body_zone_catalog_generated = custom_target(
+  'body_zone_catalog_generated',
+  input: meson.project_source_root() / 'catalog/body-zones-v1.json',
+  output: 'body_zone_catalog_generated.c',
+  command: [find_program('python3'), meson.project_source_root() / 'tools/generate_body_zone_catalog.py', '@INPUT@', '@OUTPUT@'],
+)
+
 strict_c_args = [
   '-D_POSIX_C_SOURCE=200809L',
   '-Wconversion',
@@ -46,6 +53,7 @@ trainlog_core_sources = files(
   'src/sync_history.c',
 )
 trainlog_core_sources += equipment_catalog_generated
+trainlog_core_sources += body_zone_catalog_generated
 
 trainlog_core = static_library(
   'trainlog_core',
@@ -125,6 +133,14 @@ test_equipment_catalog = executable(
   c_args: strict_c_args,
 )
 test('equipment_catalog', test_equipment_catalog)
+
+test_body_zones = executable(
+  'test_body_zones',
+  'tests/test_body_zones.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('body_zones', test_body_zones)
 
 test_custom_equipment = executable(
   'test_custom_equipment',
@@ -419,6 +435,18 @@ test(
   'exercise_reconciliation',
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_exercise_reconciliation.py'],
+)
+
+test(
+  'body_zone_sync',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_body_zone_sync.py'],
+)
+
+test(
+  'body_zone_catalog_validation',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_body_zone_catalog.py'],
 )
 
 test_sync_direction = executable(

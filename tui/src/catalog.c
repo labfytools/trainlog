@@ -212,6 +212,55 @@ TrainlogStatus trainlog_catalog_create_exercise_profiled(
     return TRAINLOG_STATUS_OK;
 }
 
+TrainlogStatus trainlog_catalog_create_exercise_profiled_with_zones(
+    TrainlogDatabase *database,
+    const char *name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields,
+    const char *primary_zone_id,
+    const char *const *secondary_zone_ids,
+    size_t secondary_count,
+    TrainlogExercise *output_exercise
+)
+{
+    char normalized[(TRAINLOG_NAME_MAX * 4U) + 1U];
+    char exercise_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    TrainlogStatus status;
+    if (database == NULL || name == NULL || output_exercise == NULL ||
+        strlen(name) > TRAINLOG_NAME_MAX) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    status = trainlog_catalog_normalize_name(name, normalized, sizeof(normalized));
+    if (status != TRAINLOG_STATUS_OK) return status;
+    status = trainlog_id_generate("ex", exercise_id, sizeof(exercise_id));
+    if (status != TRAINLOG_STATUS_OK) return status;
+    status = trainlog_database_begin(database);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    status = trainlog_database_insert_exercise_profiled(database, exercise_id,
+        name, normalized, tracking_mode, recording_mode, data_fields);
+    if (status == TRAINLOG_STATUS_OK) {
+        status = trainlog_database_replace_exercise_body_zones(database,
+            exercise_id, primary_zone_id, secondary_zone_ids, secondary_count);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = trainlog_database_commit(database);
+        if (status != TRAINLOG_STATUS_OK) {
+            (void)trainlog_database_rollback(database);
+        }
+    } else {
+        (void)trainlog_database_rollback(database);
+    }
+    if (status != TRAINLOG_STATUS_OK) return status;
+    (void)memset(output_exercise, 0, sizeof(*output_exercise));
+    (void)snprintf(output_exercise->exercise_id,
+        sizeof(output_exercise->exercise_id), "%s", exercise_id);
+    (void)snprintf(output_exercise->name,
+        sizeof(output_exercise->name), "%s", name);
+    output_exercise->tracking_mode = tracking_mode;
+    output_exercise->recording_mode = recording_mode;
+    output_exercise->data_fields = data_fields;
+    return TRAINLOG_STATUS_OK;
+}
+
 TrainlogStatus trainlog_catalog_create_exercise(
     TrainlogDatabase *database,
     const char *name,

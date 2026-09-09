@@ -26,6 +26,7 @@
 
 #include "trainlog/bodyviz.h"
 #include "trainlog/body_analytics.h"
+#include "trainlog/body_zone_catalog.h"
 #include "trainlog/catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/equipment_catalog.h"
@@ -45,6 +46,7 @@
 #define MAX_SETS_PER_EXERCISE 64U
 #define MAX_SESSIONS 128U
 #define MAX_WEIGHT_POINTS 256U
+#define MAX_BODY_ZONES 16U
 
 #define MAX_BODY_METRIC_POINTS 256U
 
@@ -2205,9 +2207,182 @@ static void section_scrollbar(
     );
 }
 
+static bool secondary_zone_contains(
+    char secondary[][TRAINLOG_ZONE_ID_MAX + 1U],
+    size_t count,
+    const char *zone_id,
+    size_t *output_index
+)
+{
+    size_t index;
+    for (index = 0U; index < count; ++index) {
+        if (strcmp(secondary[index], zone_id) == 0) {
+            if (output_index != NULL) *output_index = index;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* WHY: terminal users select translated catalogue rows; accepting raw IDs
+ * would leak wire identity into product behavior and permit unknown values. */
+static bool choose_body_zones(
+    char primary[TRAINLOG_ZONE_ID_MAX + 1U],
+    char secondary[][TRAINLOG_ZONE_ID_MAX + 1U],
+    size_t *secondary_count,
+    bool require_primary
+)
+{
+    size_t selected = 0U;
+    size_t count = trainlog_body_zone_catalog_count();
+    if (primary == NULL || secondary == NULL || secondary_count == NULL ||
+        count == 0U || count > MAX_BODY_ZONES || *secondary_count > MAX_BODY_ZONES)
+        return false;
+    for (;;) {
+        size_t index;
+        int key;
+        draw_shell("Zones corporelles",
+            "↑↓ naviguer  p principale  Espace secondaire  n non renseignée  Entrée valider  Échap annuler");
+        for (index = 0U; index < count; ++index) {
+            const TrainlogBodyZone *zone = trainlog_body_zone_catalog_at(index);
+            bool is_primary = zone != NULL && strcmp(primary, zone->zone_id) == 0;
+            bool is_secondary = zone != NULL && secondary_zone_contains(
+                secondary, *secondary_count, zone->zone_id, NULL);
+            if (zone == NULL) continue;
+            if (index == selected)
+                trainlog_terminal_style_on(tui_terminal, TRAINLOG_TEXT_REVERSE);
+            trainlog_terminal_printf(tui_terminal, 4 + (int)index, 4,
+                " %s%-27s  %s ", zone->parent_zone_id != NULL ? "  ↳ " : "",
+                zone->display_name,
+                zone->is_group ? "[groupe]" : is_primary ? "[principale]" :
+                    is_secondary ? "[secondaire]" : "[ ]");
+            if (index == selected)
+                trainlog_terminal_style_off(tui_terminal, TRAINLOG_TEXT_REVERSE);
+        }
+        if (primary[0] == '\0')
+            trainlog_terminal_printf(tui_terminal, 4 + (int)count + 1, 4,
+                "Zone principale : Non renseignée");
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 27) return false;
+        if (key == TRAINLOG_KEY_UP)
+            selected = selected > 0U ? selected - 1U : count - 1U;
+        else if (key == TRAINLOG_KEY_DOWN)
+            selected = selected + 1U < count ? selected + 1U : 0U;
+        else if (key == 'n' || key == 'N') {
+            primary[0] = '\0';
+            *secondary_count = 0U;
+        }
+        else if (key == 'p' || key == 'P') {
+            const TrainlogBodyZone *zone = trainlog_body_zone_catalog_at(selected);
+            size_t secondary_index;
+            if (zone != NULL && !zone->is_group) {
+                (void)snprintf(primary, TRAINLOG_ZONE_ID_MAX + 1U, "%s", zone->zone_id);
+                if (secondary_zone_contains(secondary, *secondary_count,
+                        zone->zone_id, &secondary_index)) {
+                    size_t move;
+                    for (move = secondary_index; move + 1U < *secondary_count; ++move)
+                        (void)memcpy(secondary[move], secondary[move + 1U],
+                            sizeof(secondary[move]));
+                    --*secondary_count;
+                }
+            }
+        } else if (key == ' ') {
+            const TrainlogBodyZone *zone = trainlog_body_zone_catalog_at(selected);
+            size_t secondary_index;
+            if (zone != NULL && primary[0] != '\0' && !zone->is_group &&
+                strcmp(primary, zone->zone_id) != 0) {
+                if (secondary_zone_contains(secondary, *secondary_count,
+                        zone->zone_id, &secondary_index)) {
+                    size_t move;
+                    for (move = secondary_index; move + 1U < *secondary_count; ++move)
+                        (void)memcpy(secondary[move], secondary[move + 1U],
+                            sizeof(secondary[move]));
+                    --*secondary_count;
+                } else if (*secondary_count < MAX_BODY_ZONES) {
+                    (void)snprintf(secondary[*secondary_count],
+                        TRAINLOG_ZONE_ID_MAX + 1U, "%s", zone->zone_id);
+                    ++*secondary_count;
+                }
+            }
+        } else if (key == '\n' || key == TRAINLOG_KEY_ENTER) {
+            if (require_primary && primary[0] == '\0') {
+                status_line("Une zone principale est requise.", TRAINLOG_COLOR_ERROR);
+                continue;
+            }
+            return true;
+        }
+    }
+}
+
+static bool load_exercise_body_zones(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    char primary[TRAINLOG_ZONE_ID_MAX + 1U],
+    char secondary[][TRAINLOG_ZONE_ID_MAX + 1U],
+    size_t *secondary_count
+)
+{
+    TrainlogExerciseBodyZone relations[MAX_BODY_ZONES];
+    size_t count = 0U;
+    size_t index;
+    primary[0] = '\0';
+    *secondary_count = 0U;
+    if (trainlog_database_list_exercise_body_zones(database, exercise_id,
+            relations, MAX_BODY_ZONES, &count) != TRAINLOG_STATUS_OK) return false;
+    for (index = 0U; index < count; ++index) {
+        if (relations[index].role == TRAINLOG_BODY_ZONE_PRIMARY) {
+            (void)snprintf(primary, TRAINLOG_ZONE_ID_MAX + 1U, "%s",
+                relations[index].zone_id);
+        } else if (*secondary_count < MAX_BODY_ZONES) {
+            (void)snprintf(secondary[*secondary_count], TRAINLOG_ZONE_ID_MAX + 1U,
+                "%s", relations[index].zone_id);
+            ++*secondary_count;
+        }
+    }
+    return true;
+}
+
+static bool edit_exercise_body_zones(
+    TrainlogDatabase *database,
+    TrainlogExercise *exercise
+)
+{
+    char primary[TRAINLOG_ZONE_ID_MAX + 1U];
+    char secondary[MAX_BODY_ZONES][TRAINLOG_ZONE_ID_MAX + 1U];
+    const char *secondary_ids[MAX_BODY_ZONES];
+    size_t secondary_count = 0U;
+    size_t index;
+    char new_name[TRAINLOG_NAME_MAX + 1U];
+    char normalized[(TRAINLOG_NAME_MAX * 4U) + 1U];
+    const char *saved_name;
+    TrainlogStatus status;
+    if (!load_exercise_body_zones(database, exercise->exercise_id, primary,
+            secondary, &secondary_count)) return false;
+    if (!choose_body_zones(primary, secondary, &secondary_count, false)) return false;
+    draw_shell("Modifier l'exercice", "Nom vide = conserver · Échap annule");
+    if (!prompt_text(4, "Nouveau nom : ", new_name, sizeof(new_name), true)) return false;
+    saved_name = new_name[0] == '\0' ? exercise->name : new_name;
+    status = trainlog_catalog_normalize_name(saved_name, normalized, sizeof(normalized));
+    if (status != TRAINLOG_STATUS_OK) return false;
+    for (index = 0U; index < secondary_count; ++index) secondary_ids[index] = secondary[index];
+    status = trainlog_database_update_exercise_profiled(database,
+        exercise->exercise_id, saved_name, normalized, exercise->tracking_mode,
+        exercise->recording_mode, exercise->data_fields,
+        primary[0] == '\0' ? NULL : primary, secondary_ids, secondary_count);
+    if (status == TRAINLOG_STATUS_OK)
+        (void)snprintf(exercise->name, sizeof(exercise->name), "%s", saved_name);
+    status_line(status == TRAINLOG_STATUS_OK ? "✓ Exercice modifié." :
+        status == TRAINLOG_STATUS_CONFLICT ? "Conflit : nom ou profil déjà utilisé." :
+        "Impossible de modifier l'exercice.",
+        status == TRAINLOG_STATUS_OK ? TRAINLOG_COLOR_SUCCESS : TRAINLOG_COLOR_ERROR);
+    wait_key();
+    return status == TRAINLOG_STATUS_OK;
+}
+
 static void screen_exercise_detail(
     TrainlogDatabase *database,
-    const TrainlogExercise *exercise
+    TrainlogExercise *exercise
 )
 {
     TrainlogResolvedEquipment explicit_items[64];
@@ -2236,16 +2411,42 @@ static void screen_exercise_detail(
 
     for (;;) {
         size_t total = explicit_count + historic_count;
-        int row = 7;
+        char primary[TRAINLOG_ZONE_ID_MAX + 1U];
+        char secondary[MAX_BODY_ZONES][TRAINLOG_ZONE_ID_MAX + 1U];
+        size_t secondary_count = 0U;
+        int row = 10;
         int key;
         if (total > 0U && selected >= total) selected = total - 1U;
         draw_shell("TRAINLOG — Fiche exercice",
-            "↑↓ équipement  Entrée fiche  p performance  m max mesuré  b/Échap retour");
+            "↑↓ équipement  Entrée fiche  e modifier  p performance  m max mesuré  b/Échap retour");
         trainlog_terminal_printf(tui_terminal, 3, 4, "%s", exercise->name);
         trainlog_terminal_printf(tui_terminal, 4, 4, "Identifiant : %s · suivi : %s",
             exercise->exercise_id,
             exercise->tracking_mode == TRAINLOG_TRACKING_REPS ? "répétitions" : "durée");
-        trainlog_terminal_printf(tui_terminal, 6, 4,
+        if (load_exercise_body_zones(database, exercise->exercise_id, primary,
+                secondary, &secondary_count) && primary[0] != '\0') {
+            const TrainlogBodyZone *primary_zone = trainlog_body_zone_catalog_lookup(primary);
+            const TrainlogBodyZone *group = primary_zone != NULL &&
+                primary_zone->parent_zone_id != NULL
+                ? trainlog_body_zone_catalog_lookup(primary_zone->parent_zone_id) : NULL;
+            char secondary_names[256] = "";
+            for (index = 0U; index < secondary_count; ++index) {
+                const TrainlogBodyZone *zone = trainlog_body_zone_catalog_lookup(secondary[index]);
+                size_t used = strlen(secondary_names);
+                if (zone != NULL && used < sizeof(secondary_names) - 1U)
+                    (void)snprintf(secondary_names + used, sizeof(secondary_names) - used,
+                        "%s%s", used > 0U ? ", " : "", zone->display_name);
+            }
+            trainlog_terminal_printf(tui_terminal, 5, 4, "Zone principale : %s",
+                primary_zone != NULL ? primary_zone->display_name : primary);
+            trainlog_terminal_printf(tui_terminal, 6, 4, "Zones secondaires : %s",
+                secondary_names[0] != '\0' ? secondary_names : "Aucune");
+            trainlog_terminal_printf(tui_terminal, 7, 4, "Groupe : %s",
+                group != NULL ? group->display_name : "Aucun");
+        } else {
+            trainlog_terminal_printf(tui_terminal, 5, 4, "Zone : Non renseignée");
+        }
+        trainlog_terminal_printf(tui_terminal, 9, 4,
             "Relations explicites du manifeste (%zu)", explicit_count);
         if (explicit_count == 0U) trainlog_terminal_printf(tui_terminal, row++, 6, "— aucune");
         for (index = 0U; index < explicit_count; ++index, ++row) {
@@ -2278,6 +2479,7 @@ static void screen_exercise_detail(
                 ? &explicit_items[selected] : &historic_items[selected - explicit_count]);
         else if (key == 'p' || key == 'P') screen_exercise_performance(database, exercise);
         else if (key == 'm' || key == 'M') screen_exercise_measured_max(database, exercise);
+        else if (key == 'e' || key == 'E') (void)edit_exercise_body_zones(database, exercise);
     }
 }
 
@@ -2289,11 +2491,18 @@ static void screen_exercises(
     size_t selected = 0U;
     int nav_selected = 3;
     int focus = 1;
+    int zone_filter = -1; /* -1 all, catalogue index, count = unclassified. */
+    char search[TRAINLOG_NAME_MAX + 1U] = "";
 
     for (;;) {
         size_t count = 0U;
         size_t top = 0U;
         size_t index;
+        size_t zone_count = trainlog_body_zone_catalog_count();
+        char normalized_search[(TRAINLOG_NAME_MAX * 4U) + 1U] = "";
+        const char *filter_zone_id = NULL;
+        const char *filter_label = "Toutes les zones";
+        bool unclassified_only = zone_filter == (int)zone_count;
 
         bool large_layout =
             trainlog_terminal_columns(tui_terminal) >= 100 &&
@@ -2312,7 +2521,7 @@ static void screen_exercises(
             trainlog_terminal_rows(tui_terminal) - 4;
 
         int first_row =
-            list_top + 1;
+            list_top + 2;
 
         int visible_rows =
             framed
@@ -2326,8 +2535,27 @@ static void screen_exercises(
             return;
         }
 
-        if (trainlog_database_list_exercises(
+        if (search[0] != '\0' && trainlog_catalog_normalize_name(search,
+                normalized_search, sizeof(normalized_search)) != TRAINLOG_STATUS_OK) {
+            normalized_search[0] = '\0';
+        }
+        if (zone_filter >= 0 && zone_filter < (int)zone_count) {
+            const TrainlogBodyZone *zone =
+                trainlog_body_zone_catalog_at((size_t)zone_filter);
+            if (zone != NULL) {
+                filter_zone_id = zone->zone_id;
+                filter_label = zone->display_name;
+            }
+        } else if (unclassified_only) {
+            filter_label = "Non renseignés";
+        }
+        if (trainlog_database_list_exercises_filtered(
                 database,
+                normalized_search,
+                filter_zone_id,
+                true,
+                false,
+                unclassified_only,
                 exercises,
                 MAX_EXERCISES,
                 &count
@@ -2375,7 +2603,7 @@ static void screen_exercises(
                 2,
                 "%.*s",
                 trainlog_terminal_columns(tui_terminal) - 4,
-                "Tab zone  ↑↓/PgUp/PgDn catalogue  ←→ menu  Entrée ouvrir  m max mesuré  a ajouter  0/Home accueil  F1-F5 direct  b/Échap retour"
+                "Tab zone  ↑↓ catalogue  / recherche  z filtre  x effacer  Entrée fiche (e modifier)  a ajouter  b/Échap retour"
             );
 
             trainlog_terminal_style_off(tui_terminal,
@@ -2386,9 +2614,13 @@ static void screen_exercises(
         } else {
             draw_shell(
                 "TRAINLOG — Exercices",
-                "↑↓ naviguer  Entrée performance  m max mesuré  a ajouter  b/Échap retour"
+                "↑↓ naviguer  / recherche  z filtre  x effacer  Entrée fiche  a ajouter  b/Échap retour"
             );
         }
+
+        trainlog_terminal_printf(tui_terminal, first_row - 1, framed ? 5 : 4,
+            "Filtre : %s · Recherche : %s", filter_label,
+            search[0] != '\0' ? search : "—");
 
         if (framed) {
             if (large_layout) {
@@ -2478,6 +2710,24 @@ static void screen_exercises(
 
         trainlog_terminal_render(tui_terminal);
         key = trainlog_terminal_get_key(tui_terminal);
+
+        if (key == '/') {
+            draw_shell("Recherche exercices", "Préfixe vide = tous · Échap annule");
+            if (prompt_text(4, "Préfixe : ", search, sizeof(search), true)) selected = 0U;
+            continue;
+        }
+        if (key == 'z' || key == 'Z') {
+            ++zone_filter;
+            if (zone_filter > (int)zone_count) zone_filter = -1;
+            selected = 0U;
+            continue;
+        }
+        if (key == 'x' || key == 'X') {
+            search[0] = '\0';
+            zone_filter = -1;
+            selected = 0U;
+            continue;
+        }
 
         if (large_layout &&
             (key == TRAINLOG_KEY_TAB ||
@@ -2609,6 +2859,10 @@ if (primary_top_nav_activate(
             TrainlogExerciseDataFields data_fields = 0U;
             TrainlogExercise created;
             TrainlogStatus status;
+            char primary_zone[TRAINLOG_ZONE_ID_MAX + 1U] = "";
+            char secondary_zones[MAX_BODY_ZONES][TRAINLOG_ZONE_ID_MAX + 1U];
+            const char *secondary_ids[MAX_BODY_ZONES];
+            size_t secondary_count = 0U;
 
             draw_shell(
                 "Nouvel exercice",
@@ -2682,8 +2936,12 @@ if (primary_top_nav_activate(
                         TRAINLOG_EXERCISE_DATA_DISTANCE_KM;
                 }
             }
-status =
-                trainlog_catalog_create_exercise_profiled(
+            if (!choose_body_zones(primary_zone, secondary_zones,
+                    &secondary_count, organization == 1)) continue;
+            for (index = 0U; index < secondary_count; ++index)
+                secondary_ids[index] = secondary_zones[index];
+            status =
+                trainlog_catalog_create_exercise_profiled_with_zones(
                     database,
                     name,
                     mode == 1
@@ -2693,6 +2951,9 @@ status =
                             ? TRAINLOG_RECORDING_CONTINUOUS
                             : TRAINLOG_RECORDING_SETS,
                         data_fields,
+                        primary_zone[0] == '\0' ? NULL : primary_zone,
+                        secondary_ids,
+                        secondary_count,
                         &created
                 );
 
@@ -2734,6 +2995,11 @@ static bool create_exercise_inline(
     TrainlogExerciseDataFields data_fields = 0U;
     TrainlogExercise created;
     TrainlogStatus status;
+    char primary_zone[TRAINLOG_ZONE_ID_MAX + 1U] = "";
+    char secondary_zones[MAX_BODY_ZONES][TRAINLOG_ZONE_ID_MAX + 1U];
+    const char *secondary_ids[MAX_BODY_ZONES];
+    size_t secondary_count = 0U;
+    size_t index;
 
     draw_shell(
         "Nouvel exercice",
@@ -2807,8 +3073,12 @@ static bool create_exercise_inline(
                 TRAINLOG_EXERCISE_DATA_DISTANCE_KM;
         }
     }
-status =
-        trainlog_catalog_create_exercise_profiled(
+    if (!choose_body_zones(primary_zone, secondary_zones,
+            &secondary_count, organization == 1)) return false;
+    for (index = 0U; index < secondary_count; ++index)
+        secondary_ids[index] = secondary_zones[index];
+    status =
+        trainlog_catalog_create_exercise_profiled_with_zones(
             database,
             name,
             mode == 1
@@ -2818,6 +3088,9 @@ status =
                     ? TRAINLOG_RECORDING_CONTINUOUS
                     : TRAINLOG_RECORDING_SETS,
                 data_fields,
+                primary_zone[0] == '\0' ? NULL : primary_zone,
+                secondary_ids,
+                secondary_count,
                 &created
         );
 

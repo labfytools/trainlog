@@ -39,19 +39,21 @@ class SyncExporter(
             return SyncExportResult.Unsupported
         }
 
-        /* CONTRACT: capture all three artifacts before publishing any of
+        /* CONTRACT: capture all four artifacts before publishing any of
          * them.  The files are separate for compatibility, but a user edit
          * must not make a newly-written V2 reference a definition assembled
          * from a different logical export state. */
         val definitionsJson: String
         val mobileJson: String
         val associationsJson: String
+        val bodyZonesJson: String
         try {
             definitionsJson = repository.buildEquipmentDefinitionsJson()
             /* V2 is the authoritative mobile session exchange. V1 remains
              * readable by desktop for historic devices but is not published. */
             mobileJson = repository.buildMobileExportV2Json()
             associationsJson = repository.buildEquipmentAssociationsJson()
+            bodyZonesJson = repository.buildExerciseBodyZonesJson()
         } catch (error: Exception) {
             return SyncExportResult.Error(
                 error.message ?: "Préparation de l'export impossible.",
@@ -188,6 +190,25 @@ class SyncExporter(
                 )
             }
 
+            val bodyZonesError = writeBodyZones(bodyZonesJson)
+            if (bodyZonesError != null) return SyncExportResult.Error(bodyZonesError)
+            /* CONTRACT: publication, not JSON construction, establishes the
+             * common sync ancestor. Applying the exact local snapshot can only
+             * record equal baselines; the strict reconciler never unions zones. */
+            when (val acknowledgement = repository.applyExerciseBodyZonesJson(bodyZonesJson)) {
+                is ExerciseBodyZoneImportResult.Applied -> Unit
+                is ExerciseBodyZoneImportResult.Conflict ->
+                    return SyncExportResult.Error(
+                        "Conflit pendant l'enregistrement de la baseline zones : " +
+                            acknowledgement.exerciseId,
+                    )
+                is ExerciseBodyZoneImportResult.Invalid ->
+                    return SyncExportResult.Error(acknowledgement.message)
+                ExerciseBodyZoneImportResult.DatabaseError ->
+                    return SyncExportResult.Error(
+                        "Enregistrement de la baseline zones impossible.",
+                    )
+            }
             val companionError = writeEquipmentAssociations(associationsJson)
             if (companionError != null) {
                 return SyncExportResult.Error(companionError)
@@ -270,6 +291,34 @@ class SyncExporter(
         } catch (error: Exception) {
             if (created) resolver.delete(uri, null, null)
             error.message ?: "Export définitions équipement impossible."
+        }
+    }
+
+    /** One directional-neutral companion is used by both peers. */
+    private fun writeBodyZones(json: String): String? {
+        val resolver = appContext.contentResolver
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Trainlog/"
+        val name = "trainlog-exercise-body-zones-v1.json"
+        val existing = findExisting(collection, name, relativePath)
+        val created = existing == null
+        val uri = existing ?: resolver.insert(collection, ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }) ?: return "Création des zones corporelles impossible."
+        return try {
+            resolver.openOutputStream(uri, "wt")?.use {
+                it.write(json.toByteArray(Charsets.UTF_8)); it.flush()
+            } ?: return "Écriture des zones corporelles impossible."
+            if (created) resolver.update(uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }, null, null)
+            null
+        } catch (error: Exception) {
+            if (created) resolver.delete(uri, null, null)
+            error.message ?: "Export des zones corporelles impossible."
         }
     }
 

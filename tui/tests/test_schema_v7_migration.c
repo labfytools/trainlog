@@ -1,6 +1,6 @@
 /**
  * @file test_schema_v7_migration.c
- * @brief Synthetic v7 -> v8 migration and reopen regression coverage.
+ * @brief Synthetic v7 -> current migration and reopen regression coverage.
  */
 
 #include <stdbool.h>
@@ -88,7 +88,7 @@ static bool verify_preserved_values(const char *path)
     return true;
 }
 
-static bool test_v7_migrates_and_v8_reopens(void)
+static bool test_v7_migrates_and_current_reopens(void)
 {
     char path[] = "/tmp/trainlog-schema-v7-XXXXXX";
     sqlite3 *raw = NULL;
@@ -103,7 +103,7 @@ static bool test_v7_migrates_and_v8_reopens(void)
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 10);
+    CHECK(version == TRAINLOG_DATABASE_SCHEMA_VERSION);
     trainlog_database_close(database);
     CHECK(verify_preserved_values(path));
 
@@ -134,8 +134,8 @@ static bool test_v7_migration_sqlite_failure_has_diagnostic(void)
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic,
         sizeof(diagnostic)) == TRAINLOG_STATUS_DATABASE_ERROR);
     CHECK(database == NULL);
-    CHECK(strncmp(diagnostic, "migrate database to schema v10: SQLite rc=",
-        strlen("migrate database to schema v10: SQLite rc=")) == 0);
+    CHECK(strncmp(diagnostic, "migrate database to schema v11: SQLite rc=",
+        strlen("migrate database to schema v11: SQLite rc=")) == 0);
     CHECK(strstr(diagnostic, "extended_rc=") != NULL);
     CHECK(strstr(diagnostic, "custom_equipment") != NULL);
     CHECK(strstr(diagnostic, "already exists") != NULL);
@@ -145,7 +145,7 @@ static bool test_v7_migration_sqlite_failure_has_diagnostic(void)
 
 static bool test_newer_schema_has_application_diagnostic(void)
 {
-    char path[] = "/tmp/trainlog-schema-v11-XXXXXX";
+    char path[] = "/tmp/trainlog-schema-v12-XXXXXX";
     char diagnostic[256];
     sqlite3 *raw = NULL;
     TrainlogDatabase *database = NULL;
@@ -154,12 +154,12 @@ static bool test_newer_schema_has_application_diagnostic(void)
     CHECK(fd >= 0);
     CHECK(close(fd) == 0);
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(sqlite3_exec(raw, "PRAGMA user_version=11;", NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw, "PRAGMA user_version=12;", NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic,
         sizeof(diagnostic)) == TRAINLOG_STATUS_SCHEMA_UNSUPPORTED);
     CHECK(database == NULL);
-    CHECK(strstr(diagnostic, "schema version 11 is newer") != NULL);
+    CHECK(strstr(diagnostic, "schema version 12 is newer") != NULL);
     CHECK(strstr(diagnostic, "SQLite") == NULL);
     CHECK(unlink(path) == 0);
     return true;
@@ -189,10 +189,10 @@ static bool test_unrecognized_historic_schema_has_application_diagnostic(void)
 
 int main(void)
 {
-    CHECK(test_v7_migrates_and_v8_reopens());
-    CHECK(test_v7_migration_sqlite_failure_has_diagnostic());
-    CHECK(test_newer_schema_has_application_diagnostic());
-    CHECK(test_unrecognized_historic_schema_has_application_diagnostic());
+    if (!test_v7_migrates_and_current_reopens() ||
+        !test_v7_migration_sqlite_failure_has_diagnostic() ||
+        !test_newer_schema_has_application_diagnostic() ||
+        !test_unrecognized_historic_schema_has_application_diagnostic()) return 1;
     (void)printf("PASS schema_v7_migration\n");
     return 0;
 }

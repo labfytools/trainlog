@@ -4,6 +4,7 @@
  */
 
 #include "trainlog/database.h"
+#include "trainlog/body_zone_catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/equipment_catalog.h"
 #include "trainlog/id.h"
@@ -19,6 +20,12 @@
 struct TrainlogDatabase {
     sqlite3 *connection;
 };
+
+static TrainlogStatus lookup_exercise_row_id(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    sqlite3_int64 *output_row_id
+);
 
 static bool custom_equipment_exists(TrainlogDatabase *database, const char *equipment_id)
 {
@@ -321,6 +328,29 @@ static const char *const MIGRATE_V9_TO_V10_SQL =
     "COMMIT;"
     "PRAGMA foreign_keys = ON;";
 
+/*
+ * WHY: one text column cannot preserve a primary plus multiple secondary
+ * zones, and parent groups are derivable catalogue metadata.
+ * CONTRACT: v11 is additive and touches no exercise/session/history identity.
+ * INVARIANT: the primary key forbids duplicate roles for one zone and the
+ * partial unique index permits at most one primary relation per exercise.
+ */
+static const char *const CREATE_BODY_ZONE_RELATIONS_SQL =
+    "CREATE TABLE exercise_body_zones("
+    "exercise_row_id INTEGER NOT NULL "
+    "REFERENCES exercises(id) ON DELETE CASCADE,"
+    "zone_id TEXT NOT NULL,"
+    "role TEXT NOT NULL CHECK(role IN('primary','secondary')),"
+    "PRIMARY KEY(exercise_row_id,zone_id)"
+    ");"
+    "CREATE UNIQUE INDEX exercise_body_zones_one_primary "
+    "ON exercise_body_zones(exercise_row_id) WHERE role='primary';"
+    "CREATE TABLE exercise_body_zone_sync("
+    "exercise_row_id INTEGER PRIMARY KEY "
+    "REFERENCES exercises(id) ON DELETE CASCADE,"
+    "synced_state TEXT NOT NULL"
+    ");";
+
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
     "ALTER TABLE sessions "
@@ -619,6 +649,93 @@ static TrainlogStatus execute_sql(
     return TRAINLOG_STATUS_OK;
 }
 
+static bool bind_initial_body_zone(
+    sqlite3_stmt *statement,
+    const char *exercise_id,
+    const char *zone_id,
+    const char *role
+)
+{
+    int rc;
+    if (sqlite3_reset(statement) != SQLITE_OK ||
+        sqlite3_clear_bindings(statement) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, zone_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, role, -1, SQLITE_STATIC) != SQLITE_OK) {
+        return false;
+    }
+    rc = sqlite3_step(statement);
+    return rc == SQLITE_DONE;
+}
+
+static TrainlogStatus migrate_v10_to_v11(TrainlogDatabase *database)
+{
+    static const char *const INSERT_SQL =
+        "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) "
+        "SELECT id,?2,?3 FROM exercises WHERE exercise_id=?1;";
+    sqlite3_stmt *statement = NULL;
+    size_t index;
+    TrainlogStatus status = TRAINLOG_STATUS_DATABASE_ERROR;
+
+    if (execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK ||
+        execute_sql(database, CREATE_BODY_ZONE_RELATIONS_SQL) != TRAINLOG_STATUS_OK ||
+        sqlite3_prepare_v2(database->connection, INSERT_SQL, -1, &statement, NULL) != SQLITE_OK) {
+        goto rollback;
+    }
+
+    for (index = 0U; index < trainlog_body_zone_initial_mapping_count(); ++index) {
+        const TrainlogBodyZoneInitialMapping *mapping =
+            trainlog_body_zone_initial_mapping_at(index);
+        const char *cursor;
+        if (mapping == NULL ||
+            !bind_initial_body_zone(statement, mapping->exercise_id,
+                mapping->primary_zone_id, "primary")) {
+            goto rollback;
+        }
+        cursor = mapping->secondary_zone_ids;
+        while (cursor != NULL && cursor[0] != '\0') {
+            const char *end = strchr(cursor, '\n');
+            size_t length = end == NULL ? strlen(cursor) : (size_t)(end - cursor);
+            char zone_id[TRAINLOG_ZONE_ID_MAX + 1U];
+            if (length == 0U || length > TRAINLOG_ZONE_ID_MAX) goto rollback;
+            (void)memcpy(zone_id, cursor, length);
+            zone_id[length] = '\0';
+            if (!bind_initial_body_zone(statement, mapping->exercise_id,
+                    zone_id, "secondary")) {
+                goto rollback;
+            }
+            cursor = end == NULL ? NULL : end + 1;
+        }
+    }
+
+    /* CONTRACT: synced_state is an internal comparison baseline, not domain
+     * data. `primary|secondary,...` is deterministic because zone IDs exclude
+     * delimiters and secondary IDs are sorted bytewise. */
+    if (execute_sql(database,
+            "INSERT INTO exercise_body_zone_sync(exercise_row_id,synced_state) "
+            "SELECT e.id,COALESCE((SELECT p.zone_id FROM exercise_body_zones p "
+            "WHERE p.exercise_row_id=e.id AND p.role='primary'),'')||'|'||"
+            "COALESCE((SELECT group_concat(s.zone_id,',') FROM "
+            "(SELECT zone_id FROM exercise_body_zones WHERE exercise_row_id=e.id "
+            "AND role='secondary' ORDER BY zone_id) s),'') FROM exercises e;"
+        ) != TRAINLOG_STATUS_OK) goto rollback;
+
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        goto rollback;
+    }
+    statement = NULL;
+    if (execute_sql(database, "PRAGMA user_version = 11;COMMIT;") != TRAINLOG_STATUS_OK) {
+        goto rollback;
+    }
+    return TRAINLOG_STATUS_OK;
+
+rollback:
+    if (statement != NULL) (void)sqlite3_finalize(statement);
+    (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+    return status;
+}
+
 static TrainlogStatus read_single_int_pragma(
     TrainlogDatabase *database,
     const char *sql,
@@ -748,6 +865,8 @@ static TrainlogStatus initialize_or_validate_schema(
         }
     } else if (version == 9) {
         status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
+    } else if (version == 10) {
+        status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
             status =
@@ -880,6 +999,10 @@ static TrainlogStatus initialize_or_validate_schema(
         }
     }
 
+    if (status == TRAINLOG_STATUS_OK) {
+        status = migrate_v10_to_v11(database);
+    }
+
     if (
         status !=
         TRAINLOG_STATUS_OK
@@ -887,7 +1010,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v10" : "migrate database to schema v10",
+            version == 0 ? "create schema v11" : "migrate database to schema v11",
             database->connection,
             SQLITE_ERROR
         );
@@ -1389,6 +1512,117 @@ TrainlogStatus trainlog_database_insert_exercise(
     );
 }
 
+TrainlogStatus trainlog_database_update_exercise_profiled(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const char *name,
+    const char *normalized_name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields,
+    const char *primary_zone_id,
+    const char *const *secondary_zone_ids,
+    size_t secondary_count
+)
+{
+    sqlite3_stmt *statement = NULL;
+    sqlite3_int64 row_id;
+    TrainlogStatus status;
+    int rc;
+    bool profile_changed;
+    const char *tracking;
+    const char *recording;
+
+    if (database == NULL || exercise_id == NULL || name == NULL ||
+        normalized_name == NULL || name[0] == '\0' || normalized_name[0] == '\0' ||
+        strlen(name) > TRAINLOG_NAME_MAX ||
+        !exercise_profile_valid(tracking_mode, recording_mode, data_fields))
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    tracking = tracking_mode_to_sql(tracking_mode);
+    recording = recording_mode_to_sql(recording_mode);
+    status = lookup_exercise_row_id(database, exercise_id, &row_id);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    if (execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT tracking_mode,recording_mode,data_fields FROM exercises WHERE id=?1;",
+        -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_ROW) {
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto rollback;
+    }
+    profile_changed = strcmp((const char *)sqlite3_column_text(statement, 0), tracking) != 0 ||
+        strcmp((const char *)sqlite3_column_text(statement, 1), recording) != 0 ||
+        sqlite3_column_int64(statement, 2) != (sqlite3_int64)data_fields;
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto rollback;
+    }
+    statement = NULL;
+    if (profile_changed) {
+        rc = sqlite3_prepare_v2(database->connection,
+            "SELECT 1 FROM session_exercises WHERE exercise_row_id=?1 LIMIT 1;",
+            -1, &statement, NULL);
+        if (rc != SQLITE_OK || sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto rollback;
+        }
+        rc = sqlite3_step(statement);
+        if (rc == SQLITE_ROW) {
+            status = TRAINLOG_STATUS_CONFLICT;
+            goto rollback;
+        }
+        if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+            statement = NULL;
+            status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto rollback;
+        }
+        statement = NULL;
+    }
+    rc = sqlite3_prepare_v2(database->connection,
+        "UPDATE exercises SET name=?1,normalized_name=?2,tracking_mode=?3,"
+        "recording_mode=?4,data_fields=?5 WHERE id=?6;", -1, &statement, NULL);
+    if (rc != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, name, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, normalized_name, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, tracking, -1, SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 4, recording, -1, SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 5, (sqlite3_int64)data_fields) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 6, row_id) != SQLITE_OK) {
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto rollback;
+    }
+    rc = sqlite3_step(statement);
+    if (rc != SQLITE_DONE) {
+        status = rc == SQLITE_CONSTRAINT ? TRAINLOG_STATUS_CONFLICT :
+            TRAINLOG_STATUS_DATABASE_ERROR;
+        goto rollback;
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto rollback;
+    }
+    statement = NULL;
+    status = trainlog_database_replace_exercise_body_zones(database, exercise_id,
+        primary_zone_id, secondary_zone_ids, secondary_count);
+    if (status != TRAINLOG_STATUS_OK) goto rollback;
+    if (execute_sql(database, "COMMIT;") != TRAINLOG_STATUS_OK)
+    {
+        (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return TRAINLOG_STATUS_OK;
+
+rollback:
+    if (statement != NULL) (void)sqlite3_finalize(statement);
+    (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+    return status;
+}
+
 static TrainlogStatus count_query(
     TrainlogDatabase *database,
     const char *sql,
@@ -1660,6 +1894,292 @@ static TrainlogStatus lookup_exercise_row_id(
     return sqlite3_finalize(statement) == SQLITE_OK
         ? TRAINLOG_STATUS_OK
         : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+static bool assignable_body_zone(const char *zone_id)
+{
+    const TrainlogBodyZone *zone;
+    if (zone_id == NULL || zone_id[0] == '\0' ||
+        strlen(zone_id) > TRAINLOG_ZONE_ID_MAX) return false;
+    zone = trainlog_body_zone_catalog_lookup(zone_id);
+    return zone != NULL && !zone->is_group;
+}
+
+static TrainlogStatus insert_body_zone_relation(
+    TrainlogDatabase *database,
+    sqlite3_int64 exercise_row_id,
+    const char *zone_id,
+    const char *role
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(database->connection,
+        "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) "
+        "VALUES(?1,?2,?3);", -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    if (sqlite3_bind_int64(statement, 1, exercise_row_id) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, zone_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, role, -1, SQLITE_STATIC) != SQLITE_OK) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_step(statement);
+    (void)sqlite3_finalize(statement);
+    return rc == SQLITE_DONE ? TRAINLOG_STATUS_OK :
+        rc == SQLITE_CONSTRAINT ? TRAINLOG_STATUS_CONFLICT :
+        TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_replace_exercise_body_zones(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const char *primary_zone_id,
+    const char *const *secondary_zone_ids,
+    size_t secondary_count
+)
+{
+    sqlite3_int64 row_id;
+    sqlite3_stmt *statement = NULL;
+    bool owns_transaction;
+    size_t index;
+    TrainlogStatus status;
+
+    if (database == NULL || database->connection == NULL || exercise_id == NULL ||
+        exercise_id[0] == '\0' || secondary_count > trainlog_body_zone_catalog_count() ||
+        (secondary_count > 0U && secondary_zone_ids == NULL) ||
+        (secondary_count > 0U &&
+         (primary_zone_id == NULL || primary_zone_id[0] == '\0')) ||
+        (primary_zone_id != NULL && primary_zone_id[0] != '\0' &&
+         !assignable_body_zone(primary_zone_id))) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    for (index = 0U; index < secondary_count; ++index) {
+        size_t earlier;
+        if (!assignable_body_zone(secondary_zone_ids[index]) ||
+            (primary_zone_id != NULL && strcmp(primary_zone_id, secondary_zone_ids[index]) == 0)) {
+            return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
+        for (earlier = 0U; earlier < index; ++earlier) {
+            if (strcmp(secondary_zone_ids[earlier], secondary_zone_ids[index]) == 0)
+                return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    status = lookup_exercise_row_id(database, exercise_id, &row_id);
+    if (status != TRAINLOG_STATUS_OK) return status;
+
+    owns_transaction = sqlite3_get_autocommit(database->connection) != 0;
+    if (owns_transaction && execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    if (sqlite3_prepare_v2(database->connection,
+            "DELETE FROM exercise_body_zones WHERE exercise_row_id=?1;",
+            -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE) {
+        if (statement != NULL) (void)sqlite3_finalize(statement);
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto finish;
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto finish;
+    }
+    statement = NULL;
+    if (primary_zone_id != NULL && primary_zone_id[0] != '\0') {
+        status = insert_body_zone_relation(database, row_id, primary_zone_id, "primary");
+        if (status != TRAINLOG_STATUS_OK) goto finish;
+    }
+    for (index = 0U; index < secondary_count; ++index) {
+        status = insert_body_zone_relation(database, row_id,
+            secondary_zone_ids[index], "secondary");
+        if (status != TRAINLOG_STATUS_OK) goto finish;
+    }
+    status = TRAINLOG_STATUS_OK;
+
+finish:
+    if (owns_transaction) {
+        if (status == TRAINLOG_STATUS_OK) {
+            if (execute_sql(database, "COMMIT;") != TRAINLOG_STATUS_OK) {
+                status = TRAINLOG_STATUS_DATABASE_ERROR;
+                (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+            }
+        } else {
+            (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+        }
+    }
+    return status;
+}
+
+TrainlogStatus trainlog_database_list_exercise_body_zones(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogExerciseBodyZone *output,
+    size_t capacity,
+    size_t *output_count
+)
+{
+    sqlite3_stmt *statement = NULL;
+    sqlite3_int64 row_id;
+    size_t count = 0U;
+    bool has_primary = false;
+    TrainlogStatus status;
+    int rc;
+    if (database == NULL || exercise_id == NULL || output_count == NULL ||
+        (capacity > 0U && output == NULL)) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    *output_count = 0U;
+    status = lookup_exercise_row_id(database, exercise_id, &row_id);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT zone_id,role FROM exercise_body_zones WHERE exercise_row_id=?1 "
+        "ORDER BY CASE role WHEN 'primary' THEN 0 ELSE 1 END,zone_id;",
+        -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK) {
+        if (statement != NULL) (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *zone_id = (const char *)sqlite3_column_text(statement, 0);
+        const char *role = (const char *)sqlite3_column_text(statement, 1);
+        const TrainlogBodyZone *zone = trainlog_body_zone_catalog_lookup(zone_id);
+        if (zone_id == NULL || role == NULL ||
+            zone == NULL || zone->is_group ||
+            (strcmp(role, "primary") != 0 && strcmp(role, "secondary") != 0)) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        if (count < capacity) {
+            (void)memset(&output[count], 0, sizeof(output[count]));
+            (void)snprintf(output[count].zone_id, sizeof(output[count].zone_id),
+                "%s", zone_id);
+            output[count].role = strcmp(role, "primary") == 0
+                ? TRAINLOG_BODY_ZONE_PRIMARY : TRAINLOG_BODY_ZONE_SECONDARY;
+        }
+        if (strcmp(role, "primary") == 0) has_primary = true;
+        ++count;
+    }
+    if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    /* INVARIANT: the explicitly unclassified state has no relations. A
+     * secondary-only raw SQLite state is corruption, not partial metadata. */
+    if (count > 0U && !has_primary) return TRAINLOG_STATUS_DATABASE_ERROR;
+    *output_count = count;
+    return count > capacity ? TRAINLOG_STATUS_INVALID_ARGUMENT : TRAINLOG_STATUS_OK;
+}
+
+static bool exercise_row_matches_body_zone(
+    TrainlogDatabase *database,
+    sqlite3_int64 row_id,
+    const char *zone_id,
+    bool include_descendants,
+    bool primary_only,
+    bool unclassified_only,
+    bool *output_match
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+    bool has_relation = false;
+    bool has_primary = false;
+    bool match = false;
+    if (sqlite3_prepare_v2(database->connection,
+            "SELECT zone_id,role FROM exercise_body_zones WHERE exercise_row_id=?1;",
+            -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK) {
+        if (statement != NULL) (void)sqlite3_finalize(statement);
+        return false;
+    }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *candidate = (const char *)sqlite3_column_text(statement, 0);
+        const char *role = (const char *)sqlite3_column_text(statement, 1);
+        const TrainlogBodyZone *zone = trainlog_body_zone_catalog_lookup(candidate);
+        if (candidate == NULL || role == NULL ||
+            zone == NULL || zone->is_group ||
+            (strcmp(role, "primary") != 0 && strcmp(role, "secondary") != 0)) {
+            (void)sqlite3_finalize(statement);
+            return false;
+        }
+        has_relation = true;
+        if (strcmp(role, "primary") == 0) has_primary = true;
+        if (!unclassified_only &&
+            (!primary_only || strcmp(role, "primary") == 0) &&
+            (strcmp(candidate, zone_id) == 0 ||
+             (include_descendants &&
+              trainlog_body_zone_catalog_is_descendant(candidate, zone_id)))) {
+            match = true;
+        }
+    }
+    if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK ||
+        (has_relation && !has_primary)) return false;
+    *output_match = unclassified_only ? !has_relation : match;
+    return true;
+}
+
+TrainlogStatus trainlog_database_list_exercises_filtered(
+    TrainlogDatabase *database,
+    const char *normalized_prefix,
+    const char *zone_id,
+    bool include_descendants,
+    bool primary_only,
+    bool unclassified_only,
+    TrainlogExercise *output,
+    size_t capacity,
+    size_t *output_count
+)
+{
+    static const char *const SQL =
+        "SELECT id,exercise_id,name,tracking_mode,recording_mode,data_fields,normalized_name "
+        "FROM exercises ORDER BY name COLLATE NOCASE,exercise_id;";
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    size_t prefix_length;
+    int rc;
+    if (database == NULL || normalized_prefix == NULL || output_count == NULL ||
+        (capacity > 0U && output == NULL) ||
+        (unclassified_only && zone_id != NULL) ||
+        (!unclassified_only && zone_id != NULL &&
+         trainlog_body_zone_catalog_lookup(zone_id) == NULL))
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    prefix_length = strlen(normalized_prefix);
+    *output_count = 0U;
+    if (sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        sqlite3_int64 row_id = sqlite3_column_int64(statement, 0);
+        const char *normalized = (const char *)sqlite3_column_text(statement, 6);
+        bool matches = zone_id == NULL && !unclassified_only;
+        sqlite3_int64 data_fields = sqlite3_column_int64(statement, 5);
+        if (normalized == NULL || strncmp(normalized, normalized_prefix, prefix_length) != 0)
+            continue;
+        if (!matches && !exercise_row_matches_body_zone(database, row_id,
+                zone_id != NULL ? zone_id : "", include_descendants,
+                primary_only, unclassified_only, &matches)) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        if (!matches) continue;
+        if (data_fields < 0 || (uint64_t)data_fields > UINT32_MAX) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        if (count < capacity) {
+            TrainlogExercise *item = &output[count];
+            (void)memset(item, 0, sizeof(*item));
+            (void)snprintf(item->exercise_id, sizeof(item->exercise_id), "%s",
+                (const char *)sqlite3_column_text(statement, 1));
+            (void)snprintf(item->name, sizeof(item->name), "%s",
+                (const char *)sqlite3_column_text(statement, 2));
+            item->tracking_mode = tracking_mode_from_sql(
+                (const char *)sqlite3_column_text(statement, 3));
+            item->recording_mode = recording_mode_from_sql(
+                (const char *)sqlite3_column_text(statement, 4));
+            item->data_fields = (TrainlogExerciseDataFields)data_fields;
+        }
+        ++count;
+    }
+    if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    *output_count = count;
+    return count > capacity ? TRAINLOG_STATUS_INVALID_ARGUMENT : TRAINLOG_STATUS_OK;
 }
 
 static TrainlogStatus lookup_session_row_id(

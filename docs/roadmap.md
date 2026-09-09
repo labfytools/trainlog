@@ -14,8 +14,8 @@ GATE_1=PASS
 GATE_2=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
-DESKTOP_SCHEMA_V10=PASS
-ANDROID_LOCAL_DATABASE_V9=PASS
+DESKTOP_SCHEMA_V11=PASS
+ANDROID_LOCAL_DATABASE_V10=PASS
 
 DIRECT_MTP_TRANSPORT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
@@ -27,8 +27,11 @@ MAX_TEST_RESUME_STABLE_ID=PASS
 BODY_ANALYTICS_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
+BODY_ZONES_V1=PASS
+BODY_ZONE_SYNC_V1=PASS
+BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_TESTS=39/39 PASS
 TUI_NOTCURSES_V1=PASS
 NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
 NOTCURSES_TRUECOLOR_THEME=PASS
@@ -40,6 +43,7 @@ The current product baseline includes:
 - usable Notcurses desktop TUI;
 - native Android capture client;
 - exercise catalog;
+- canonical hierarchical body zones, primary/secondary relations and filters;
 - profile-aware set and continuous activity;
 - heterogeneous repetition sets;
 - session history and editing;
@@ -52,6 +56,12 @@ The current product baseline includes:
 - safe V2 exercise-identity reconciliation with richer compatible profiles;
 - supplied and custom equipment definitions with occurrence-level links;
 - shared synchronization engine and `trainlog-syncd`.
+
+`BODY_ZONES_V1` is complete infrastructure for later planning: one shared
+manifest, desktop v11/Android v10 relations, Android/TUI edit and display,
+descendant-aware filters, unclassified history and one explicit-conflict sync
+companion. It does not implement a session generator, custom zones or proposed
+loads.
 
 `EXERCISE_EDIT_V1` is a completed capture correction: Android permits
 stable-ID renames, protects referenced profiles, and reconciles same-ID display
@@ -131,8 +141,8 @@ useful duplicate count
 supported exercise(s)
 Trainlog recording profile
 load semantics
-primary muscles
-secondary muscles
+primary body zone (BODY_ZONES_V1)
+secondary body zones (BODY_ZONES_V1)
 ```
 
 Important rule:
@@ -143,6 +153,9 @@ one photographed machine != one exercise
 
 A single piece of equipment may support multiple exercises. Equipment and
 exercise identity must remain distinct concepts.
+The primary/secondary body-zone dimension is already implemented by Body Zones
+V1; gym inventory should link stable exercise identities to that model rather
+than inventing another free-text body-region field.
 
 Gate:
 
@@ -155,19 +168,18 @@ GYM_CATALOG_V1=PASS
 After the real gym inventory is normalized, enrich the exercise catalog with
 structured metadata needed by planning and analytics.
 
-Candidate metadata:
+Remaining candidate metadata:
 
 ```text
 equipment
-primary_muscles
-secondary_muscles
 movement_family
-body_region
 laterality
 ```
 
 The final schema must be designed before implementation. Do not encode these
 concepts into names or free-form notes as a substitute for a real model.
+Body-zone metadata is no longer future scope here; its frozen V1 taxonomy and
+direct relations must be reused.
 
 Gate:
 
@@ -190,6 +202,12 @@ A planned session should allow:
 
 Android should then open a prepared session and require only actual performance
 entry during training.
+
+The existing Body Zones V1 read APIs can later list exercises by direct or
+descendant zone, optionally primary-only, and compose those IDs with existing
+latest MAX and performance history. A future generator may use that surface,
+but this planner tranche must still define its own selection policy and must not
+duplicate MAX/history or infer a load automatically.
 
 Target workflow:
 
@@ -271,8 +289,9 @@ Candidate metrics:
 - useful volume metrics where semantically valid;
 - progression by exercise.
 
-Once exercise metadata exists, aggregate by muscle group or movement family to
-help evaluate training balance.
+Use the existing Body Zones V1 read surface to aggregate by canonical body zone
+and hierarchy when evaluating training balance. A separate movement-family
+taxonomy, if ever needed, must be versioned rather than inferred from names.
 
 Gate:
 

@@ -11,7 +11,7 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 10
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 11
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
@@ -136,6 +136,77 @@ TrainlogStatus trainlog_database_list_exercises(
     TrainlogExercise *output,
     size_t capacity,
     size_t *output_count
+);
+
+/**
+ * @brief Atomically replace one exercise's direct body-zone relations.
+ *
+ * @param primary_zone_id NULL or empty preserves the explicitly allowed
+ *        unclassified state, which requires secondary_count == 0. Group zones
+ *        cannot be assigned because their descendant relationship is derived
+ *        from the canonical manifest.
+ * @param secondary_zone_ids Caller-owned array borrowed for this call only.
+ * @param secondary_count Bounded by the number of canonical manifest zones.
+ * @return INVALID_ARGUMENT for unknown/group/duplicate zones, NOT_FOUND for
+ *         an unknown exercise, or the explicit persistence status.
+ */
+TrainlogStatus trainlog_database_replace_exercise_body_zones(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const char *primary_zone_id,
+    const char *const *secondary_zone_ids,
+    size_t secondary_count
+);
+
+/* NOT_FOUND distinguishes an unknown exercise identity from the valid empty
+ * relation set. Output is caller-owned; output_count reports required capacity
+ * and no relation is truncated as a successful result. */
+TrainlogStatus trainlog_database_list_exercise_body_zones(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogExerciseBodyZone *output,
+    size_t capacity,
+    size_t *output_count
+);
+
+/* CONTRACT: the caller owns output storage; output_count reports the required
+ * count and INVALID_ARGUMENT is returned when capacity is insufficient.
+ * Filtering combines a normalized name prefix with either one
+ * direct zone, its manifest descendants, or the explicit unclassified state.
+ * `primary_only` excludes secondary participation without changing storage.
+ * zone_id and unclassified_only are mutually exclusive.
+ * The resulting exercise IDs compose with list_exercise_body_zones() and
+ * list_exercise_performance(); the latter exposes newest history and explicit
+ * MAX without duplicating either datum for a future session generator. */
+TrainlogStatus trainlog_database_list_exercises_filtered(
+    TrainlogDatabase *database,
+    const char *normalized_prefix,
+    const char *zone_id,
+    bool include_descendants,
+    bool primary_only,
+    bool unclassified_only,
+    TrainlogExercise *output,
+    size_t capacity,
+    size_t *output_count
+);
+
+/* CONTRACT: name/profile/direct zones are one transaction and all string/list
+ * inputs are borrowed only for the duration of the call. A profile change is
+ * rejected once completed history references the exercise; a same-profile
+ * rename or zone replacement preserves exercise_id and history. Zone rules
+ * match replace_exercise_body_zones(). Unknown exercise IDs return NOT_FOUND;
+ * invalid metadata and name collisions remain explicit errors. */
+TrainlogStatus trainlog_database_update_exercise_profiled(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const char *name,
+    const char *normalized_name,
+    TrainlogTrackingMode tracking_mode,
+    TrainlogRecordingMode recording_mode,
+    TrainlogExerciseDataFields data_fields,
+    const char *primary_zone_id,
+    const char *const *secondary_zone_ids,
+    size_t secondary_count
 );
 
 TrainlogStatus trainlog_database_insert_session(

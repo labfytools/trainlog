@@ -776,9 +776,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10):
+    if version not in (5, 6, 7, 8, 9, 10, 11):
         raise ImportFailure(
-            f"base desktop schema v5 à v10 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v11 attendue, version trouvée: {version}"
         )
 
 
@@ -894,9 +894,49 @@ def enrich_desktop_profile(connection, row, exercise):
 
 def merge_desktop_exercise_rows(connection, canonical, retired):
     """Move the complete current desktop FK graph before deleting a duplicate."""
-    # WHY: the current v8 desktop schema has exactly one exercise-row FK owner.
-    # Keeping this operation explicit makes a future schema addition fail its
-    # reconciliation tests instead of silently leaving a dangling identity.
+    # WHY: schema v11 adds a second exercise-row owner. Keeping this operation
+    # explicit prevents identity reconciliation from silently dropping a body-
+    # zone decision while occurrence IDs and all history remain unchanged.
+    has_body_zones = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='exercise_body_zones';"
+    ).fetchone() is not None
+    if has_body_zones:
+        def zone_state(row_id):
+            rows = connection.execute(
+                "SELECT zone_id,role FROM exercise_body_zones "
+                "WHERE exercise_row_id=? ORDER BY role,zone_id;",
+                (row_id,),
+            ).fetchall()
+            return tuple((row[0], row[1]) for row in rows)
+
+        canonical_state = zone_state(canonical["id"])
+        retired_state = zone_state(retired["id"])
+        if canonical_state and retired_state and canonical_state != retired_state:
+            raise ImportFailure(
+                "conflit zones pendant réconciliation des identités "
+                f"{canonical['exercise_id']} et {retired['exercise_id']}"
+            )
+        if not canonical_state and retired_state:
+            connection.execute(
+                "UPDATE exercise_body_zones SET exercise_row_id=? WHERE exercise_row_id=?;",
+                (canonical["id"], retired["id"]),
+            )
+        else:
+            connection.execute(
+                "DELETE FROM exercise_body_zones WHERE exercise_row_id=?;",
+                (retired["id"],),
+            )
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='exercise_body_zone_sync';"
+        ).fetchone() is not None:
+            # INVARIANT: a row merge is not a sync acknowledgement. Clearing
+            # both ancestors makes a later divergent companion conflict rather
+            # than treating one creator's stale baseline as shared truth.
+            connection.execute(
+                "DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?);",
+                (canonical["id"], retired["id"]),
+            )
     connection.execute(
         "UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?;",
         (canonical["id"], retired["id"]),

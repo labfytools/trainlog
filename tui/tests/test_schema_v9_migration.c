@@ -64,9 +64,9 @@ static bool scalar_text_is(sqlite3 *db, const char *sql, const char *expected)
     return matches;
 }
 
-static bool test_v9_to_v10_is_lossless(void)
+static bool test_v9_to_current_is_lossless(void)
 {
-    char path[] = "/tmp/trainlog-schema-v9-v10-XXXXXX";
+    char path[] = "/tmp/trainlog-schema-v9-current-XXXXXX";
     sqlite3 *raw = NULL;
     sqlite3_stmt *rows = NULL;
     TrainlogDatabase *database = NULL;
@@ -83,7 +83,7 @@ static bool test_v9_to_v10_is_lossless(void)
 
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 10);
+    CHECK(version == TRAINLOG_DATABASE_SCHEMA_VERSION);
     CHECK(trainlog_database_foreign_keys_enabled(database, &foreign_keys) == TRAINLOG_STATUS_OK);
     CHECK(foreign_keys == 1);
     trainlog_database_close(database);
@@ -151,7 +151,7 @@ static bool test_v9_to_v10_failure_rolls_back(void)
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic,
         sizeof(diagnostic)) == TRAINLOG_STATUS_DATABASE_ERROR);
     CHECK(database == NULL);
-    CHECK(strstr(diagnostic, "migrate database to schema v10") != NULL);
+    CHECK(strstr(diagnostic, "migrate database to schema v11") != NULL);
     CHECK(strstr(diagnostic, "performed_sets_v9") != NULL);
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
@@ -176,8 +176,8 @@ static bool test_v9_to_v10_failure_rolls_back(void)
 
 int main(void)
 {
-    CHECK(test_v9_to_v10_is_lossless());
-    CHECK(test_v9_to_v10_failure_rolls_back());
+    if (!test_v9_to_current_is_lossless() ||
+        !test_v9_to_v10_failure_rolls_back()) return 1;
     (void)printf("PASS schema_v9_migration\n");
     return 0;
 }

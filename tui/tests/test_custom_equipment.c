@@ -51,7 +51,7 @@ static bool test_custom_equipment_round_trip(void)
 
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 10);
+    CHECK(version == TRAINLOG_DATABASE_SCHEMA_VERSION);
     (void)memset(&custom, 0, sizeof(custom));
     (void)snprintf(custom.equipment_id, sizeof(custom.equipment_id),
         "%s", "eq_123e4567-e89b-42d3-a456-426614174000");
@@ -116,7 +116,7 @@ static bool test_custom_equipment_round_trip(void)
 
 int main(void)
 {
-    CHECK(test_custom_equipment_round_trip());
+    if (!test_custom_equipment_round_trip()) return 1;
     (void)printf("PASS custom_equipment\n");
     return 0;
 }

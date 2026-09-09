@@ -16,9 +16,9 @@ desktop.
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V10=PASS
+DESKTOP_SCHEMA_V11=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V9=PASS
+ANDROID_LOCAL_DATABASE_V10=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
@@ -37,8 +37,12 @@ EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
+BODY_ZONES_V1=PASS
+BODY_ZONE_SYNC_V1=PASS
+BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
+BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_TESTS=39/39 PASS
 ANDROID_BUILD=PASS
 ```
 
@@ -125,6 +129,16 @@ and historical occurrence snapshots remain unchanged; absent optional values
 stay absent. Incomparable profiles remain explicit conflicts. Name equality
 alone is never sufficient.
 
+Exercise body zones are independent metadata sourced from the single canonical
+[`catalog/body-zones-v1.json`](catalog/body-zones-v1.json) manifest. An exercise
+may have one primary assignable zone and several distinct secondary zones.
+Secondary relations require that primary; the explicit unclassified state has
+no relations at all.
+`upper_body` and `lower_body` are hierarchy groups used for display and
+descendant-aware filtering; they are never duplicated as stored relations.
+`full_body` and `core` remain autonomous. Historical exercises without an
+objective stable-ID mapping remain visible as **Non renseignés**.
+
 ## Repository layout
 
 ```text
@@ -132,6 +146,7 @@ android/        native Kotlin/Compose Android client
 tui/            C17 Notcurses desktop application and core
 docs/           canonical project documentation
 format/         frozen Trainlog JSON v1 schema material
+catalog/        canonical versioned equipment and body-zone manifests
 examples/       valid frozen-format examples
 tests/          fixtures and cross-component tests
 tools/          validators, import/export helpers, sync daemon tooling
@@ -163,11 +178,11 @@ export or desktop synchronization as completed sessions.
 Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v9. Its additive v4 -> v9 chain adds the shared
+The current Android schema is v10. Its additive v4 -> v10 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
 identities, custom-equipment definition support, explicit MAX results and
-stable-source Test max resumption without recreating completed history or
-discarding the active draft.
+stable-source Test max resumption, then direct primary/secondary body-zone
+relations, without recreating completed history or discarding the active draft.
 
 Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
 unchanged; completed history, an active draft, and synchronization therefore
@@ -185,7 +200,7 @@ cd android
 printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
 
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
-./gradlew assembleDebug
+./gradlew testDebugUnitTest assembleDebug
 ```
 
 ## Android-triggered synchronization
@@ -225,6 +240,8 @@ runs, a receipt is returned to Android, and the PC catalog is applied locally.
 The active completed-session exchange is V2 and preserves occurrence
 `entry_id`, per-set weights and equipment associations. Frozen V1 artifacts
 remain readable as legacy artifacts; they are not silently redefined as V2.
+Exercise-zone metadata travels separately in the sole bidirectional
+`trainlog-exercise-body-zones-v1.json` companion.
 
 ## Documentation
 
@@ -296,5 +313,5 @@ BODY_ANALYTICS_V1=PASS
 BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_TESTS=39/39 PASS
 ```

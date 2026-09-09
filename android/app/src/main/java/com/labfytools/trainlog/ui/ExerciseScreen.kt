@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.CreateExerciseResult
+import com.labfytools.trainlog.data.BodyZone
+import com.labfytools.trainlog.data.BodyZoneKind
 import com.labfytools.trainlog.data.EditExerciseResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ExerciseDataFields
@@ -66,6 +68,13 @@ fun ExerciseScreen(
             mutableStateOf(false)
         }
 
+    var primaryZoneId by remember { mutableStateOf<String?>(null) }
+    var secondaryZoneIds by remember { mutableStateOf(emptySet<String>()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var filterZoneId by remember { mutableStateOf<String?>(null) }
+    var unclassifiedFilter by remember { mutableStateOf(false) }
+    val zones = repository.listBodyZones()
+
     var message by
         remember {
             mutableStateOf<String?>(
@@ -92,6 +101,8 @@ fun ExerciseScreen(
         trackingMode = exercise.trackingMode
         speed = exercise.dataFields and ExerciseDataFields.SPEED_KMH != 0
         distance = exercise.dataFields and ExerciseDataFields.DISTANCE_KM != 0
+        primaryZoneId = exercise.primaryZoneId
+        secondaryZoneIds = exercise.secondaryZoneIds.toSet()
         message = null
     }
 
@@ -245,6 +256,49 @@ fun ExerciseScreen(
                 }
             }
 
+            TrainlogChoiceGroup(label = "Zone principale") {
+                TrainlogChoice(
+                    label = "Non renseignée",
+                    selected = primaryZoneId == null,
+                    onClick = {
+                        primaryZoneId = null
+                        secondaryZoneIds = emptySet()
+                        message = null
+                    },
+                )
+                BodyZoneChoices(zones) { zone, indented ->
+                    TrainlogChoice(
+                        label = (if (indented) "  ↳ " else "") + zone.displayName,
+                        selected = primaryZoneId == zone.zoneId,
+                        enabled = zone.kind != BodyZoneKind.GROUP,
+                        onClick = {
+                            primaryZoneId = zone.zoneId
+                            secondaryZoneIds = secondaryZoneIds - zone.zoneId
+                            message = null
+                        },
+                    )
+                }
+            }
+
+            TrainlogChoiceGroup(label = "Zones secondaires") {
+                BodyZoneChoices(zones) { zone, indented ->
+                    TrainlogChoice(
+                        label = (if (indented) "  ↳ " else "") + zone.displayName,
+                        selected = zone.zoneId in secondaryZoneIds,
+                        enabled = primaryZoneId != null &&
+                            zone.kind != BodyZoneKind.GROUP && zone.zoneId != primaryZoneId,
+                        onClick = {
+                            secondaryZoneIds = if (zone.zoneId in secondaryZoneIds) {
+                                secondaryZoneIds - zone.zoneId
+                            } else {
+                                secondaryZoneIds + zone.zoneId
+                            }
+                            message = null
+                        },
+                    )
+                }
+            }
+
             val fields =
                 if (
                     recordingMode ==
@@ -309,7 +363,12 @@ fun ExerciseScreen(
                     },
                 accent =
                     colors.success,
-                onClick = {
+                onClick = save@{
+                    if (editedExercise == null &&
+                        recordingMode == RecordingMode.SETS && primaryZoneId == null) {
+                        message = "Une zone principale est requise pour un nouvel exercice musculaire."
+                        return@save
+                    }
                     val current = editedExercise
                     val result =
                         if (current == null) {
@@ -322,6 +381,8 @@ fun ExerciseScreen(
                                         trackingMode,
                                     dataFields =
                                         fields,
+                                    primaryZoneId = primaryZoneId,
+                                    secondaryZoneIds = secondaryZoneIds.toList(),
                                 ),
                             )
                         } else {
@@ -332,6 +393,8 @@ fun ExerciseScreen(
                                     recordingMode = recordingMode,
                                     trackingMode = trackingMode,
                                     dataFields = fields,
+                                    primaryZoneId = primaryZoneId,
+                                    secondaryZoneIds = secondaryZoneIds.toList(),
                                 ),
                             )
                         }
@@ -349,6 +412,10 @@ fun ExerciseScreen(
                         CreateExerciseResult.Invalid -> {
                             message =
                                 "Profil ou nom invalide."
+                        }
+
+                        is CreateExerciseResult.DatabaseError -> {
+                            message = result.message
                         }
 
                         is EditExerciseResult.Saved -> {
@@ -389,6 +456,8 @@ fun ExerciseScreen(
                         trackingMode = TrackingMode.REPS
                         speed = false
                         distance = false
+                        primaryZoneId = null
+                        secondaryZoneIds = emptySet()
                         message = null
                     },
                 )
@@ -404,14 +473,43 @@ fun ExerciseScreen(
         }
 
         TrainlogFrame(title = "EXERCICES EXISTANTS", active = false) {
-            val exercises = repository.listExercises()
+            TrainlogInputField(
+                label = "Recherche par préfixe",
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+            )
+            TrainlogChoiceGroup(label = "Filtre par zone") {
+                TrainlogChoice(
+                    label = "Toutes les zones",
+                    selected = filterZoneId == null && !unclassifiedFilter,
+                    onClick = { filterZoneId = null; unclassifiedFilter = false },
+                )
+                BodyZoneChoices(zones, includeGroups = true) { zone, indented ->
+                    TrainlogChoice(
+                        label = (if (indented) "  ↳ " else "") + zone.displayName,
+                        selected = filterZoneId == zone.zoneId && !unclassifiedFilter,
+                        onClick = { filterZoneId = zone.zoneId; unclassifiedFilter = false },
+                    )
+                }
+                TrainlogChoice(
+                    label = "Non renseignés",
+                    selected = unclassifiedFilter,
+                    onClick = { filterZoneId = null; unclassifiedFilter = true },
+                )
+            }
+            val exercises = repository.listExercises(
+                query = searchQuery,
+                zoneId = filterZoneId,
+                includeDescendants = true,
+                unclassifiedOnly = unclassifiedFilter,
+            )
             if (exercises.isEmpty()) {
                 TrainlogInfo("Aucun exercice enregistré.")
             } else {
                 exercises.forEach { exercise ->
                     TrainlogAction(
                         label = "Modifier · ${exercise.name}",
-                        description = "Modifier le nom ou le profil si disponible.",
+                        description = exerciseZoneSummary(repository, exercise),
                         accent = colors.accent,
                         onClick = { startEditing(exercise) },
                     )
@@ -431,6 +529,37 @@ fun ExerciseScreen(
                 "Aucune règle ne dépend du nom."
             )
         }
+    }
+}
+
+@Composable
+private fun BodyZoneChoices(
+    zones: List<BodyZone>,
+    includeGroups: Boolean = false,
+    content: @Composable (BodyZone, Boolean) -> Unit,
+) {
+    zones.forEach { zone ->
+        if (includeGroups || zone.kind != BodyZoneKind.GROUP) {
+            content(zone, zone.parentZoneId != null)
+        } else {
+            TrainlogInfo(zone.displayName)
+        }
+    }
+}
+
+private fun exerciseZoneSummary(
+    repository: TrainlogRepository,
+    exercise: ExerciseProfile,
+): String {
+    val primary = exercise.primaryZoneId?.let(repository::bodyZone)
+        ?: return "Zone : Non renseignée"
+    val secondary = exercise.secondaryZoneIds.mapNotNull(repository::bodyZone)
+    val group = repository.bodyZoneAncestors(primary.zoneId).firstOrNull()
+    return buildString {
+        append("Zone principale : ${primary.displayName}")
+        append(" · Zones secondaires : ")
+        append(if (secondary.isEmpty()) "Aucune" else secondary.joinToString { it.displayName })
+        group?.let { append(" · Groupe : ${it.displayName}") }
     }
 }
 

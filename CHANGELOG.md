@@ -9,6 +9,24 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- `BODY_ZONES_V1`: the canonical `catalog/body-zones-v1.json` taxonomy with
+  stable IDs, French display metadata, hierarchy, deterministic sort order and
+  exact stable-exercise-ID migration evidence;
+- one primary plus multiple distinct secondary body-zone relations on desktop
+  and Android, with explicit unclassified history, transactional creation/edit,
+  exercise detail summaries, parent/descendant filters, prefix-search
+  composition, and custom-exercise support;
+- one strict bidirectional `trainlog-exercise-body-zones` v1 companion carrying
+  `exercise_id`, nullable primary ID and ordered secondary IDs; replay is
+  idempotent, one-sided edits reconcile, simultaneous divergence conflicts,
+  secondary lists are never unioned automatically, and the publishing peer
+  records the exact published snapshot as its common baseline;
+- generator-ready read composition for descendant and primary-only exercise
+  selection, direct zone relations, existing performance history and explicit
+  MAX history without duplicating historical or MAX data;
+- taxonomy, schema migration, relation constraint, filtering, identity-merge,
+  reopen, companion replay/update/conflict and Android repository regressions;
+
 - explicit MAX result mode for `max_test` sessions: exercise, optional
   equipment context and positive `max_weight_kg`, with no synthetic set or
   repetition;
@@ -91,6 +109,15 @@ Detailed implementation chronology remains available in Git history and
 
 ### Changed
 
+- desktop schema v11 additively introduces `exercise_body_zones` and its
+  internal sync-baseline table; Android schema v10 introduces the equivalent
+  relations. Both migrations seed only manifest mappings proven by stable
+  `exercise_id`, leave uncertain exercises unclassified, and preserve all
+  session, occurrence, set, MAX, equipment and body-observation identities;
+- Android and TUI exercise catalog workflows now select translated manifest
+  values, derive group labels, exclude a primary from secondary selection and
+  combine hierarchy-aware zone filtering with normalized prefix search;
+
 - desktop schema v10 losslessly rebuilds only `performed_sets` to accept an
   explicit zero actual `weight_kg`; historic NULL and positive actual loads
   remain unchanged, while planned targets and explicit MAX results stay
@@ -135,6 +162,14 @@ Detailed implementation chronology remains available in Git history and
 
 ### Fixed
 
+- a newly published custom-exercise zone state now establishes the publisher's
+  comparison baseline as well as the receiver's; a later peer-only edit no
+  longer produces a false simultaneous-conflict result;
+- secondary-only body-zone states are rejected consistently by C, Kotlin and
+  Python boundaries instead of being persisted but hidden by exercise detail;
+- touched migration/custom-equipment/body-metric/TUI C regressions now return
+  a failing process status from `main()`; the repaired workflow fixture uses a
+  real in-memory database instead of passing an invalid null handle;
 - synchronization summaries no longer add exercise reconciliations to the
   `exercices ajoutés` value. A compatible different-ID lookup that makes no
   persistent change is reported as an idempotent skip, while real insertions
@@ -174,22 +209,22 @@ Current validated baseline:
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V10=PASS
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_SCHEMA_V11=PASS
+DESKTOP_TESTS=39/39 PASS
 
 ANDROID_BUILD=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V9=PASS
-ANDROID_TEST_DEBUG_UNIT=PASS
+ANDROID_LOCAL_DATABASE_V10=PASS
+ANDROID_TEST_DEBUG_UNIT=44/44 PASS (real v9 fixture enabled)
 ANDROID_SESSION_DRAFT_V1=PASS
 ANDROID_MAX_V9_REAL_DATA_MIGRATION=PASS
 ANDROID_MAX_V9_INSTALL_ADB=PASS
 
 USB_MTP_DETECTION=PASS
 MTP_HARDWARE_ROUNDTRIP=HISTORICAL_PASS
-CURRENT_SANDBOX_LIBMTP_OPEN=BLOCKED
-REAL_ANDROID_ARTIFACT_COPY_ROUNDTRIP=PASS
-REAL_DATABASE_APPLICATION=BLOCKED_BY_SANDBOX_WRITE_BOUNDARY
+REAL_ANDROID_ARTIFACT_COPY_ROUNDTRIP=HISTORICAL_PASS
+BODY_ZONES_DESKTOP_REAL_DATABASE=PASS
+BODY_ZONES_ANDROID_DEVICE=PASS
 
 ANDROID_TO_PC_MTP=HISTORICAL_PASS
 PC_TO_ANDROID_MTP_PUBLISH=HISTORICAL_PASS
@@ -204,7 +239,26 @@ EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
+BODY_ZONES_V1=PASS
+BODY_ZONE_SYNC_V1=PASS
+BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
+BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 ```
+
+For Body Zones V1, the real desktop database was backed up coherently and
+migrated v10 -> v11 through the production binary. All eight pre-existing
+tables compare equal row-for-row with the backup; integrity/FK checks pass and
+the migration adds 32 direct relations for 20 of 23 exercises. On the Samsung
+SM-G990B, the matching signed APK was installed with `adb install -r`; the real
+Android database migrated v9 -> v10 with every pre-existing application row
+unchanged, 32 relations for the same 20 exercises and the expected three
+unclassified exercises. The Android zone/detail/filter/edit-cancel matrix and
+two live PC <-> Android MTP passes completed successfully. The second pass
+reported no additions or reconciliations and left every Android application
+table and the semantic Body Zones companion unchanged. Scoped storage had
+published the requests as exact `(N).json` collision siblings; the shared
+engine now selects the newest request with the same deterministic helper used
+for other Android-originated artifacts.
 
 ### Measured max v1
 

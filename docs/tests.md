@@ -69,6 +69,7 @@ not contractual):
 database
 catalog
 equipment_catalog
+body_zones
 custom_equipment
 session_detail
 duration
@@ -93,6 +94,8 @@ mobile_import_multi_occurrence
 equipment_associations_exchange
 equipment_definitions_exchange
 exercise_reconciliation
+body_zone_sync
+body_zone_catalog_validation
 sync_direction
 sync_history
 sync_screen_action
@@ -107,7 +110,7 @@ tui_workflows
 Validated current suite:
 
 ```text
-36/36 Meson tests PASS
+39/39 Meson tests PASS
 ```
 
 The desktop executable is additionally smoke-checked in isolated tmux PTYs at
@@ -125,12 +128,32 @@ Notable regression coverage:
 - table-only desktop SETS workflow: planning does not create actual rows,
   explicit add requires an actual metric, and normal zero-row completion is
   rejected; Android legacy compact-draft decoding remains separately covered;
-- direct v4 -> v7 database migration and v7 -> v8 custom-equipment migration;
+- direct v4 -> current database migration and v7 -> v8 custom-equipment migration;
 - bounded v8 -> v9 explicit-max migration, including ambiguous-attempt preservation;
 - lossless v9 -> v10 `performed_sets` rebuild: historic NULL and positive
   weights/IDs/owners/positions/metrics survive, explicit zero is accepted, and
   injected failure rolls back with integrity, foreign-key and enforcement
   checks;
+- additive desktop v10 -> v11 and Android v9 -> v10 body-zone migrations:
+  exact stable row identities and history remain unchanged while only proven
+  manifest mappings are seeded; the Android fixture also preserves an active
+  draft, per-set loads, explicit MAX, a body observation and a custom equipment
+  definition;
+- canonical body-zone validation rejects duplicate IDs/order, missing parents,
+  cycles, group/leaf disagreement, a taxonomy other than the exact V1 manifest,
+  invalid `full_body`, boolean versions, malformed stable IDs, and direct group
+  assignment;
+- one primary/multiple secondary persistence, duplicate/unknown/group/orphan-
+  secondary rejection, primary/secondary exclusivity, edit, unclassified and
+  reopen;
+- exact and parent-descendant zone filters, lower-body leaf coverage,
+  primary-only participation, normalized-prefix composition and custom rows;
+- body-zone companion export/import, empty mapping, identical replay,
+  one-sided update, simultaneous conflict rollback and source-V2-proven
+  exercise-ID reconciliation without name-only inference; custom-exercise
+  publication establishes both peer baselines before a reverse one-sided edit;
+  malformed `ex_<uuid-v4>` identities and timestamps without offsets are
+  rejected;
 - heterogeneous mobile-set import;
 - per-set load persistence and correction: ordered rows retain mixed actual
   repetitions, nullable loads, positions and assistance semantics through
@@ -214,6 +237,9 @@ Android repository host tests additionally cover exercise editing:
 - completed history and active-draft references resolve the renamed catalog row;
 - a referenced profile change is explicitly rejected;
 - same-ID PC-catalog rename reconciles in place without a duplicate.
+- canonical body-zone taxonomy, create/edit/reopen, parent filters,
+  search+filter, unclassified rows, companion replay/update/conflict and
+  zone-safe exercise-identity merging.
 
 ## 7. Hardware MTP validation
 
@@ -230,7 +256,7 @@ trainlog-mtp-roundtrip-probe
 trainlog-mtp-mobile-export-probe
 ```
 
-Current physical baseline:
+Previously established physical baseline:
 
 ```text
 USB_MTP_DETECTION=PASS
@@ -303,7 +329,7 @@ When Android changed, add:
 
 ```bash
 cd android
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew testDebugUnitTest assembleDebug
 ```
 
 Documentation must describe the resulting state, not retain contradictory old
@@ -332,7 +358,7 @@ Coverage proves:
 Validated current normal suite:
 
 ```text
-36/36 Meson tests PASS
+39/39 Meson tests PASS
 ```
 
 ## 12. Body analytics regression
@@ -357,13 +383,13 @@ Coverage includes:
 Validated current normal suite:
 
 ```text
-36/36 Meson tests PASS
+39/39 Meson tests PASS
 ```
 
 ## 13. Android session draft v1
 
 Android schema v4 introduced one durable active draft; the current additive
-chain reaches schema v9 without clearing completed history or the draft. The
+chain reaches schema v10 without clearing completed history or the draft. The
 current `testDebugUnitTest` suite and `assembleDebug` pass. Host coverage
 includes exercise
 shapes and raw partial text, fresh repository restore, remove/discard, atomic
@@ -375,6 +401,10 @@ Schema-v9 host coverage additionally proves French raw max-text persistence,
 explicit max creation/edit/finalization without sets, distinct movement values
 on the same equipment, latest-per-exercise history, V2 replay, stable-ID resume
 and bounded conversion that leaves multiple legacy attempts untouched.
+
+Schema-v10 host coverage adds the canonical body-zone asset, stable-ID mapping,
+relation constraints, filters, transactional editing and companion conflict
+policy without changing explicit MAX or per-set tables.
 
 The current set-row-editor coverage additionally proves that row edits,
 deletion and append preserve neighbouring rows; French-comma loads, blank
@@ -400,10 +430,31 @@ V2 regression:           mobile_import_variable_sets and the desktop/Android
 Sanitizers:              clang ASan/UBSan Meson build and test invocation
 ```
 
-Executed postrepair evidence is: 37 Android unit tests, `assembleDebug`, 36/36
-Meson tests, valid and invalid JSON checks, import-contract 6/6, and 14/14
-ASan/UBSan Meson tests. No device, installation, real-store migration, or
-instrumentation execution is asserted by this checkpoint.
+Executed Body Zones V1 evidence is recorded after each closeout run: Android
+`testDebugUnitTest` 44/44 with the retained real v9 fixture enabled and
+`assembleDebug`, 39/39 Meson tests, valid and invalid JSON checks,
+import-contract checks, and the ASan/UBSan Meson suite. Device installation and
+installed Android-store migration remain explicit hardware steps and are never
+inferred from host tests.
+
+The 2026-09-09 desktop closeout additionally backed up the real v10 database,
+opened it through the production Notcurses binary, and verified v11 integrity,
+foreign keys, all historical row counts and bidirectional row equality against
+the backup. A real Kitty terminal validation exercised the zone list, parent
+filter, classified/unclassified details and edit preloading/cancellation. The
+Samsung SM-G990B then passed certificate matching, `adb install -r`, the real
+v9 -> v10 migration, SQLite integrity/FK checks, row equality for every
+pre-existing application table, the Android zone UI matrix and two live MTP
+round trips. The second run reported zero additions/reconciliations and left
+the Android application tables and semantic companion exercise states equal to
+the first run. A regression also covers a current
+`trainlog-sync-request-v1 (N).json` beside an older canonical request.
+
+The optional `RealAndroidV9BodyZonesMigrationTest` is enabled by setting
+`TRAINLOG_ANDROID_V9_FIXTURE` to a coherent copied v9 database. It makes two
+test-owned copies before opening the production repository, then compares all
+16 pre-existing application tables in both directions; it never opens or
+modifies the supplied fixture through the migration helper.
 
 ```bash
 cd android

@@ -14,8 +14,8 @@ GATE_2_PERSISTENCE_AND_USABLE_TUI=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
 
-DESKTOP_SCHEMA_V10=PASS
-ANDROID_LOCAL_DATABASE_V9=PASS
+DESKTOP_SCHEMA_V11=PASS
+ANDROID_LOCAL_DATABASE_V10=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 ANDROID_DRAFT_DURABLE=PASS
 ANDROID_DRAFT_BACKGROUND_SURVIVAL=PASS
@@ -56,10 +56,15 @@ EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 MAX_TEST_RESUME_STABLE_ID=PASS
+BODY_ZONES_V1=PASS
+BODY_ZONE_SYNC_V1=PASS
+BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
+BODY_ZONES_TUI_REAL_VALIDATION=PASS
+BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_TESTS=39/39 PASS
 ANDROID_BUILD=PASS
-HARDWARE_SYNC_VALIDATION=PASS
+HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 ```
 
 ## Desktop
@@ -67,11 +72,13 @@ HARDWARE_SYNC_VALIDATION=PASS
 Implemented:
 
 - C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
-- SQLite schema v10, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v11, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
   definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
   rebuilds only `performed_sets` to permit explicit zero actual loads while
   preserving historic NULL and positive rows;
+- canonical generated body-zone taxonomy, direct primary/secondary exercise
+  relations, stable-ID-only initial migration and descendant-aware filtering;
 - direct session entry;
 - normal desktop SETS planning followed by the table-only explicit actual-row
   editor; zero-row completion is rejected while MAX and continuous entries keep
@@ -109,11 +116,13 @@ Primary navigation:
 Implemented:
 
 - native Kotlin/Compose application;
-- local SQLite database v9, with non-destructive v3 -> v9 migration;
+- local SQLite database v10, with non-destructive v3 -> v10 migration;
 - one durable active-session draft, Home resume and raw-form restoration;
 - explicit confirmed discard and atomic completed-save/draft-clear;
 - exercise creation;
 - stable-ID exercise rename/editing with referenced-profile protection;
+- primary/secondary body-zone selection, display, hierarchy filtering and
+  prefix-search composition, including visible unclassified exercises;
 - inline exercise creation during session entry;
 - profile-aware session recording;
 - heterogeneous repetition-set entry;
@@ -158,12 +167,14 @@ Android -> PC
     trainlog-mobile-equipment-definitions-v1.json
     trainlog-mobile-export-v2.json
     trainlog-equipment-associations-v2.json
+    trainlog-exercise-body-zones-v1.json
 
 PC -> Android
     trainlog-pc-equipment-definitions-v1.json
     trainlog-pc-catalog-v1.json
     trainlog-pc-mobile-export-v2.json
     trainlog-equipment-associations-v2.json
+    trainlog-exercise-body-zones-v1.json
 
 Android -> PC agent
     trainlog-sync-request-v1.json
@@ -191,6 +202,15 @@ endpoints.
 V2 resolves equipment by `(session_id, entry_id)`, never by display name or
 catalogue identity alone. V1 files remain legacy-compatible and do not gain
 multi-occurrence semantics retroactively.
+
+Body-zone relations have one direction-neutral companion and are keyed only by
+canonical zone IDs and `exercise_id`. Identical state is an idempotent skip; a
+successful publication records that exact state as the publisher baseline, so
+a later peer-only edit of a new custom exercise is accepted. Simultaneous
+divergence is an explicit conflict and secondary lists are never unioned. The
+unclassified state has no relations; orphan secondary rows are invalid. Parent
+groups are derived from the manifest and never serialized as exercise
+relations.
 
 Supplied equipment remains generated from `catalog/equipment-v1.json`; its IDs
 are reserved. User-created definitions synchronize additively through the
@@ -226,43 +246,85 @@ No mounted Android filesystem is required.
 Desktop:
 
 ```text
-36/36 Meson tests PASS for the current desktop schema v10 baseline
+39/39 Meson tests PASS for the current desktop schema v11 baseline
 JSON valid/invalid checks PASS
 import-contract validator 6/6 PASS
-ASan/UBSan 14/14 Meson tests PASS postrepair
+ASan/UBSan 39/39 Meson tests PASS with leak detection
+standalone public-header C17 syntax PASS
+real Notcurses binary zone workflows PASS in Kitty
 git diff --check PASS
 ```
 
 Android:
 
 ```text
-37 Android unit tests PASS
+Android unit tests 44/44 PASS with a real v9 copy enabled, including body-zone
+v9 -> v10 migration and sync
 assembleDebug PASS
+APK Signature Scheme v2 verification PASS
+APK certificate SHA-256 matches the local debug keystore
+APK SHA-256 5355f54e83f00ef31dc0e2f1db866c43ea3e9d880875f67878b1ffe169b5dc50
 ```
 
 Current real-data/environment boundary:
 
 ```text
+BODY_ZONES_DESKTOP_BACKUP=PASS
+BODY_ZONES_DESKTOP_REAL_V10_TO_V11=PASS
+BODY_ZONES_DESKTOP_HISTORY_ROW_EQUALITY=PASS
+BODY_ZONES_DESKTOP_RELATIONS=32/20_EXERCISES
+BODY_ZONES_DESKTOP_UNCLASSIFIED=3
+BODY_ZONES_ANDROID_INSTALL=PASS
+BODY_ZONES_ANDROID_REAL_V9_COPY_TO_V10=PASS
+BODY_ZONES_ANDROID_INSTALLED_DB_V10=PASS
+BODY_ZONES_LIVE_MTP_ROUNDTRIP=PASS
+BODY_ZONES_LIVE_MTP_SECOND_PASS_IDEMPOTENT=PASS
 REAL_ANDROID_ARTIFACT_COPY_ROUNDTRIP=PASS
 PC_EXPORT_ANDROID_IMPORT_THREE_PASS_COPY=PASS
 ANDROID_INSTALL_R_DATABASE_HASH_PRESERVED=PASS
-CURRENT_SANDBOX_LIBMTP_OPEN=BLOCKED
-REAL_PC_TO_ANDROID_TWO_RUN=BLOCKED_BY_SANDBOX_LIBMTP_OPEN
 ```
 
-The current sandbox discovers the connected Samsung MTP interface but
-`libusb_open()` cannot acquire it. It also exposes the canonical desktop DB as
-read-only. The failed first write left that DB byte-for-byte logically
-unchanged and integrity-clean; Android remained force-stopped and was not
-modified through ADB. Therefore this checkpoint makes no new direct-device MTP
-claim and does not claim that the real stores have consumed the reconciled
-artifacts.
+The real desktop v10 database was backed up with SQLite to
+`backups/body-zones-v1-20260909T101310Z/trainlog-v10-before.db` under the Trainlog
+user-data directory (SHA-256
+`9d5dcacd8be941be17bd3b98bbbc1815944fec9dc1b18133111ca481f50684e9`).
+The production binary migrated it to v11; integrity/FK checks pass and every
+row of all eight historical tables compares equal in both directions with the
+backup. The migration added 32 direct relations for 20 of 23 exercises and
+left Gym échauffement, Gym/Échauffement and Marche unclassified.
+
+The Samsung SM-G990B application data was freshly backed up before installation
+under `backups/body-zones-v1-android-20260909TVFprJ8/`. The coherent v9 SQLite
+copy has SHA-256
+`c402b69cdbfa4912eec1553a84754af1e892fa8da0cae6c3cbd14c4f10198401`;
+its integrity check passed and its foreign-key check was empty. The installed,
+built and established-keystore certificate fingerprints all matched
+`aa56c97f2781a0d01f007f4444c3970deb58ad8327ca3da7b0b90f37dbe2ad25`
+before `adb install -r`. The normal installed migration reached v10 with every
+row of the 16 existing application tables plus `android_metadata` equal in both
+directions to the v9 backup. Integrity/FK checks pass, 32 direct relations cover
+20 of 23 exercises, and Gym échauffement, Gym/Échauffement and Marche remain
+unclassified.
+
+The real Android UI displayed primary, secondary and derived-group metadata;
+the chest, upper-body descendant, lower-body descendant and unclassified
+filters; and the `Dos` + `lat` prefix intersection. Editing `Lat pull`
+preloaded `Dos` and secondary `Bras`; cancellation left every application table
+unchanged. Live sync runs `sy_0b00dc46-d899-4865-8718-c95085a380b2` and
+`sy_fb0630a8-1938-4d62-9836-b0281955f625` both completed successfully. The
+second run reported zero additions/reconciliations, both stores retained the
+same 32-relation stable-ID hash, and Android application tables plus companion
+exercise states compared equal to the first pass. The engine accepts the exact
+MediaStore collision family `trainlog-sync-request-v1 (N).json`; request-ID
+replay protection remains authoritative.
 
 ## Current implementation cursor
 
-Exercise reconciliation, definition-first V2 synchronization and the current
-real-data importer/exporter copy validation are complete. No product-roadmap
-ordering change was made by this corrective tranche.
+Body Zones V1, exercise reconciliation, definition-first V2 synchronization
+and the current real-data importer/exporter copy validation are complete. The
+body-zone taxonomy now supplies the read boundary required by a future
+zone-driven planner; no session generator or proposed-load calculation is part
+of this tranche.
 
 ```text
 MEASURED_MAX_V1=PASS
@@ -287,7 +349,7 @@ ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 MAX_TEST_RESUME_STABLE_ID=PASS
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_TESTS=39/39 PASS
 ```
 
 A measured maximum belongs to an exercise occurrence in an explicit `max_test`
@@ -317,7 +379,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=36/36 PASS
+DESKTOP_TESTS=39/39 PASS
 ```
 
 Android remains capture-only for this feature.

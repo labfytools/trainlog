@@ -79,6 +79,21 @@ int main(void)
         &selected));
     CHECK(selected == 1U);
 
+    (void)snprintf(entries[0].name, sizeof(entries[0].name), "%s",
+                   "trainlog-sync-request-v1.json");
+    entries[0].item_id = 60U;
+    entries[0].modification_unix_seconds = 10U;
+    (void)snprintf(entries[1].name, sizeof(entries[1].name), "%s",
+                   "trainlog-sync-request-v1 (2).json");
+    entries[1].item_id = 61U;
+    entries[1].modification_unix_seconds = 40U;
+    CHECK(trainlog_sync_select_android_artifact(
+        entries,
+        2U,
+        "trainlog-sync-request-v1.json",
+        &selected));
+    CHECK(selected == 1U);
+
     report.success = true;
     report.direction = TRAINLOG_SYNC_BIDIRECTIONAL;
     report.exercises_reconciled = 1U;

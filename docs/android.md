@@ -33,7 +33,7 @@ Accueil
 Android local database version:
 
 ```text
-8
+10
 ```
 
 Domain tables cover:
@@ -45,16 +45,21 @@ session_exercises
 performed_sets
 continuous_activity
 body_observations
+exercise_body_zones
+exercise_body_zone_sync
 ```
 
 This database is Android-local. It is not copied to the PC.
 
 Schema v4 introduced `active_session_draft`, `draft_session_exercises`,
 `draft_performed_sets` and `draft_continuous_activity`. The implemented
-additive v4 -> v8 chain preserves catalog, completed sessions/actuals, body
+additive v4 -> v10 chain preserves catalog, completed sessions/actuals, body
 observations and the draft while adding the shared equipment catalogue,
 occurrence-level equipment links and stable completed/draft `entry_id` values.
 Exactly one active draft is supported; it is separate from completed history.
+Schema v9 adds explicit completed/draft MAX results. Schema v10 additively
+stores direct primary/secondary body-zone relations and their private sync
+baseline; the taxonomy itself remains the shared manifest asset.
 
 ## 4. Exercise catalog
 
@@ -65,6 +70,8 @@ name
 recording_mode
 tracking_mode
 data_fields
+primary_zone_id       nullable only for explicit unclassified/history cases
+secondary_zone_ids   zero or more distinct canonical IDs
 ```
 
 Stable identity:
@@ -77,6 +84,19 @@ The UI rejects invalid profile combinations and local normalized-name
 collisions.
 
 An exercise may be created standalone or inline while building a session.
+
+The form groups translated values from `catalog/body-zones-v1.json` under
+**Membres supérieurs** and **Membres inférieurs**, with autonomous **Corps
+entier** and **Abdominaux / tronc** entries. Group nodes organize and filter;
+they cannot be assigned directly. A new set-based exercise requires one
+primary zone. Selecting it removes/disables that same ID among secondaries.
+Historical unclassified exercises remain visible as **Zone : Non renseignée**
+and may be classified later.
+
+The existing exercise list combines SQL-backed normalized prefix search with a
+zone filter. Parent filters include descendants, **Non renseignés** selects
+only exercises with no relations, and **Toutes les zones** never hides those
+rows. Each row displays primary, secondaries and the primary's derived group.
 
 ### Editing an exercise
 
@@ -197,6 +217,9 @@ profile. Completed and draft occurrence row IDs, `entry_id`, positions, values,
 equipment references and the active selection are moved transactionally. Any
 incompatible condition rejects the catalog transaction; name equality alone
 never authorizes a merge.
+Zone relations follow the same row-identity move only when one side is empty or
+both states are equal. Two different non-empty states are an explicit conflict;
+the repository never invents an automatic union of secondary zones.
 
 ## 7. Session history
 
@@ -261,6 +284,14 @@ definitions as `trainlog-mobile-equipment-definitions-v1.json`. The strict
 are idempotent and divergent same-ID definitions conflict. Supplied-manifest
 IDs are reserved.
 
+Android also writes `trainlog-exercise-body-zones-v1.json`, the sole zone
+companion used in both directions. It contains stable exercise/zone IDs only.
+After the file write succeeds, an identical local replay establishes/refreshes
+the publisher's shared baseline. A one-sided change is applied transactionally,
+and simultaneous divergence returns an explicit conflict without changing
+local relations. The unclassified state contains neither a primary nor orphan
+secondaries.
+
 The user does not need a separate manual export step before synchronization.
 
 An active draft is never included in completed history, session detail or this
@@ -296,6 +327,11 @@ Android writes:
 trainlog-sync-request-v1.json
 ```
 
+If MediaStore cannot reopen an older MTP-created canonical object, it may
+publish the exact collision sibling `trainlog-sync-request-v1 (N).json`. The
+desktop engine selects the newest canonical-or-suffixed request
+deterministically, while the stable `request_id` remains the replay boundary.
+
 and waits for a matching:
 
 ```text
@@ -309,8 +345,10 @@ result.
 
 Before applying the PC catalog or its V2 artifacts, Android applies
 `trainlog-pc-equipment-definitions-v1.json`. Thus custom definitions are known
-before a received V2 association references them. Android schema v9 provides
+before a received V2 association references them. Android schema v10 provides
 the non-destructive v7 -> v8 migration required for `load_semantics = none`.
+After catalog/session/equipment reconciliation, Android applies the same
+body-zone companion so custom exercises receive their classifications.
 
 A receipt belonging to another request is ignored as pending rather than
 misreported as the current result.
@@ -338,7 +376,7 @@ cd android
 printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
 
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
-./gradlew assembleDebug
+./gradlew testDebugUnitTest assembleDebug
 ```
 
 Install to a connected test device:
@@ -349,7 +387,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 `local.properties` is local machine configuration and must not be committed.
 
-The prior host regression suite had 8 tests and the prior device
+The current JVM host regression suite has 44 passing tests when the retained
+real v9 fixture is enabled. The prior device
 instrumentation suite had 5 tests (2 repository, 3 production-screen UI tests
 using an isolated database and no shared export). That device matrix exercised
 production `MainActivity`,
@@ -438,12 +477,18 @@ left intact as the crash-safe baseline until finalization.
 
 ## 17. Audited limitations
 
+Body Zones V1 defines no custom zone creation and no session generator. The
+repository already exposes manifest lookup/hierarchy, descendant and
+primary-only exercise filtering, direct exercise relations and the existing
+latest-MAX/history reads needed for future composition; it calculates no
+suggested load.
+
 Android's stored `normalized_name` currently removes diacritics, while the
 frozen desktop/Python normalization contract uses NFC, Unicode whitespace
 collapse and case folding without accent removal. Existing Marche/Leg press
 data is unaffected, but changing this safely requires an explicit Android
 schema migration that recomputes every normalized key and handles newly exposed
-collisions. It is not silently changed inside schema v9.
+collisions. It is not silently changed inside schema v10.
 
 The bundled exercise/equipment relationship metadata is seeded and preserved,
 including during exercise-identity reconciliation, but the current equipment
@@ -459,7 +504,7 @@ occurrence references.
 The PC-catalog V1 inbox validates required IDs, modes, names, and bounded field
 masks, but unlike the newer mobile V2 and equipment-companion parsers it does
 not reject every unknown root or item key. Tightening this published V1 reader
-requires a compatibility decision rather than an incidental schema-v9 change.
+requires a compatibility decision rather than an incidental schema-v10 change.
 
 Android requires `data_fields = 0` for `SETS`, while the desktop model/API
 currently accepts known supplemental bits on either recording mode. Supplied

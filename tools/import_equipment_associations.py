@@ -113,8 +113,8 @@ def main():
         fail("clés extension équipement invalides")
     connection = sqlite3.connect(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10):
-            fail("schema desktop v8, v9 ou v10 requis")
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11):
+            fail("schema desktop v8 à v11 requis")
         known = load_catalog(args.catalog)
         known.update(row[0] for row in connection.execute(
             "SELECT equipment_id FROM custom_equipment"))

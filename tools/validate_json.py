@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 import unicodedata
 from datetime import datetime
@@ -27,10 +28,83 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "format" / "trainlog-v1.schema.json"
 VALID_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "valid"
 INVALID_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "invalid"
+BODY_ZONE_CATALOG_PATH = ROOT / "catalog" / "body-zones-v1.json"
 
 
 class TrainlogSemanticError(ValueError):
     """Raised when structurally valid JSON violates its format semantics."""
+
+
+def validate_body_zone_catalog(document: Any) -> None:
+    """Validate the one canonical taxonomy, hierarchy and initial mappings."""
+    if not isinstance(document, dict) or set(document) != {
+        "format", "version", "zones", "exercise_mappings",
+    } or document.get("format") != "trainlog-body-zone-catalog" or \
+            document.get("version") != 1 or isinstance(document.get("version"), bool):
+        raise TrainlogSemanticError("body-zone catalog v1: invalid root")
+    zones = document["zones"]
+    mappings = document["exercise_mappings"]
+    if not isinstance(zones, list) or not zones:
+        raise TrainlogSemanticError("body-zone catalog v1: zones must be non-empty")
+    if not isinstance(mappings, list):
+        raise TrainlogSemanticError("body-zone catalog v1: exercise_mappings must be a list")
+    by_id: dict[str, dict[str, Any]] = {}
+    orders: set[int] = set()
+    for index, zone in enumerate(zones):
+        if not isinstance(zone, dict) or set(zone) != {
+            "zone_id", "display_name", "parent_zone_id", "sort_order", "kind",
+        }:
+            raise TrainlogSemanticError(f"zones[{index}]: invalid shape")
+        zone_id = zone["zone_id"]
+        order = zone["sort_order"]
+        if not isinstance(zone_id, str) or re.fullmatch(r"[a-z][a-z0-9_]*", zone_id) is None or \
+                zone_id in by_id:
+            raise TrainlogSemanticError(f"zones[{index}]: duplicate/invalid zone_id")
+        if not isinstance(order, int) or isinstance(order, bool) or order < 0 or order in orders:
+            raise TrainlogSemanticError(f"zones[{index}]: duplicate/invalid sort_order")
+        if not isinstance(zone["display_name"], str) or not zone["display_name"].strip() or \
+                zone["kind"] not in {"group", "leaf", "standalone"}:
+            raise TrainlogSemanticError(f"zones[{index}]: invalid metadata")
+        by_id[zone_id] = zone
+        orders.add(order)
+    for zone in zones:
+        parent = zone["parent_zone_id"]
+        seen = {zone["zone_id"]}
+        while parent is not None:
+            if parent not in by_id or parent in seen:
+                raise TrainlogSemanticError(f"zone {zone['zone_id']}: invalid/cyclic parent")
+            seen.add(parent)
+            parent = by_id[parent]["parent_zone_id"]
+        children = any(item["parent_zone_id"] == zone["zone_id"] for item in zones)
+        if (zone["kind"] == "group") != children:
+            raise TrainlogSemanticError(f"zone {zone['zone_id']}: kind disagrees with hierarchy")
+    if by_id.get("full_body", {}).get("parent_zone_id") is not None or \
+            by_id.get("full_body", {}).get("kind") != "standalone" or \
+            by_id.get("upper_body", {}).get("kind") != "group" or \
+            by_id.get("lower_body", {}).get("kind") != "group":
+        raise TrainlogSemanticError("body-zone special/group contract invalid")
+    seen_exercises: set[str] = set()
+    for index, mapping in enumerate(mappings):
+        if not isinstance(mapping, dict) or set(mapping) != {
+            "exercise_id", "exercise_name", "primary_zone_id", "secondary_zone_ids", "decision_source",
+        }:
+            raise TrainlogSemanticError(f"exercise_mappings[{index}]: invalid shape")
+        exercise_id = mapping["exercise_id"]
+        primary = mapping["primary_zone_id"]
+        secondary = mapping["secondary_zone_ids"]
+        if not isinstance(exercise_id, str) or re.fullmatch(
+                r"ex_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+                exercise_id,
+        ) is None or exercise_id in seen_exercises or \
+                not isinstance(mapping["exercise_name"], str) or not mapping["exercise_name"].strip() or \
+                not isinstance(primary, str) or primary not in by_id or by_id[primary]["kind"] == "group" or \
+                not isinstance(secondary, list) or \
+                any(not isinstance(item, str) or item not in by_id or by_id[item]["kind"] == "group"
+                    for item in secondary) or len(secondary) != len(set(secondary)) or \
+                primary in secondary or not isinstance(mapping["decision_source"], str) or \
+                not mapping["decision_source"].strip():
+            raise TrainlogSemanticError(f"exercise_mappings[{index}]: invalid relation")
+        seen_exercises.add(exercise_id)
 
 
 def load_json(path: Path) -> Any:
@@ -309,7 +383,14 @@ def validate_document(
     except (OSError, json.JSONDecodeError) as exc:
         return [str(exc)]
 
+    is_body_zones = isinstance(document, dict) and document.get("format") == "trainlog-body-zone-catalog"
     is_mobile_v2 = isinstance(document, dict) and document.get("format") == "trainlog-mobile-export" and document.get("version") == 2
+    if is_body_zones:
+        try:
+            validate_body_zone_catalog(document)
+        except TrainlogSemanticError as exc:
+            return [str(exc)]
+        return []
     if not is_mobile_v2:
         errors = structural_errors(validator, document)
         if errors:
@@ -338,6 +419,15 @@ def run_suite(validator: jsonschema.Draft202012Validator) -> int:
     """Validate all positive and negative repository fixtures."""
     valid, invalid = discover_suite()
     failed = False
+
+    body_zone_errors = validate_document(validator, BODY_ZONE_CATALOG_PATH)
+    if body_zone_errors:
+        print(f"FAIL body-zone catalog: {BODY_ZONE_CATALOG_PATH}")
+        for error in body_zone_errors:
+            print(f"  {error}")
+        failed = True
+    else:
+        print(f"PASS body-zone catalog: {BODY_ZONE_CATALOG_PATH}")
 
     if not valid:
         print("FAIL test suite: no valid fixtures found")

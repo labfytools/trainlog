@@ -458,7 +458,8 @@ The following are deliberately not represented by v1:
 - measured per-set rest;
 - supersets/circuits as first-class objects;
 - arbitrary custom set metrics;
-- muscle-group classification;
+- exercise body-zone relations (carried by the separate versioned Body Zones
+  V1 companion, never added to this frozen format);
 - machine seat/settings metadata;
 - photos;
 - cloud synchronization.

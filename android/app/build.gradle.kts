@@ -29,9 +29,10 @@ android {
 
     sourceSets {
         getByName("main") {
-            /* CONTRACT: this repository-level manifest is the one canonical
-             * equipment source. Android must not fork it into Kotlin constants. */
-            assets.srcDir("../../catalog")
+            /* CONTRACT: repository-level equipment and body-zone manifests
+             * are the canonical shared sources. Android must not fork either
+             * taxonomy into Kotlin constants. */
+            assets.directories.add("../../catalog")
         }
     }
 

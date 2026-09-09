@@ -219,30 +219,33 @@ static bool test_empty_sets_cannot_finish(void)
 {
     TrainlogSessionDraftExercise draft;
     TrainlogTerminal terminal;
+    TrainlogDatabase *database = NULL;
     size_t count = 1U;
     const int events[] = {'f', 'x', 'q'};
 
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
     (void)memset(&draft, 0, sizeof(draft));
     draft.input.recording_mode = TRAINLOG_RECORDING_SETS;
     draft.tracking_mode = TRAINLOG_TRACKING_REPS;
     (void)snprintf(draft.name, sizeof(draft.name), "Squat");
     script(&terminal, events, sizeof(events) / sizeof(events[0]));
     tui_terminal = &terminal;
-    CHECK(!edit_session_draft(NULL, &draft, &count,
+    CHECK(!edit_session_draft(database, &draft, &count,
         TRAINLOG_SESSION_TRAINING));
     CHECK(count == 1U && draft.input.set_count == 0U);
     CHECK(strstr(terminal.output,
         "Ajoutez au moins une série réalisée pour Squat.") != NULL);
     tui_terminal = NULL;
+    trainlog_database_close(database);
     return true;
 }
 
 int main(void)
 {
-    CHECK(test_assistance_creation_labels());
-    CHECK(test_duration_creation_starts_empty());
-    CHECK(test_append_requires_actual_and_rolls_back());
-    CHECK(test_empty_sets_cannot_finish());
+    if (!test_assistance_creation_labels() ||
+        !test_duration_creation_starts_empty() ||
+        !test_append_requires_actual_and_rolls_back() ||
+        !test_empty_sets_cannot_finish()) return 1;
     (void)printf("PASS tui_workflows\n");
     return 0;
 }

@@ -17,6 +17,8 @@ EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V2=PASS
+BODY_ZONE_SYNC_V1=PASS
+BODY_ZONE_SYNC_V1_LIVE_DEVICE=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
@@ -45,10 +47,12 @@ Framework folder grant.
 | Android -> PC | `trainlog-mobile-export-v2.json` | `trainlog-mobile-export` v2 (active) |
 | Android -> PC | `trainlog-mobile-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | Android -> PC | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
+| Android -> PC | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | PC -> Android | `trainlog-pc-catalog-v1.json` | `trainlog-pc-catalog` v1 |
 | PC -> Android | `trainlog-pc-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | PC -> Android | `trainlog-pc-mobile-export-v2.json` | `trainlog-mobile-export` v2 |
 | PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
+| PC -> Android | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
@@ -58,7 +62,9 @@ Android scoped storage can preserve a prior MTP-created object and create a
 new artifact with the provider collision suffix, for example
 `trainlog-mobile-export-v2 (N).json` or
 `trainlog-mobile-equipment-definitions-v1 (N).json`, or
-`trainlog-equipment-associations-v2 (N).json`. For Android -> PC, the engine
+`trainlog-equipment-associations-v2 (N).json`, or
+`trainlog-exercise-body-zones-v1 (N).json`, or
+`trainlog-sync-request-v1 (N).json`. For Android -> PC, the engine
 accepts only the canonical name and this exact suffix form, selects the newest
 MTP modification time (then the greatest suffix and a deterministic object-ID
 tie break), and validates that selected artifact normally. It never silently
@@ -101,6 +107,43 @@ the supplied equipment manifest cannot appear in this artifact. These rules
 preserve the definition identity that V2 equipment associations reference;
 they do not change either V2 shape.
 
+## 4A. Exercise body zones V1
+
+`trainlog-exercise-body-zones-v1.json` is the sole body-zone exchange source
+and uses the same filename and format in both directions. Taxonomy definitions
+are not copied into each exchange; both applications validate stable IDs from
+`catalog/body-zones-v1.json`.
+
+The strict root contains exactly:
+
+```text
+format = trainlog-exercise-body-zones
+version = 1
+generated_at
+exercises[]
+```
+
+Each exercise row contains exactly:
+
+```text
+exercise_id
+primary_zone_id       canonical assignable ID or null
+secondary_zone_ids    ordered distinct canonical assignable IDs
+```
+
+`exercise_id` must be the stable lowercase `ex_<uuid-v4>` creator identity and
+`generated_at` must carry an explicit UTC offset. Group IDs are rejected as
+direct relations. An empty primary and empty list is the explicit unclassified
+state; secondary relations without a primary are invalid. Equal state is an
+idempotent skip. Successful publication records that exact snapshot as the
+publisher's last shared baseline, including for a newly created custom
+exercise. When only one side differs from that baseline, the complete incoming
+or local state wins explicitly. If both sides differ, import reports a conflict
+and rolls back; secondary lists are never unioned because that would invent
+user intent. A mobile creator ID already reconciled by the immediately
+preceding V2 exercise import is accepted only with that retained V2 definition
+as proof, never from a name-only guess.
+
 ## 5. Android -> PC mobile snapshot
 
 Header:
@@ -120,9 +163,10 @@ sessions
 body_observations
 ```
 
-Android captures its custom-definition V1 companion, this V2 snapshot, and
-the equipment-association companion before it publishes any of them.  It then
-publishes in that order: definitions, V2 snapshot, associations.  A malformed
+Android captures its custom-definition V1 companion, this V2 snapshot, body
+zones, and the equipment-association companion before it publishes any of
+them. It then publishes in that order: definitions, V2 snapshot, body zones,
+associations. A malformed
 persisted custom definition aborts publication before a V2 file can advertise
 its reference; bundled manifest equipment is never copied into definitions V1.
 
@@ -371,9 +415,9 @@ Android request
 The engine has three explicit modes:
 
 ```text
-a   Android -> PC: definition V1 -> mobile V2 -> association V2; no publish
-p   PC -> Android: definition V1 -> catalog V1 -> mobile V2 (including bodies)
-    -> association V2; no receive
+a   Android -> PC: definition V1 -> mobile V2 -> body zones V1 -> association V2; no publish
+p   PC -> Android: definition V1 -> catalog V1 -> body zones V1 -> mobile V2
+    (including bodies) -> association V2; no receive
 b   bidirectional: complete inbound sequence, then complete outbound sequence
 ```
 
@@ -384,7 +428,7 @@ reporting, and structured history for the work it performs.
 ## 11. Conflict reporting and preservation
 
 Synchronization does not silently overwrite a session, body observation,
-equipment association, or equipment definition when stable-identity content
+equipment association, body-zone relation, or equipment definition when stable-identity content
 conflicts. The diagnostic identifies the affected stable identity and its
 source artifact/direction, then records a concise source summary in the run
 history. The conflicting persisted value remains preserved; resolution is an
@@ -533,17 +577,22 @@ The PC-to-Android idempotence regression additionally feeds artifacts from all
 four production PC exporters into the production Android repository importers.
 Its first pass imports the missing fixture data; its second and third passes
 report zero session, exercise, body-observation, and equipment additions and
-leave exact snapshots of every Android business table unchanged. On the real
-device, `install -r` of the validated APK preserved the backed-up database hash,
-but the requested two live MTP runs remain unexecuted because the sandbox still
-fails `libusb_open()` before opening device storage.
+leave exact snapshots of every Android business table unchanged. On the
+Samsung SM-G990B, the Body Zones APK certificate matched the installed package
+and established keystore before `adb install -r`. The installed database then
+migrated v9 -> v10 without changing any pre-existing application row. Two live
+bidirectional runs exchanged `trainlog-exercise-body-zones-v1.json`; the second
+reported no additions/reconciliations, every Android application table stayed
+equal to the first pass, and both peers retained the same 32 relations for 20
+of 23 stable exercise IDs. The final companion states were semantically equal
+between passes and the three explicit unclassified states remained intact.
 
 ## 18. Audited protocol limitations
 
 Each mutating importer validates strictly and owns a SQLite transaction. The
 V2 association companion only corroborates equipment already imported in the
 mobile snapshot and refuses divergent state. A complete
-definitions/mobile/associations batch nevertheless has no common generation ID
+definitions/mobile/body-zones/associations batch nevertheless has no common generation ID
 or cross-file transaction. Independent “newest artifact” selection can
 therefore observe a partially published generation; validation stops on a
 mismatch, but an earlier artifact may already have committed. Replay is
@@ -551,7 +600,7 @@ idempotent and no conflicting local value is overwritten. A future atomic-batch
 design requires a new versioned manifest rather than a semantic change to any
 published format.
 
-Snapshots carry no exercise, session, body-observation, or equipment-definition
+Snapshots carry no exercise, session, body-observation, body-zone-relation, or equipment-definition
 tombstones. Omission therefore never deletes one of those objects. The only
 explicit removal operation is association V2 `state: cleared`, targeted to one
 `(session_id, entry_id)`.

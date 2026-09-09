@@ -9,6 +9,7 @@ PROFILE_AWARE_ANDROID=PASS
 CONTINUOUS_ACTIVITY=PASS
 VARIABLE_REPETITION_SETS=PASS
 TRAINLOG_FORMAT_V1=FROZEN
+BODY_ZONES_V1=PASS
 ```
 
 ## 1. Metadata axes
@@ -70,7 +71,46 @@ Rameur
     CONTINUOUS + DURATION + DISTANCE_KM
 ```
 
-## 3. Load semantics
+## 3. Body-zone metadata
+
+Exercise behavior and body-zone classification are independent. The sole V1
+taxonomy is `catalog/body-zones-v1.json`:
+
+```text
+full_body                      Corps entier
+upper_body                     Membres supérieurs (group)
+  chest                        Pectoraux
+  back                         Dos
+  shoulders                    Épaules
+  arms                         Bras
+core                           Abdominaux / tronc
+lower_body                     Membres inférieurs (group)
+  glutes                       Fessiers
+  thighs                       Cuisses
+  calves                       Mollets
+```
+
+An exercise stores at most one direct `primary` relation and any number of
+distinct `secondary` relations. Secondary relations require that primary; an
+unclassified exercise has no relation. The same zone cannot have both roles.
+Group nodes are not assignable: a direct `chest` relation is sufficient for an
+`upper_body` descendant query. `full_body` is not a synonym for all zones, and
+`core` is not implicitly upper or lower body. Cardio is an activity profile,
+not a body zone.
+
+New interactive `SETS` creation asks for a primary zone. Historical or
+objectively ambiguous exercises may remain without relations and are displayed
+and filterable as **Non renseignés**. Initial migration decisions use exact
+stable `exercise_id` values and recorded equipment/catalog evidence, never a
+general name rule.
+
+The read surface supports zone lookup, children, ancestors, direct relations,
+primary/secondary selection and exercises for a zone with optional descendants
+or primary-only participation. Those exercise IDs compose with existing
+performance/MAX history readers, so a future session generator needs no new
+duplicated MAX or history storage. No generator or load proposal exists yet.
+
+## 4. Load semantics
 
 Load mode is session-specific:
 
@@ -88,7 +128,7 @@ better when comparing otherwise equivalent performance.
 Machine-displayed kilograms are stored faithfully without claiming mechanical
 equivalence across different machines.
 
-## 4. Set-based work
+## 5. Set-based work
 
 `SETS + REPS` stores one performed-set row per actual set.
 
@@ -114,7 +154,7 @@ or progression calculations.
 
 `SETS + DURATION` likewise stores one actual duration per performed set.
 
-## 5. Planned versus actual
+## 6. Planned versus actual
 
 Desktop-created set sessions may carry explicit planned targets.
 
@@ -131,7 +171,7 @@ target_duration_seconds = NULL
 
 Do not derive a fake target from heterogeneous actual sets.
 
-## 6. Continuous work
+## 7. Continuous work
 
 Continuous activity does not ask for:
 
@@ -156,7 +196,7 @@ and configured supplemental values.
 
 No fake performed set is created.
 
-## 7. Historical interpretation
+## 8. Historical interpretation
 
 Desktop `session_exercises` snapshot:
 
@@ -177,7 +217,7 @@ historic `data_fields = 1` walk remains a speed-only occurrence after its
 catalog definition becomes `data_fields = 3`. Its absent distance stays
 absent/`NULL`; synchronization does not infer it from duration and speed.
 
-## 8. Android/TUI parity
+## 9. Android/TUI parity
 
 Both interfaces use the same metadata axes.
 
@@ -192,6 +232,8 @@ data_fields
 ```
 
 Creating an exercise inline on Android or desktop follows the same model rules.
+Body zones use their separate direction-neutral V1 companion rather than
+changing this catalog artifact or frozen session V1.
 
 ### Safe V2 identity reconciliation
 
@@ -216,7 +258,7 @@ never establish identity.
 This is a synchronization-V2 policy. It does not relax or redefine the frozen
 Trainlog JSON v1 document rules.
 
-## 9. Exchange boundaries
+## 10. Exchange boundaries
 
 Frozen Trainlog session JSON v1 remains unchanged.
 
@@ -228,7 +270,7 @@ Continuous activity must never be:
 - converted into a fake set;
 - silently discarded.
 
-## 10. Measured max semantics
+## 11. Measured max semantics
 
 `session_type = max_test` is an explicit semantic boundary.
 

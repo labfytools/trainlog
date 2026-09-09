@@ -49,6 +49,9 @@ static const char *const MOBILE_EQUIPMENT_DEFINITIONS_NAME =
 static const char *const PC_EQUIPMENT_DEFINITIONS_NAME =
     "trainlog-pc-equipment-definitions-v1.json";
 
+static const char *const EXERCISE_BODY_ZONES_NAME =
+    "trainlog-exercise-body-zones-v1.json";
+
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
 
@@ -75,6 +78,12 @@ static const char *const PC_EQUIPMENT_DEFINITIONS_LOCAL =
 
 static const char *const EQUIPMENT_DEFINITIONS_RESULT =
     "/tmp/trainlog-equipment-definitions-result.txt";
+
+static const char *const EXERCISE_BODY_ZONES_LOCAL =
+    "/tmp/trainlog-exercise-body-zones-v1.json";
+
+static const char *const EXERCISE_BODY_ZONES_RESULT =
+    "/tmp/trainlog-exercise-body-zones-result.txt";
 
 static const char *const SYNC_REQUEST_LOCAL =
     "/tmp/trainlog-sync-request-v1.json";
@@ -2705,8 +2714,14 @@ TrainlogStatus trainlog_sync_run(
     }
 
     if (require_request) {
+        /* WHY: MediaStore cannot always reopen an older MTP-created object by
+         * canonical name, so Android may publish the next request as the exact
+         * scoped-storage collision form " (N).json". CONTRACT: select the
+         * newest canonical-or-suffixed request deterministically, exactly as
+         * for the other Android-originated artifacts; request_id replay
+         * protection below remains the trigger authority. */
         status =
-            sync_receive_named(
+            sync_receive_current_android_artifact(
                 &device,
                 folder_id,
                 SYNC_REQUEST_NAME,
@@ -2941,6 +2956,36 @@ TrainlogStatus trainlog_sync_run(
         output
     );
 
+    /* CONTRACT: body zones are one directional-neutral companion. Historic
+     * V2 publishers may omit it; when present it is applied only after the
+     * exercise definitions above established every ID or a source-V2-proven
+     * normalized-name alias. The helper consumes the retained mobile snapshot
+     * solely as reconciliation proof; it never infers identity from a name. */
+    status = mobile_export_is_v2
+        ? sync_receive_current_android_artifact(&device, folder_id,
+            EXERCISE_BODY_ZONES_NAME, EXERCISE_BODY_ZONES_LOCAL, &ignored_size)
+        : TRAINLOG_STATUS_NOT_FOUND;
+    if (status == TRAINLOG_STATUS_OK) {
+        status = sync_run_python_tool("import_exercise_body_zones.py",
+            EXERCISE_BODY_ZONES_LOCAL, database_path, EXERCISE_BODY_ZONES_RESULT,
+            tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK ||
+            strstr(tool_output, "EXERCISE_BODY_ZONES_IMPORT=PASS") == NULL) {
+            char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            sync_compose_diagnostic(output->error, sizeof(output->error),
+                "Android→PC : zones corporelles : ",
+                useful[0] != '\0' ? useful : "import échoué");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "Android→PC : lecture zones corporelles échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     /* V1 exports carry no equipment signal. A V2 companion beside a historic
      * V1 snapshot belongs to another generation and must not be applied. Its
      * absence therefore preserves existing associations rather than clearing
@@ -3068,6 +3113,42 @@ outbound:
         (void)snprintf(output->error, sizeof(output->error),
                        "PC→Android : publication MTP du catalogue échouée.");
         final_status = status;
+        goto finalize;
+    }
+
+    status = sync_run_python_tool("export_exercise_body_zones.py",
+        EXERCISE_BODY_ZONES_LOCAL, database_path, EXERCISE_BODY_ZONES_RESULT,
+        tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "EXERCISE_BODY_ZONES_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : export zones corporelles échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id, EXERCISE_BODY_ZONES_LOCAL,
+        EXERCISE_BODY_ZONES_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : publication zones corporelles échouée.");
+        final_status = status;
+        goto finalize;
+    }
+    /* WHY: a new custom exercise has no common sync ancestor yet. Only after
+     * the exact companion is durably visible to the peer may the publisher
+     * acknowledge that snapshot as its baseline. Reusing the strict importer
+     * records equal state and can never union secondary zones. */
+    status = sync_run_python_tool("import_exercise_body_zones.py",
+        EXERCISE_BODY_ZONES_LOCAL, database_path, EXERCISE_BODY_ZONES_RESULT,
+        tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "EXERCISE_BODY_ZONES_IMPORT=PASS") == NULL) {
+        char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+        sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+        sync_compose_diagnostic(output->error, sizeof(output->error),
+            "PC→Android : baseline zones corporelles : ",
+            useful[0] != '\0' ? useful : "enregistrement échoué");
+        final_status = TRAINLOG_STATUS_DATABASE_ERROR;
         goto finalize;
     }
 

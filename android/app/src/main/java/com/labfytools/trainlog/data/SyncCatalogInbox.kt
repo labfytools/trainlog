@@ -142,11 +142,14 @@ class SyncCatalogInbox(
                 is PcCatalogImportResult.Applied ->
                     when (val sessions = importPcSessions(directory)) {
                         null -> when (val equipment = importPcEquipmentAssociations(directory)) {
-                            null -> CatalogInboxResult.Imported(
-                            imported = result.imported,
-                            reconciled = result.reconciled,
-                            skipped = result.skipped,
-                        )
+                            null -> when (val bodyZones = importPcBodyZones(directory)) {
+                                null -> CatalogInboxResult.Imported(
+                                    imported = result.imported,
+                                    reconciled = result.reconciled,
+                                    skipped = result.skipped,
+                                )
+                                else -> CatalogInboxResult.Error(bodyZones)
+                            }
                             else -> CatalogInboxResult.Error(equipment)
                         }
                         else -> CatalogInboxResult.Error(sessions)
@@ -184,6 +187,25 @@ class SyncCatalogInbox(
                 MobileSessionImportResult.DatabaseError -> "Erreur base locale séances V2."
             }
         } catch (error: Exception) { error.message ?: "Import séances V2 impossible." }
+    }
+
+    private fun importPcBodyZones(directory: DocumentFile): String? {
+        val file = directory.findFile("trainlog-exercise-body-zones-v1.json") ?: return null
+        return try {
+            val json = appContext.contentResolver.openInputStream(file.uri)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: return "Lecture zones corporelles impossible."
+            when (val result = repository.applyExerciseBodyZonesJson(json)) {
+                is ExerciseBodyZoneImportResult.Applied -> null
+                is ExerciseBodyZoneImportResult.Invalid -> result.message
+                is ExerciseBodyZoneImportResult.Conflict ->
+                    "Conflit de zones corporelles : ${result.exerciseId}"
+                ExerciseBodyZoneImportResult.DatabaseError ->
+                    "Erreur base locale zones corporelles."
+            }
+        } catch (error: Exception) {
+            error.message ?: "Import zones corporelles impossible."
+        }
     }
 
     private fun importPcEquipmentDefinitions(directory: DocumentFile): String? {

@@ -38,6 +38,7 @@ Responsibilities:
 
 - exercise catalog entry;
 - stable-ID exercise rename/editing;
+- canonical body-zone selection, display and descendant filtering;
 - workout-session recording;
 - performed set entry;
 - continuous-activity entry;
@@ -56,6 +57,7 @@ The C17 core owns:
 
 - desktop SQLite persistence;
 - exercise/catalog rules;
+- generated body-zone taxonomy and relation APIs;
 - profile-aware session data;
 - body data;
 - ID and time helpers;
@@ -74,6 +76,7 @@ It consumes core services for:
 - session entry/editing;
 - history;
 - exercise performance;
+- exercise body-zone creation/edit/detail and filters;
 - body tracking;
 - graphs;
 - manual synchronization;
@@ -116,16 +119,38 @@ assistance
 
 Continuous work is persisted separately from performed sets.
 
+Body-zone semantics are a second independent metadata axis:
+
+```text
+exercise -> exercise_body_zones -> canonical body-zone manifest
+role = primary | secondary
+```
+
+The repository-level `catalog/body-zones-v1.json` is the sole taxonomy source.
+Android reads it as an asset and the desktop generates a bounded C
+representation at build time. Stable `zone_id` values cross persistence and
+synchronization boundaries; translated display names do not. `upper_body` and
+`lower_body` are hierarchy groups whose descendant membership is derived at
+query time, never persisted redundantly. `full_body` and `core` are autonomous.
+An unclassified exercise has no relation at all: a secondary-only state is
+invalid at repository, database and exchange boundaries rather than being
+silently rendered as unclassified.
+
 ## 4. Persistence ownership
 
 ### Desktop
 
-Desktop SQLite schema v10 is canonical long-term history. Its v9 -> v10
+Desktop SQLite schema v11 is canonical long-term history. Its v9 -> v10
 migration losslessly rebuilds only `performed_sets` so actual `weight_kg` may
 be finite `>= 0`; the column already existed and targets/max results retain
 their strictly-positive contracts. `session_exercises`
 stores a stable occurrence `entry_id`; a catalogue `exercise_id` can therefore
 occur more than once in one session without identity fusion.
+
+The additive v10 -> v11 migration creates direct exercise/body-zone relations
+and a private synchronization baseline, then seeds only stable-ID mappings
+whose decision evidence is recorded in the manifest. It never rewrites an
+exercise, occurrence or history row.
 
 Main tables:
 
@@ -138,14 +163,20 @@ continuous_activity
 max_results
 body_observations
 custom_equipment
+exercise_body_zones
+exercise_body_zone_sync
 ```
 
 ### Android
 
-Android has an independent local SQLite schema, currently v9. Completed and
+Android has an independent local SQLite schema, currently v10. Completed and
 draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
 resuming a completed Test max records its stable source session in the one
 durable draft.
+
+Its v9 -> v10 migration adds equivalent exercise/body-zone relations and seeds
+the same manifest mappings. User creation and editing replace name/profile and
+zone relations in one repository transaction.
 
 It mirrors domain concepts needed for capture, but its schema version is not
 coupled to the desktop schema.
@@ -196,6 +227,7 @@ trainlog-mobile-export v2
 trainlog-pc-catalog v1
 trainlog-equipment-associations v2
 trainlog-equipment-definitions v1
+trainlog-exercise-body-zones v1
 trainlog-sync-request v1
 trainlog-sync-receipt v1
 ```
@@ -211,6 +243,11 @@ Android to PC and `trainlog-pc-equipment-definitions-v1.json` travels from PC
 to Android. The filename identifies direction; the JSON format and version do
 not change. V1 historical artifacts remain readable under their frozen
 contracts.
+
+`trainlog-exercise-body-zones-v1.json` is the one direction-neutral zone
+companion in both directions. It carries only `exercise_id`, a nullable
+`primary_zone_id` and `secondary_zone_ids`; taxonomy definitions stay in the
+canonical manifest.
 
 ## 6. Direct MTP transport
 
@@ -274,6 +311,8 @@ artifact, mobile-export v2, and equipment-associations v2. The PC-to-Android
 direction publishes PC equipment-definitions v1 before dependent artifacts,
 then publishes the PC catalog v1, PC mobile-export v2 (including completed
 sessions and body observations), and equipment-associations v2.
+Both directions also transfer the same body-zone companion after exercise
+definitions are established and before completion of the direction.
 
 The engine performs the applicable direction steps:
 
@@ -281,8 +320,8 @@ The engine performs the applicable direction steps:
 1. direct-MTP device/storage discovery
 2. exchange-folder resolution
 3. definition artifact transfer and reconciliation before dependent V2 data
-4. strict transactional Android -> PC import when selected
-5. PC catalog, mobile/body, and association export when selected
+4. strict transactional Android -> PC import and body-zone reconciliation when selected
+5. PC catalog, body-zone, mobile/body, and association export when selected
 6. direct-MTP publication of the selected PC -> Android artifacts
 7. optional request receipt publication
 8. structured run-history recording
@@ -294,7 +333,7 @@ same-ID definitions, unknown references, and association conflicts are reported
 explicitly. The affected persisted content is preserved on conflict; the engine
 does not silently overwrite it.
 
-There is no exercise, session, body-observation, or equipment-definition
+There is no exercise, session, body-observation, body-zone-relation, or equipment-definition
 tombstone in the current formats. Omitting one of those objects from a later
 snapshot is not a deletion request. The only explicit removal signal is
 equipment-association V2 `state: cleared`, scoped to one
@@ -400,12 +439,22 @@ schema change.
 Each mutating importer has strict validation and a SQLite transaction. The V2
 association companion is a strict corroboration of the equipment already
 carried by the mobile snapshot and does not rewrite divergent state. However,
-one definitions/mobile/associations publication has no common generation
+one definitions/mobile/body-zones/associations publication has no common generation
 manifest and is not one cross-artifact database transaction. A late association
 conflict can therefore follow a successfully committed definitions or mobile
 import; replay remains idempotent and existing conflicting content is not
 overwritten. A future batch protocol must be separately versioned rather than
 retrofitted into frozen formats.
+
+Body-zone concurrency uses an internal canonical-state baseline. Equal states
+are idempotent; the sole changed side wins; if both local and incoming states
+diverge from the baseline, the companion reports a conflict and rolls back.
+Secondary lists are never merged by union. A safe exercise-identity merge may
+carry the only non-empty zone state, but rejects two different non-empty states
+and clears the baseline because identity reconciliation is not acknowledgement.
+After a companion has actually been published, the publisher records that
+exact snapshot as its own baseline too; a failed file/MTP publication never
+acknowledges data that the peer could not have observed.
 
 Android and desktop also have different stored name-normalization behavior:
 Android removes diacritics, while the frozen desktop/Python rule preserves them

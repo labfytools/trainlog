@@ -187,7 +187,7 @@ static bool test_v4_to_current_preserves_session(void)
         TRAINLOG_DATABASE_SCHEMA_VERSION
     );
 
-    CHECK(version == 10);
+    CHECK(version == TRAINLOG_DATABASE_SCHEMA_VERSION);
 
     CHECK(
         trainlog_database_get_session_details(
@@ -226,9 +226,7 @@ static bool test_v4_to_current_preserves_session(void)
 
 int main(void)
 {
-    CHECK(
-        test_v4_to_current_preserves_session()
-    );
+    if (!test_v4_to_current_preserves_session()) return 1;
 
     (void)printf(
         "PASS schema_v5_migration\n"

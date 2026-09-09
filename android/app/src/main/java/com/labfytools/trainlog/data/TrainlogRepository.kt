@@ -40,6 +40,8 @@ sealed interface CreateExerciseResult {
 
     data object Invalid :
         CreateExerciseResult
+
+    data class DatabaseError(val message: String) : CreateExerciseResult
 }
 
 sealed interface EditExerciseResult {
@@ -90,6 +92,17 @@ sealed interface EquipmentDefinitionImportResult {
     data class Applied(val imported: Int, val skipped: Int) : EquipmentDefinitionImportResult
     data class Invalid(val message: String) : EquipmentDefinitionImportResult
     data object DatabaseError : EquipmentDefinitionImportResult
+}
+
+sealed interface ExerciseBodyZoneImportResult {
+    data class Applied(
+        val updated: Int,
+        val skipped: Int,
+        val keptLocal: Int,
+    ) : ExerciseBodyZoneImportResult
+    data class Invalid(val message: String) : ExerciseBodyZoneImportResult
+    data class Conflict(val exerciseId: String) : ExerciseBodyZoneImportResult
+    data object DatabaseError : ExerciseBodyZoneImportResult
 }
 
 sealed interface MobileSessionImportResult {
@@ -177,6 +190,7 @@ class TrainlogRepository(
         ANDROID_DATABASE_NAME,
 ) {
     private val applicationContext = context.applicationContext
+    private val bodyZones = BodyZoneCatalog.load(applicationContext)
     private val database =
         TrainlogDatabaseHelper(
             applicationContext,
@@ -242,26 +256,60 @@ class TrainlogRepository(
         } catch (error: Exception) { CreateEquipmentResult.DatabaseError(error.message ?: "erreur SQLite") }
     }
 
-    fun listExercises(): List<ExerciseProfile> {
+    /** Return manifest sort order; definitions are immutable application assets. */
+    fun listBodyZones(): List<BodyZone> = bodyZones.zones
+
+    /** Stable-ID lookup; null means the ID is not part of taxonomy V1. */
+    fun bodyZone(zoneId: String): BodyZone? = bodyZones.lookup(zoneId)
+
+    /** Nearest parent first; the manifest loader has already rejected cycles. */
+    fun bodyZoneAncestors(zoneId: String): List<BodyZone> = bodyZones.ancestors(zoneId)
+
+    /**
+     * SQL-backed normalized-prefix and body-zone query.
+     *
+     * CONTRACT: a parent includes manifest descendants only when requested;
+     * `primaryOnly` excludes secondary participation and `unclassifiedOnly`
+     * selects exercises with no direct relation. An unknown zone ID is a
+     * programmer error. Returned profiles own deterministic relation lists.
+     */
+    fun listExercises(
+        query: String = "",
+        zoneId: String? = null,
+        includeDescendants: Boolean = true,
+        primaryOnly: Boolean = false,
+        unclassifiedOnly: Boolean = false,
+    ): List<ExerciseProfile> {
+        require(!(unclassifiedOnly && zoneId != null)) {
+            "zoneId et unclassifiedOnly sont mutuellement exclusifs"
+        }
         val output =
             mutableListOf<ExerciseProfile>()
-
-        database.readableDatabase.query(
-            "exercises",
-            arrayOf(
-                "exercise_id",
-                "name",
-                "normalized_name",
-                "recording_mode",
-                "tracking_mode",
-                "data_fields",
-            ),
-            null,
-            null,
-            null,
-            null,
-            "name COLLATE NOCASE, exercise_id",
-        ).use { cursor ->
+        val normalizedPrefix = normalizeName(query)
+        val selection = mutableListOf<String>()
+        val arguments = mutableListOf<String>()
+        if (normalizedPrefix.isNotEmpty()) {
+            selection += "e.normalized_name LIKE ? ESCAPE '\\'"
+            arguments += normalizedPrefix
+                .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        }
+        if (unclassifiedOnly) {
+            selection += "NOT EXISTS(SELECT 1 FROM exercise_body_zones missing WHERE missing.exercise_row_id=e.id)"
+        } else if (zoneId != null) {
+            val accepted = if (includeDescendants) bodyZones.descendantsAndSelf(zoneId) else setOf(zoneId)
+            check(bodyZones.lookup(zoneId) != null) { "zone_id inconnu: $zoneId" }
+            val placeholders = accepted.joinToString(",") { "?" }
+            selection += "EXISTS(SELECT 1 FROM exercise_body_zones selected WHERE " +
+                "selected.exercise_row_id=e.id AND selected.zone_id IN($placeholders)" +
+                (if (primaryOnly) " AND selected.role='primary'" else "") + ")"
+            arguments += accepted
+        }
+        val sql = "SELECT e.exercise_id,e.name,e.normalized_name,e.recording_mode," +
+            "e.tracking_mode,e.data_fields FROM exercises e" +
+            (if (selection.isEmpty()) "" else " WHERE " + selection.joinToString(" AND ")) +
+            " ORDER BY e.name COLLATE NOCASE,e.exercise_id;"
+        val db = database.readableDatabase
+        db.rawQuery(sql, arguments.toTypedArray()).use { cursor ->
             val idIndex =
                 cursor.getColumnIndexOrThrow(
                     "exercise_id"
@@ -293,12 +341,12 @@ class TrainlogRepository(
                 )
 
             while (cursor.moveToNext()) {
+                val exerciseId = cursor.getString(idIndex)
+                val selectionForExercise = readExerciseBodyZones(db, exerciseId)
                 output +=
                     ExerciseProfile(
                         exerciseId =
-                            cursor.getString(
-                                idIndex
-                            ),
+                            exerciseId,
                         name =
                             cursor.getString(
                                 nameIndex
@@ -335,6 +383,8 @@ class TrainlogRepository(
                             cursor.getInt(
                                 fieldsIndex
                             ),
+                        primaryZoneId = selectionForExercise.first,
+                        secondaryZoneIds = selectionForExercise.second,
                     )
             }
         }
@@ -345,7 +395,8 @@ class TrainlogRepository(
     fun createExercise(
         input: NewExerciseProfile,
     ): CreateExerciseResult {
-        if (!input.validate()) {
+        if (!input.validate() || !bodyZoneSelectionValid(
+                input.primaryZoneId, input.secondaryZoneIds)) {
             return CreateExerciseResult.Invalid
         }
 
@@ -374,6 +425,10 @@ class TrainlogRepository(
                     input.trackingMode,
                 dataFields =
                     input.dataFields,
+                primaryZoneId = input.primaryZoneId,
+                secondaryZoneIds = input.secondaryZoneIds.sortedBy { id ->
+                    bodyZones.lookup(id)?.sortOrder ?: Int.MAX_VALUE
+                },
             )
 
         val sql =
@@ -388,8 +443,10 @@ class TrainlogRepository(
             ) VALUES(?, ?, ?, ?, ?, ?);
             """.trimIndent()
 
+        val db = database.writableDatabase
         return try {
-            database.writableDatabase.execSQL(
+            db.beginTransaction()
+            db.execSQL(
                 sql,
                 arrayOf<Any?>(
                     exercise.exerciseId,
@@ -403,6 +460,9 @@ class TrainlogRepository(
                 ),
             )
 
+            replaceExerciseBodyZones(db, exercise.exerciseId,
+                exercise.primaryZoneId, exercise.secondaryZoneIds)
+            db.setTransactionSuccessful()
             CreateExerciseResult.Created(
                 exercise
             )
@@ -410,6 +470,12 @@ class TrainlogRepository(
             error: SQLiteConstraintException
         ) {
             CreateExerciseResult.Conflict
+        } catch (error: Exception) {
+            CreateExerciseResult.DatabaseError(
+                error.message ?: "Enregistrement de l'exercice impossible.",
+            )
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
         }
     }
 
@@ -430,7 +496,8 @@ class TrainlogRepository(
     fun editExercise(
         input: ExerciseEditInput,
     ): EditExerciseResult {
-        if (!input.validateProfile()) {
+        if (!input.validateProfile() || !bodyZoneSelectionValid(
+                input.primaryZoneId, input.secondaryZoneIds)) {
             return EditExerciseResult.InvalidNameOrProfile
         }
 
@@ -468,6 +535,8 @@ class TrainlogRepository(
             if (db.update("exercises", values, "id = ?", arrayOf(current.rowId.toString())) != 1) {
                 return EditExerciseResult.DatabaseError
             }
+            replaceExerciseBodyZones(db, input.exerciseId,
+                input.primaryZoneId, input.secondaryZoneIds)
             db.setTransactionSuccessful()
             EditExerciseResult.Saved(
                 ExerciseProfile(
@@ -477,6 +546,10 @@ class TrainlogRepository(
                     recordingMode = input.recordingMode,
                     trackingMode = input.trackingMode,
                     dataFields = input.dataFields,
+                    primaryZoneId = input.primaryZoneId,
+                    secondaryZoneIds = input.secondaryZoneIds.sortedBy { id ->
+                        bodyZones.lookup(id)?.sortOrder ?: Int.MAX_VALUE
+                    },
                 ),
             )
         } catch (error: SQLiteConstraintException) {
@@ -488,6 +561,132 @@ class TrainlogRepository(
                 db.endTransaction()
             }
         }
+    }
+
+    /**
+     * CONTRACT: this is the sole body-zone exchange source in both directions.
+     * Session V2 and frozen TRAINLOG_FORMAT_V1 retain their exact shapes.
+     */
+    fun buildExerciseBodyZonesJson(): String {
+        val exercises = JSONArray()
+        listExercises().sortedBy { it.exerciseId }.forEach { exercise ->
+            exercises.put(JSONObject()
+                .put("exercise_id", exercise.exerciseId)
+                .put("primary_zone_id", exercise.primaryZoneId ?: JSONObject.NULL)
+                .put("secondary_zone_ids", JSONArray(exercise.secondaryZoneIds.sorted())))
+        }
+        return JSONObject()
+            .put("format", "trainlog-exercise-body-zones")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("exercises", exercises)
+            .toString()
+    }
+
+    fun applyExerciseBodyZonesJson(json: String): ExerciseBodyZoneImportResult {
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return ExerciseBodyZoneImportResult.Invalid("Relations de zones JSON invalides.")
+        }
+        val rootKeys = setOf("format", "version", "generated_at", "exercises")
+        if (!root.hasExactKeys(rootKeys) ||
+            root.value("format") != "trainlog-exercise-body-zones" ||
+            !root.value("version").isJsonInt(1, 1) ||
+            !root.value("generated_at").isNonemptyJsonString() ||
+            root.value("exercises") !is JSONArray) {
+            return ExerciseBodyZoneImportResult.Invalid("Relations de zones v1 non supportées.")
+        }
+        try {
+            OffsetDateTime.parse(root.getString("generated_at"))
+        } catch (_: Exception) {
+            return ExerciseBodyZoneImportResult.Invalid("Horodatage des zones invalide.")
+        }
+        data class Incoming(val exerciseId: String, val primary: String?, val secondary: List<String>)
+        val incoming = mutableListOf<Incoming>()
+        val seenExercises = mutableSetOf<String>()
+        try {
+            val array = root.getJSONArray("exercises")
+            for (index in 0 until array.length()) {
+                val item = array.opt(index) as? JSONObject
+                    ?: return ExerciseBodyZoneImportResult.Invalid("Relation de zone invalide.")
+                if (!item.hasExactKeys(setOf("exercise_id", "primary_zone_id", "secondary_zone_ids")))
+                    return ExerciseBodyZoneImportResult.Invalid("Forme de relation de zone invalide.")
+                val exerciseId = item.value("exercise_id")
+                val primaryValue = item.value("primary_zone_id")
+                val secondaryValue = item.value("secondary_zone_ids")
+                if (!exerciseId.isNonemptyJsonString() ||
+                    !(exerciseId as String).matches(EXERCISE_ID_V4_PATTERN) ||
+                    !seenExercises.add(exerciseId) ||
+                    !(primaryValue === JSONObject.NULL || primaryValue.isNonemptyJsonString()) ||
+                    secondaryValue !is JSONArray) {
+                    return ExerciseBodyZoneImportResult.Invalid("Identité de relation de zone invalide.")
+                }
+                val secondary = List(secondaryValue.length()) { position ->
+                    secondaryValue.opt(position) as? String
+                        ?: return ExerciseBodyZoneImportResult.Invalid("zone_id secondaire invalide.")
+                }
+                val primary = if (primaryValue === JSONObject.NULL) null else primaryValue as String
+                if (!bodyZoneSelectionValid(primary, secondary))
+                    return ExerciseBodyZoneImportResult.Invalid("Sélection de zones invalide : $exerciseId")
+                incoming += Incoming(exerciseId, primary, secondary.sorted())
+            }
+        } catch (_: Exception) {
+            return ExerciseBodyZoneImportResult.Invalid("Relations de zones invalides.")
+        }
+
+        val db = database.writableDatabase
+        var updated = 0
+        var skipped = 0
+        var keptLocal = 0
+        return try {
+            db.beginTransaction()
+            incoming.forEach { item ->
+                val rowId = lookupExerciseRowIdOrNull(db, item.exerciseId)
+                    ?: return ExerciseBodyZoneImportResult.Invalid(
+                        "Exercice de relation inconnu : ${item.exerciseId}",
+                    )
+                val local = readExerciseBodyZones(db, item.exerciseId)
+                val localState = bodyZoneSyncState(local.first, local.second)
+                val incomingState = bodyZoneSyncState(item.primary, item.secondary)
+                val baseline = db.rawQuery(
+                    "SELECT synced_state FROM exercise_body_zone_sync WHERE exercise_row_id=?;",
+                    arrayOf(rowId.toString()),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                when {
+                    localState == incomingState -> {
+                        writeBodyZoneSyncBaseline(db, rowId, incomingState)
+                        skipped += 1
+                    }
+                    baseline != null && localState == baseline -> {
+                        replaceExerciseBodyZones(db, item.exerciseId, item.primary, item.secondary)
+                        writeBodyZoneSyncBaseline(db, rowId, incomingState)
+                        updated += 1
+                    }
+                    baseline != null && incomingState == baseline -> keptLocal += 1
+                    baseline == null && localState == "|" -> {
+                        replaceExerciseBodyZones(db, item.exerciseId, item.primary, item.secondary)
+                        writeBodyZoneSyncBaseline(db, rowId, incomingState)
+                        updated += 1
+                    }
+                    else -> return ExerciseBodyZoneImportResult.Conflict(item.exerciseId)
+                }
+            }
+            db.setTransactionSuccessful()
+            ExerciseBodyZoneImportResult.Applied(updated, skipped, keptLocal)
+        } catch (_: Exception) {
+            ExerciseBodyZoneImportResult.DatabaseError
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    private fun bodyZoneSyncState(primary: String?, secondary: List<String>): String =
+        (primary ?: "") + "|" + secondary.sorted().joinToString(",")
+
+    private fun writeBodyZoneSyncBaseline(db: SQLiteDatabase, rowId: Long, state: String) {
+        db.execSQL(
+            "INSERT OR REPLACE INTO exercise_body_zone_sync(exercise_row_id,synced_state) VALUES(?,?);",
+            arrayOf<Any>(rowId, state),
+        )
     }
 
     fun loadActiveSessionDraft():
@@ -1229,6 +1428,11 @@ class TrainlogRepository(
                                 db,
                                 retired.exerciseId,
                                 byId.exerciseId,
+                            ) ||
+                            !bodyZoneRowsAreCompatibleForMerge(
+                                db,
+                                byId.exerciseId,
+                                retired.exerciseId,
                             )
                         ) {
                             traceDecision(
@@ -1487,6 +1691,7 @@ class TrainlogRepository(
         canonical: ExerciseRow,
         retired: ExerciseRow,
     ) {
+        mergeExerciseBodyZoneRows(db, canonical, retired)
         db.execSQL(
             "UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?;",
             arrayOf(canonical.rowId, retired.rowId),
@@ -1518,6 +1723,64 @@ class TrainlogRepository(
             "DELETE FROM exercises WHERE id=?;",
             arrayOf(retired.rowId),
         )
+    }
+
+    private fun sqliteTableExists(db: SQLiteDatabase, table: String): Boolean =
+        db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;",
+            arrayOf(table),
+        ).use { it.moveToFirst() }
+
+    private fun bodyZoneRowsAreCompatibleForMerge(
+        db: SQLiteDatabase,
+        canonicalExerciseId: String,
+        retiredExerciseId: String,
+    ): Boolean {
+        if (!sqliteTableExists(db, "exercise_body_zones")) return true
+        val canonical = readExerciseBodyZones(db, canonicalExerciseId)
+        val retired = readExerciseBodyZones(db, retiredExerciseId)
+        val canonicalEmpty = canonical.first == null && canonical.second.isEmpty()
+        val retiredEmpty = retired.first == null && retired.second.isEmpty()
+        return canonicalEmpty || retiredEmpty || canonical == retired
+    }
+
+    private fun mergeExerciseBodyZoneRows(
+        db: SQLiteDatabase,
+        canonical: ExerciseRow,
+        retired: ExerciseRow,
+    ) {
+        if (!sqliteTableExists(db, "exercise_body_zones")) return
+        val canonicalState = readExerciseBodyZones(db, canonical.exerciseId)
+        val retiredState = readExerciseBodyZones(db, retired.exerciseId)
+        val canonicalEmpty = canonicalState.first == null && canonicalState.second.isEmpty()
+        val retiredEmpty = retiredState.first == null && retiredState.second.isEmpty()
+        check(canonicalEmpty || retiredEmpty || canonicalState == retiredState) {
+            "Relations de zones incompatibles pendant la réconciliation d'identité."
+        }
+
+        /* WHY: row identity reconciliation must not discard the only body-zone
+         * decision. CONTRACT: equal states coalesce, one empty side adopts the
+         * non-empty state, and differing non-empty states were rejected above.
+         * INVARIANT: baselines are cleared because an identity merge is not a
+         * synchronization acknowledgement; the next companion must establish
+         * a fresh common ancestor before accepting a one-sided change. */
+        if (canonicalEmpty && !retiredEmpty) {
+            db.execSQL(
+                "UPDATE exercise_body_zones SET exercise_row_id=? WHERE exercise_row_id=?;",
+                arrayOf(canonical.rowId, retired.rowId),
+            )
+        } else {
+            db.execSQL(
+                "DELETE FROM exercise_body_zones WHERE exercise_row_id=?;",
+                arrayOf(retired.rowId),
+            )
+        }
+        if (sqliteTableExists(db, "exercise_body_zone_sync")) {
+            db.execSQL(
+                "DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?);",
+                arrayOf(canonical.rowId, retired.rowId),
+            )
+        }
     }
 
     private fun findExerciseRow(
@@ -3710,6 +3973,79 @@ class TrainlogRepository(
         }
     }
 
+    private fun bodyZoneSelectionValid(
+        primaryZoneId: String?,
+        secondaryZoneIds: List<String>,
+    ): Boolean {
+        if (secondaryZoneIds.size != secondaryZoneIds.toSet().size ||
+            primaryZoneId in secondaryZoneIds ||
+            (primaryZoneId == null && secondaryZoneIds.isNotEmpty())) return false
+        val ids = listOfNotNull(primaryZoneId) + secondaryZoneIds
+        return ids.all { id ->
+            val zone = bodyZones.lookup(id)
+            zone != null && zone.kind != BodyZoneKind.GROUP
+        }
+    }
+
+    /** INVARIANT: the first component is the sole primary relation; the
+     * secondary list follows manifest sort order for deterministic UI/export. */
+    private fun readExerciseBodyZones(
+        db: SQLiteDatabase,
+        exerciseId: String,
+    ): Pair<String?, List<String>> {
+        var primary: String? = null
+        val secondary = mutableListOf<String>()
+        db.rawQuery(
+            "SELECT ebz.zone_id,ebz.role FROM exercise_body_zones ebz " +
+                "JOIN exercises e ON e.id=ebz.exercise_row_id WHERE e.exercise_id=?;",
+            arrayOf(exerciseId),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val zoneId = cursor.getString(0)
+                val zone = checkNotNull(bodyZones.lookup(zoneId)) {
+                    "zone_id SQLite inconnu: $zoneId"
+                }
+                check(zone.kind != BodyZoneKind.GROUP) {
+                    "Relation SQLite vers un groupe dérivable: $zoneId"
+                }
+                when (cursor.getString(1)) {
+                    "primary" -> {
+                        check(primary == null) { "Plusieurs zones principales" }
+                        primary = zoneId
+                    }
+                    "secondary" -> secondary += zoneId
+                    else -> error("Rôle de zone SQLite inconnu")
+                }
+            }
+        }
+        check(primary != null || secondary.isEmpty()) {
+            "Relations secondaires sans zone principale"
+        }
+        return primary to secondary.sortedBy { bodyZones.lookup(it)?.sortOrder ?: Int.MAX_VALUE }
+    }
+
+    private fun replaceExerciseBodyZones(
+        db: SQLiteDatabase,
+        exerciseId: String,
+        primaryZoneId: String?,
+        secondaryZoneIds: List<String>,
+    ) {
+        check(bodyZoneSelectionValid(primaryZoneId, secondaryZoneIds)) {
+            "Sélection de zones corporelles invalide"
+        }
+        val rowId = lookupExerciseRowId(db, exerciseId)
+        db.delete("exercise_body_zones", "exercise_row_id=?", arrayOf(rowId.toString()))
+        fun insert(zoneId: String, role: String) {
+            db.insertOrThrow("exercise_body_zones", null, ContentValues().apply {
+                put("exercise_row_id", rowId)
+                put("zone_id", zoneId)
+                put("role", role)
+            })
+        }
+        primaryZoneId?.let { insert(it, "primary") }
+        secondaryZoneIds.forEach { insert(it, "secondary") }
+    }
+
     private fun normalizeName(
         value: String,
     ): String {
@@ -3771,6 +4107,9 @@ private const val ANDROID_LEG_PRESS_LEGACY_ID =
     "ex_d68a1af1-7247-4fb3-a48b-da8516906a29"
 private const val DESKTOP_LEG_PRESS_CANONICAL_ID =
     "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde"
+private val EXERCISE_ID_V4_PATTERN = Regex(
+    "^ex_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+)
 
 private class TrainlogDatabaseHelper(
     private val appContext: Context,
@@ -3779,7 +4118,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    9,
+    10,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -3806,6 +4145,7 @@ private class TrainlogDatabaseHelper(
         createBodyTable(db)
         createActiveDraftTables(db)
         createEquipmentTables(db)
+        createBodyZoneTables(db)
         seedEquipment(db)
     }
 
@@ -3882,12 +4222,70 @@ private class TrainlogDatabaseHelper(
             version = 9
         }
 
+        if (version < 10 && newVersion >= 10) {
+            /* WHY: the approved legacy Leg press identity must be canonical
+             * before identity-keyed manifest mappings are applied. */
+            migrateApprovedLegPressIdentity(db)
+            createBodyZoneTables(db)
+            seedInitialBodyZones(db)
+            version = 10
+        }
+
         if (version != newVersion) {
             error(
                 "Unsupported Android DB upgrade " +
                     "$oldVersion -> $newVersion"
             )
         }
+    }
+
+    private fun createBodyZoneTables(db: SQLiteDatabase) {
+        /* CONTRACT: canonical zone definitions remain in the asset; SQLite
+         * stores only direct exercise relations and role cardinality. */
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS exercise_body_zones(" +
+                "exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE," +
+                "zone_id TEXT NOT NULL," +
+                "role TEXT NOT NULL CHECK(role IN('primary','secondary'))," +
+                "PRIMARY KEY(exercise_row_id,zone_id));",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS exercise_body_zones_one_primary " +
+                "ON exercise_body_zones(exercise_row_id) WHERE role='primary';",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS exercise_body_zone_sync(" +
+                "exercise_row_id INTEGER PRIMARY KEY REFERENCES exercises(id) ON DELETE CASCADE," +
+                "synced_state TEXT NOT NULL);",
+        )
+    }
+
+    private fun seedInitialBodyZones(db: SQLiteDatabase) {
+        val catalog = BodyZoneCatalog.load(appContext)
+        catalog.initialMappings.forEach { mapping ->
+            val rowId = db.rawQuery(
+                "SELECT id FROM exercises WHERE exercise_id=?;",
+                arrayOf(mapping.exerciseId),
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+                ?: return@forEach
+            fun insert(zoneId: String, role: String) {
+                db.insertOrThrow("exercise_body_zones", null, ContentValues().apply {
+                    put("exercise_row_id", rowId)
+                    put("zone_id", zoneId)
+                    put("role", role)
+                })
+            }
+            insert(mapping.primaryZoneId, "primary")
+            mapping.secondaryZoneIds.forEach { insert(it, "secondary") }
+        }
+        db.execSQL(
+            "INSERT INTO exercise_body_zone_sync(exercise_row_id,synced_state) " +
+                "SELECT e.id,COALESCE((SELECT p.zone_id FROM exercise_body_zones p " +
+                "WHERE p.exercise_row_id=e.id AND p.role='primary'),'')||'|'||" +
+                "COALESCE((SELECT group_concat(s.zone_id,',') FROM " +
+                "(SELECT zone_id FROM exercise_body_zones WHERE exercise_row_id=e.id " +
+                "AND role='secondary' ORDER BY zone_id) s),'') FROM exercises e;",
+        )
     }
 
     private data class ExerciseIdentityRow(
@@ -3956,7 +4354,8 @@ private class TrainlogDatabaseHelper(
             }
         }
 
-        db.beginTransaction()
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransaction()
         try {
             if (canonical == null) {
                 /* Keep the legacy exercise row itself: all foreign-key graph
@@ -3981,6 +4380,8 @@ private class TrainlogDatabaseHelper(
                 check(!incompatibleCatalogEquipment) {
                     "Métadonnées équipement Leg press incompatibles; migration refusée."
                 }
+
+                mergeApprovedIdentityBodyZones(db, canonical.rowId, legacy.rowId)
 
                 db.execSQL(
                     "UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?;",
@@ -4018,9 +4419,62 @@ private class TrainlogDatabaseHelper(
             check(exerciseIdentityRow(db, DESKTOP_LEG_PRESS_CANONICAL_ID) != null) {
                 "Identité Leg press desktop absente après migration."
             }
-            db.setTransactionSuccessful()
+            if (ownsTransaction) db.setTransactionSuccessful()
         } finally {
-            db.endTransaction()
+            if (ownsTransaction) db.endTransaction()
+        }
+    }
+
+    private fun mergeApprovedIdentityBodyZones(
+        db: SQLiteDatabase,
+        canonicalRowId: Long,
+        legacyRowId: Long,
+    ) {
+        val hasRelations = db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' " +
+                "AND name='exercise_body_zones';",
+            null,
+        ).use { it.moveToFirst() }
+        if (!hasRelations) return
+
+        fun state(rowId: Long): List<Pair<String, String>> = db.rawQuery(
+            "SELECT zone_id,role FROM exercise_body_zones " +
+                "WHERE exercise_row_id=? ORDER BY role,zone_id;",
+            arrayOf(rowId.toString()),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0) to cursor.getString(1))
+            }
+        }
+        val canonicalState = state(canonicalRowId)
+        val legacyState = state(legacyRowId)
+        check(canonicalState.isEmpty() || legacyState.isEmpty() || canonicalState == legacyState) {
+            "Relations de zones Leg press incompatibles; migration refusée."
+        }
+        if (canonicalState.isEmpty() && legacyState.isNotEmpty()) {
+            db.execSQL(
+                "UPDATE exercise_body_zones SET exercise_row_id=? WHERE exercise_row_id=?;",
+                arrayOf(canonicalRowId, legacyRowId),
+            )
+        } else {
+            db.execSQL(
+                "DELETE FROM exercise_body_zones WHERE exercise_row_id=?;",
+                arrayOf(legacyRowId),
+            )
+        }
+
+        /* INVARIANT: identity repair is not a sync acknowledgement. A fresh
+         * shared baseline must be established by an identical companion. */
+        val hasBaseline = db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' " +
+                "AND name='exercise_body_zone_sync';",
+            null,
+        ).use { it.moveToFirst() }
+        if (hasBaseline) {
+            db.execSQL(
+                "DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?);",
+                arrayOf(canonicalRowId, legacyRowId),
+            )
         }
     }
 

@@ -29,6 +29,9 @@ data class ExerciseProfile(
     val recordingMode: RecordingMode,
     val trackingMode: TrackingMode,
     val dataFields: Int,
+    /** Stable manifest IDs; display names are presentation-only metadata. */
+    val primaryZoneId: String? = null,
+    val secondaryZoneIds: List<String> = emptyList(),
 )
 
 data class NewExerciseProfile(
@@ -36,6 +39,9 @@ data class NewExerciseProfile(
     val recordingMode: RecordingMode,
     val trackingMode: TrackingMode,
     val dataFields: Int,
+    /** Null is the explicit no-relations state; validation rejects groups and orphan secondaries. */
+    val primaryZoneId: String? = null,
+    val secondaryZoneIds: List<String> = emptyList(),
 ) {
     fun validate(): Boolean {
         if (name.isBlank()) {
@@ -74,7 +80,8 @@ data class NewExerciseProfile(
 /**
  * CONTRACT: an edit addresses the existing stable identity.  `name` is
  * presentation metadata, not a replacement identity, so callers must never
- * create a second exercise merely to rename one.
+ * create a second exercise merely to rename one. Name/profile/zones are saved
+ * transactionally; cancelling before this call has no persistence effect.
  */
 data class ExerciseEditInput(
     val exerciseId: String,
@@ -82,6 +89,8 @@ data class ExerciseEditInput(
     val recordingMode: RecordingMode,
     val trackingMode: TrackingMode,
     val dataFields: Int,
+    val primaryZoneId: String? = null,
+    val secondaryZoneIds: List<String> = emptyList(),
 ) {
     fun validateProfile(): Boolean =
         NewExerciseProfile(

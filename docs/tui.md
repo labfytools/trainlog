@@ -95,6 +95,20 @@ Catalog identities are stable.
 
 Unicode-aware normalized-name uniqueness prevents duplicate logical names.
 
+`3 Exercices` also owns Body Zones V1. Creation opens a keyboard-only manifest
+selector: `p` chooses the sole primary, Space toggles secondaries, `n` selects
+the explicit unclassified state and clears all relations, Enter validates and Escape
+cancels without mutation. Only French display names are shown; stable IDs such
+as `chest` remain internal. New set-based exercises require a primary zone.
+
+The exercise list supports `/` prefix search and `z` cycling through all
+manifest zones plus **Non renseignés**; `x` clears search and zone filter. Parent filters
+include descendants, so **Membres supérieurs** finds direct chest/back/
+shoulders/arms relations without stored parent rows. Search and filter combine.
+Exercise detail displays the primary, ordered secondaries and the primary's
+derived group. `e` edits name and zones transactionally; Escape at either edit
+prompt leaves the durable row unchanged.
+
 ## 5. Session entry
 
 The TUI can record sessions directly.
@@ -257,10 +271,10 @@ b   run bidirectional synchronization
 r   refresh device status
 ```
 
-`a` imports definitions V1, mobile V2, and associations V2 only. `p` publishes
-definitions V1, catalog V1, mobile V2 (including body observations), and
-associations V2 only. `b` completes that inbound sequence before beginning the
-outbound sequence.
+`a` imports definitions V1, mobile V2, the body-zone companion and associations
+V2 only. `p` publishes definitions V1, catalog V1, the body-zone companion,
+mobile V2 (including body observations), and associations V2 only. `b`
+completes that inbound sequence before beginning the outbound sequence.
 
 The direction keys are direct actions: pressing `a`, `p`, or `b` opens one
 confirmation for that exact direction; there is no separate mode-selection
@@ -355,7 +369,7 @@ meson test -C build --print-errorlogs
 Validated current normal suite:
 
 ```text
-36/36 Meson tests PASS
+39/39 Meson tests PASS
 ```
 
 ## 16. Measured max view

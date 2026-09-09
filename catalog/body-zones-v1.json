@@ -1,0 +1,39 @@
+{
+  "format": "trainlog-body-zone-catalog",
+  "version": 1,
+  "zones": [
+    {"zone_id":"full_body","display_name":"Corps entier","parent_zone_id":null,"sort_order":0,"kind":"standalone"},
+    {"zone_id":"upper_body","display_name":"Membres supérieurs","parent_zone_id":null,"sort_order":10,"kind":"group"},
+    {"zone_id":"chest","display_name":"Pectoraux","parent_zone_id":"upper_body","sort_order":11,"kind":"leaf"},
+    {"zone_id":"back","display_name":"Dos","parent_zone_id":"upper_body","sort_order":12,"kind":"leaf"},
+    {"zone_id":"shoulders","display_name":"Épaules","parent_zone_id":"upper_body","sort_order":13,"kind":"leaf"},
+    {"zone_id":"arms","display_name":"Bras","parent_zone_id":"upper_body","sort_order":14,"kind":"leaf"},
+    {"zone_id":"core","display_name":"Abdominaux / tronc","parent_zone_id":null,"sort_order":20,"kind":"standalone"},
+    {"zone_id":"lower_body","display_name":"Membres inférieurs","parent_zone_id":null,"sort_order":30,"kind":"group"},
+    {"zone_id":"glutes","display_name":"Fessiers","parent_zone_id":"lower_body","sort_order":31,"kind":"leaf"},
+    {"zone_id":"thighs","display_name":"Cuisses","parent_zone_id":"lower_body","sort_order":32,"kind":"leaf"},
+    {"zone_id":"calves","display_name":"Mollets","parent_zone_id":"lower_body","sort_order":33,"kind":"leaf"}
+  ],
+  "exercise_mappings": [
+    {"exercise_id":"ex_4bd03d55-e644-436e-876e-07837824bde5","exercise_name":"Abdominal","primary_zone_id":"core","secondary_zone_ids":[],"decision_source":"Identité stable et équipement custom durable eq_3f987a36-bbb4-4e29-9c9f-1f201f1596e0 nommé Abdominal."},
+    {"exercise_id":"ex_9adf7566-f10c-443c-b63b-681d37665693","exercise_name":"Abdominal crunch","primary_zone_id":"core","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique abdominal (crunch machine)."},
+    {"exercise_id":"ex_ec619fc2-4685-4044-873c-86764bd4a0fe","exercise_name":"Arm curl","primary_zone_id":"arms","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique arm_curl (curl biceps)."},
+    {"exercise_id":"ex_474ec393-3efa-4aaa-8e08-1a0245ed7835","exercise_name":"Back extension","primary_zone_id":"back","secondary_zone_ids":["core"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique back_extension (extension lombaire et stabilisation du tronc)."},
+    {"exercise_id":"ex_8552dd77-fcd7-4f06-a1cc-d956eb1009af","exercise_name":"Chest press","primary_zone_id":"chest","secondary_zone_ids":["shoulders","arms"],"decision_source":"Identité stable et équipement custom durable eq_0a462c1e-9fb6-4fd7-b0a2-53a0e86f33c6 nommé Chest press."},
+    {"exercise_id":"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b","exercise_name":"Converging Shoulder Press","primary_zone_id":"shoulders","secondary_zone_ids":["arms"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique converging_shoulder_press."},
+    {"exercise_id":"ex_34a5c9c3-c032-4dfb-be32-8bf09832f72b","exercise_name":"Converting chest press","primary_zone_id":"chest","secondary_zone_ids":["shoulders","arms"],"decision_source":"Identité stable et équipement custom durable eq_c660cd61-5b17-498e-8d51-9eafcf7e2731 nommé Converting chest press."},
+    {"exercise_id":"ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de","exercise_name":"Diverged seated row","primary_zone_id":"back","secondary_zone_ids":["arms"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique diverging_seated_row."},
+    {"exercise_id":"ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6","exercise_name":"Diverging lat pulldown","primary_zone_id":"back","secondary_zone_ids":["arms"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique diverging_lat_pulldown."},
+    {"exercise_id":"ex_7e7cf906-2214-4066-bcb7-c16382d83b3b","exercise_name":"Hip abduction","primary_zone_id":"glutes","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique hip_abduction (abducteurs/fessiers)."},
+    {"exercise_id":"ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef","exercise_name":"Hip adduction","primary_zone_id":"thighs","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique hip_adduction (adducteurs de la cuisse)."},
+    {"exercise_id":"ex_a72fa713-4b0e-431d-95e2-42d95beb77b1","exercise_name":"Lat pull","primary_zone_id":"back","secondary_zone_ids":["arms"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique lat_pull."},
+    {"exercise_id":"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab","exercise_name":"Leg extension","primary_zone_id":"thighs","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique leg_extension (quadriceps)."},
+    {"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","exercise_name":"Leg press","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"decision_source":"Identité stable réconciliée et occurrences liées aux équipements canoniques leg_press/plate_loaded_leg_press."},
+    {"exercise_id":"ex_d7398d9f-d928-4d2e-94e9-74e201da55c5","exercise_name":"Prone leg curl","primary_zone_id":"thighs","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique prone_leg_curl (ischio-jambiers)."},
+    {"exercise_id":"ex_4cd2433e-80b1-478a-b8df-73fc6ef80962","exercise_name":"Rear Delt","primary_zone_id":"shoulders","secondary_zone_ids":["back"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique rear_delt_pec_fly, utilisée comme Rear Delt."},
+    {"exercise_id":"ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0","exercise_name":"Rotary torso","primary_zone_id":"core","secondary_zone_ids":[],"decision_source":"Identité stable correspondant à la rotation du buste; équipement canonique rotary_torso présent dans le manifeste partagé."},
+    {"exercise_id":"ex_617007f9-7420-4408-91b9-8ffb77900f13","exercise_name":"Seated Leg","primary_zone_id":"thighs","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique seated_leg_curl (ischio-jambiers)."},
+    {"exercise_id":"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163","exercise_name":"Seated leg curl","primary_zone_id":"thighs","secondary_zone_ids":[],"decision_source":"Identité stable et occurrence liée à l’équipement canonique seated_leg_curl (ischio-jambiers)."},
+    {"exercise_id":"ex_33f79331-871c-4eed-babe-346e53a99070","exercise_name":"Seated row","primary_zone_id":"back","secondary_zone_ids":["arms"],"decision_source":"Identité stable et occurrence liée à l’équipement canonique seated_row."}
+  ]
+}
