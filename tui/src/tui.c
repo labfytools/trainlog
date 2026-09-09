@@ -20,6 +20,7 @@
 #include <wchar.h>
 #include <unistd.h>
 
+#include <utf8proc.h>
 #include <uuid/uuid.h>
 
 #include "trainlog/terminal.h"
@@ -39,6 +40,7 @@
 #include "trainlog/reps.h"
 #include "trainlog/theme.h"
 #include "trainlog/timeutil.h"
+#include "trainlog/training_knowledge.h"
 #include "trainlog/usb.h"
 
 #define MAX_EXERCISES 128U
@@ -2380,6 +2382,180 @@ static bool edit_exercise_body_zones(
     return status == TRAINLOG_STATUS_OK;
 }
 
+/* CONTRACT: knowledge text is read-only catalogue data.  The screen stores
+ * display lines locally so navigation never changes the scientific record. */
+#define KNOWLEDGE_LINES_MAX 128U
+#define KNOWLEDGE_LINE_MAX 256U
+
+static void knowledge_add_wrapped(char lines[][KNOWLEDGE_LINE_MAX], size_t *count,
+                                  const char *text, int width)
+{
+    const char *at = text == NULL ? "" : text;
+    size_t used = 0U;
+    int cells = 0;
+
+    /* WHY: terminal columns count display cells, while French labels are UTF-8;
+     * utf8proc prevents a wrap from splitting an accented character or from
+     * writing past the right border for a wide code point. */
+    while (*at != '\0' && *count < KNOWLEDGE_LINES_MAX) {
+        utf8proc_int32_t codepoint;
+        utf8proc_ssize_t bytes = utf8proc_iterate((const utf8proc_uint8_t *)at,
+            -1, &codepoint);
+        int codepoint_cells;
+        if (bytes <= 0) { codepoint = (unsigned char)*at; bytes = 1; }
+        codepoint_cells = utf8proc_charwidth(codepoint);
+        if (codepoint_cells < 0) codepoint_cells = 1;
+        if (cells > 0 && cells + codepoint_cells > width) {
+            lines[*count][used] = '\0';
+            ++*count;
+            used = 0U;
+            cells = 0;
+            continue;
+        }
+        if (used + (size_t)bytes >= KNOWLEDGE_LINE_MAX - 1U) break;
+        (void)memcpy(lines[*count] + used, at, (size_t)bytes);
+        used += (size_t)bytes;
+        cells += codepoint_cells;
+        at += bytes;
+    }
+    /* INVARIANT: every entry is NUL-terminated before rendering, and the fixed
+     * line capacity bounds catalogue display independently of terminal size. */
+    if (*count < KNOWLEDGE_LINES_MAX) {
+        lines[*count][used] = '\0';
+        ++*count;
+    }
+}
+
+static void knowledge_add_ids(char lines[][KNOWLEDGE_LINE_MAX], size_t *count,
+                              const char *heading, const char *ids, bool muscles,
+                              int width)
+{
+    const char *at = ids;
+    knowledge_add_wrapped(lines, count, heading, width);
+    while (at != NULL && *at != '\0' && *count < KNOWLEDGE_LINES_MAX) {
+        const char *end = strchr(at, '\n');
+        size_t length = end == NULL ? strlen(at) : (size_t)(end - at);
+        char id[96];
+        const char *label = NULL;
+        if (length >= sizeof(id)) break;
+        (void)memcpy(id, at, length);
+        id[length] = '\0';
+        if (muscles) {
+            const TrainlogKnowledgeMuscle *item = trainlog_knowledge_muscle_lookup(id);
+            if (item != NULL) label = item->display_name_fr;
+        } else {
+            const TrainlogKnowledgeMovementPattern *item =
+                trainlog_knowledge_movement_pattern_lookup(id);
+            if (item != NULL) label = item->display_name_fr;
+        }
+        knowledge_add_wrapped(lines, count, label == NULL ? id : label, width);
+        if (end == NULL) break;
+        at = end + 1;
+    }
+}
+
+static void knowledge_add_plain_ids(char lines[][KNOWLEDGE_LINE_MAX], size_t *count,
+                                    const char *heading, const char *ids, int width)
+{
+    const char *at = ids;
+    knowledge_add_wrapped(lines, count, heading, width);
+    while (at != NULL && *at != '\0' && *count < KNOWLEDGE_LINES_MAX) {
+        const char *end = strchr(at, '\n');
+        size_t length = end == NULL ? strlen(at) : (size_t)(end - at);
+        char id[96];
+        if (length >= sizeof(id)) break;
+        (void)memcpy(id, at, length);
+        id[length] = '\0';
+        knowledge_add_wrapped(lines, count, id, width);
+        if (end == NULL) break;
+        at = end + 1;
+    }
+}
+
+static void knowledge_add_zones(char lines[][KNOWLEDGE_LINE_MAX], size_t *count,
+                                const TrainlogKnowledgeInterpretation *value, int width)
+{
+    const TrainlogBodyZone *zone;
+    knowledge_add_wrapped(lines, count, "Zones scientifiques :", width);
+    zone = trainlog_body_zone_catalog_lookup(value->primary_zone_id);
+    knowledge_add_wrapped(lines, count,
+        zone == NULL ? value->primary_zone_id : zone->display_name, width);
+    knowledge_add_plain_ids(lines, count, "Zones secondaires :",
+        value->secondary_zone_ids, width);
+}
+
+static void screen_exercise_knowledge(const TrainlogExercise *exercise)
+{
+    const TrainlogExerciseKnowledge *record;
+    const TrainlogKnowledgeInterpretation *value;
+    const char *label;
+    char lines[KNOWLEDGE_LINES_MAX][KNOWLEDGE_LINE_MAX];
+    size_t line_count;
+    size_t scroll = 0U;
+    int key;
+    if (exercise == NULL) return;
+    record = trainlog_exercise_knowledge_lookup(exercise->exercise_id);
+    value = record == NULL ? NULL : record->interpretation;
+    label = "Connaissances validées";
+    if (value == NULL && record != NULL && record->conditional_interpretation != NULL) {
+        value = record->conditional_interpretation;
+        label = "Interprétation conditionnelle — à confirmer";
+    }
+    for (;;) {
+        int rows = trainlog_terminal_rows(tui_terminal);
+        int columns = trainlog_terminal_columns(tui_terminal);
+        int viewport_rows;
+        int width;
+        size_t index;
+        if (rows < 20 || columns < 72) {
+            draw_shell("TRAINLOG — Connaissances exercice", "b/Échap retour");
+            trainlog_terminal_printf(tui_terminal, 3, 4, "Terminal trop petit — minimum 72x20.");
+            trainlog_terminal_render(tui_terminal);
+            key = trainlog_terminal_get_key(tui_terminal);
+            if (key == 27 || key == 'b' || key == 'B' || key == 'k' || key == 'K') return;
+            continue;
+        }
+        width = columns - 8;
+        viewport_rows = rows - 6;
+        line_count = 0U;
+        knowledge_add_wrapped(lines, &line_count, exercise->name, width);
+        if (record == NULL || value == NULL) {
+            knowledge_add_wrapped(lines, &line_count,
+                record == NULL ? "Aucune fiche scientifique pour cet identifiant."
+                               : "Interprétation scientifique non résolue.", width);
+        } else {
+            knowledge_add_wrapped(lines, &line_count, label, width);
+            knowledge_add_ids(lines, &line_count, "Mouvement :", value->pattern_ids, false, width);
+            knowledge_add_wrapped(lines, &line_count, "Confiance :", width);
+            knowledge_add_wrapped(lines, &line_count, value->confidence, width);
+            knowledge_add_ids(lines, &line_count, "Muscles principaux :",
+                value->primary_muscle_ids, true, width);
+            knowledge_add_ids(lines, &line_count, "Secondaires :",
+                value->secondary_muscle_ids, true, width);
+            knowledge_add_ids(lines, &line_count, "Stabilisateurs :",
+                value->stabilizer_muscle_ids, true, width);
+            knowledge_add_zones(lines, &line_count, value, width);
+            knowledge_add_plain_ids(lines, &line_count, "Sources :", value->source_refs, width);
+        }
+        if (scroll >= line_count) scroll = line_count == 0U ? 0U : line_count - 1U;
+        draw_shell("TRAINLOG — Connaissances exercice",
+            "↑↓ défiler  Pg↑/Pg↓ page  b/Échap/k retour");
+        for (index = 0U; index < (size_t)viewport_rows && scroll + index < line_count; ++index)
+            trainlog_terminal_printf(tui_terminal, 3 + (int)index, 4, "%s", lines[scroll + index]);
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 27 || key == 'b' || key == 'B' || key == 'k' || key == 'K') return;
+        if (key == TRAINLOG_KEY_UP && scroll > 0U) --scroll;
+        else if (key == TRAINLOG_KEY_DOWN && scroll + (size_t)viewport_rows < line_count) ++scroll;
+        else if (key == TRAINLOG_KEY_PAGE_UP) {
+            scroll = scroll > (size_t)viewport_rows ? scroll - (size_t)viewport_rows : 0U;
+        } else if (key == TRAINLOG_KEY_PAGE_DOWN && scroll + (size_t)viewport_rows < line_count) {
+            size_t maximum = line_count - (size_t)viewport_rows;
+            scroll = scroll + (size_t)viewport_rows < maximum ? scroll + (size_t)viewport_rows : maximum;
+        }
+    }
+}
+
 static void screen_exercise_detail(
     TrainlogDatabase *database,
     TrainlogExercise *exercise
@@ -2418,7 +2594,7 @@ static void screen_exercise_detail(
         int key;
         if (total > 0U && selected >= total) selected = total - 1U;
         draw_shell("TRAINLOG — Fiche exercice",
-            "↑↓ équipement  Entrée fiche  e modifier  p performance  m max mesuré  b/Échap retour");
+            "↑↓ équipement  Entrée fiche  k connaissances  p performance  m max  b/Échap retour");
         trainlog_terminal_printf(tui_terminal, 3, 4, "%s", exercise->name);
         trainlog_terminal_printf(tui_terminal, 4, 4, "Identifiant : %s · suivi : %s",
             exercise->exercise_id,
@@ -2479,6 +2655,7 @@ static void screen_exercise_detail(
                 ? &explicit_items[selected] : &historic_items[selected - explicit_count]);
         else if (key == 'p' || key == 'P') screen_exercise_performance(database, exercise);
         else if (key == 'm' || key == 'M') screen_exercise_measured_max(database, exercise);
+        else if (key == 'k' || key == 'K') screen_exercise_knowledge(exercise);
         else if (key == 'e' || key == 'E') (void)edit_exercise_body_zones(database, exercise);
     }
 }

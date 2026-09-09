@@ -324,3 +324,13 @@ A task is complete only when:
 - synchronization remains idempotent where applicable;
 - documentation describes the resulting state;
 - no known regression is intentionally left behind.
+
+## 14. Training knowledge
+
+Before domain decisions involving anatomy, biomechanics, exercise targeting,
+BODY ZONES, machine/exercise interpretation, substitution, MAX interpretation,
+workout generation or program generation, consult the project
+[`trainlog-anatomy` skill](.agents/skills/trainlog-anatomy/SKILL.md),
+`docs/domain/`, the scientific catalogs in `catalog/`, and their cited references.
+Scientific knowledge is separate from runtime user data; preserve explicit
+uncertainty and settle scientific conclusions before encoding behavior.

@@ -546,3 +546,25 @@ left/right asymmetry percentages
 
 The optional estimation profile is desktop configuration, not database
 history.
+
+## 14. Training knowledge read boundary
+
+Training Knowledge V1 adds no table, migration, seed data or synchronization
+artifact. The desktop database remains schema v11. Read-only context assembly
+joins an exact existing exercise with its persisted BODY ZONE relations,
+occurrence history, raw sets, actual equipment and latest explicit MAX, then
+optionally attaches immutable catalog knowledge. Missing catalog knowledge is
+valid and never causes a database mutation. The scientific catalog's BODY ZONE
+projection is not stored in `exercise_body_zones` and does not replace user
+classification. See [Training knowledge system V1](domain/knowledge_system.md).
+Occurrence pagination and latest explicit MAX use an exact derived instant
+comparison, then bytewise session/entry ID ties. They scan all matching
+metadata and retain only bounded candidates before hydration, inside a read
+snapshot. Original timestamp text stays unchanged. Malformed storage and a
+selected timestamp beyond the existing 40-character C output capacity produce
+explicit errors. The [temporal contract](reviews/training_knowledge_v1_temporal_contract.md)
+distinguishes the accepted profile from accidental Python ISO extensions.
+The temporal contract has independent PASS evidence. The initial audit's stale
+temporal documentation, Android loader, Meson input, and C role-only query
+findings were repaired, independently verified, and final-validated;
+`TRAINING_KNOWLEDGE_V1=PASS`.

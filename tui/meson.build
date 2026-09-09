@@ -30,6 +30,28 @@ body_zone_catalog_generated = custom_target(
   command: [find_program('python3'), meson.project_source_root() / 'tools/generate_body_zone_catalog.py', '@INPUT@', '@OUTPUT@'],
 )
 
+training_knowledge_generated = custom_target(
+  'training_knowledge_generated',
+  input: [
+    meson.project_source_root() / 'catalog/body-zones-v1.json',
+    meson.project_source_root() / 'catalog/equipment-v1.json',
+    meson.project_source_root() / 'catalog/science-references-v1.json',
+    meson.project_source_root() / 'catalog/muscles-v1.json',
+    meson.project_source_root() / 'catalog/joint-actions-v1.json',
+    meson.project_source_root() / 'catalog/movement-patterns-v1.json',
+    meson.project_source_root() / 'catalog/exercise-knowledge-v1.json',
+    meson.project_source_root() / 'catalog/equipment-knowledge-v1.json',
+    meson.project_source_root() / 'catalog/training-knowledge-audit-v1.json',
+  ],
+  output: 'training_knowledge_generated.c',
+  depend_files: [
+    meson.project_source_root() / 'tools/generate_training_knowledge.py',
+    meson.project_source_root() / 'tools/validate_training_knowledge.py',
+  ],
+  command: [find_program('python3'), meson.project_source_root() / 'tools/generate_training_knowledge.py',
+            meson.project_source_root() / 'catalog', '@OUTPUT@'],
+)
+
 strict_c_args = [
   '-D_POSIX_C_SOURCE=200809L',
   '-Wconversion',
@@ -45,15 +67,18 @@ trainlog_core_sources = files(
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
+  'src/training_context.c',
   'src/usb.c',
   'src/mtp.c',
   'src/reps.c',
   'src/measured_max.c',
   'src/sync.c',
   'src/sync_history.c',
+  'src/timestamp.c',
 )
 trainlog_core_sources += equipment_catalog_generated
 trainlog_core_sources += body_zone_catalog_generated
+trainlog_core_sources += training_knowledge_generated
 
 trainlog_core = static_library(
   'trainlog_core',
@@ -141,6 +166,22 @@ test_body_zones = executable(
   c_args: strict_c_args,
 )
 test('body_zones', test_body_zones)
+
+test_training_knowledge = executable(
+  'test_training_knowledge',
+  'tests/test_training_knowledge.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('training_knowledge', test_training_knowledge)
+
+test_training_context = executable(
+  'test_training_context',
+  'tests/test_training_context.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('training_context', test_training_context)
 
 test_custom_equipment = executable(
   'test_custom_equipment',
@@ -398,6 +439,12 @@ test(
 )
 
 python3_trainlog_tests = find_program('python3')
+
+test(
+  'timestamp_validation',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_timestamp_validation.py'],
+)
 
 test(
   'mobile_import_variable_sets',

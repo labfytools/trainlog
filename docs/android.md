@@ -510,3 +510,28 @@ Android requires `data_fields = 0` for `SETS`, while the desktop model/API
 currently accepts known supplemental bits on either recording mode. Supplied
 profiles do not exercise this difference. Supporting a future set-based
 supplemental field requires an explicit shared-model decision.
+
+## 18. Training knowledge V1 read APIs
+
+Android bundles the six authored training-knowledge catalogs as immutable
+assets. `TrainingKnowledgeCatalog` validates and exposes their stable-ID
+records; it is not a second manually authored scientific table.
+`TrainlogRepository.getTrainingExerciseContext()` composes an exact persisted
+exercise with its direct/ancestor persisted zones, optional scientific mapping,
+compatible equipment, latest explicit MAX and recent occurrence/set preview.
+`listExerciseOccurrences()` and `listExerciseOccurrenceSets()` provide bounded
+follow-up pages. Occurrence and set limits are 1–32 and 1–64 respectively.
+Cursors order current data chronologically by original timestamp, session ID
+and occurrence ID, and do not preserve a snapshot across calls.
+
+This read-only feature makes no Android schema change (the runtime schema
+remains v10), does not seed rows, and does not export/synchronize new data. It
+does not implement recommendations, planned weights, set counts or fatigue
+scores. Its occurrence and latest-MAX readers use the same explicit temporal
+grammar, exact fractional comparison and bytewise ID tie breakers as C.
+The Android writer's omitted-seconds form is admitted, and emitted cursors
+retain the original source text. Production pagination/MAX parity tests pass.
+The tranche is `TRAINING_KNOWLEDGE_V1=PASS`. The Android loader enforces canonical exercise
+and equipment identity syntax, bidirectional exercise/capability compatibility,
+HIGH evidence source type, and non-unresolved BODY ZONE audit evidence. Its
+full source and uncertainty contract is in [Training knowledge system V1](domain/knowledge_system.md).

@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 import math
 import re
 import sys
 import unicodedata
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -120,25 +120,67 @@ def normalize_exercise_name(name: str) -> str:
     return collapsed.casefold()
 
 
-def parse_timestamp(value: str, field_name: str) -> datetime:
-    """Parse a Trainlog timestamp while requiring an explicit UTC offset."""
-    candidate = value
-    if candidate.endswith("Z"):
-        candidate = candidate[:-1] + "+00:00"
+@dataclass(frozen=True)
+class TrainlogTimestamp:
+    """Exact comparable instant key; fraction has insignificant zeros removed."""
 
-    try:
-        parsed = datetime.fromisoformat(candidate)
-    except ValueError as exc:
-        raise TrainlogSemanticError(
-            f"{field_name}: invalid date-time: {value!r}"
-        ) from exc
+    utc_second: int
+    fraction: str
 
-    if parsed.utcoffset() is None:
-        raise TrainlogSemanticError(
-            f"{field_name}: UTC offset is required: {value!r}"
-        )
+    def __lt__(self, other: "TrainlogTimestamp") -> bool:
+        return (self.utc_second, self.fraction) < (other.utc_second, other.fraction)
 
-    return parsed
+    def __le__(self, other: "TrainlogTimestamp") -> bool:
+        return self == other or self < other
+
+
+TIMESTAMP_PATTERN = re.compile(
+    r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
+    r"[Tt](?P<hour>[0-9]{2}):(?P<minute>[0-9]{2})"
+    r"(?::(?P<second>[0-9]{2})(?:\.(?P<fraction>[0-9]+))?)?"
+    r"(?P<zone>[Zz]|[+-][0-9]{2}:[0-9]{2})",
+    re.ASCII,
+)
+
+
+def _leap_year(year: int) -> bool:
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
+def _days_in_month(year: int, month: int) -> int:
+    if month == 2:
+        return 29 if _leap_year(year) else 28
+    return 30 if month in {4, 6, 9, 11} else 31
+
+
+def _day_number(year: int, month: int, day: int) -> int:
+    prior = year - 1
+    result = prior * 365 + prior // 4 - prior // 100 + prior // 400
+    result += sum(_days_in_month(year, item) for item in range(1, month))
+    return result + day - 1
+
+
+def parse_timestamp(value: str, field_name: str) -> TrainlogTimestamp:
+    """Parse the frozen Trainlog grammar without platform ISO extensions."""
+    match = TIMESTAMP_PATTERN.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        raise TrainlogSemanticError(f"{field_name}: invalid date-time: {value!r}")
+    year, month, day, hour, minute = (
+        int(match[name]) for name in ("year", "month", "day", "hour", "minute")
+    )
+    second = int(match["second"] or "0")
+    if year < 1 or month not in range(1, 13) or day not in range(
+            1, _days_in_month(year, month) + 1) or hour > 23 or minute > 59 or second > 59:
+        raise TrainlogSemanticError(f"{field_name}: invalid date-time: {value!r}")
+    zone = match["zone"]
+    offset = 0
+    if zone not in {"Z", "z"}:
+        offset_hour, offset_minute = int(zone[1:3]), int(zone[4:6])
+        if offset_hour > 23 or offset_minute > 59:
+            raise TrainlogSemanticError(f"{field_name}: invalid date-time: {value!r}")
+        offset = (offset_hour * 3600 + offset_minute * 60) * (1 if zone[0] == "+" else -1)
+    local = _day_number(year, month, day) * 86400 + hour * 3600 + minute * 60 + second
+    return TrainlogTimestamp(local - offset, (match["fraction"] or "").rstrip("0"))
 
 
 def require_non_blank(value: str, field_name: str) -> None:
@@ -358,8 +400,23 @@ def structural_errors(
     document: Any,
 ) -> list[str]:
     """Return deterministic human-readable JSON Schema errors."""
+    # WHY: jsonschema's optional RFC checker requires seconds, while Trainlog's
+    # existing Android writer may omit them. Admission must not depend on which
+    # optional dependencies are installed. Keep other supplied format checks,
+    # and override only date-time on a fresh instance; never mutate global state.
+    checker = jsonschema.FormatChecker()
+    if validator.format_checker is not None:
+        checker.checkers = validator.format_checker.checkers.copy()
+
+    @checker.checks("date-time", raises=TrainlogSemanticError)
+    def trainlog_date_time(value: Any) -> bool:
+        if isinstance(value, str):
+            parse_timestamp(value, "date-time")
+        return True  # JSON Schema's type keyword handles non-string values.
+
+    temporal_validator = validator.evolve(format_checker=checker)
     errors = sorted(
-        validator.iter_errors(document),
+        temporal_validator.iter_errors(document),
         key=lambda error: [str(part) for part in error.absolute_path],
     )
 
@@ -485,7 +542,15 @@ def main(argv: list[str]) -> int:
     validator.check_schema(schema)
 
     if not args.paths:
-        return run_suite(validator)
+        result = run_suite(validator)
+        try:
+            from validate_training_knowledge import ValidationError, validate as validate_knowledge
+            validate_knowledge(ROOT / "catalog")
+            print(f"PASS training-knowledge catalogs: {ROOT / 'catalog'}")
+        except ValidationError as error:
+            print(f"FAIL training-knowledge catalogs: {error}")
+            result = 1
+        return result
 
     failed = False
     for path in args.paths:

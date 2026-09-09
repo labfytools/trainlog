@@ -477,3 +477,36 @@ masks to be zero for `SETS`. The shipped catalog uses supplemental speed and
 distance only with `CONTINUOUS`; defining cross-platform behavior for a future
 set-based supplemental field is a model-contract decision, not part of this
 reconciliation.
+
+## 14. Training knowledge V1 boundary
+
+`TRAINING_KNOWLEDGE_V1` is a read-only composition layer. Six versioned JSON
+catalogs under `catalog/` are the only authored scientific source; generated C
+data and Android asset loading derive from them. They contain cited anatomy,
+movement, exercise and equipment knowledge, not user history. The generated
+knowledge audit is evidence output, not an editable source.
+
+The desktop `training_knowledge.h` API exposes immutable catalog records and
+stable-ID queries. `training_context.h` combines one exact persisted exercise
+with its stored BODY ZONE relations, optional science, compatible equipment,
+latest explicit maximum, and bounded occurrence/set history under one read
+snapshot. Android provides the corresponding catalog and repository context.
+This composition neither writes SQLite nor seeds catalog mappings. An unknown
+runtime ID and a missing scientific record remain valid states.
+
+Scientific BODY ZONE projections and persisted BODY ZONE relations have
+different ownership and are never substituted for one another. Labels and
+generic equipment descriptions are not runtime identities; an equipment
+capability does not create an `ex_<uuid-v4>` exercise or historical association.
+The feature is `TRAINING_KNOWLEDGE_V1=PASS`. The temporal contract has
+independent PASS evidence:
+the readers parse the admitted source forms into exact instants, compare exact
+fractions, then use bytewise session and entry ID ties; emitted exclusive
+cursors preserve the original timestamp text and IDs. Selection and hydration
+share a read snapshot, while separate page calls retain current-data semantics.
+Malformed caller cursors and malformed matching stored timestamps fail
+explicitly; a selected timestamp beyond C's 40-character output field also
+fails explicitly. The initial full-tranche audit's stale temporal-documentation,
+Android loader, Meson input, and C role-only query findings were resolved by one
+bounded repair chain and independently verified. Its full contract, uncertainty boundary and
+future-only planning architecture are in [Training knowledge system V1](domain/knowledge_system.md).

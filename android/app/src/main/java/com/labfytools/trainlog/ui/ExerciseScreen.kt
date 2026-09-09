@@ -19,6 +19,9 @@ import com.labfytools.trainlog.data.CreateExerciseResult
 import com.labfytools.trainlog.data.BodyZone
 import com.labfytools.trainlog.data.BodyZoneKind
 import com.labfytools.trainlog.data.EditExerciseResult
+import com.labfytools.trainlog.data.ExerciseKnowledge
+import com.labfytools.trainlog.data.ExerciseKnowledgeStatus
+import com.labfytools.trainlog.data.KnowledgeConfidence
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseEditInput
@@ -73,6 +76,7 @@ fun ExerciseScreen(
     var searchQuery by remember { mutableStateOf("") }
     var filterZoneId by remember { mutableStateOf<String?>(null) }
     var unclassifiedFilter by remember { mutableStateOf(false) }
+    var expandedKnowledgeIds by remember { mutableStateOf(emptySet<String>()) }
     val zones = repository.listBodyZones()
 
     var message by
@@ -513,6 +517,22 @@ fun ExerciseScreen(
                         accent = colors.accent,
                         onClick = { startEditing(exercise) },
                     )
+                    repository.getExerciseKnowledge(exercise.exerciseId)?.let { knowledge ->
+                        val expanded = exercise.exerciseId in expandedKnowledgeIds
+                        TrainlogAction(
+                            label = if (expanded) "− Connaissances" else "+ Connaissances",
+                            description = knowledgeSummary(knowledge),
+                            accent = colors.muted,
+                            onClick = {
+                                expandedKnowledgeIds = if (expanded) {
+                                    expandedKnowledgeIds - exercise.exerciseId
+                                } else {
+                                    expandedKnowledgeIds + exercise.exerciseId
+                                }
+                            },
+                        )
+                        if (expanded) KnowledgePanel(repository, knowledge)
+                    }
                 }
             }
         }
@@ -530,6 +550,59 @@ fun ExerciseScreen(
             )
         }
     }
+}
+
+@Composable
+private fun KnowledgePanel(repository: TrainlogRepository, knowledge: ExerciseKnowledge) {
+    val colors = LocalTrainlogColors.current
+    /* WHY: conditional content is opened only under an explicit uncertainty
+     * label; it cannot be mistaken for an ordinary resolved classification. */
+    val interpretation = when (knowledge.resolutionStatus) {
+        ExerciseKnowledgeStatus.RESOLVED_FAMILY_VARIANT_LIMITED -> knowledge.interpretation
+        ExerciseKnowledgeStatus.CONDITIONAL -> knowledge.conditionalInterpretation
+        ExerciseKnowledgeStatus.UNRESOLVED -> null
+    }
+    if (interpretation == null) {
+        TrainlogInfo("Classification scientifique non résolue.", colors.warning)
+        return
+    }
+    if (knowledge.resolutionStatus == ExerciseKnowledgeStatus.CONDITIONAL) {
+        TrainlogInfo(
+            "Interprétation conditionnelle · à confirmer : ${interpretation.requiredConfirmation.orEmpty()}",
+            colors.warning,
+        )
+    }
+    val patterns = interpretation.patternIds.mapNotNull(repository::getMovementPatternKnowledge)
+    val primary = interpretation.primaryMuscleIds.mapNotNull(repository::getMuscleKnowledge)
+    val secondary = interpretation.secondaryMuscleIds.mapNotNull(repository::getMuscleKnowledge)
+    val primaryZone = repository.bodyZone(interpretation.primaryZoneId)?.displayName
+        ?: interpretation.primaryZoneId
+    val secondaryZones = interpretation.secondaryZoneIds.map { repository.bodyZone(it)?.displayName ?: it }
+    val runtimeEquipment = repository.listEquipment().associateBy { it.equipmentId }
+    val equipment = knowledge.equipmentIds.map { runtimeEquipment[it]?.displayName ?: it }
+    TrainlogInfo("Mouvement : ${patterns.joinToString { it.displayNameFr }.ifEmpty { "Non classé" }}")
+    TrainlogInfo("Muscles principaux : ${primary.joinToString { it.displayNameFr }.ifEmpty { "Non classés" }}")
+    TrainlogInfo("Muscles secondaires : ${secondary.joinToString { it.displayNameFr }.ifEmpty { "Aucun établi" }}")
+    TrainlogInfo(
+        "Zones scientifiques : $primaryZone" +
+            if (secondaryZones.isEmpty()) "" else " · secondaires : ${secondaryZones.joinToString()}",
+    )
+    TrainlogInfo("Équipement compatible : ${equipment.joinToString().ifEmpty { "Non établi" }}")
+    TrainlogInfo("Confiance : ${confidenceLabel(interpretation.confidence)}", colors.muted)
+}
+
+private fun knowledgeSummary(knowledge: ExerciseKnowledge): String = when (knowledge.resolutionStatus) {
+    ExerciseKnowledgeStatus.RESOLVED_FAMILY_VARIANT_LIMITED ->
+        "Classification scientifique · confiance ${confidenceLabel(knowledge.confidence)}"
+    ExerciseKnowledgeStatus.CONDITIONAL ->
+        "Classification conditionnelle · incertitude explicite"
+    ExerciseKnowledgeStatus.UNRESOLVED -> "Classification scientifique non résolue"
+}
+
+private fun confidenceLabel(confidence: KnowledgeConfidence): String = when (confidence) {
+    KnowledgeConfidence.HIGH -> "élevée"
+    KnowledgeConfidence.MODERATE -> "modérée"
+    KnowledgeConfidence.UNCERTAIN -> "incertaine"
 }
 
 @Composable

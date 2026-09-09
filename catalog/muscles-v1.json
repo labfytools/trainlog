@@ -1,0 +1,1509 @@
+{
+  "format": "trainlog-muscles-v1",
+  "version": 1,
+  "muscles": [
+    {
+      "muscle_id": "adductor_magnus",
+      "display_name": "Adductor magnus",
+      "entity_type": "muscle",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "hip_adduction",
+        "hip_extension"
+      ],
+      "functional_notes": "Hip extension especially from posterior/hamstring portion; not all adductors share this role.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Grand adducteur",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "hip_adduction",
+        "hip_extension"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "biceps_brachii",
+      "display_name": "Biceps brachii",
+      "entity_type": "muscle",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "elbow_flexion",
+        "forearm_supination"
+      ],
+      "functional_notes": "Both heads span shoulder; shoulder assistance depends on position.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Biceps brachial",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "elbow_flexion",
+        "forearm_supination"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "biceps_femoris_short_head",
+      "display_name": "Biceps femoris: short head",
+      "entity_type": "muscle_region",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "knee_flexion"
+      ],
+      "functional_notes": "Does not cross hip.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "maeo_2021"
+      ],
+      "display_name_fr": "Biceps fémoral : chef court",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": "hamstrings",
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "knee_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "brachialis",
+      "display_name": "Brachialis",
+      "entity_type": "muscle",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "elbow_flexion"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Brachial",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "elbow_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "brachioradialis",
+      "display_name": "Brachioradialis",
+      "entity_type": "muscle",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "elbow_flexion"
+      ],
+      "functional_notes": "Forearm muscle assigned to broad arms UX zone.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Brachioradial",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "elbow_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "deltoid_anterior",
+      "display_name": "Deltoid: anterior region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_flexion",
+        "shoulder_horizontal_adduction",
+        "shoulder_internal_rotation"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_deltoid"
+      ],
+      "display_name_fr": "Deltoïde antérieur",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_flexion",
+        "shoulder_horizontal_adduction",
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "deltoid_middle",
+      "display_name": "Deltoid: middle region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_abduction"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_deltoid"
+      ],
+      "display_name_fr": "Deltoïde moyen",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_abduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "deltoid_posterior",
+      "display_name": "Deltoid: posterior region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_extension",
+        "shoulder_external_rotation",
+        "shoulder_horizontal_abduction"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_deltoid"
+      ],
+      "display_name_fr": "Deltoïde postérieur",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_extension",
+        "shoulder_external_rotation",
+        "shoulder_horizontal_abduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "erector_spinae",
+      "display_name": "Erector spinae",
+      "entity_type": "muscle_group",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "trunk_extension",
+        "trunk_lateral_flexion"
+      ],
+      "functional_notes": "Posterior trunk anatomy also functionally belongs to core.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_back"
+      ],
+      "display_name_fr": "Érecteurs du rachis",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "back",
+        "core"
+      ],
+      "primary_actions": [
+        "trunk_extension",
+        "trunk_lateral_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "external_oblique",
+      "display_name": "External oblique",
+      "entity_type": "muscle",
+      "body_zone_id": "core",
+      "joint_action_ids": [
+        "trunk_flexion",
+        "trunk_lateral_flexion",
+        "trunk_rotation"
+      ],
+      "functional_notes": "Unilateral contralateral rotation; stabilization is task dependent.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "display_name_fr": "Oblique externe",
+      "anatomical_group": "trunk_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "core"
+      ],
+      "primary_actions": [
+        "trunk_flexion",
+        "trunk_lateral_flexion",
+        "trunk_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "forearm_extensors",
+      "display_name": "Wrist and finger extensors",
+      "entity_type": "muscle_group",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "wrist_extension"
+      ],
+      "functional_notes": "Maintain wrist orientation during gripping.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Extenseurs du poignet et des doigts",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "wrist_extension"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "forearm_flexors",
+      "display_name": "Wrist and finger flexors",
+      "entity_type": "muscle_group",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "finger_flexion",
+        "wrist_flexion"
+      ],
+      "functional_notes": "Grip participation is usually stabilizing in pulls.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Fléchisseurs du poignet et des doigts",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "finger_flexion",
+        "wrist_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "forearm_pronators",
+      "display_name": "Pronator teres and quadratus",
+      "entity_type": "muscle_group",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "forearm_pronation"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Pronateurs de l’avant-bras",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "forearm_pronation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "gastrocnemius",
+      "display_name": "Gastrocnemius",
+      "entity_type": "muscle",
+      "body_zone_id": "calves",
+      "joint_action_ids": [
+        "ankle_plantarflexion",
+        "knee_flexion"
+      ],
+      "functional_notes": "Biarticular; force capacity depends on knee and ankle position.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Gastrocnémien",
+      "anatomical_group": "lower_leg",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "calves"
+      ],
+      "primary_actions": [
+        "ankle_plantarflexion",
+        "knee_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "gluteus_maximus",
+      "display_name": "Gluteus maximus",
+      "entity_type": "muscle",
+      "body_zone_id": "glutes",
+      "joint_action_ids": [
+        "hip_extension",
+        "hip_external_rotation"
+      ],
+      "functional_notes": "Superior fibers can assist abduction; geometry-dependent.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Grand fessier",
+      "anatomical_group": "gluteal_region",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "glutes"
+      ],
+      "primary_actions": [
+        "hip_extension",
+        "hip_external_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "gluteus_medius",
+      "display_name": "Gluteus medius",
+      "entity_type": "muscle",
+      "body_zone_id": "glutes",
+      "joint_action_ids": [
+        "hip_abduction"
+      ],
+      "functional_notes": "Pelvic stabilization; rotation contribution depends on fibers and hip angle.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_lower"
+      ],
+      "display_name_fr": "Moyen fessier",
+      "anatomical_group": "gluteal_region",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "glutes"
+      ],
+      "primary_actions": [
+        "hip_abduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "gluteus_minimus",
+      "display_name": "Gluteus minimus",
+      "entity_type": "muscle",
+      "body_zone_id": "glutes",
+      "joint_action_ids": [
+        "hip_abduction",
+        "hip_internal_rotation"
+      ],
+      "functional_notes": "Hip/pelvic stabilization.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_gluteus_minimus"
+      ],
+      "display_name_fr": "Petit fessier",
+      "anatomical_group": "gluteal_region",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "glutes"
+      ],
+      "primary_actions": [
+        "hip_abduction",
+        "hip_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "hamstrings",
+      "display_name": "Hamstring knee-flexor group",
+      "entity_type": "muscle_group",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "knee_flexion"
+      ],
+      "functional_notes": "Biceps femoris long/short heads, semitendinosus and semimembranosus; short head does not extend hip.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "display_name_fr": "Groupe des fléchisseurs ischio-jambiers",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "knee_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "hamstrings_biarticular",
+      "display_name": "Biarticular hamstrings",
+      "entity_type": "muscle_group",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "hip_extension",
+        "knee_flexion"
+      ],
+      "functional_notes": "Biceps femoris long head, semitendinosus and semimembranosus; hip flexion lengthens these at a matched knee angle.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "display_name_fr": "Ischio-jambiers biarticulaires",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": "hamstrings",
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "hip_extension",
+        "knee_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "hip_adductors",
+      "display_name": "Adductor longus, brevis, magnus, gracilis and pectineus",
+      "entity_type": "muscle_group",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "hip_adduction"
+      ],
+      "functional_notes": "Hip flexion/extension roles differ by muscle and joint angle; gracilis also flexes knee.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Adducteurs de la hanche",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "hip_adduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "hip_flexor_group",
+      "display_name": "Hip flexor functional group",
+      "display_name_fr": "Fléchisseurs de la hanche",
+      "entity_type": "muscle_group",
+      "anatomical_group": "functional_group",
+      "aggregate_group_id": null,
+      "member_muscle_ids": [
+        "iliopsoas",
+        "rectus_femoris",
+        "tensor_fasciae_latae"
+      ],
+      "body_zone_id": "thighs",
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "joint_action_ids": [
+        "hip_abduction",
+        "hip_flexion",
+        "hip_internal_rotation",
+        "knee_extension"
+      ],
+      "primary_actions": [
+        "hip_abduction",
+        "hip_flexion",
+        "hip_internal_rotation",
+        "knee_extension"
+      ],
+      "primary_actions_semantics": "Union of common member capabilities, not an action of every member; movement/stabilization roles require exercise context.",
+      "functional_notes": "Non-exhaustive functional grouping: pectineus, sartorius and other contributors are not separately represented here. Aggregate/member entries overlap and must never be counted as independent exposure.",
+      "confidence": "moderate",
+      "evidence_type": "practical_inference",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "overlap_warning": "Do not sum group and members as separate muscles or training sets."
+    },
+    {
+      "muscle_id": "iliopsoas",
+      "display_name": "Psoas major and iliacus",
+      "entity_type": "muscle_group",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "hip_flexion"
+      ],
+      "functional_notes": "Functional hip-flexor grouping spans trunk and pelvis; thighs is a coarse projection.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Ilio-psoas",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "hip_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "infraspinatus",
+      "display_name": "Infraspinatus",
+      "entity_type": "muscle",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_external_rotation"
+      ],
+      "functional_notes": "Rotator cuff; contributes humeral-head stabilization.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Infra-épineux",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": "rotator_cuff",
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_external_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "internal_oblique",
+      "display_name": "Internal oblique",
+      "entity_type": "muscle",
+      "body_zone_id": "core",
+      "joint_action_ids": [
+        "trunk_flexion",
+        "trunk_lateral_flexion",
+        "trunk_rotation"
+      ],
+      "functional_notes": "Unilateral ipsilateral rotation.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "display_name_fr": "Oblique interne",
+      "anatomical_group": "trunk_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "core"
+      ],
+      "primary_actions": [
+        "trunk_flexion",
+        "trunk_lateral_flexion",
+        "trunk_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "latissimus_dorsi",
+      "display_name": "Latissimus dorsi",
+      "entity_type": "muscle",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "shoulder_adduction",
+        "shoulder_extension",
+        "shoulder_internal_rotation"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Grand dorsal",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "shoulder_adduction",
+        "shoulder_extension",
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "multifidus",
+      "display_name": "Multifidus",
+      "entity_type": "muscle",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "trunk_extension",
+        "trunk_rotation"
+      ],
+      "functional_notes": "Segmental spinal control; rotation is contribution, not isolated prime-mover status.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_back"
+      ],
+      "display_name_fr": "Multifide",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "back",
+        "core"
+      ],
+      "primary_actions": [
+        "trunk_extension",
+        "trunk_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "pectoralis_major",
+      "display_name": "Pectoralis major",
+      "entity_type": "muscle",
+      "body_zone_id": "chest",
+      "joint_action_ids": [
+        "shoulder_adduction",
+        "shoulder_horizontal_adduction",
+        "shoulder_internal_rotation"
+      ],
+      "functional_notes": "Regional participation depends on shoulder position.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "display_name_fr": "Grand pectoral",
+      "anatomical_group": "pectoral_region",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "chest"
+      ],
+      "primary_actions": [
+        "shoulder_adduction",
+        "shoulder_horizontal_adduction",
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "pectoralis_major_clavicular",
+      "display_name": "Pectoralis major: clavicular region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "chest",
+      "joint_action_ids": [
+        "shoulder_flexion",
+        "shoulder_horizontal_adduction"
+      ],
+      "functional_notes": "Upper-chest region; not a separately isolatable muscle.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_pectoralis"
+      ],
+      "display_name_fr": "Grand pectoral : portion claviculaire",
+      "anatomical_group": "pectoral_region",
+      "aggregate_group_id": "pectoralis_major",
+      "body_zone_ids": [
+        "chest"
+      ],
+      "primary_actions": [
+        "shoulder_flexion",
+        "shoulder_horizontal_adduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "pectoralis_major_sternocostal",
+      "display_name": "Pectoralis major: sternocostal region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "chest",
+      "joint_action_ids": [
+        "shoulder_adduction",
+        "shoulder_extension",
+        "shoulder_horizontal_adduction"
+      ],
+      "functional_notes": "Extension contribution from a flexed arm; lower fibers are regional tissue, not a separate lower-chest muscle.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_pectoralis"
+      ],
+      "display_name_fr": "Grand pectoral : portion sternocostale",
+      "anatomical_group": "pectoral_region",
+      "aggregate_group_id": "pectoralis_major",
+      "body_zone_ids": [
+        "chest"
+      ],
+      "primary_actions": [
+        "shoulder_adduction",
+        "shoulder_extension",
+        "shoulder_horizontal_adduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "pectoralis_minor",
+      "display_name": "Pectoralis minor",
+      "entity_type": "muscle",
+      "body_zone_id": "chest",
+      "joint_action_ids": [
+        "scapular_depression",
+        "scapular_protraction"
+      ],
+      "functional_notes": "Scapular rather than humeral action.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Petit pectoral",
+      "anatomical_group": "pectoral_region",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "chest"
+      ],
+      "primary_actions": [
+        "scapular_depression",
+        "scapular_protraction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "quadratus_lumborum",
+      "display_name": "Quadratus lumborum",
+      "entity_type": "muscle",
+      "body_zone_id": "core",
+      "joint_action_ids": [
+        "trunk_lateral_flexion"
+      ],
+      "functional_notes": "Pelvic/trunk stabilization.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_back"
+      ],
+      "display_name_fr": "Carré des lombes",
+      "anatomical_group": "trunk_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "core"
+      ],
+      "primary_actions": [
+        "trunk_lateral_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "quadriceps",
+      "display_name": "Quadriceps femoris",
+      "entity_type": "muscle_group",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "knee_extension"
+      ],
+      "functional_notes": "Rectus femoris plus vastus lateralis, medialis and intermedius.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Quadriceps fémoral",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "knee_extension"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "rectus_abdominis",
+      "display_name": "Rectus abdominis",
+      "entity_type": "muscle",
+      "body_zone_id": "core",
+      "joint_action_ids": [
+        "trunk_flexion"
+      ],
+      "functional_notes": "Resists extension in an appropriate stabilization task.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "display_name_fr": "Droit de l’abdomen",
+      "anatomical_group": "trunk_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "core"
+      ],
+      "primary_actions": [
+        "trunk_flexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "rectus_femoris",
+      "display_name": "Rectus femoris",
+      "entity_type": "muscle",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "hip_flexion",
+        "knee_extension"
+      ],
+      "functional_notes": "Biarticular; differs from the three vasti.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Droit fémoral",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": "quadriceps",
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "hip_flexion",
+        "knee_extension"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "rhomboids",
+      "display_name": "Rhomboid major and minor",
+      "entity_type": "muscle_group",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "scapular_downward_rotation",
+        "scapular_retraction"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Rhomboïdes",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "scapular_downward_rotation",
+        "scapular_retraction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "rotator_cuff",
+      "display_name": "Rotator cuff",
+      "display_name_fr": "Coiffe des rotateurs",
+      "entity_type": "muscle_group",
+      "anatomical_group": "anatomical_muscle_group",
+      "aggregate_group_id": null,
+      "member_muscle_ids": [
+        "infraspinatus",
+        "subscapularis",
+        "supraspinatus",
+        "teres_minor"
+      ],
+      "body_zone_id": "shoulders",
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "joint_action_ids": [
+        "shoulder_abduction",
+        "shoulder_external_rotation",
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions": [
+        "shoulder_abduction",
+        "shoulder_external_rotation",
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions_semantics": "Union of common member capabilities, not an action of every member; movement/stabilization roles require exercise context.",
+      "functional_notes": "Four muscles form this group; joint stabilization is shared, rotation actions differ. Aggregate/member entries overlap and must never be counted as independent exposure.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_upper"
+      ],
+      "overlap_warning": "Do not sum group and members as separate muscles or training sets."
+    },
+    {
+      "muscle_id": "serratus_anterior",
+      "display_name": "Serratus anterior",
+      "entity_type": "muscle",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "scapular_protraction",
+        "scapular_upward_rotation"
+      ],
+      "functional_notes": "Scapular stabilizer on lateral thorax; zone is a functional UX projection, not location proof.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Dentelé antérieur",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "scapular_protraction",
+        "scapular_upward_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "soleus",
+      "display_name": "Soleus",
+      "entity_type": "muscle",
+      "body_zone_id": "calves",
+      "joint_action_ids": [
+        "ankle_plantarflexion"
+      ],
+      "functional_notes": "Does not cross knee; distinguish from gastrocnemius.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Soléaire",
+      "anatomical_group": "lower_leg",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "calves"
+      ],
+      "primary_actions": [
+        "ankle_plantarflexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "spinal_stabilizers",
+      "display_name": "Trunk and spinal stabilizer functional group",
+      "display_name_fr": "Stabilisateurs du tronc et du rachis",
+      "entity_type": "muscle_group",
+      "anatomical_group": "functional_group",
+      "aggregate_group_id": null,
+      "member_muscle_ids": [
+        "erector_spinae",
+        "external_oblique",
+        "internal_oblique",
+        "multifidus",
+        "quadratus_lumborum",
+        "rectus_abdominis",
+        "transversus_abdominis"
+      ],
+      "body_zone_id": "back",
+      "body_zone_ids": [
+        "back",
+        "core"
+      ],
+      "joint_action_ids": [
+        "trunk_extension",
+        "trunk_flexion",
+        "trunk_lateral_flexion",
+        "trunk_rotation"
+      ],
+      "primary_actions": [
+        "trunk_extension",
+        "trunk_flexion",
+        "trunk_lateral_flexion",
+        "trunk_rotation"
+      ],
+      "primary_actions_semantics": "Union of common member capabilities, not an action of every member; movement/stabilization roles require exercise context.",
+      "functional_notes": "Non-exhaustive task-dependent function; not a distinct anatomical muscle or a claim that all members act equally/simultaneously. Aggregate/member entries overlap and must never be counted as independent exposure.",
+      "confidence": "moderate",
+      "evidence_type": "practical_inference",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_back",
+        "openstax_trunk"
+      ],
+      "overlap_warning": "Do not sum group and members as separate muscles or training sets."
+    },
+    {
+      "muscle_id": "subscapularis",
+      "display_name": "Subscapularis",
+      "entity_type": "muscle",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_internal_rotation"
+      ],
+      "functional_notes": "Rotator cuff; contributes humeral-head stabilization.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Subscapulaire",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": "rotator_cuff",
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "supinator",
+      "display_name": "Supinator",
+      "entity_type": "muscle",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "forearm_supination"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Supinateur",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "forearm_supination"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "supraspinatus",
+      "display_name": "Supraspinatus",
+      "entity_type": "muscle",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_abduction"
+      ],
+      "functional_notes": "Rotator cuff; contributes humeral-head stabilization.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Supra-épineux",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": "rotator_cuff",
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_abduction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "tensor_fasciae_latae",
+      "display_name": "Tensor fasciae latae",
+      "entity_type": "muscle",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "hip_abduction",
+        "hip_flexion",
+        "hip_internal_rotation"
+      ],
+      "functional_notes": "Abduction machine is not exclusive gluteal isolation.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_lower"
+      ],
+      "display_name_fr": "Tenseur du fascia lata",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "hip_abduction",
+        "hip_flexion",
+        "hip_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "teres_major",
+      "display_name": "Teres major",
+      "entity_type": "muscle",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "shoulder_adduction",
+        "shoulder_extension",
+        "shoulder_internal_rotation"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Grand rond",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "shoulder_adduction",
+        "shoulder_extension",
+        "shoulder_internal_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "teres_minor",
+      "display_name": "Teres minor",
+      "entity_type": "muscle",
+      "body_zone_id": "shoulders",
+      "joint_action_ids": [
+        "shoulder_external_rotation"
+      ],
+      "functional_notes": "Rotator cuff; contributes humeral-head stabilization.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Petit rond",
+      "anatomical_group": "shoulder_musculature",
+      "aggregate_group_id": "rotator_cuff",
+      "body_zone_ids": [
+        "shoulders"
+      ],
+      "primary_actions": [
+        "shoulder_external_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "tibialis_anterior",
+      "display_name": "Tibialis anterior",
+      "entity_type": "muscle",
+      "body_zone_id": "calves",
+      "joint_action_ids": [
+        "ankle_dorsiflexion"
+      ],
+      "functional_notes": "Anterior lower leg included in coarse calves zone.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Tibial antérieur",
+      "anatomical_group": "lower_leg",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "calves"
+      ],
+      "primary_actions": [
+        "ankle_dorsiflexion"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "transversus_abdominis",
+      "display_name": "Transversus abdominis",
+      "entity_type": "muscle",
+      "body_zone_id": "core",
+      "joint_action_ids": [],
+      "functional_notes": "Abdominal compression and trunk control; do not label primary dynamic trunk flexor.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "nih_abdominal_wall"
+      ],
+      "display_name_fr": "Transverse de l’abdomen",
+      "anatomical_group": "trunk_musculature",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "core"
+      ],
+      "primary_actions": [],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "trapezius",
+      "display_name": "Trapezius",
+      "display_name_fr": "Trapèze",
+      "entity_type": "muscle_group",
+      "anatomical_group": "anatomical_muscle_with_regions",
+      "aggregate_group_id": null,
+      "member_muscle_ids": [
+        "trapezius_lower",
+        "trapezius_middle",
+        "trapezius_upper"
+      ],
+      "body_zone_id": "back",
+      "body_zone_ids": [
+        "back"
+      ],
+      "joint_action_ids": [
+        "scapular_depression",
+        "scapular_elevation",
+        "scapular_retraction",
+        "scapular_upward_rotation"
+      ],
+      "primary_actions": [
+        "scapular_depression",
+        "scapular_elevation",
+        "scapular_retraction",
+        "scapular_upward_rotation"
+      ],
+      "primary_actions_semantics": "Union of common member capabilities, not an action of every member; movement/stabilization roles require exercise context.",
+      "functional_notes": "Complete regional subdivision at this catalog granularity. Aggregate/member entries overlap and must never be counted as independent exposure.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "overlap_warning": "Do not sum group and members as separate muscles or training sets."
+    },
+    {
+      "muscle_id": "trapezius_lower",
+      "display_name": "Trapezius: lower region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "scapular_depression",
+        "scapular_upward_rotation"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Trapèze : portion inférieure",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": "trapezius",
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "scapular_depression",
+        "scapular_upward_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "trapezius_middle",
+      "display_name": "Trapezius: middle region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "scapular_retraction"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Trapèze : portion moyenne",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": "trapezius",
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "scapular_retraction"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "trapezius_upper",
+      "display_name": "Trapezius: upper region",
+      "entity_type": "muscle_region",
+      "body_zone_id": "back",
+      "joint_action_ids": [
+        "scapular_elevation",
+        "scapular_upward_rotation"
+      ],
+      "functional_notes": "",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Trapèze : portion supérieure",
+      "anatomical_group": "posterior_trunk_and_scapular_system",
+      "aggregate_group_id": "trapezius",
+      "body_zone_ids": [
+        "back"
+      ],
+      "primary_actions": [
+        "scapular_elevation",
+        "scapular_upward_rotation"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "triceps_brachii",
+      "display_name": "Triceps brachii",
+      "entity_type": "muscle",
+      "body_zone_id": "arms",
+      "joint_action_ids": [
+        "elbow_extension"
+      ],
+      "functional_notes": "Long head also crosses the shoulder; regional loading depends on position.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "display_name_fr": "Triceps brachial",
+      "anatomical_group": "arm_and_forearm",
+      "aggregate_group_id": null,
+      "body_zone_ids": [
+        "arms"
+      ],
+      "primary_actions": [
+        "elbow_extension"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    },
+    {
+      "muscle_id": "vasti",
+      "display_name": "Vastus lateralis, medialis and intermedius",
+      "entity_type": "muscle_group",
+      "body_zone_id": "thighs",
+      "joint_action_ids": [
+        "knee_extension"
+      ],
+      "functional_notes": "Do not infer selective vastus isolation from foot angles.",
+      "confidence": "high",
+      "evidence_type": "established_anatomy",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "display_name_fr": "Vastes du quadriceps",
+      "anatomical_group": "hip_and_thigh",
+      "aggregate_group_id": "quadriceps",
+      "body_zone_ids": [
+        "thighs"
+      ],
+      "primary_actions": [
+        "knee_extension"
+      ],
+      "primary_actions_semantics": "Common functional capabilities from anatomy, non-exhaustive and position dependent; this field does not assign primary exercise status.",
+      "overlap_warning": "Region/group and parent/member entries can overlap; do not double-count exposure."
+    }
+  ]
+}

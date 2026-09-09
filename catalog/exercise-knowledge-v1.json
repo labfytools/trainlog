@@ -1,0 +1,1596 @@
+{
+  "format": "trainlog-exercise-knowledge-v1",
+  "version": 1,
+  "exercises": [
+    {
+      "exercise_id": "ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef",
+      "exercise_name": "Hip adduction",
+      "equipment_ids": [
+        "hip_adduction"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique hip_adduction (adducteurs de la cuisse).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "high",
+      "interpretation": {
+        "family_description": "hip_adduction",
+        "action_ids": [
+          "hip_adduction"
+        ],
+        "pattern_ids": [
+          "single_joint_hip_adduction"
+        ],
+        "primary_muscle_ids": [
+          "hip_adductors"
+        ],
+        "secondary_muscle_ids": [],
+        "stabilizer_muscle_ids": [],
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [],
+        "confidence": "high",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "openstax_lower"
+        ],
+        "variant_notes": "Close thighs against resistance; different adductors and gracilis span different joints; seat/knee position affects contribution.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "high",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "thighs",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_1872246a-39ae-44dc-b58d-f87e90ca49ab",
+      "exercise_name": "Leg extension",
+      "equipment_ids": [
+        "leg_extension"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique leg_extension (quadriceps).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "high",
+      "interpretation": {
+        "family_description": "leg_extension",
+        "action_ids": [
+          "knee_extension"
+        ],
+        "pattern_ids": [
+          "single_joint_knee_extension"
+        ],
+        "primary_muscle_ids": [
+          "quadriceps"
+        ],
+        "secondary_muscle_ids": [],
+        "stabilizer_muscle_ids": [],
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [],
+        "confidence": "high",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "openstax_lower"
+        ],
+        "variant_notes": "Seated resisted knee extension; rectus femoris is biarticular while vasti cross only the knee. Roller/axis alignment and hip angle affect mechanics.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "high",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "thighs",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0",
+      "exercise_name": "Rotary torso",
+      "equipment_ids": [
+        "rotary_torso"
+      ],
+      "identity_evidence": "Stable catalog mapping identifies torso rotation; canonical rotary_torso is available but occurrence-equipment attachment is not established.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "rotary_torso",
+        "action_ids": [
+          "trunk_rotation"
+        ],
+        "pattern_ids": [
+          "trunk_rotation"
+        ],
+        "primary_muscle_ids": [
+          "external_oblique",
+          "internal_oblique"
+        ],
+        "secondary_muscle_ids": [
+          "multifidus"
+        ],
+        "stabilizer_muscle_ids": [
+          "erector_spinae",
+          "transversus_abdominis"
+        ],
+        "primary_zone_id": "core",
+        "secondary_zone_ids": [],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_abdominal_wall",
+          "openstax_back",
+          "openstax_trunk"
+        ],
+        "variant_notes": "Thorax rotates relative to pelvis, or reverse with thorax restrained. Ipsilateral internal and contralateral external oblique pair for a direction. Do not claim isolated lumbar rotation or spot reduction.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "core",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_back",
+        "openstax_trunk"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "catalog_compatible_not_observed_occurrence",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "core",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_abdominal_wall",
+          "openstax_back",
+          "openstax_trunk"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de",
+      "exercise_name": "Diverged seated row",
+      "equipment_ids": [
+        "diverging_seated_row"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique diverging_seated_row.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "seated_row",
+        "action_ids": [
+          "elbow_flexion",
+          "scapular_retraction",
+          "shoulder_extension",
+          "shoulder_horizontal_abduction"
+        ],
+        "pattern_ids": [
+          "horizontal_pull"
+        ],
+        "primary_muscle_ids": [
+          "latissimus_dorsi",
+          "rhomboids",
+          "trapezius_middle"
+        ],
+        "secondary_muscle_ids": [
+          "biceps_brachii",
+          "brachialis",
+          "brachioradialis",
+          "deltoid_posterior",
+          "teres_major"
+        ],
+        "stabilizer_muscle_ids": [
+          "erector_spinae",
+          "forearm_extensors",
+          "forearm_flexors"
+        ],
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "franke_2015",
+          "lehman_2004",
+          "openstax_upper"
+        ],
+        "variant_notes": "Relative lat/scapular/posterior-deltoid roles depend on elbow path, height and torso support. Listed shoulder actions are alternatives/emphases across rows rather than fixed equal contributions.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ]
+      },
+      "source_refs": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Back plus arms is defensible; posterior deltoid participates but shoulders need not be mandatory secondary for every row geometry.",
+        "existing_primary_zone_id": "back",
+        "existing_secondary_zone_ids": [
+          "arms"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "franke_2015",
+          "lehman_2004",
+          "openstax_upper"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_2d488c08-194c-4051-a3c9-34471646c1d3",
+      "exercise_name": "Gym échauffement",
+      "equipment_ids": [],
+      "identity_evidence": "Read-only live inventory; continuous/duration profile. Specific movement sequence not independently verified.",
+      "identity_evidence_type": "read_only_inventory",
+      "resolution_status": "unresolved",
+      "confidence": "uncertain",
+      "interpretation": null,
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": null,
+        "secondary_zone_ids": []
+      },
+      "source_refs": [],
+      "limitations": [
+        "A generic warm-up can contain multiple different activities; no muscular mapping follows from the name."
+      ],
+      "body_zone_audit": {
+        "status": "unresolved",
+        "severity": "none",
+        "confidence": "uncertain",
+        "rationale": "Insufficient actual execution evidence to replace a valid unclassified relation.",
+        "existing_primary_zone_id": null,
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": []
+      }
+    },
+    {
+      "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+      "exercise_name": "Seated row",
+      "equipment_ids": [
+        "seated_row"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique seated_row.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "seated_row",
+        "action_ids": [
+          "elbow_flexion",
+          "scapular_retraction",
+          "shoulder_extension",
+          "shoulder_horizontal_abduction"
+        ],
+        "pattern_ids": [
+          "horizontal_pull"
+        ],
+        "primary_muscle_ids": [
+          "latissimus_dorsi",
+          "rhomboids",
+          "trapezius_middle"
+        ],
+        "secondary_muscle_ids": [
+          "biceps_brachii",
+          "brachialis",
+          "brachioradialis",
+          "deltoid_posterior",
+          "teres_major"
+        ],
+        "stabilizer_muscle_ids": [
+          "erector_spinae",
+          "forearm_extensors",
+          "forearm_flexors"
+        ],
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "franke_2015",
+          "lehman_2004",
+          "openstax_upper"
+        ],
+        "variant_notes": "Relative lat/scapular/posterior-deltoid roles depend on elbow path, height and torso support. Listed shoulder actions are alternatives/emphases across rows rather than fixed equal contributions.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ]
+      },
+      "source_refs": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Back plus arms is defensible; posterior deltoid participates but shoulders need not be mandatory secondary for every row geometry.",
+        "existing_primary_zone_id": "back",
+        "existing_secondary_zone_ids": [
+          "arms"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "franke_2015",
+          "lehman_2004",
+          "openstax_upper"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_34a5c9c3-c032-4dfb-be32-8bf09832f72b",
+      "exercise_name": "Converting chest press",
+      "equipment_ids": [
+        "eq_c660cd61-5b17-498e-8d51-9eafcf7e2731"
+      ],
+      "identity_evidence": "Identité stable et équipement custom durable eq_c660cd61-5b17-498e-8d51-9eafcf7e2731 nommé Converting chest press.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "conditional",
+      "confidence": "uncertain",
+      "interpretation": null,
+      "conditional_interpretation": {
+        "family_description": "machine_chest_press",
+        "action_ids": [
+          "elbow_extension",
+          "shoulder_horizontal_adduction"
+        ],
+        "pattern_ids": [
+          "horizontal_push"
+        ],
+        "primary_muscle_ids": [
+          "pectoralis_major"
+        ],
+        "secondary_muscle_ids": [
+          "deltoid_anterior",
+          "triceps_brachii"
+        ],
+        "stabilizer_muscle_ids": [
+          "infraspinatus",
+          "subscapularis",
+          "supraspinatus",
+          "teres_minor"
+        ],
+        "primary_zone_id": "chest",
+        "secondary_zone_ids": [
+          "arms",
+          "shoulders"
+        ],
+        "confidence": "uncertain",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_deltoid",
+          "nih_pectoralis",
+          "openstax_upper"
+        ],
+        "variant_notes": "Assumes seated anterior press near chest height; incline, seat height, elbow path and converging linkage change shoulder flexion/regional contributions. No independent upper/lower chest isolation.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted.",
+        "required_confirmation": "Confirm actual motion, seat/back support, load direction and physical apparatus; label alone is insufficient."
+      },
+      "existing_body_zones": {
+        "primary_zone_id": "chest",
+        "secondary_zone_ids": [
+          "arms",
+          "shoulders"
+        ]
+      },
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "questionable",
+        "severity": "information",
+        "confidence": "uncertain",
+        "rationale": "Existing assignment is plausible for the named family but exact custom execution remains unverified. Retain persisted relation; no scientific auto-classification.",
+        "existing_primary_zone_id": "chest",
+        "existing_secondary_zone_ids": [
+          "arms",
+          "shoulders"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_deltoid",
+          "nih_pectoralis",
+          "openstax_upper"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_43c7375f-934c-4650-930c-45807d2f2929",
+      "exercise_name": "Gym/Échauffement",
+      "equipment_ids": [],
+      "identity_evidence": "Read-only live inventory; continuous/duration profile. Specific movement sequence not independently verified.",
+      "identity_evidence_type": "read_only_inventory",
+      "resolution_status": "unresolved",
+      "confidence": "uncertain",
+      "interpretation": null,
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": null,
+        "secondary_zone_ids": []
+      },
+      "source_refs": [],
+      "limitations": [
+        "A generic warm-up can contain multiple different activities; no muscular mapping follows from the name."
+      ],
+      "body_zone_audit": {
+        "status": "unresolved",
+        "severity": "none",
+        "confidence": "uncertain",
+        "rationale": "Insufficient actual execution evidence to replace a valid unclassified relation.",
+        "existing_primary_zone_id": null,
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": []
+      }
+    },
+    {
+      "exercise_id": "ex_474ec393-3efa-4aaa-8e08-1a0245ed7835",
+      "exercise_name": "Back extension",
+      "equipment_ids": [
+        "back_extension"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique back_extension (extension lombaire et stabilisation du tronc).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "back_extension",
+        "action_ids": [
+          "trunk_extension"
+        ],
+        "pattern_ids": [
+          "trunk_extension"
+        ],
+        "primary_muscle_ids": [
+          "erector_spinae"
+        ],
+        "secondary_muscle_ids": [
+          "multifidus"
+        ],
+        "stabilizer_muscle_ids": [
+          "external_oblique",
+          "internal_oblique",
+          "rectus_abdominis"
+        ],
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "core"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "lee_2015",
+          "openstax_back",
+          "openstax_lower"
+        ],
+        "variant_notes": "Assumes pelvis restrained and actual spinal extension. If pelvis rotates with near-neutral spine, hip extensors may become major movers; observation needed before adding glutes/thighs or relabeling hip dominant.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "core"
+        ]
+      },
+      "source_refs": [
+        "lee_2015",
+        "openstax_back",
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "questionable",
+        "severity": "information",
+        "confidence": "moderate",
+        "rationale": "Back plus core is compatible with spinal extension; hip-dominant execution could justify additional lower-limb roles after observation.",
+        "existing_primary_zone_id": "back",
+        "existing_secondary_zone_ids": [
+          "core"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "lee_2015",
+          "openstax_back",
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_4bd03d55-e644-436e-876e-07837824bde5",
+      "exercise_name": "Abdominal",
+      "equipment_ids": [
+        "eq_3f987a36-bbb4-4e29-9c9f-1f201f1596e0"
+      ],
+      "identity_evidence": "Identité stable et équipement custom durable eq_3f987a36-bbb4-4e29-9c9f-1f201f1596e0 nommé Abdominal.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "conditional",
+      "confidence": "uncertain",
+      "interpretation": null,
+      "conditional_interpretation": {
+        "family_description": "abdominal_crunch",
+        "action_ids": [
+          "trunk_flexion"
+        ],
+        "pattern_ids": [
+          "trunk_flexion"
+        ],
+        "primary_muscle_ids": [
+          "rectus_abdominis"
+        ],
+        "secondary_muscle_ids": [
+          "external_oblique",
+          "internal_oblique"
+        ],
+        "stabilizer_muscle_ids": [
+          "transversus_abdominis"
+        ],
+        "primary_zone_id": "core",
+        "secondary_zone_ids": [],
+        "confidence": "uncertain",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_abdominal_wall",
+          "openstax_trunk"
+        ],
+        "variant_notes": "Assumes resisted spinal flexion. If movement is predominantly hip flexion, iliopsoas contribution rises and classification needs review. Rectus regions are not independent upper/lower abdominal muscles.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted.",
+        "required_confirmation": "Confirm actual motion, seat/back support, load direction and physical apparatus; label alone is insufficient."
+      },
+      "existing_body_zones": {
+        "primary_zone_id": "core",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "questionable",
+        "severity": "information",
+        "confidence": "uncertain",
+        "rationale": "Existing assignment is plausible for the named family but exact custom execution remains unverified. Retain persisted relation; no scientific auto-classification.",
+        "existing_primary_zone_id": "core",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_abdominal_wall",
+          "openstax_trunk"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_4cd2433e-80b1-478a-b8df-73fc6ef80962",
+      "exercise_name": "Rear Delt",
+      "equipment_ids": [
+        "rear_delt_pec_fly"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique rear_delt_pec_fly, utilisée comme Rear Delt.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "rear_delt_fly",
+        "action_ids": [
+          "scapular_retraction",
+          "shoulder_horizontal_abduction"
+        ],
+        "pattern_ids": [
+          "single_joint_shoulder_horizontal_abduction"
+        ],
+        "primary_muscle_ids": [
+          "deltoid_posterior"
+        ],
+        "secondary_muscle_ids": [
+          "rhomboids",
+          "trapezius_middle"
+        ],
+        "stabilizer_muscle_ids": [
+          "infraspinatus",
+          "subscapularis",
+          "supraspinatus",
+          "teres_minor"
+        ],
+        "primary_zone_id": "shoulders",
+        "secondary_zone_ids": [
+          "back"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "franke_2015",
+          "nih_deltoid",
+          "openstax_upper",
+          "vigotsky_2018"
+        ],
+        "variant_notes": "Reverse-fly configuration on combined machine. Scapular movement and elbow height affect back contribution; external rotation is not guaranteed by reverse-fly name.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "shoulders",
+        "secondary_zone_ids": [
+          "back"
+        ]
+      },
+      "source_refs": [
+        "franke_2015",
+        "nih_deltoid",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Shoulders plus back matches posterior-deltoid horizontal abduction and scapular retraction; same device Pec Fly would instead target chest.",
+        "existing_primary_zone_id": "shoulders",
+        "existing_secondary_zone_ids": [
+          "back"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "franke_2015",
+          "nih_deltoid",
+          "openstax_upper",
+          "vigotsky_2018"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_617007f9-7420-4408-91b9-8ffb77900f13",
+      "exercise_name": "Seated Leg",
+      "equipment_ids": [
+        "seated_leg_curl"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique seated_leg_curl (ischio-jambiers).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "high",
+      "interpretation": {
+        "family_description": "seated_leg_curl",
+        "action_ids": [
+          "knee_flexion"
+        ],
+        "pattern_ids": [
+          "single_joint_knee_flexion"
+        ],
+        "primary_muscle_ids": [
+          "hamstrings"
+        ],
+        "secondary_muscle_ids": [
+          "gastrocnemius"
+        ],
+        "stabilizer_muscle_ids": [],
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [],
+        "confidence": "high",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "maeo_2021",
+          "openstax_lower"
+        ],
+        "variant_notes": "Hip flexion lengthens biarticular hamstrings at matched knee angle; biceps short head is not lengthened through hip flexion. Do not infer all variants share MAX or equivalent hypertrophy.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "high",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "thighs",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "maeo_2021",
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b",
+      "exercise_name": "Converging Shoulder Press",
+      "equipment_ids": [
+        "converging_shoulder_press"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique converging_shoulder_press.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "machine_shoulder_press",
+        "action_ids": [
+          "elbow_extension",
+          "scapular_upward_rotation",
+          "shoulder_abduction",
+          "shoulder_flexion"
+        ],
+        "pattern_ids": [
+          "vertical_push"
+        ],
+        "primary_muscle_ids": [
+          "deltoid_anterior",
+          "deltoid_middle"
+        ],
+        "secondary_muscle_ids": [
+          "serratus_anterior",
+          "trapezius_lower",
+          "trapezius_upper",
+          "triceps_brachii"
+        ],
+        "stabilizer_muscle_ids": [
+          "infraspinatus",
+          "subscapularis",
+          "supraspinatus",
+          "teres_minor"
+        ],
+        "primary_zone_id": "shoulders",
+        "secondary_zone_ids": [
+          "arms"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_deltoid",
+          "openstax_upper"
+        ],
+        "variant_notes": "Press overhead; exact plane, convergence, back support and available scapular motion are unverified. Clavicular pectoral contribution possible but not a reason to assign chest as a universal secondary zone.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "shoulders",
+        "secondary_zone_ids": [
+          "arms"
+        ]
+      },
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_upper"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "shoulders",
+        "existing_secondary_zone_ids": [
+          "arms"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_deltoid",
+          "openstax_upper"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_7e7cf906-2214-4066-bcb7-c16382d83b3b",
+      "exercise_name": "Hip abduction",
+      "equipment_ids": [
+        "hip_abduction"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique hip_abduction (abducteurs/fessiers).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "hip_abduction",
+        "action_ids": [
+          "hip_abduction"
+        ],
+        "pattern_ids": [
+          "single_joint_hip_abduction"
+        ],
+        "primary_muscle_ids": [
+          "gluteus_medius",
+          "gluteus_minimus"
+        ],
+        "secondary_muscle_ids": [
+          "gluteus_maximus",
+          "tensor_fasciae_latae"
+        ],
+        "stabilizer_muscle_ids": [],
+        "primary_zone_id": "glutes",
+        "secondary_zone_ids": [],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_gluteus_minimus",
+          "openstax_lower"
+        ],
+        "variant_notes": "Seated hip-flexion angle changes fiber lines of action; no definitive gluteal ranking. Superior gluteus-maximus fibers may assist dynamically depending on hip angle; this is a conditional secondary role.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "glutes",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Glutes is defensible for medius/minimus; tensor fasciae latae participation does not require all accessory muscles to create a secondary zone.",
+        "existing_primary_zone_id": "glutes",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_gluteus_minimus",
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_8552dd77-fcd7-4f06-a1cc-d956eb1009af",
+      "exercise_name": "Chest press",
+      "equipment_ids": [
+        "eq_0a462c1e-9fb6-4fd7-b0a2-53a0e86f33c6"
+      ],
+      "identity_evidence": "Identité stable et équipement custom durable eq_0a462c1e-9fb6-4fd7-b0a2-53a0e86f33c6 nommé Chest press.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "conditional",
+      "confidence": "uncertain",
+      "interpretation": null,
+      "conditional_interpretation": {
+        "family_description": "machine_chest_press",
+        "action_ids": [
+          "elbow_extension",
+          "shoulder_horizontal_adduction"
+        ],
+        "pattern_ids": [
+          "horizontal_push"
+        ],
+        "primary_muscle_ids": [
+          "pectoralis_major"
+        ],
+        "secondary_muscle_ids": [
+          "deltoid_anterior",
+          "triceps_brachii"
+        ],
+        "stabilizer_muscle_ids": [
+          "infraspinatus",
+          "subscapularis",
+          "supraspinatus",
+          "teres_minor"
+        ],
+        "primary_zone_id": "chest",
+        "secondary_zone_ids": [
+          "arms",
+          "shoulders"
+        ],
+        "confidence": "uncertain",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_deltoid",
+          "nih_pectoralis",
+          "openstax_upper"
+        ],
+        "variant_notes": "Assumes seated anterior press near chest height; incline, seat height, elbow path and converging linkage change shoulder flexion/regional contributions. No independent upper/lower chest isolation.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted.",
+        "required_confirmation": "Confirm actual motion, seat/back support, load direction and physical apparatus; label alone is insufficient."
+      },
+      "existing_body_zones": {
+        "primary_zone_id": "chest",
+        "secondary_zone_ids": [
+          "arms",
+          "shoulders"
+        ]
+      },
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "questionable",
+        "severity": "information",
+        "confidence": "uncertain",
+        "rationale": "Existing assignment is plausible for the named family but exact custom execution remains unverified. Retain persisted relation; no scientific auto-classification.",
+        "existing_primary_zone_id": "chest",
+        "existing_secondary_zone_ids": [
+          "arms",
+          "shoulders"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_deltoid",
+          "nih_pectoralis",
+          "openstax_upper"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_9adf7566-f10c-443c-b63b-681d37665693",
+      "exercise_name": "Abdominal crunch",
+      "equipment_ids": [
+        "abdominal"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique abdominal (crunch machine).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "abdominal_crunch",
+        "action_ids": [
+          "trunk_flexion"
+        ],
+        "pattern_ids": [
+          "trunk_flexion"
+        ],
+        "primary_muscle_ids": [
+          "rectus_abdominis"
+        ],
+        "secondary_muscle_ids": [
+          "external_oblique",
+          "internal_oblique"
+        ],
+        "stabilizer_muscle_ids": [
+          "transversus_abdominis"
+        ],
+        "primary_zone_id": "core",
+        "secondary_zone_ids": [],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_abdominal_wall",
+          "openstax_trunk"
+        ],
+        "variant_notes": "Assumes resisted spinal flexion. If movement is predominantly hip flexion, iliopsoas contribution rises and classification needs review. Rectus regions are not independent upper/lower abdominal muscles.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "core",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "core",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "nih_abdominal_wall",
+          "openstax_trunk"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163",
+      "exercise_name": "Seated leg curl",
+      "equipment_ids": [
+        "seated_leg_curl"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique seated_leg_curl (ischio-jambiers).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "high",
+      "interpretation": {
+        "family_description": "seated_leg_curl",
+        "action_ids": [
+          "knee_flexion"
+        ],
+        "pattern_ids": [
+          "single_joint_knee_flexion"
+        ],
+        "primary_muscle_ids": [
+          "hamstrings"
+        ],
+        "secondary_muscle_ids": [
+          "gastrocnemius"
+        ],
+        "stabilizer_muscle_ids": [],
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [],
+        "confidence": "high",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "maeo_2021",
+          "openstax_lower"
+        ],
+        "variant_notes": "Hip flexion lengthens biarticular hamstrings at matched knee angle; biceps short head is not lengthened through hip flexion. Do not infer all variants share MAX or equivalent hypertrophy.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "high",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "thighs",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "maeo_2021",
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_a72fa713-4b0e-431d-95e2-42d95beb77b1",
+      "exercise_name": "Lat pull",
+      "equipment_ids": [
+        "lat_pull"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique lat_pull.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "lat_pulldown",
+        "action_ids": [
+          "elbow_flexion",
+          "scapular_downward_rotation",
+          "shoulder_adduction",
+          "shoulder_extension"
+        ],
+        "pattern_ids": [
+          "vertical_pull"
+        ],
+        "primary_muscle_ids": [
+          "latissimus_dorsi"
+        ],
+        "secondary_muscle_ids": [
+          "biceps_brachii",
+          "brachialis",
+          "brachioradialis",
+          "teres_major"
+        ],
+        "stabilizer_muscle_ids": [
+          "forearm_extensors",
+          "forearm_flexors",
+          "infraspinatus",
+          "subscapularis",
+          "supraspinatus",
+          "teres_minor"
+        ],
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "lehman_2004",
+          "openstax_upper",
+          "vigotsky_2018"
+        ],
+        "variant_notes": "Arm plane and torso lean change relative adduction/extension; grip and divergent linkage do not prove regional isolation. Scapular control accompanies return from overhead.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ]
+      },
+      "source_refs": [
+        "lehman_2004",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "back",
+        "existing_secondary_zone_ids": [
+          "arms"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "lehman_2004",
+          "openstax_upper",
+          "vigotsky_2018"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d",
+      "exercise_name": "Marche",
+      "equipment_ids": [],
+      "identity_evidence": "Read-only live inventory; continuous/duration profile. Specific movement sequence not independently verified.",
+      "identity_evidence_type": "read_only_inventory",
+      "resolution_status": "conditional",
+      "confidence": "uncertain",
+      "interpretation": null,
+      "conditional_interpretation": {
+        "family_description": "walking",
+        "action_ids": [
+          "ankle_dorsiflexion",
+          "ankle_plantarflexion",
+          "hip_extension",
+          "hip_flexion",
+          "knee_extension",
+          "knee_flexion"
+        ],
+        "pattern_ids": [
+          "locomotion"
+        ],
+        "primary_muscle_ids": [
+          "gastrocnemius",
+          "gluteus_maximus",
+          "quadriceps",
+          "soleus"
+        ],
+        "secondary_muscle_ids": [
+          "hamstrings",
+          "iliopsoas",
+          "tibialis_anterior"
+        ],
+        "stabilizer_muscle_ids": [
+          "erector_spinae",
+          "gluteus_medius",
+          "gluteus_minimus"
+        ],
+        "primary_zone_id": "full_body",
+        "secondary_zone_ids": [],
+        "confidence": "uncertain",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "nih_gluteus_minimus",
+          "openstax_lower"
+        ],
+        "variant_notes": "Multi-phase gait: role lists summarize different phases, not simultaneous prime movers. Speed, grade, handrail support and gait mechanics unresolved. Full-body is only an optional UX candidate, not mandatory due to cardio metadata.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted.",
+        "required_confirmation": "Confirm walking execution and occurrence-equipment association; treadmill appears in aggregate inventory only."
+      },
+      "existing_body_zones": {
+        "primary_zone_id": null,
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Walking is a plausible family, not a verified exact gait variant."
+      ],
+      "body_zone_audit": {
+        "status": "unresolved",
+        "severity": "none",
+        "confidence": "uncertain",
+        "rationale": "Insufficient actual execution evidence to replace a valid unclassified relation.",
+        "existing_primary_zone_id": null,
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": []
+      }
+    },
+    {
+      "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+      "exercise_name": "Leg press",
+      "equipment_ids": [
+        "leg_press",
+        "plate_loaded_leg_press"
+      ],
+      "identity_evidence": "Identité stable réconciliée et occurrences liées aux équipements canoniques leg_press/plate_loaded_leg_press.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "leg_press",
+        "action_ids": [
+          "hip_extension",
+          "knee_extension"
+        ],
+        "pattern_ids": [
+          "knee_dominant"
+        ],
+        "primary_muscle_ids": [
+          "quadriceps"
+        ],
+        "secondary_muscle_ids": [
+          "adductor_magnus",
+          "gluteus_maximus"
+        ],
+        "stabilizer_muscle_ids": [
+          "gastrocnemius",
+          "soleus"
+        ],
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [
+          "glutes"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "martin_fuentes_2020",
+          "openstax_lower",
+          "vigotsky_2018"
+        ],
+        "variant_notes": "Hip and knee extend together. Depth, seat/foot position and device geometry change joint moments. Hamstring coactivation does not make this a knee-flexor substitute. Selectorized and plate-loaded results stay separate contexts.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [
+          "glutes"
+        ]
+      },
+      "source_refs": [
+        "martin_fuentes_2020",
+        "openstax_lower",
+        "vigotsky_2018"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "thighs",
+        "existing_secondary_zone_ids": [
+          "glutes"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "martin_fuentes_2020",
+          "openstax_lower",
+          "vigotsky_2018"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6",
+      "exercise_name": "Diverging lat pulldown",
+      "equipment_ids": [
+        "diverging_lat_pulldown"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique diverging_lat_pulldown.",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "moderate",
+      "interpretation": {
+        "family_description": "lat_pulldown",
+        "action_ids": [
+          "elbow_flexion",
+          "scapular_downward_rotation",
+          "shoulder_adduction",
+          "shoulder_extension"
+        ],
+        "pattern_ids": [
+          "vertical_pull"
+        ],
+        "primary_muscle_ids": [
+          "latissimus_dorsi"
+        ],
+        "secondary_muscle_ids": [
+          "biceps_brachii",
+          "brachialis",
+          "brachioradialis",
+          "teres_major"
+        ],
+        "stabilizer_muscle_ids": [
+          "forearm_extensors",
+          "forearm_flexors",
+          "infraspinatus",
+          "subscapularis",
+          "supraspinatus",
+          "teres_minor"
+        ],
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ],
+        "confidence": "moderate",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "lehman_2004",
+          "openstax_upper",
+          "vigotsky_2018"
+        ],
+        "variant_notes": "Arm plane and torso lean change relative adduction/extension; grip and divergent linkage do not prove regional isolation. Scapular control accompanies return from overhead.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "back",
+        "secondary_zone_ids": [
+          "arms"
+        ]
+      },
+      "source_refs": [
+        "lehman_2004",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "moderate",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "back",
+        "existing_secondary_zone_ids": [
+          "arms"
+        ],
+        "proposed_mutation": null,
+        "source_refs": [
+          "lehman_2004",
+          "openstax_upper",
+          "vigotsky_2018"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_d7398d9f-d928-4d2e-94e9-74e201da55c5",
+      "exercise_name": "Prone leg curl",
+      "equipment_ids": [
+        "prone_leg_curl"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique prone_leg_curl (ischio-jambiers).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "high",
+      "interpretation": {
+        "family_description": "prone_leg_curl",
+        "action_ids": [
+          "knee_flexion"
+        ],
+        "pattern_ids": [
+          "single_joint_knee_flexion"
+        ],
+        "primary_muscle_ids": [
+          "hamstrings"
+        ],
+        "secondary_muscle_ids": [
+          "gastrocnemius"
+        ],
+        "stabilizer_muscle_ids": [],
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": [],
+        "confidence": "high",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "maeo_2021",
+          "openstax_lower"
+        ],
+        "variant_notes": "Prone support generally uses less hip flexion than seated curl. Same knee-flexor family, distinct length/geometry context. Gastrocnemius assistance is position dependent.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "thighs",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "high",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "thighs",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "maeo_2021",
+          "openstax_lower"
+        ]
+      }
+    },
+    {
+      "exercise_id": "ex_ec619fc2-4685-4044-873c-86764bd4a0fe",
+      "exercise_name": "Arm curl",
+      "equipment_ids": [
+        "arm_curl"
+      ],
+      "identity_evidence": "Identité stable et occurrence liée à l’équipement canonique arm_curl (curl biceps).",
+      "identity_evidence_type": "repository_catalog_and_read_only_inventory",
+      "resolution_status": "resolved_family_variant_limited",
+      "confidence": "high",
+      "interpretation": {
+        "family_description": "arm_curl",
+        "action_ids": [
+          "elbow_flexion"
+        ],
+        "pattern_ids": [
+          "single_joint_elbow_flexion"
+        ],
+        "primary_muscle_ids": [
+          "biceps_brachii",
+          "brachialis"
+        ],
+        "secondary_muscle_ids": [
+          "brachioradialis"
+        ],
+        "stabilizer_muscle_ids": [
+          "forearm_extensors",
+          "forearm_flexors"
+        ],
+        "primary_zone_id": "arms",
+        "secondary_zone_ids": [],
+        "confidence": "high",
+        "evidence_type": "biomechanical_interpretation",
+        "source_refs": [
+          "openstax_upper"
+        ],
+        "variant_notes": "Grip/forearm orientation and shoulder support alter contributions. Curl label does not mean biceps exclusively.",
+        "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+      },
+      "conditional_interpretation": null,
+      "existing_body_zones": {
+        "primary_zone_id": "arms",
+        "secondary_zone_ids": []
+      },
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "limitations": [
+        "Manufacturer/model, detailed trajectory and resistance curve unresolved."
+      ],
+      "equipment_link_status": "recorded_occurrence_or_custom_identity",
+      "body_zone_audit": {
+        "status": "confirmed",
+        "severity": "none",
+        "confidence": "high",
+        "rationale": "Compatible coarse projection of the identified movement family; secondary zones are selected synergists, not every stabilizer.",
+        "existing_primary_zone_id": "arms",
+        "existing_secondary_zone_ids": [],
+        "proposed_mutation": null,
+        "source_refs": [
+          "openstax_upper"
+        ]
+      }
+    }
+  ]
+}

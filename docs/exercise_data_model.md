@@ -317,3 +317,30 @@ The newest successful explicit test is the current measured result. A separate
 same-mode historical record may be older.
 
 No estimated 1RM is mixed into this contract.
+
+## 12. Read-only training knowledge context
+
+Training Knowledge V1 adds no exercise profile field and no persisted training
+prescription. It can associate a real stable `exercise_id` with source-linked
+scientific knowledge, compatible equipment and a separate scientific BODY ZONE
+projection. That projection is not the persisted primary/secondary BODY ZONE
+classification and cannot rewrite it.
+
+The composed runtime view contains the actual exercise profile, persisted
+zones, compatible equipment, latest explicit MAX and bounded chronological
+occurrences with raw set values. Unknown custom and future runtime IDs remain
+valid and may have no knowledge record. A name, legacy slug or generic machine
+capability is never made into a phantom UUID association. Raw kilogram labels,
+ROM, setup and actual force retain their recorded/unknown context; they do not
+become interchangeable performance measurements.
+
+See [Training knowledge system V1](domain/knowledge_system.md) for catalog
+ownership, confidence and the documented-only future planning boundary.
+The current implementation lifecycle is `TRAINING_KNOWLEDGE_V1=PASS`. Occurrence pagination and latest
+explicit MAX use the settled shared temporal policy: the admitted source text
+is preserved, instants and arbitrary dot fractions compare exactly, and equal
+instants use bytewise session and entry ID ties. Cursors are exclusive and use
+the same comparison; malformed cursors or matching stored timestamps report
+explicit errors. The initial audit's stale temporal documentation, Android
+loader, Meson input, and C role-only query findings were repaired and
+independently verified; final validation passed.

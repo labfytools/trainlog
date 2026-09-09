@@ -1,0 +1,407 @@
+{
+  "format": "trainlog-science-references-v1",
+  "version": 1,
+  "references": [
+    {
+      "ref_id": "acsm_2009",
+      "title": "American College of Sports Medicine position stand. Progression models in resistance training for healthy adults.",
+      "year": 2009,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/19204579/",
+      "doi": "10.1249/mss.0b013e3181915670",
+      "pmid": "19204579",
+      "topics": [
+        "progression",
+        "specificity",
+        "programming"
+      ],
+      "notes": "Progressive overload and specificity organize resistance-training progression; adjustment should follow achieved performance and goals.",
+      "limitations": "Historical professional position stand; contemporary synthesis above takes precedence for comparative outcomes. No numeric recommendations adopted.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "American College of Sports Medicine.",
+      "type": "practical_inference"
+    },
+    {
+      "ref_id": "currier_2023",
+      "title": "Resistance training prescription for muscle strength and hypertrophy in healthy adults: a systematic review and Bayesian network meta-analysis.",
+      "year": 2023,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/37414459/",
+      "doi": "10.1136/bjsports-2023-106807",
+      "pmid": "37414459",
+      "topics": [
+        "programming",
+        "load",
+        "sets",
+        "frequency"
+      ],
+      "notes": "Across reviewed adult trials, resistance training improved strength and hypertrophy; heavier loads ranked better for strength, and multiple sets characterized higher-ranked hypertrophy programs.",
+      "limitations": "Network rankings are not individual prescriptions or proof of one universally optimal combination.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Currier BS, Mcleod JC, Banfield L, Beyene J, Welton NJ, D'Souza AC, Keogh JAJ, Lin L, Coletta G, Yang A, Colenso-Semple L, Lau KJ, Verboom A, Phillips SM.",
+      "type": "intervention_evidence"
+    },
+    {
+      "ref_id": "franke_2015",
+      "title": "Analysis of anterior, middle and posterior deltoid activation during single and multijoint exercises.",
+      "year": 2015,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/24947920/",
+      "doi": null,
+      "pmid": "24947920",
+      "topics": [
+        "rear_delt",
+        "rows"
+      ],
+      "notes": "Reverse pec-deck elicited greater posterior-deltoid surface EMG than the studied row/pulldown tasks.",
+      "limitations": "Twelve trained men; selected exercises/techniques only; no longitudinal hypertrophy comparison; no DOI reported in indexed record.",
+      "accessed_on": "2026-09-09",
+      "publication_note": "Print 2015; online indexed June 2014.",
+      "authors_or_organization": "Franke Rde A, Botton CE, Rodrigues R, Pinto RS, Lima CS.",
+      "type": "emg_evidence"
+    },
+    {
+      "ref_id": "grgic_2022",
+      "title": "Effects of resistance training performed to repetition failure or non-failure on muscular strength and hypertrophy: A systematic review and meta-analysis.",
+      "year": 2022,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33497853/",
+      "doi": "10.1016/j.jshs.2021.01.007",
+      "pmid": "33497853",
+      "topics": [
+        "failure",
+        "strength",
+        "hypertrophy"
+      ],
+      "notes": "Failure was not generally necessary for strength or hypertrophy gains in included comparisons.",
+      "limitations": "Nonfailure effort and volume differ between studies; this does not imply arbitrary easy sets equal hard sets.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Grgic J, Schoenfeld BJ, Orazem J, Sabol F.",
+      "type": "intervention_evidence"
+    },
+    {
+      "ref_id": "kassiano_2022",
+      "title": "Does Varying Resistance Exercises Promote Superior Muscle Hypertrophy and Strength Gains? A Systematic Review.",
+      "year": 2022,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/35438660/",
+      "doi": "10.1519/jsc.0000000000004258",
+      "pmid": "35438660",
+      "topics": [
+        "selection",
+        "variation"
+      ],
+      "notes": "Systematic exercise variation may distribute regional stimulus and support task-specific strength; excessive random variation lacks support.",
+      "limitations": "Eight studies, all young men; limited generalizability and no universal rotation schedule.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Kassiano W, Nunes JP, Costa B, Ribeiro AS, Schoenfeld BJ, Cyrino ES.",
+      "type": "intervention_evidence"
+    },
+    {
+      "ref_id": "lee_2015",
+      "title": "Enhanced muscle activity during lumbar extension exercise with pelvic stabilization.",
+      "year": 2015,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26730390/",
+      "doi": "10.12965/jer.150249",
+      "pmid": "26730390",
+      "topics": [
+        "back_extension",
+        "pelvic_stabilization"
+      ],
+      "notes": "Pelvic stabilization altered lumbar-extensor excitation during extension testing.",
+      "limitations": "Acute small study; equipment restraint and execution matter; no claim of clinical benefit or universal isolation.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Lee HS.",
+      "type": "emg_evidence"
+    },
+    {
+      "ref_id": "lehman_2004",
+      "title": "Variations in muscle activation levels during traditional latissimus dorsi weight training exercises: An experimental study.",
+      "year": 2004,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/15228624/",
+      "doi": "10.1186/1476-5918-3-4",
+      "pmid": "15228624",
+      "topics": [
+        "lat_pulldown",
+        "seated_row"
+      ],
+      "notes": "Measured latissimus, elbow-flexor and scapular-muscle activity differed across studied pulldown/row tasks.",
+      "limitations": "Isometric portions and surface recordings; no mapping of all divergent machine trajectories or outcome superiority.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Lehman GJ, Buchan DD, Lundy A, Myers N, Nalborczyk A.",
+      "type": "emg_evidence"
+    },
+    {
+      "ref_id": "life_fitness_catalog_2024",
+      "title": "Life Fitness commercial product catalogue 2024",
+      "year": 2024,
+      "url": "https://www.lifefitness.com.au/wp-content/uploads/2024/02/Life-Fitness-Catalogue_2024_web.pdf",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "multifunction",
+        "equipment_identity"
+      ],
+      "notes": "Catalogue lists distinct Pectoral Fly/Rear Deltoid and Assist Dip Chin combination products.",
+      "limitations": "EXAMPLE ONLY: establishes available equipment concepts, not manufacturer/model identification in the observed gym or anatomical efficacy.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Life Fitness",
+      "type": "manufacturer_statement"
+    },
+    {
+      "ref_id": "maeo_2021",
+      "title": "Greater Hamstrings Muscle Hypertrophy but Similar Damage Protection after Training at Long versus Short Muscle Lengths.",
+      "year": 2021,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33009197/",
+      "doi": "10.1249/mss.0000000000002523",
+      "pmid": "33009197",
+      "topics": [
+        "hamstrings",
+        "seated_leg_curl",
+        "prone_leg_curl"
+      ],
+      "notes": "Within-person training found greater biarticular hamstring growth with seated than prone curls; both variants trained knee flexion.",
+      "limitations": "One protocol/population; not a guarantee for every machine, person, muscle region or strength task.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Maeo S, Huang M, Wu Y, Sakurai H, Kusagawa Y, Sugiyama T, Kanehisa H, Isaka T.",
+      "type": "intervention_evidence"
+    },
+    {
+      "ref_id": "martin_fuentes_2020",
+      "title": "Evaluation of the Lower Limb Muscles' Electromyographic Activity during the Leg Press Exercise and Its Variants: A Systematic Review.",
+      "year": 2020,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/32605065/",
+      "doi": "10.3390/ijerph17134626",
+      "pmid": "32605065",
+      "topics": [
+        "leg_press"
+      ],
+      "notes": "Leg-press studies report substantial quadriceps excitation; variant findings are inconsistent.",
+      "limitations": "EMG review does not establish universal foot-position targeting, force shares or hypertrophy ranking.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Martín-Fuentes I, Oliva-Lozano JM, Muyor JM.",
+      "type": "emg_evidence"
+    },
+    {
+      "ref_id": "nih_abdominal_wall",
+      "title": "Anatomy, Abdomen and Pelvis: Anterolateral Abdominal Wall",
+      "year": 2023,
+      "url": "https://www.ncbi.nlm.nih.gov/books/NBK525975/",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "core",
+        "trunk"
+      ],
+      "notes": "Rectus abdominis, internal/external obliques and transversus have movement, abdominal-wall tension and stabilization roles.",
+      "limitations": "Functional anatomy only; clinical sections are outside this handoff scope.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Kevin Seeras; Ryan N. Qasawa; Ricky Ju; Shivana Prakash",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "nih_deltoid",
+      "title": "Anatomy, Shoulder and Upper Limb, Deltoid Muscle",
+      "year": 2024,
+      "url": "https://www.ncbi.nlm.nih.gov/books/NBK537056/",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "deltoids",
+        "shoulder"
+      ],
+      "notes": "Anterior, middle and posterior portions have distinct lines of action; relative contribution depends on arm position.",
+      "limitations": "Functional anatomy only; clinical sections are outside this handoff scope.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Adel Elzanie; Matthew A. Varacallo",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "nih_gluteus_minimus",
+      "title": "Anatomy, Bony Pelvis and Lower Limb, Gluteus Minimus Muscle",
+      "year": 2023,
+      "url": "https://www.ncbi.nlm.nih.gov/books/NBK556144/",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "hip_abduction",
+        "glutes",
+        "gait"
+      ],
+      "notes": "Minimus abducts and stabilizes the hip; anterior fibers support internal rotation. Prevents erroneous adduction classification from textbook alternative text.",
+      "limitations": "Functional anatomy only; clinical sections are outside this handoff scope.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Anthony J. Greco; Renato C. Vilella",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "nih_pectoralis",
+      "title": "Anatomy, Thorax, Pectoralis Major Major",
+      "year": 2023,
+      "url": "https://www.ncbi.nlm.nih.gov/books/NBK525991/",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "chest",
+        "shoulder"
+      ],
+      "notes": "Clavicular and sternocostal parts share shoulder adduction/internal rotation; clavicular fibers support flexion, sternocostal fibers extension from flexion. Regional anatomy does not prove isolated regional training.",
+      "limitations": "Functional anatomy only; clinical sections are outside this handoff scope.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Francesca Solari; Bracken Burns",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "openstax_actions",
+      "title": "Anatomy and Physiology 2e: Types of Body Movements",
+      "year": 2022,
+      "url": "https://openstax.org/books/anatomy-and-physiology-2e/pages/9-5-types-of-body-movements",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "joint_actions"
+      ],
+      "notes": "Terminology of joint movements. Pattern labels in Trainlog remain authored programming abstractions.",
+      "limitations": "Textbook synthesis; not a machine-specific force or adaptation study.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "J. Gordon Betts; Kelly A. Young; James A. Wise; Eddie Johnson; Brandon Poe; Dean H. Kruse; Oksana Korol; Jody E. Johnson; Mark Womble; Peter DeSaix",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "openstax_back",
+      "title": "Anatomy and Physiology 2e: Axial Muscles of the Head, Neck, and Back",
+      "year": 2022,
+      "url": "https://openstax.org/books/anatomy-and-physiology-2e/pages/11-3-axial-muscles-of-the-head-neck-and-back",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "spinal_extensors",
+        "multifidus"
+      ],
+      "notes": "Vertebral-column muscle functions including erector spinae and deep posterior muscles.",
+      "limitations": "Textbook synthesis; not a machine-specific force or adaptation study.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "J. Gordon Betts; Kelly A. Young; James A. Wise; Eddie Johnson; Brandon Poe; Dean H. Kruse; Oksana Korol; Jody E. Johnson; Mark Womble; Peter DeSaix",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "openstax_lower",
+      "title": "Anatomy and Physiology 2e: Appendicular Muscles of the Pelvic Girdle and Lower Limbs",
+      "year": 2022,
+      "url": "https://openstax.org/books/anatomy-and-physiology-2e/pages/11-6-appendicular-muscles-of-the-pelvic-girdle-and-lower-limbs",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "hip",
+        "knee",
+        "ankle"
+      ],
+      "notes": "Functional lower-limb anatomy. Figure alternative text contains direction inconsistencies for minimus/pectineus/gracilis; use action definitions and NIH corroboration, not those phrases.",
+      "limitations": "Textbook synthesis; not a machine-specific force or adaptation study.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "J. Gordon Betts; Kelly A. Young; James A. Wise; Eddie Johnson; Brandon Poe; Dean H. Kruse; Oksana Korol; Jody E. Johnson; Mark Womble; Peter DeSaix",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "openstax_trunk",
+      "title": "Anatomy and Physiology 2e: Axial Muscles of the Abdominal Wall and Thorax",
+      "year": 2022,
+      "url": "https://openstax.org/books/anatomy-and-physiology-2e/pages/11-4-axial-muscles-of-the-abdominal-wall-and-thorax",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "trunk",
+        "abdominals",
+        "spinal_extensors"
+      ],
+      "notes": "Trunk movement, abdominal compression and postural roles.",
+      "limitations": "Textbook synthesis; not a machine-specific force or adaptation study.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "J. Gordon Betts; Kelly A. Young; James A. Wise; Eddie Johnson; Brandon Poe; Dean H. Kruse; Oksana Korol; Jody E. Johnson; Mark Womble; Peter DeSaix",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "openstax_upper",
+      "title": "Anatomy and Physiology 2e: Muscles of the Pectoral Girdle and Upper Limbs",
+      "year": 2022,
+      "url": "https://openstax.org/books/anatomy-and-physiology-2e/pages/11-5-muscles-of-the-pectoral-girdle-and-upper-limbs",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "shoulder",
+        "scapula",
+        "elbow",
+        "forearm"
+      ],
+      "notes": "Functional anatomy of upper-limb and scapular muscles; no exercise outcome ranking.",
+      "limitations": "Textbook synthesis; not a machine-specific force or adaptation study.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "J. Gordon Betts; Kelly A. Young; James A. Wise; Eddie Johnson; Brandon Poe; Dean H. Kruse; Oksana Korol; Jody E. Johnson; Mark Womble; Peter DeSaix",
+      "type": "established_anatomy"
+    },
+    {
+      "ref_id": "precor_pulley_example",
+      "title": "Resolute Dual Adjustable Pulley RUD0915",
+      "year": null,
+      "url": "https://www.precor.com/en-US/products/RUD0915",
+      "doi": null,
+      "pmid": null,
+      "topics": [
+        "cable",
+        "load_context"
+      ],
+      "notes": "Manufacturer documents a 4:1 cable ratio on this particular example, demonstrating why stack labels and handle resistance differ.",
+      "limitations": "EXAMPLE ONLY: not evidence that the user owns Precor or this model; local pulley ratios remain unresolved.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Precor",
+      "type": "manufacturer_statement"
+    },
+    {
+      "ref_id": "refalo_2023",
+      "title": "Influence of Resistance Training Proximity-to-Failure on Skeletal Muscle Hypertrophy: A Systematic Review with Meta-analysis.",
+      "year": 2023,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36334240/",
+      "doi": "10.1007/s40279-022-01784-y",
+      "pmid": "36334240",
+      "topics": [
+        "proximity_to_failure"
+      ],
+      "notes": "Failure definitions matter; available categorical comparisons do not establish a simple more-failure-is-better hypertrophy rule.",
+      "limitations": "Literature search predates newer trials; uncertainty in actual repetitions in reserve prevents exact universal thresholds.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Refalo MC, Helms ER, Trexler ET, Hamilton DL, Fyfe JJ.",
+      "type": "intervention_evidence"
+    },
+    {
+      "ref_id": "vieira_2022",
+      "title": "Effects of Resistance Training to Muscle Failure on Acute Fatigue: A Systematic Review and Meta-Analysis.",
+      "year": 2022,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/34881412/",
+      "doi": "10.1007/s40279-021-01602-x",
+      "pmid": "34881412",
+      "topics": [
+        "fatigue",
+        "recovery",
+        "failure"
+      ],
+      "notes": "Failure training generated greater acute fatigue than nonfailure conditions in the reviewed experiments.",
+      "limitations": "Acute markers do not establish a universal recovery duration or predict individual long-term adaptation.",
+      "accessed_on": "2026-09-09",
+      "authors_or_organization": "Vieira JG, Sardeli AV, Dias MR, Filho JE, Campos Y, Sant'Ana L, Leitão L, Reis V, Wilk M, Novaes J, Vianna J.",
+      "type": "intervention_evidence"
+    },
+    {
+      "ref_id": "vigotsky_2018",
+      "title": "Interpreting Signal Amplitudes in Surface Electromyography Studies in Sport and Rehabilitation Sciences.",
+      "year": 2017,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/29354060/",
+      "doi": "10.3389/fphys.2017.00985",
+      "pmid": "29354060",
+      "topics": [
+        "measurement",
+        "emg"
+      ],
+      "notes": "Surface EMG amplitude reflects a recording-dependent excitation signal and cannot directly rank hypertrophy, force or training effectiveness.",
+      "limitations": "Methodological review; anatomical inference and longitudinal outcomes require separate evidence.",
+      "accessed_on": "2026-09-09",
+      "publication_note": "Volume/index year 2017; online publication January 4, 2018.",
+      "authors_or_organization": "Vigotsky AD, Halperin I, Lehman GJ, Trajano GS, Vieira TM.",
+      "type": "emg_evidence"
+    }
+  ]
+}

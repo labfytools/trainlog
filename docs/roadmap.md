@@ -31,7 +31,7 @@ BODY_ZONES_V1=PASS
 BODY_ZONE_SYNC_V1=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=39/39 PASS
+DESKTOP_TESTS=42/42 PASS (recorded validation checkpoint)
 TUI_NOTCURSES_V1=PASS
 NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
 NOTCURSES_TRUECOLOR_THEME=PASS
@@ -62,6 +62,18 @@ manifest, desktop v11/Android v10 relations, Android/TUI edit and display,
 descendant-aware filters, unclassified history and one explicit-conflict sync
 companion. It does not implement a session generator, custom zones or proposed
 loads.
+
+`TRAINING_KNOWLEDGE_V1=PASS` is read-only infrastructure. Scientific review,
+independent temporal review, final engineering review, repair verification, and
+final executable validation passed. The temporal contract preserves source text
+and exact C/Android chronological pagination; one bounded repair chain closed
+the audit's stale-documentation, Android-loader, Meson-input, and role-only C
+query findings.
+It provides catalog-backed scientific lookup and
+runtime context composition without prescriptions, schema changes or catalog
+seeding. The documented future session/program input pipeline is deliberately
+not a roadmap gate or an implemented generator; see
+[Training knowledge system V1](domain/knowledge_system.md).
 
 `EXERCISE_EDIT_V1` is a completed capture correction: Android permits
 stable-ID renames, protects referenced profiles, and reconciles same-ID display

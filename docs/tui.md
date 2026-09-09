@@ -465,3 +465,18 @@ Proportions can display:
 
 All estimates are explicitly labeled as estimates. No result is converted into
 a medical or diagnostic classification.
+
+## 18. Training knowledge infrastructure
+
+The desktop core includes immutable `training_knowledge.h` catalog access and
+read-only `training_context.h` composition. The context uses real persisted IDs
+and returns persisted zones, optional science, compatible equipment, latest
+explicit MAX and bounded chronological history; it does not write data. The
+TUI provides a UTF-8 cell-aware scrolling knowledge screen, tested at the 72x20
+minimum terminal. V1 provides no prescription, generator or scoring flow. Its
+lifecycle is `TRAINING_KNOWLEDGE_V1=PASS`. Its occurrence and latest-MAX readers use the settled
+temporal contract: exact instant/fraction ordering, bytewise stable-ID ties,
+exclusive source-text cursors, bounded selection before hydration, and one
+read snapshot per call. Malformed cursors and matching stored timestamps fail
+explicitly. The full-tranche audit repair chain and independent verification
+passed. See [Training knowledge system V1](domain/knowledge_system.md).

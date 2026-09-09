@@ -184,6 +184,68 @@ sealed interface FinalizeActiveDraftResult {
     ) : FinalizeActiveDraftResult
 }
 
+data class ExerciseOccurrenceCursor(
+    val startedAt: String,
+    val sessionId: String,
+    val entryId: String,
+)
+
+data class ExerciseSetContext(
+    val position: Int,
+    val reps: Int?,
+    val durationSeconds: Int?,
+    /** Null and 0.0 are intentionally distinct actual observations. */
+    val weightKg: Double?,
+)
+
+data class ExerciseSetPage(
+    val sets: List<ExerciseSetContext>,
+    val nextPosition: Int?,
+)
+
+data class ExerciseOccurrenceContext(
+    val sessionId: String,
+    val entryId: String,
+    val startedAt: String,
+    val sessionType: SessionType,
+    val equipmentId: String?,
+    val equipmentDisplayName: String?,
+    val loadSemantics: EquipmentLoadSemantics?,
+    val recordingMode: RecordingMode,
+    val trackingMode: TrackingMode,
+    val dataFields: Int,
+    val setPreview: ExerciseSetPage?,
+    val continuousDurationSeconds: Int?,
+    val speedKmh: Double?,
+    val distanceKm: Double?,
+)
+
+data class ExerciseOccurrencePage(
+    val occurrences: List<ExerciseOccurrenceContext>,
+    val nextCursor: ExerciseOccurrenceCursor?,
+)
+
+data class ExplicitMaxContext(
+    val sessionId: String,
+    val entryId: String,
+    val startedAt: String,
+    val maxWeightKg: Double,
+    val equipmentId: String?,
+    val equipmentDisplayName: String?,
+    val loadSemantics: EquipmentLoadSemantics?,
+)
+
+data class TrainingExerciseContext(
+    val exercise: ExerciseProfile,
+    /** Persisted user classification; never replaced by scientific projection. */
+    val persistedDirectZoneIds: List<String>,
+    val persistedZoneIdsWithAncestors: List<String>,
+    val knowledge: ExerciseKnowledge?,
+    val compatibleEquipment: List<EquipmentKnowledge>,
+    val latestExplicitMax: ExplicitMaxContext?,
+    val recentPerformance: ExerciseOccurrencePage,
+)
+
 class TrainlogRepository(
     context: Context,
     databaseName: String =
@@ -191,6 +253,7 @@ class TrainlogRepository(
 ) {
     private val applicationContext = context.applicationContext
     private val bodyZones = BodyZoneCatalog.load(applicationContext)
+    private val trainingKnowledge = TrainingKnowledgeCatalog.load(applicationContext, bodyZones)
     private val database =
         TrainlogDatabaseHelper(
             applicationContext,
@@ -200,6 +263,23 @@ class TrainlogRepository(
     fun close() {
         database.close()
     }
+
+    fun getExerciseKnowledge(exerciseId: String): ExerciseKnowledge? =
+        trainingKnowledge.getExerciseKnowledge(exerciseId)
+
+    fun getConditionalExerciseKnowledge(exerciseId: String): ExerciseKnowledge? =
+        trainingKnowledge.getConditionalExerciseKnowledge(exerciseId)
+
+    fun getMuscleKnowledge(muscleId: String): MuscleKnowledge? = trainingKnowledge.getMuscle(muscleId)
+    fun getJointActionKnowledge(actionId: String): JointActionKnowledge? = trainingKnowledge.getJointAction(actionId)
+    fun getMovementPatternKnowledge(patternId: String): MovementPatternKnowledge? = trainingKnowledge.getMovementPattern(patternId)
+    fun getScienceReference(refId: String): ScienceReference? = trainingKnowledge.getReference(refId)
+    fun getEquipmentKnowledge(equipmentId: String): EquipmentKnowledge? = trainingKnowledge.getEquipmentKnowledge(equipmentId)
+    fun getScientificBodyZoneMapping(exerciseId: String): ScientificBodyZoneMapping? = trainingKnowledge.getScientificBodyZoneMapping(exerciseId)
+    fun listExercisesByMovementPattern(patternId: String): List<ExerciseKnowledge> = trainingKnowledge.listExercisesByMovementPattern(patternId)
+    fun listExercisesByMuscle(muscleId: String, role: MuscleRole): List<ExerciseKnowledge> = trainingKnowledge.listExercisesByMuscle(muscleId, role)
+    fun listCompatibleKnowledgeExercises(equipmentId: String): List<ExerciseKnowledge> = trainingKnowledge.listCompatibleExercises(equipmentId)
+    fun queryExerciseKnowledge(filters: KnowledgeExerciseFilters): List<ExerciseKnowledge> = trainingKnowledge.queryExercises(filters)
 
     fun listEquipment(): List<EquipmentCatalogEntry> {
         val output = mutableListOf<EquipmentCatalogEntry>()
@@ -3170,6 +3250,286 @@ class TrainlogRepository(
             summary = summary,
             exercises = exercises,
         )
+    }
+
+    /**
+     * Compose immutable scientific metadata with exact persisted runtime state.
+     * WHY: names are editable labels, so every join and lookup stays on stable
+     * exercise_id; the transaction gives all components one SQLite read view.
+     */
+    fun getTrainingExerciseContext(
+        exerciseId: String,
+        occurrenceLimit: Int = 8,
+        setPreviewLimit: Int = 8,
+    ): TrainingExerciseContext? {
+        require(occurrenceLimit in 1..MAX_OCCURRENCE_PAGE_SIZE) { "occurrenceLimit doit être compris entre 1 et $MAX_OCCURRENCE_PAGE_SIZE" }
+        require(setPreviewLimit in 1..MAX_SET_PAGE_SIZE) { "setPreviewLimit doit être compris entre 1 et $MAX_SET_PAGE_SIZE" }
+        val db = database.readableDatabase
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransactionNonExclusive()
+        return try {
+            val exercise = readExerciseProfileExact(db, exerciseId) ?: return null
+            val direct = buildList {
+                exercise.primaryZoneId?.let(::add)
+                addAll(exercise.secondaryZoneIds)
+            }
+            val expanded = linkedSetOf<String>()
+            direct.forEach { zoneId ->
+                expanded += zoneId
+                expanded += bodyZones.ancestors(zoneId).map { it.zoneId }
+            }
+            val knowledge = trainingKnowledge.getExerciseKnowledge(exerciseId)
+            val compatible = knowledge?.equipmentIds.orEmpty().mapNotNull(trainingKnowledge::getEquipmentKnowledge)
+            val result = TrainingExerciseContext(
+                exercise = exercise,
+                persistedDirectZoneIds = direct,
+                persistedZoneIdsWithAncestors = bodyZones.zones.map { it.zoneId }.filter { it in expanded },
+                knowledge = knowledge,
+                compatibleEquipment = compatible,
+                latestExplicitMax = readLatestExplicitMax(db, exerciseId),
+                recentPerformance = readExerciseOccurrencePage(db, exerciseId, occurrenceLimit, null, setPreviewLimit),
+            )
+            if (ownsTransaction) db.setTransactionSuccessful()
+            result
+        } finally {
+            if (ownsTransaction) db.endTransaction()
+        }
+    }
+
+    /** Deterministic keyset page over current data; pages do not hold a cross-call snapshot. */
+    fun listExerciseOccurrences(
+        exerciseId: String,
+        limit: Int,
+        after: ExerciseOccurrenceCursor? = null,
+        setPreviewLimit: Int = 8,
+    ): ExerciseOccurrencePage {
+        require(limit in 1..MAX_OCCURRENCE_PAGE_SIZE) { "limit doit être compris entre 1 et $MAX_OCCURRENCE_PAGE_SIZE" }
+        require(setPreviewLimit in 1..MAX_SET_PAGE_SIZE) { "setPreviewLimit doit être compris entre 1 et $MAX_SET_PAGE_SIZE" }
+        validateOccurrenceCursor(after)
+        val db = database.readableDatabase
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransactionNonExclusive()
+        return try {
+            require(readExerciseProfileExact(db, exerciseId) != null) { "exercise_id inconnu: $exerciseId" }
+            val result = readExerciseOccurrencePage(db, exerciseId, limit, after, setPreviewLimit)
+            if (ownsTransaction) db.setTransactionSuccessful()
+            result
+        } finally {
+            if (ownsTransaction) db.endTransaction()
+        }
+    }
+
+    /** Follow-up bounded set page for one exact occurrence; no global set load exists. */
+    fun listExerciseOccurrenceSets(
+        exerciseId: String,
+        entryId: String,
+        limit: Int,
+        afterPosition: Int? = null,
+    ): ExerciseSetPage {
+        require(exerciseId.isNotBlank() && entryId.isNotBlank()) { "identités vides" }
+        require(limit in 1..MAX_SET_PAGE_SIZE) { "limit doit être compris entre 1 et $MAX_SET_PAGE_SIZE" }
+        require(afterPosition == null || afterPosition >= 0) { "position de curseur invalide" }
+        val db = database.readableDatabase
+        val ownsTransaction = !db.inTransaction()
+        if (ownsTransaction) db.beginTransactionNonExclusive()
+        return try {
+            val rowId = db.rawQuery(
+                "SELECT se.id,se.recording_mode FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id WHERE e.exercise_id=? AND se.entry_id=?;",
+                arrayOf(exerciseId, entryId),
+            ).use { cursor ->
+                require(cursor.moveToFirst()) { "occurrence inconnue pour cet exercice" }
+                require(cursor.getString(1) == "sets") { "une activité continue ne possède pas de séries" }
+                cursor.getLong(0)
+            }
+            val result = readSetPage(db, rowId, limit, afterPosition)
+            if (ownsTransaction) db.setTransactionSuccessful()
+            result
+        } finally {
+            if (ownsTransaction) db.endTransaction()
+        }
+    }
+
+    private fun readExerciseProfileExact(db: SQLiteDatabase, exerciseId: String): ExerciseProfile? =
+        db.rawQuery(
+            "SELECT exercise_id,name,normalized_name,recording_mode,tracking_mode,data_fields FROM exercises WHERE exercise_id=?;",
+            arrayOf(exerciseId),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else {
+                val zones = readExerciseBodyZones(db, exerciseId)
+                ExerciseProfile(
+                    exerciseId = cursor.getString(0), name = cursor.getString(1), normalizedName = cursor.getString(2),
+                    recordingMode = parseRecordingMode(cursor.getString(3)), trackingMode = parseTrackingMode(cursor.getString(4)),
+                    dataFields = checkedNonNegativeInt(cursor.getLong(5), "data_fields"), primaryZoneId = zones.first,
+                    secondaryZoneIds = zones.second,
+                )
+            }
+        }
+
+    private data class TemporalCandidate(
+        val rowId: Long,
+        val sessionId: String,
+        val entryId: String,
+        val startedAt: String,
+        val timestamp: TrainlogTimestampKey,
+    )
+
+    private fun compareTemporal(left: TemporalCandidate, right: TemporalCandidate): Int =
+        left.timestamp.compareTo(right.timestamp).takeIf { it != 0 }
+            ?: TrainlogTimestamp.compareIds(left.sessionId, right.sessionId).takeIf { it != 0 }
+            ?: TrainlogTimestamp.compareIds(left.entryId, right.entryId)
+
+    private fun candidate(cursor: android.database.Cursor): TemporalCandidate {
+        val startedAt = cursor.requiredText(3, "started_at")
+        return TemporalCandidate(
+            rowId = cursor.getLong(0),
+            sessionId = cursor.requiredText(1, "session_id"),
+            entryId = cursor.requiredText(2, "entry_id"),
+            startedAt = startedAt,
+            timestamp = checkNotNull(TrainlogTimestamp.parse(startedAt)) {
+                "started_at persistant invalide pour l'occurrence"
+            },
+        )
+    }
+
+    private fun retainCandidate(rows: MutableList<TemporalCandidate>, value: TemporalCandidate, capacity: Int) {
+        val position = rows.indexOfFirst { compareTemporal(value, it) > 0 }.let { if (it < 0) rows.size else it }
+        if (position < capacity) {
+            rows.add(position, value)
+            if (rows.size > capacity) rows.removeAt(rows.lastIndex)
+        }
+    }
+
+    private fun readLatestExplicitMax(db: SQLiteDatabase, exerciseId: String): ExplicitMaxContext? {
+        val selected = mutableListOf<TemporalCandidate>()
+        db.rawQuery(
+            """SELECT se.id,s.session_id,se.entry_id,s.started_at FROM max_results mr
+               JOIN session_exercises se ON se.id=mr.session_exercise_row_id
+               JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id
+               WHERE e.exercise_id=? AND s.session_type='max_test';""",
+            arrayOf(exerciseId),
+        ).use { cursor -> while (cursor.moveToNext()) retainCandidate(selected, candidate(cursor), 1) }
+        val winner = selected.singleOrNull() ?: return null
+        return db.rawQuery(
+            """SELECT s.session_id,se.entry_id,s.started_at,mr.max_weight_kg,
+                      eq.equipment_id,eq.display_name,eq.load_semantics
+               FROM max_results mr JOIN session_exercises se ON se.id=mr.session_exercise_row_id
+               JOIN sessions s ON s.id=se.session_row_id LEFT JOIN equipment eq ON eq.id=se.equipment_row_id
+               WHERE se.id=?;""",
+            arrayOf(winner.rowId.toString()),
+        ).use { cursor ->
+            check(cursor.moveToFirst()) { "résultat MAX sélectionné absent" }
+            ExplicitMaxContext(
+                sessionId = cursor.requiredText(0, "session_id"), entryId = cursor.requiredText(1, "entry_id"),
+                startedAt = cursor.requiredText(2, "started_at"), maxWeightKg = cursor.finiteNonNegativeDouble(3, "max_weight_kg", strictlyPositive = true),
+                equipmentId = cursor.optionalText(4), equipmentDisplayName = cursor.optionalText(5),
+                loadSemantics = cursor.optionalText(6)?.let(::parseLoadSemantics),
+            )
+        }
+    }
+
+    private fun readExerciseOccurrencePage(
+        db: SQLiteDatabase, exerciseId: String, limit: Int, after: ExerciseOccurrenceCursor?, setPreviewLimit: Int,
+    ): ExerciseOccurrencePage {
+        val afterCandidate = after?.let {
+            TemporalCandidate(-1L, it.sessionId, it.entryId, it.startedAt,
+                requireNotNull(TrainlogTimestamp.parse(it.startedAt)))
+        }
+        val selected = mutableListOf<TemporalCandidate>()
+        db.rawQuery(
+            """
+            SELECT se.id,s.session_id,se.entry_id,s.started_at
+            FROM session_exercises se
+            JOIN sessions s ON s.id=se.session_row_id
+            JOIN exercises e ON e.id=se.exercise_row_id
+            WHERE e.exercise_id=?;
+            """.trimIndent(), arrayOf(exerciseId),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val value = candidate(cursor)
+                // INVARIANT: selection and the exclusive cursor share compareTemporal.
+                if (afterCandidate == null || compareTemporal(value, afterCandidate) < 0)
+                    retainCandidate(selected, value, limit + 1)
+            }
+        }
+        val hasMore = selected.size > limit
+        val kept = if (hasMore) selected.take(limit) else selected
+        val rows = kept.map { selectedRow ->
+            db.rawQuery(
+                """SELECT se.id,s.session_id,se.entry_id,s.started_at,s.session_type,
+                          eq.equipment_id,eq.display_name,eq.load_semantics,
+                          se.recording_mode,se.tracking_mode,se.data_fields,
+                          ca.duration_seconds,ca.speed_kmh,ca.distance_km
+                   FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id
+                   LEFT JOIN equipment eq ON eq.id=se.equipment_row_id
+                   LEFT JOIN continuous_activity ca ON ca.session_exercise_row_id=se.id
+                   WHERE se.id=?;""",
+                arrayOf(selectedRow.rowId.toString()),
+            ).use { cursor ->
+                check(cursor.moveToFirst()) { "occurrence sélectionnée absente" }
+                val recording = parseRecordingMode(cursor.requiredText(8, "recording_mode"))
+                val rowId = cursor.getLong(0)
+                val context = ExerciseOccurrenceContext(
+                    sessionId = cursor.requiredText(1, "session_id"), entryId = cursor.requiredText(2, "entry_id"),
+                    startedAt = cursor.requiredText(3, "started_at"), sessionType = SessionType.fromWire(cursor.requiredText(4, "session_type")),
+                    equipmentId = cursor.optionalText(5), equipmentDisplayName = cursor.optionalText(6),
+                    loadSemantics = cursor.optionalText(7)?.let(::parseLoadSemantics), recordingMode = recording,
+                    trackingMode = parseTrackingMode(cursor.requiredText(9, "tracking_mode")), dataFields = checkedNonNegativeInt(cursor.getLong(10), "data_fields"),
+                    setPreview = if (recording == RecordingMode.SETS) readSetPage(db, rowId, setPreviewLimit, null) else null,
+                    continuousDurationSeconds = if (recording == RecordingMode.CONTINUOUS) cursor.requiredPositiveInt(11, "duration_seconds") else null,
+                    speedKmh = cursor.optionalFinitePositiveDouble(12, "speed_kmh"), distanceKm = cursor.optionalFinitePositiveDouble(13, "distance_km"),
+                )
+                if (recording == RecordingMode.SETS) check(cursor.isNull(11) && cursor.isNull(12) && cursor.isNull(13)) { "activité continue attachée à une occurrence SETS" }
+                context
+            }
+        }
+        val last = rows.lastOrNull()
+        return ExerciseOccurrencePage(
+            occurrences = rows,
+            nextCursor = if (hasMore && last != null) ExerciseOccurrenceCursor(last.startedAt, last.sessionId, last.entryId) else null,
+        )
+    }
+
+    private fun readSetPage(db: SQLiteDatabase, occurrenceRowId: Long, limit: Int, afterPosition: Int?): ExerciseSetPage {
+        val selection = if (afterPosition == null) "session_exercise_row_id=?" else "session_exercise_row_id=? AND position>?"
+        val args = if (afterPosition == null) arrayOf(occurrenceRowId.toString(), (limit + 1).toString()) else arrayOf(occurrenceRowId.toString(), afterPosition.toString(), (limit + 1).toString())
+        val rows = mutableListOf<ExerciseSetContext>()
+        db.rawQuery("SELECT position,reps,duration_seconds,weight_kg FROM performed_sets WHERE $selection ORDER BY position ASC LIMIT ?;", args).use { cursor ->
+            while (cursor.moveToNext()) {
+                val reps = if (cursor.isNull(1)) null else checkedNonNegativeInt(cursor.getLong(1), "reps")
+                val duration = if (cursor.isNull(2)) null else cursor.requiredPositiveInt(2, "duration_seconds")
+                check((reps == null) != (duration == null)) { "forme de série corrompue" }
+                rows += ExerciseSetContext(checkedNonNegativeInt(cursor.getLong(0), "position"), reps, duration, if (cursor.isNull(3)) null else cursor.finiteNonNegativeDouble(3, "weight_kg"))
+            }
+        }
+        val hasMore = rows.size > limit
+        val kept = if (hasMore) rows.take(limit) else rows
+        return ExerciseSetPage(kept, if (hasMore) kept.last().position else null)
+    }
+
+    private fun validateOccurrenceCursor(cursor: ExerciseOccurrenceCursor?) {
+        if (cursor == null) return
+        require(cursor.startedAt.isNotBlank() && cursor.sessionId.isNotBlank() && cursor.entryId.isNotBlank()) { "curseur d'occurrence invalide" }
+        require(TrainlogTimestamp.parse(cursor.startedAt) != null) { "startedAt du curseur invalide" }
+    }
+
+    private fun parseRecordingMode(value: String): RecordingMode = when (value) {
+        "sets" -> RecordingMode.SETS; "continuous" -> RecordingMode.CONTINUOUS; else -> error("recording_mode corrompu: $value")
+    }
+    private fun parseTrackingMode(value: String): TrackingMode = when (value) {
+        "reps" -> TrackingMode.REPS; "duration" -> TrackingMode.DURATION; else -> error("tracking_mode corrompu: $value")
+    }
+    private fun parseLoadSemantics(value: String): EquipmentLoadSemantics = runCatching { EquipmentLoadSemantics.valueOf(value.uppercase(Locale.ROOT)) }.getOrElse { error("load_semantics corrompu: $value") }
+
+    private fun android.database.Cursor.requiredText(index: Int, name: String): String = getString(index)?.takeIf { it.isNotBlank() } ?: error("$name absent")
+    private fun android.database.Cursor.optionalText(index: Int): String? = if (isNull(index)) null else getString(index)
+    private fun android.database.Cursor.requiredPositiveInt(index: Int, name: String): Int = checkedNonNegativeInt(getLong(index), name).also { check(it > 0) { "$name doit être positif" } }
+    private fun android.database.Cursor.finiteNonNegativeDouble(index: Int, name: String, strictlyPositive: Boolean = false): Double = getDouble(index).also { check(it.isFinite() && if (strictlyPositive) it > 0.0 else it >= 0.0) { "$name invalide" } }
+    private fun android.database.Cursor.optionalFinitePositiveDouble(index: Int, name: String): Double? = if (isNull(index)) null else finiteNonNegativeDouble(index, name, true)
+    private fun checkedNonNegativeInt(value: Long, name: String): Int { check(value in 0..Int.MAX_VALUE.toLong()) { "$name hors plage" }; return value.toInt() }
+
+    private companion object {
+        const val MAX_OCCURRENCE_PAGE_SIZE = 32
+        const val MAX_SET_PAGE_SIZE = 64
     }
 
     /**

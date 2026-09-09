@@ -15,6 +15,11 @@
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
+/* Nestable read savepoints let composition services observe one database state
+ * without exposing SQLite or issuing writes to application data. */
+TrainlogStatus trainlog_database_read_snapshot_begin(TrainlogDatabase *database);
+TrainlogStatus trainlog_database_read_snapshot_end(TrainlogDatabase *database, bool commit_snapshot);
+
 /* WHY: session occurrences retain an equipment ID, while custom definitions
  * need durable presentation metadata. A reference alone is never a definition. */
 typedef struct TrainlogCustomEquipment {
@@ -384,6 +389,115 @@ TrainlogStatus trainlog_database_list_exercise_performance(
     TrainlogExercisePerformancePoint *output,
     size_t capacity,
     size_t *output_count
+);
+
+/* TRAINING_KNOWLEDGE_RUNTIME_READ_V1 */
+#define TRAINLOG_OCCURRENCE_PAGE_MAX 32U
+#define TRAINLOG_OCCURRENCE_SET_PAGE_MAX 64U
+
+typedef struct TrainlogExerciseOccurrenceCursor {
+    char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    char session_id[TRAINLOG_ID_MAX + 1U];
+    char entry_id[TRAINLOG_ID_MAX + 1U];
+} TrainlogExerciseOccurrenceCursor;
+
+typedef struct TrainlogExerciseOccurrence {
+    char session_id[TRAINLOG_ID_MAX + 1U];
+    char entry_id[TRAINLOG_ID_MAX + 1U];
+    char exercise_id[TRAINLOG_ID_MAX + 1U];
+    char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
+    TrainlogSessionType session_type;
+    TrainlogTrackingMode tracking_mode;
+    TrainlogRecordingMode recording_mode;
+    TrainlogExerciseDataFields data_fields;
+    TrainlogLoadMode load_mode;
+    size_t set_count;
+    int continuous_duration_seconds;
+    bool continuous_has_speed;
+    double continuous_speed_kmh;
+    bool continuous_has_distance;
+    double continuous_distance_km;
+} TrainlogExerciseOccurrence;
+
+typedef struct TrainlogOccurrenceSet {
+    size_t position;
+    bool has_reps;
+    int reps;
+    bool has_duration;
+    int duration_seconds;
+    bool has_weight;
+    double weight_kg;
+} TrainlogOccurrenceSet;
+
+typedef struct TrainlogLatestExplicitMax {
+    bool found;
+    char session_id[TRAINLOG_ID_MAX + 1U];
+    char entry_id[TRAINLOG_ID_MAX + 1U];
+    char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
+    TrainlogLoadMode load_mode;
+    double max_weight_kg;
+} TrainlogLatestExplicitMax;
+
+/* Exact-ID profile read; unknown IDs return NOT_FOUND. */
+TrainlogStatus trainlog_database_get_exercise_profile(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogExercise *output
+);
+
+/**
+ * Current-data keyset page ordered by the exact started_at instant, then
+ * session_id and entry_id bytewise DESC. Accepted timestamps use the frozen
+ * extended RFC3339 grammar, including T/t, Z/z, numeric offsets through
+ * 23:59, arbitrary fractional precision, and the Android writer's omitted
+ * seconds form. Equivalent trailing-zero fractions represent one instant.
+ * A non-NULL cursor is exclusive. Pages are not a cross-call snapshot under
+ * concurrent edits. Cursor arrays are borrowed for this call, must be NUL
+ * terminated within their declared capacities, and started_at must be a real
+ * accepted instant with an explicit numeric offset or Z/z. Malformed cursors
+ * are INVALID_ARGUMENT before any history query. Malformed matching persisted
+ * timestamps, or a selected timestamp too long for the fixed public output,
+ * are DATABASE_ERROR rather than omitted or truncated. limit must be
+ * 1..TRAINLOG_OCCURRENCE_PAGE_MAX.
+ */
+TrainlogStatus trainlog_database_list_exercise_occurrences_page(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const TrainlogExerciseOccurrenceCursor *after,
+    size_t limit,
+    TrainlogExerciseOccurrence *output,
+    size_t *output_count,
+    bool *output_has_more,
+    TrainlogExerciseOccurrenceCursor *output_next
+);
+
+/* Original set positions are preserved. after_position is exclusive; use -1
+ * for the first page. Reps are non-negative, so zero preserves a failed
+ * attempt. Nullable values remain distinct from zero. Corrupt storage types or
+ * values outside the public int/size_t ranges return DATABASE_ERROR. No rows
+ * exist for continuous occurrences. Output remains caller-owned. */
+TrainlogStatus trainlog_database_list_occurrence_sets_page(
+    TrainlogDatabase *database,
+    const char *entry_id,
+    int after_position,
+    size_t limit,
+    TrainlogOccurrenceSet *output,
+    size_t *output_count,
+    bool *output_has_more,
+    int *output_next_position
+);
+
+/* Reads max_results joined only through max_test sessions; ordinary large sets
+ * never qualify. It uses the same exact instant and bytewise-ID ordering as
+ * occurrence pagination. Output keeps the exact source timestamp and
+ * occurrence load/equipment context; corrupt or over-capacity selected storage
+ * returns DATABASE_ERROR. */
+TrainlogStatus trainlog_database_latest_explicit_max_context(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    TrainlogLatestExplicitMax *output
 );
 
 

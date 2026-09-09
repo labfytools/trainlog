@@ -8,8 +8,10 @@
 #include "trainlog/duration.h"
 #include "trainlog/equipment_catalog.h"
 #include "trainlog/id.h"
+#include "timestamp.h"
 
 #include <math.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +21,37 @@
 
 struct TrainlogDatabase {
     sqlite3 *connection;
+    unsigned int read_snapshot_depth;
 };
+
+TrainlogStatus trainlog_database_read_snapshot_begin(TrainlogDatabase *database)
+{
+    char sql[64];
+    if (database == NULL || database->connection == NULL || database->read_snapshot_depth == UINT_MAX)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    (void)snprintf(sql, sizeof(sql), "SAVEPOINT trainlog_read_%u;", database->read_snapshot_depth);
+    if (sqlite3_exec(database->connection, sql, NULL, NULL, NULL) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    ++database->read_snapshot_depth;
+    return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_read_snapshot_end(TrainlogDatabase *database, bool commit_snapshot)
+{
+    char sql[160];
+    unsigned int depth;
+    if (database == NULL || database->connection == NULL || database->read_snapshot_depth == 0U)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    depth = database->read_snapshot_depth - 1U;
+    if (commit_snapshot)
+        (void)snprintf(sql, sizeof(sql), "RELEASE trainlog_read_%u;", depth);
+    else
+        (void)snprintf(sql, sizeof(sql), "ROLLBACK TO trainlog_read_%u; RELEASE trainlog_read_%u;", depth, depth);
+    if (sqlite3_exec(database->connection, sql, NULL, NULL, NULL) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    database->read_snapshot_depth = depth;
+    return TRAINLOG_STATUS_OK;
+}
 
 static TrainlogStatus lookup_exercise_row_id(
     TrainlogDatabase *database,
@@ -6101,4 +6133,487 @@ TrainlogStatus trainlog_database_update_body_observation(
     return sqlite3_finalize(statement) == SQLITE_OK
         ? TRAINLOG_STATUS_OK
         : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+/* TRAINING_KNOWLEDGE_RUNTIME_READ_V1 */
+static bool knowledge_copy_column(sqlite3_stmt *statement, int column, char *output, size_t capacity)
+{
+    const unsigned char *value;
+    size_t length;
+    if (statement == NULL || sqlite3_column_type(statement, column) != SQLITE_TEXT ||
+            output == NULL || capacity == 0U) return false;
+    value = sqlite3_column_text(statement, column);
+    if (value == NULL) return false;
+    length = (size_t)sqlite3_column_bytes(statement, column);
+    if (length >= capacity) return false;
+    (void)memcpy(output, value, length + 1U);
+    return true;
+}
+
+static bool knowledge_numeric_column(sqlite3_stmt *statement, int column)
+{
+    int type = sqlite3_column_type(statement, column);
+    return type == SQLITE_INTEGER || type == SQLITE_FLOAT;
+}
+
+static bool knowledge_bounded_string(const char *value, size_t capacity, size_t *length)
+{
+    const char *end;
+    if (value == NULL || capacity == 0U) return false;
+    end = memchr(value, '\0', capacity);
+    if (end == NULL || end == value) return false;
+    if (length != NULL) *length = (size_t)(end - value);
+    return true;
+}
+
+typedef struct KnowledgeTemporalCandidate {
+    sqlite3_int64 row_id;
+    char *started_at;
+    size_t started_at_length;
+    char *session_id;
+    size_t session_id_length;
+    char *entry_id;
+    size_t entry_id_length;
+    TrainlogTimestampKey timestamp;
+} KnowledgeTemporalCandidate;
+
+static void knowledge_temporal_candidate_release(KnowledgeTemporalCandidate *candidate)
+{
+    if (candidate == NULL) return;
+    free(candidate->started_at);
+    free(candidate->session_id);
+    free(candidate->entry_id);
+    (void)memset(candidate, 0, sizeof(*candidate));
+}
+
+static TrainlogStatus knowledge_copy_dynamic_column(
+    sqlite3_stmt *statement, int column, char **output, size_t *output_length)
+{
+    const unsigned char *source;
+    size_t length;
+    char *copy;
+    if (sqlite3_column_type(statement, column) != SQLITE_TEXT) return TRAINLOG_STATUS_DATABASE_ERROR;
+    source = sqlite3_column_text(statement, column);
+    if (source == NULL) return TRAINLOG_STATUS_DATABASE_ERROR;
+    length = (size_t)sqlite3_column_bytes(statement, column);
+    if (length == 0U || memchr(source, '\0', length) != NULL || length == SIZE_MAX)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    copy = malloc(length + 1U);
+    if (copy == NULL) return TRAINLOG_STATUS_SYSTEM_ERROR;
+    (void)memcpy(copy, source, length);
+    copy[length] = '\0';
+    *output = copy;
+    *output_length = length;
+    return TRAINLOG_STATUS_OK;
+}
+
+static int knowledge_bytes_compare(
+    const char *left, size_t left_length, const char *right, size_t right_length)
+{
+    size_t common = left_length < right_length ? left_length : right_length;
+    int result = memcmp(left, right, common);
+    if (result != 0) return result;
+    if (left_length == right_length) return 0;
+    return left_length < right_length ? -1 : 1;
+}
+
+/* INVARIANT: This is the single ordering relation used for selection and the
+ * exclusive cursor. Source timestamp spelling never participates in a tie. */
+static int knowledge_temporal_candidate_compare(
+    const KnowledgeTemporalCandidate *left, const KnowledgeTemporalCandidate *right)
+{
+    int result = trainlog_timestamp_compare(&left->timestamp, &right->timestamp);
+    if (result != 0) return result;
+    result = knowledge_bytes_compare(left->session_id, left->session_id_length,
+        right->session_id, right->session_id_length);
+    if (result != 0) return result;
+    return knowledge_bytes_compare(left->entry_id, left->entry_id_length,
+        right->entry_id, right->entry_id_length);
+}
+
+static TrainlogStatus knowledge_temporal_candidate_read(
+    sqlite3_stmt *statement, KnowledgeTemporalCandidate *output)
+{
+    TrainlogStatus status;
+    (void)memset(output, 0, sizeof(*output));
+    if (sqlite3_column_type(statement, 0) != SQLITE_INTEGER) return TRAINLOG_STATUS_DATABASE_ERROR;
+    status = knowledge_copy_dynamic_column(statement, 1, &output->session_id, &output->session_id_length);
+    if (status == TRAINLOG_STATUS_OK)
+        status = knowledge_copy_dynamic_column(statement, 2, &output->entry_id, &output->entry_id_length);
+    if (status == TRAINLOG_STATUS_OK)
+        status = knowledge_copy_dynamic_column(statement, 3, &output->started_at, &output->started_at_length);
+    if (status != TRAINLOG_STATUS_OK ||
+            !trainlog_timestamp_parse(output->started_at, output->started_at_length, &output->timestamp)) {
+        knowledge_temporal_candidate_release(output);
+        return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_DATABASE_ERROR : status;
+    }
+    output->row_id = sqlite3_column_int64(statement, 0);
+    return TRAINLOG_STATUS_OK;
+}
+
+/* Retain a descending prefix. Capacity is at most page limit + one, so a
+ * sorted bounded array keeps memory independent of history cardinality. */
+static void knowledge_temporal_candidate_insert(
+    KnowledgeTemporalCandidate *items, size_t *count, size_t capacity,
+    KnowledgeTemporalCandidate *candidate)
+{
+    size_t position = 0U;
+    size_t index;
+    while (position < *count &&
+            knowledge_temporal_candidate_compare(candidate, &items[position]) <= 0) ++position;
+    if (position >= capacity) {
+        knowledge_temporal_candidate_release(candidate);
+        return;
+    }
+    if (*count == capacity) knowledge_temporal_candidate_release(&items[capacity - 1U]);
+    else ++*count;
+    for (index = *count - 1U; index > position; --index) items[index] = items[index - 1U];
+    items[position] = *candidate;
+    (void)memset(candidate, 0, sizeof(*candidate));
+}
+
+static bool knowledge_tracking_mode(const char *value, TrainlogTrackingMode *output)
+{
+    if (value == NULL || output == NULL) return false;
+    if (strcmp(value,"reps")==0) {*output=TRAINLOG_TRACKING_REPS;return true;}
+    if (strcmp(value,"duration")==0) {*output=TRAINLOG_TRACKING_DURATION;return true;}
+    return false;
+}
+
+static bool knowledge_recording_mode(const char *value, TrainlogRecordingMode *output)
+{
+    if (value == NULL || output == NULL) return false;
+    if (strcmp(value,"sets")==0) {*output=TRAINLOG_RECORDING_SETS;return true;}
+    if (strcmp(value,"continuous")==0) {*output=TRAINLOG_RECORDING_CONTINUOUS;return true;}
+    return false;
+}
+
+static bool knowledge_load_mode(const char *value, TrainlogLoadMode *output)
+{
+    if (value == NULL || output == NULL) return false;
+    if (strcmp(value,"none")==0) {*output=TRAINLOG_LOAD_NONE;return true;}
+    if (strcmp(value,"external")==0) {*output=TRAINLOG_LOAD_EXTERNAL;return true;}
+    if (strcmp(value,"assistance")==0) {*output=TRAINLOG_LOAD_ASSISTANCE;return true;}
+    return false;
+}
+
+TrainlogStatus trainlog_database_get_exercise_profile(
+    TrainlogDatabase *database, const char *exercise_id, TrainlogExercise *output)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+    if (database == NULL || database->connection == NULL || exercise_id == NULL || exercise_id[0] == '\0' ||
+            output == NULL) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    (void)memset(output, 0, sizeof(*output));
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT exercise_id,name,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?1;",
+        -1, &statement, NULL);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_text(statement, 1, exercise_id, -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) { (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR; }
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_DONE) { (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_NOT_FOUND; }
+    if (rc != SQLITE_ROW || !knowledge_copy_column(statement, 0, output->exercise_id, sizeof(output->exercise_id)) ||
+            !knowledge_copy_column(statement, 1, output->name, sizeof(output->name)) ||
+            sqlite3_column_type(statement, 4) != SQLITE_INTEGER) {
+        (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (sqlite3_column_type(statement,2)!=SQLITE_TEXT || sqlite3_column_type(statement,3)!=SQLITE_TEXT ||
+            !knowledge_tracking_mode((const char *)sqlite3_column_text(statement,2),&output->tracking_mode) ||
+            !knowledge_recording_mode((const char *)sqlite3_column_text(statement,3),&output->recording_mode)) {
+        (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if ((sqlite3_column_int64(statement, 4) < 0) ||
+            ((sqlite3_uint64)sqlite3_column_int64(statement, 4) > UINT32_MAX)) {
+        (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    output->data_fields = (TrainlogExerciseDataFields)sqlite3_column_int64(statement, 4);
+    return sqlite3_finalize(statement) == SQLITE_OK ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_list_exercise_occurrences_page(
+    TrainlogDatabase *database, const char *exercise_id, const TrainlogExerciseOccurrenceCursor *after,
+    size_t limit, TrainlogExerciseOccurrence *output, size_t *output_count, bool *output_has_more,
+    TrainlogExerciseOccurrenceCursor *output_next)
+{
+    static const char *const SCAN_SQL =
+        "SELECT se.id,s.session_id,se.entry_id,s.started_at FROM session_exercises se "
+        "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id "
+        "WHERE e.exercise_id=?1;";
+    static const char *const HYDRATE_SQL =
+        "SELECT s.session_id,se.entry_id,e.exercise_id,s.started_at,COALESCE(se.equipment_id,''),"
+        "s.session_type,e.tracking_mode,se.recording_mode,se.data_fields,se.load_mode,"
+        "(SELECT COUNT(*) FROM performed_sets ps WHERE ps.session_exercise_row_id=se.id),"
+        "ca.duration_seconds,ca.speed_kmh,ca.distance_km FROM session_exercises se "
+        "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id "
+        "LEFT JOIN continuous_activity ca ON ca.session_exercise_row_id=se.id WHERE se.id=?1;";
+    sqlite3_stmt *statement = NULL;
+    KnowledgeTemporalCandidate selected[TRAINLOG_OCCURRENCE_PAGE_MAX + 1U] = {{0}};
+    KnowledgeTemporalCandidate cursor = {0};
+    TrainlogExerciseOccurrenceCursor after_value;
+    TrainlogExercise profile;
+    TrainlogStatus status;
+    size_t selected_count = 0U, count = 0U, index;
+    size_t cursor_started_length = 0U, cursor_session_length = 0U, cursor_entry_length = 0U;
+    int rc;
+    bool snapshot = false;
+    if (output_count != NULL) *output_count = 0U;
+    if (output_has_more != NULL) *output_has_more = false;
+    if (database == NULL || database->connection == NULL || exercise_id == NULL || exercise_id[0] == '\0' ||
+            limit == 0U || limit > TRAINLOG_OCCURRENCE_PAGE_MAX || output == NULL || output_count == NULL ||
+            output_has_more == NULL || output_next == NULL ||
+            (after != NULL && (!knowledge_bounded_string(after->started_at, sizeof(after->started_at),
+                    &cursor_started_length) ||
+                !knowledge_bounded_string(after->session_id, sizeof(after->session_id), &cursor_session_length) ||
+                !knowledge_bounded_string(after->entry_id, sizeof(after->entry_id), &cursor_entry_length) ||
+                !trainlog_timestamp_parse(after->started_at, cursor_started_length, &cursor.timestamp))))
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    if (after != NULL) {
+        after_value = *after;
+        cursor.started_at = after_value.started_at; cursor.started_at_length = cursor_started_length;
+        cursor.session_id = after_value.session_id; cursor.session_id_length = cursor_session_length;
+        cursor.entry_id = after_value.entry_id; cursor.entry_id_length = cursor_entry_length;
+        if (!trainlog_timestamp_parse(cursor.started_at, cursor_started_length, &cursor.timestamp))
+            return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    status = trainlog_database_read_snapshot_begin(database);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    snapshot = true;
+    status = trainlog_database_get_exercise_profile(database, exercise_id, &profile);
+    if (status != TRAINLOG_STATUS_OK) goto done;
+    (void)memset(output_next, 0, sizeof(*output_next));
+    rc = sqlite3_prepare_v2(database->connection, SCAN_SQL, -1, &statement, NULL);
+    if (rc == SQLITE_OK) rc = sqlite3_bind_text(statement, 1, exercise_id, -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        KnowledgeTemporalCandidate candidate;
+        status = knowledge_temporal_candidate_read(statement, &candidate);
+        if (status != TRAINLOG_STATUS_OK) goto done;
+        if (after == NULL || knowledge_temporal_candidate_compare(&candidate, &cursor) < 0)
+            knowledge_temporal_candidate_insert(selected, &selected_count, limit + 1U, &candidate);
+        knowledge_temporal_candidate_release(&candidate);
+    }
+    if (rc != SQLITE_DONE) { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+    rc = sqlite3_finalize(statement); statement = NULL;
+    if (rc != SQLITE_OK) { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+    statement = NULL;
+    *output_has_more = selected_count > limit;
+    count = *output_has_more ? limit : selected_count;
+    for (index = 0U; index < count; ++index) {
+        TrainlogExerciseOccurrence *item;
+        sqlite3_int64 fields;
+        sqlite3_int64 sets;
+        rc = sqlite3_prepare_v2(database->connection, HYDRATE_SQL, -1, &statement, NULL);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_int64(statement, 1, selected[index].row_id);
+        if (rc == SQLITE_OK) rc = sqlite3_step(statement);
+        if (rc != SQLITE_ROW) { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+        item = &output[index]; (void)memset(item, 0, sizeof(*item));
+        if (!knowledge_copy_column(statement,0,item->session_id,sizeof(item->session_id)) ||
+            !knowledge_copy_column(statement,1,item->entry_id,sizeof(item->entry_id)) ||
+            !knowledge_copy_column(statement,2,item->exercise_id,sizeof(item->exercise_id)) ||
+            !knowledge_copy_column(statement,3,item->started_at,sizeof(item->started_at)) ||
+            !knowledge_copy_column(statement,4,item->equipment_id,sizeof(item->equipment_id)) ||
+            sqlite3_column_type(statement,5)!=SQLITE_TEXT ||
+            !session_type_from_sql((const char *)sqlite3_column_text(statement,5),&item->session_type)) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        if(sqlite3_column_type(statement,6)!=SQLITE_TEXT || sqlite3_column_type(statement,7)!=SQLITE_TEXT ||
+                sqlite3_column_type(statement,9)!=SQLITE_TEXT ||
+                !knowledge_tracking_mode((const char *)sqlite3_column_text(statement,6),&item->tracking_mode) ||
+                !knowledge_recording_mode((const char *)sqlite3_column_text(statement,7),&item->recording_mode) ||
+                !knowledge_load_mode((const char *)sqlite3_column_text(statement,9),&item->load_mode)) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        if (sqlite3_column_type(statement,8)!=SQLITE_INTEGER || sqlite3_column_type(statement,10)!=SQLITE_INTEGER) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        fields=sqlite3_column_int64(statement,8); sets=sqlite3_column_int64(statement,10);
+        if (fields<0 || (sqlite3_uint64)fields>UINT32_MAX || sets<0 || (sqlite3_uint64)sets>SIZE_MAX) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        item->data_fields=(TrainlogExerciseDataFields)fields;
+        item->set_count=(size_t)sets;
+        if (sqlite3_column_type(statement,11)!=SQLITE_NULL) {
+            sqlite3_int64 duration;
+            if (sqlite3_column_type(statement,11)!=SQLITE_INTEGER) {
+                status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+            }
+            duration=sqlite3_column_int64(statement,11);
+            if (duration<=0 || duration>INT_MAX) {
+                status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+            }
+            item->continuous_duration_seconds=(int)duration;
+        }
+        item->continuous_has_speed=sqlite3_column_type(statement,12)!=SQLITE_NULL;
+        if (item->continuous_has_speed && !knowledge_numeric_column(statement,12)) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        item->continuous_speed_kmh=sqlite3_column_double(statement,12);
+        item->continuous_has_distance=sqlite3_column_type(statement,13)!=SQLITE_NULL;
+        if (item->continuous_has_distance && !knowledge_numeric_column(statement,13)) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        item->continuous_distance_km=sqlite3_column_double(statement,13);
+        if ((item->continuous_has_speed && !isfinite(item->continuous_speed_kmh)) ||
+                (item->continuous_has_distance && !isfinite(item->continuous_distance_km))) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        rc = sqlite3_step(statement);
+        if (rc != SQLITE_DONE) { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+        rc = sqlite3_finalize(statement); statement = NULL;
+        if (rc != SQLITE_OK) { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+    }
+    *output_count=count;
+    if (count > 0U) {
+        (void)snprintf(output_next->started_at,sizeof(output_next->started_at),"%s",output[count-1U].started_at);
+        (void)snprintf(output_next->session_id,sizeof(output_next->session_id),"%s",output[count-1U].session_id);
+        (void)snprintf(output_next->entry_id,sizeof(output_next->entry_id),"%s",output[count-1U].entry_id);
+    }
+    status = TRAINLOG_STATUS_OK;
+done:
+    (void)sqlite3_finalize(statement);
+    for (index = 0U; index < selected_count; ++index)
+        knowledge_temporal_candidate_release(&selected[index]);
+    if (snapshot) {
+        TrainlogStatus end_status = trainlog_database_read_snapshot_end(database, status == TRAINLOG_STATUS_OK);
+        if (status == TRAINLOG_STATUS_OK) status = end_status;
+    }
+    return status;
+}
+
+TrainlogStatus trainlog_database_list_occurrence_sets_page(
+    TrainlogDatabase *database, const char *entry_id, int after_position, size_t limit,
+    TrainlogOccurrenceSet *output, size_t *output_count, bool *output_has_more, int *output_next_position)
+{
+    sqlite3_stmt *statement = NULL;
+    sqlite3_stmt *identity = NULL;
+    size_t count=0U;
+    int rc;
+    if (output_count != NULL) *output_count=0U;
+    if (output_has_more != NULL) *output_has_more=false;
+    if (database==NULL || database->connection==NULL || entry_id==NULL || entry_id[0]=='\0' ||
+            after_position < -1 || limit==0U || limit>TRAINLOG_OCCURRENCE_SET_PAGE_MAX || output==NULL ||
+            output_count==NULL || output_has_more==NULL || output_next_position==NULL)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    *output_next_position=after_position;
+    rc=sqlite3_prepare_v2(database->connection,"SELECT 1 FROM session_exercises WHERE entry_id=?1;",-1,&identity,NULL);
+    if(rc==SQLITE_OK)rc=sqlite3_bind_text(identity,1,entry_id,-1,SQLITE_TRANSIENT);
+    if(rc!=SQLITE_OK){(void)sqlite3_finalize(identity);return TRAINLOG_STATUS_DATABASE_ERROR;}
+    rc=sqlite3_step(identity);
+    if(rc==SQLITE_DONE){(void)sqlite3_finalize(identity);return TRAINLOG_STATUS_NOT_FOUND;}
+    if(rc!=SQLITE_ROW || sqlite3_finalize(identity)!=SQLITE_OK)return TRAINLOG_STATUS_DATABASE_ERROR;
+    rc=sqlite3_prepare_v2(database->connection,
+        "SELECT ps.position,ps.reps,ps.duration_seconds,ps.weight_kg FROM performed_sets ps "
+        "JOIN session_exercises se ON se.id=ps.session_exercise_row_id WHERE se.entry_id=?1 AND ps.position>?2 "
+        "ORDER BY ps.position ASC LIMIT ?3;",-1,&statement,NULL);
+    if(rc==SQLITE_OK) rc=sqlite3_bind_text(statement,1,entry_id,-1,SQLITE_TRANSIENT);
+    if(rc==SQLITE_OK) rc=sqlite3_bind_int(statement,2,after_position);
+    if(rc==SQLITE_OK) rc=sqlite3_bind_int64(statement,3,(sqlite3_int64)(limit+1U));
+    if(rc!=SQLITE_OK){(void)sqlite3_finalize(statement);return TRAINLOG_STATUS_DATABASE_ERROR;}
+    while((rc=sqlite3_step(statement))==SQLITE_ROW){ TrainlogOccurrenceSet *item; sqlite3_int64 position;
+        if(count==limit){*output_has_more=true;break;} item=&output[count];(void)memset(item,0,sizeof(*item));
+        if(sqlite3_column_type(statement,0)!=SQLITE_INTEGER){(void)sqlite3_finalize(statement);return TRAINLOG_STATUS_DATABASE_ERROR;}
+        position=sqlite3_column_int64(statement,0); if(position<0 || position>INT_MAX){(void)sqlite3_finalize(statement);return TRAINLOG_STATUS_DATABASE_ERROR;}
+        item->position=(size_t)position; item->has_reps=sqlite3_column_type(statement,1)!=SQLITE_NULL;
+        item->has_duration=sqlite3_column_type(statement,2)!=SQLITE_NULL;
+        if (item->has_reps) {
+            sqlite3_int64 reps;
+            if (sqlite3_column_type(statement,1)!=SQLITE_INTEGER) {
+                (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+            reps=sqlite3_column_int64(statement,1);
+            if (reps<0 || reps>INT_MAX) {
+                (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+            item->reps=(int)reps;
+        }
+        if (item->has_duration) {
+            sqlite3_int64 duration;
+            if (sqlite3_column_type(statement,2)!=SQLITE_INTEGER) {
+                (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+            duration=sqlite3_column_int64(statement,2);
+            if (duration<=0 || duration>INT_MAX) {
+                (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
+            item->duration_seconds=(int)duration;
+        }
+        item->has_weight=sqlite3_column_type(statement,3)!=SQLITE_NULL;
+        if(item->has_weight && !knowledge_numeric_column(statement,3)){(void)sqlite3_finalize(statement);return TRAINLOG_STATUS_DATABASE_ERROR;}
+        item->weight_kg=sqlite3_column_double(statement,3);
+        if(item->has_weight && !isfinite(item->weight_kg)){(void)sqlite3_finalize(statement);return TRAINLOG_STATUS_DATABASE_ERROR;}
+        *output_next_position=(int)position; ++count;
+    }
+    if(rc!=SQLITE_DONE && rc!=SQLITE_ROW){(void)sqlite3_finalize(statement);return TRAINLOG_STATUS_DATABASE_ERROR;}
+    if(sqlite3_finalize(statement)!=SQLITE_OK)return TRAINLOG_STATUS_DATABASE_ERROR;
+    *output_count=count; return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_latest_explicit_max_context(
+    TrainlogDatabase *database, const char *exercise_id, TrainlogLatestExplicitMax *output)
+{
+    static const char *const SCAN_SQL =
+        "SELECT se.id,s.session_id,se.entry_id,s.started_at FROM max_results mr "
+        "JOIN session_exercises se ON se.id=mr.session_exercise_row_id "
+        "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id "
+        "WHERE e.exercise_id=?1 AND s.session_type='max_test';";
+    static const char *const HYDRATE_SQL =
+        "SELECT s.session_id,se.entry_id,s.started_at,COALESCE(se.equipment_id,''),se.load_mode,mr.max_weight_kg "
+        "FROM max_results mr JOIN session_exercises se ON se.id=mr.session_exercise_row_id "
+        "JOIN sessions s ON s.id=se.session_row_id WHERE se.id=?1;";
+    sqlite3_stmt *statement=NULL;
+    KnowledgeTemporalCandidate selected[1] = {{0}};
+    size_t selected_count = 0U;
+    int rc;
+    TrainlogExercise profile;
+    TrainlogStatus status;
+    bool snapshot = false;
+    if(database==NULL || database->connection==NULL || exercise_id==NULL || exercise_id[0]=='\0' || output==NULL)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    (void)memset(output,0,sizeof(*output));
+    status = trainlog_database_read_snapshot_begin(database);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    snapshot = true;
+    status=trainlog_database_get_exercise_profile(database,exercise_id,&profile);
+    if(status!=TRAINLOG_STATUS_OK)goto done;
+    rc=sqlite3_prepare_v2(database->connection,SCAN_SQL,-1,&statement,NULL);
+    if(rc==SQLITE_OK)rc=sqlite3_bind_text(statement,1,exercise_id,-1,SQLITE_TRANSIENT);
+    if(rc!=SQLITE_OK){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    while((rc=sqlite3_step(statement))==SQLITE_ROW){
+        KnowledgeTemporalCandidate candidate;
+        status=knowledge_temporal_candidate_read(statement,&candidate);
+        if(status!=TRAINLOG_STATUS_OK)goto done;
+        knowledge_temporal_candidate_insert(selected,&selected_count,1U,&candidate);
+        knowledge_temporal_candidate_release(&candidate);
+    }
+    if(rc!=SQLITE_DONE){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    rc=sqlite3_finalize(statement); statement=NULL;
+    if(rc!=SQLITE_OK){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    if(selected_count==0U){status=TRAINLOG_STATUS_OK;goto done;}
+    rc=sqlite3_prepare_v2(database->connection,HYDRATE_SQL,-1,&statement,NULL);
+    if(rc==SQLITE_OK)rc=sqlite3_bind_int64(statement,1,selected[0].row_id);
+    if(rc==SQLITE_OK)rc=sqlite3_step(statement);
+    if(rc!=SQLITE_ROW || !knowledge_copy_column(statement,0,output->session_id,sizeof(output->session_id)) ||
+        !knowledge_copy_column(statement,1,output->entry_id,sizeof(output->entry_id)) ||
+        !knowledge_copy_column(statement,2,output->started_at,sizeof(output->started_at)) ||
+        !knowledge_copy_column(statement,3,output->equipment_id,sizeof(output->equipment_id))){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    if(sqlite3_column_type(statement,4)!=SQLITE_TEXT ||
+            !knowledge_load_mode((const char *)sqlite3_column_text(statement,4),&output->load_mode)){
+        status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;
+    }
+    if(!knowledge_numeric_column(statement,5)){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    output->max_weight_kg=sqlite3_column_double(statement,5);
+    if(!isfinite(output->max_weight_kg) || output->max_weight_kg<=0.0){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    output->found=true;
+    rc=sqlite3_step(statement);
+    if(rc!=SQLITE_DONE){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
+    rc=sqlite3_finalize(statement); statement=NULL;
+    status=rc==SQLITE_OK?TRAINLOG_STATUS_OK:TRAINLOG_STATUS_DATABASE_ERROR;
+done:
+    (void)sqlite3_finalize(statement);
+    knowledge_temporal_candidate_release(&selected[0]);
+    if(snapshot){
+        TrainlogStatus end_status=trainlog_database_read_snapshot_end(database,status==TRAINLOG_STATUS_OK);
+        if(status==TRAINLOG_STATUS_OK)status=end_status;
+    }
+    return status;
 }

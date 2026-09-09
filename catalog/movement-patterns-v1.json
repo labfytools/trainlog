@@ -1,0 +1,538 @@
+{
+  "format": "trainlog-movement-patterns-v1",
+  "version": 1,
+  "movement_patterns": [
+    {
+      "pattern_id": "cyclic_lower_limb",
+      "definition": "Repeated lower-limb propulsion such as cycling; not identical to gait.",
+      "typical_action_ids": [
+        "hip_extension",
+        "hip_flexion",
+        "knee_extension",
+        "knee_flexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Propulsion cyclique des membres inférieurs",
+      "typical_body_zone_ids": [
+        "calves",
+        "glutes",
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "cyclic_rowing",
+      "definition": "Repeated leg drive, trunk control and arm pull; cardio rower differs from seated resistance row.",
+      "typical_action_ids": [
+        "elbow_flexion",
+        "hip_extension",
+        "knee_extension",
+        "shoulder_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Rame cyclique",
+      "typical_body_zone_ids": [
+        "arms",
+        "back",
+        "core",
+        "glutes",
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "hip_dominant",
+      "definition": "Multi-joint task organized around hip extension with comparatively restrained knee excursion.",
+      "typical_action_ids": [
+        "hip_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Mouvement à dominante hanche",
+      "typical_body_zone_ids": [
+        "glutes",
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "horizontal_pull",
+      "definition": "Pull toward torso with shoulder extension/horizontal abduction and elbow flexion.",
+      "typical_action_ids": [
+        "elbow_flexion",
+        "scapular_retraction",
+        "shoulder_extension",
+        "shoulder_horizontal_abduction"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Tirage horizontal",
+      "typical_body_zone_ids": [
+        "arms",
+        "back"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "horizontal_push",
+      "definition": "Press resistance away anterior to torso with coordinated shoulder and elbow movement.",
+      "typical_action_ids": [
+        "elbow_extension",
+        "shoulder_horizontal_adduction"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Poussée horizontale",
+      "typical_body_zone_ids": [
+        "arms",
+        "chest",
+        "shoulders"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "knee_dominant",
+      "definition": "Multi-joint lower-limb task with substantial knee-extension demand; hip extension remains involved.",
+      "typical_action_ids": [
+        "hip_extension",
+        "knee_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Mouvement à dominante genou",
+      "typical_body_zone_ids": [
+        "glutes",
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "locomotion",
+      "definition": "Repeated gait cycles with support and progression; treadmill belt can replace overground translation.",
+      "typical_action_ids": [
+        "ankle_dorsiflexion",
+        "ankle_plantarflexion",
+        "hip_extension",
+        "hip_flexion",
+        "knee_extension",
+        "knee_flexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Locomotion",
+      "typical_body_zone_ids": [
+        "calves",
+        "glutes",
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "shoulder_abduction",
+      "display_name_fr": "Abduction de l’épaule",
+      "definition": "Raise humerus laterally or in scapular plane against resistance; lateral-raise family. Scapular upward rotation accompanies larger elevation.",
+      "typical_action_ids": [
+        "scapular_upward_rotation",
+        "shoulder_abduction"
+      ],
+      "typical_body_zone_ids": [
+        "shoulders"
+      ],
+      "parent_pattern_id": null,
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Explicit authored task convention; anti-motion is a demand, not a new joint action or claim of muscle isolation."
+    },
+    {
+      "pattern_id": "single_joint_ankle_plantarflexion",
+      "definition": "Predominant resisted ankle plantarflexion.",
+      "typical_action_ids": [
+        "ankle_plantarflexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Flexion plantaire",
+      "typical_body_zone_ids": [
+        "calves"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_elbow_extension",
+      "definition": "Predominant resisted elbow extension.",
+      "typical_action_ids": [
+        "elbow_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Extension isolée du coude",
+      "typical_body_zone_ids": [
+        "arms"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_elbow_flexion",
+      "definition": "Predominant resisted elbow flexion.",
+      "typical_action_ids": [
+        "elbow_flexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Flexion isolée du coude",
+      "typical_body_zone_ids": [
+        "arms"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_hip_abduction",
+      "definition": "Predominant resisted hip abduction.",
+      "typical_action_ids": [
+        "hip_abduction"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Abduction isolée de hanche",
+      "typical_body_zone_ids": [
+        "glutes"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_hip_adduction",
+      "definition": "Predominant resisted hip adduction.",
+      "typical_action_ids": [
+        "hip_adduction"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Adduction isolée de hanche",
+      "typical_body_zone_ids": [
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_knee_extension",
+      "definition": "Predominant resisted knee extension.",
+      "typical_action_ids": [
+        "knee_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Extension isolée du genou",
+      "typical_body_zone_ids": [
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_knee_flexion",
+      "definition": "Predominant resisted knee flexion.",
+      "typical_action_ids": [
+        "knee_flexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Flexion isolée du genou",
+      "typical_body_zone_ids": [
+        "thighs"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_shoulder_horizontal_abduction",
+      "definition": "Reverse-fly humeral horizontal abduction with approximately fixed elbow.",
+      "typical_action_ids": [
+        "shoulder_horizontal_abduction"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Écarté inversé",
+      "typical_body_zone_ids": [
+        "back",
+        "shoulders"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "single_joint_shoulder_horizontal_adduction",
+      "definition": "Fly-like humeral adduction across torso with approximately fixed elbow.",
+      "typical_action_ids": [
+        "shoulder_horizontal_adduction"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Écarté pectoral",
+      "typical_body_zone_ids": [
+        "chest",
+        "shoulders"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "trunk_anti_extension",
+      "display_name_fr": "Résistance à l’extension du tronc",
+      "definition": "Resist an external trunk-extension moment while maintaining intended spinal orientation. No dynamic joint action is required.",
+      "typical_action_ids": [],
+      "typical_body_zone_ids": [
+        "core"
+      ],
+      "parent_pattern_id": "trunk_stabilization",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_actions",
+        "openstax_back"
+      ],
+      "notes": "Explicit authored task convention; anti-motion is a demand, not a new joint action or claim of muscle isolation."
+    },
+    {
+      "pattern_id": "trunk_anti_rotation",
+      "display_name_fr": "Résistance à la rotation du tronc",
+      "definition": "Resist an external rotational moment between thorax and pelvis while maintaining intended orientation.",
+      "typical_action_ids": [],
+      "typical_body_zone_ids": [
+        "core"
+      ],
+      "parent_pattern_id": "trunk_stabilization",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_actions",
+        "openstax_back"
+      ],
+      "notes": "Explicit authored task convention; anti-motion is a demand, not a new joint action or claim of muscle isolation."
+    },
+    {
+      "pattern_id": "trunk_extension",
+      "definition": "Dynamic resisted spinal extension.",
+      "typical_action_ids": [
+        "trunk_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Extension du tronc",
+      "typical_body_zone_ids": [
+        "back",
+        "core"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "trunk_flexion",
+      "definition": "Dynamic resisted spinal flexion.",
+      "typical_action_ids": [
+        "trunk_flexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Flexion du tronc",
+      "typical_body_zone_ids": [
+        "core"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "trunk_lateral_stability",
+      "display_name_fr": "Stabilité latérale du tronc",
+      "definition": "Resist an external lateral-flexion moment while maintaining trunk orientation; not dynamic side bending.",
+      "typical_action_ids": [],
+      "typical_body_zone_ids": [
+        "back",
+        "core"
+      ],
+      "parent_pattern_id": "trunk_stabilization",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_actions",
+        "openstax_back"
+      ],
+      "notes": "Explicit authored task convention; anti-motion is a demand, not a new joint action or claim of muscle isolation."
+    },
+    {
+      "pattern_id": "trunk_rotation",
+      "definition": "Dynamic resisted thorax-pelvis rotation.",
+      "typical_action_ids": [
+        "trunk_rotation"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Rotation du tronc",
+      "typical_body_zone_ids": [
+        "core"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "trunk_stabilization",
+      "definition": "Maintain trunk orientation against external moments; anti-extension, anti-rotation and anti-lateral-flexion are demands, not anatomical joint motions.",
+      "typical_action_ids": [],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Stabilisation du tronc",
+      "typical_body_zone_ids": [
+        "back",
+        "core"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "vertical_pull",
+      "definition": "Pull from overhead toward torso.",
+      "typical_action_ids": [
+        "elbow_flexion",
+        "shoulder_adduction",
+        "shoulder_extension"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Tirage vertical",
+      "typical_body_zone_ids": [
+        "arms",
+        "back"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    },
+    {
+      "pattern_id": "vertical_push",
+      "definition": "Press overhead relative to torso with humeral elevation and elbow extension.",
+      "typical_action_ids": [
+        "elbow_extension",
+        "scapular_upward_rotation",
+        "shoulder_abduction",
+        "shoulder_flexion"
+      ],
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "acsm_2009",
+        "openstax_actions"
+      ],
+      "notes": "Authored classification convention; typical actions are not mandatory in every variant and single-joint does not mean one muscle or zero stabilization.",
+      "display_name_fr": "Poussée verticale",
+      "typical_body_zone_ids": [
+        "arms",
+        "shoulders"
+      ],
+      "body_zone_semantics": "Descriptive common participation, not a persisted exercise mapping or requirement that every listed zone be assigned."
+    }
+  ]
+}

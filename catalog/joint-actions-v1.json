@@ -1,0 +1,808 @@
+{
+  "format": "trainlog-joint-actions-v1",
+  "version": 1,
+  "joint_actions": [
+    {
+      "action_id": "ankle_dorsiflexion",
+      "definition": "Bring dorsum of foot toward shin",
+      "anatomical_region": "ankle",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Dorsiflexion de la cheville",
+      "joint_complex": "talocrural_joint",
+      "joint_or_complex": "talocrural_joint",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "tibialis_anterior"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "ankle_plantarflexion",
+      "definition": "Point foot away from shin",
+      "anatomical_region": "ankle",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion plantaire de la cheville",
+      "joint_complex": "talocrural_joint",
+      "joint_or_complex": "talocrural_joint",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "gastrocnemius",
+        "soleus"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "elbow_extension",
+      "definition": "Increase elbow angle",
+      "anatomical_region": "elbow",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Extension du coude",
+      "joint_complex": "humeroulnar_humeroradial_complex",
+      "joint_or_complex": "humeroulnar_humeroradial_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "triceps_brachii"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "elbow_flexion",
+      "definition": "Reduce elbow angle",
+      "anatomical_region": "elbow",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion du coude",
+      "joint_complex": "humeroulnar_humeroradial_complex",
+      "joint_or_complex": "humeroulnar_humeroradial_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "biceps_brachii",
+        "brachialis",
+        "brachioradialis"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "finger_flexion",
+      "definition": "Close fingers toward palm",
+      "anatomical_region": "finger",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion des doigts",
+      "joint_complex": "metacarpophalangeal_and_interphalangeal_joints",
+      "joint_or_complex": "metacarpophalangeal_and_interphalangeal_joints",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "forearm_flexors"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "forearm_pronation",
+      "definition": "Rotate forearm toward palm-back orientation",
+      "anatomical_region": "forearm",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Pronation de l’avant-bras",
+      "joint_complex": "proximal_and_distal_radioulnar_joints",
+      "joint_or_complex": "proximal_and_distal_radioulnar_joints",
+      "principal_plane": "transverse",
+      "plane_notes": "Axial rotation of forearm; spatial plane depends on forearm position.",
+      "contributing_muscle_ids": [
+        "forearm_pronators"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "forearm_supination",
+      "definition": "Rotate forearm toward palm-forward orientation",
+      "anatomical_region": "forearm",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Supination de l’avant-bras",
+      "joint_complex": "proximal_and_distal_radioulnar_joints",
+      "joint_or_complex": "proximal_and_distal_radioulnar_joints",
+      "principal_plane": "transverse",
+      "plane_notes": "Axial rotation of forearm; spatial plane depends on forearm position.",
+      "contributing_muscle_ids": [
+        "biceps_brachii",
+        "supinator"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "hip_abduction",
+      "definition": "Move femur away from midline",
+      "anatomical_region": "hip",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Abduction de la hanche",
+      "joint_complex": "acetabulofemoral_joint",
+      "joint_or_complex": "acetabulofemoral_joint",
+      "principal_plane": "frontal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "gluteus_medius",
+        "gluteus_minimus",
+        "tensor_fasciae_latae"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "hip_adduction",
+      "definition": "Move femur toward midline",
+      "anatomical_region": "hip",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Adduction de la hanche",
+      "joint_complex": "acetabulofemoral_joint",
+      "joint_or_complex": "acetabulofemoral_joint",
+      "principal_plane": "frontal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "adductor_magnus",
+        "hip_adductors"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "hip_extension",
+      "definition": "Move femur posteriorly or rise from flexion",
+      "anatomical_region": "hip",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "maeo_2021",
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Extension de la hanche",
+      "joint_complex": "acetabulofemoral_joint",
+      "joint_or_complex": "acetabulofemoral_joint",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "adductor_magnus",
+        "gluteus_maximus",
+        "hamstrings_biarticular"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "hip_external_rotation",
+      "definition": "Rotate femur outward",
+      "anatomical_region": "hip",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Rotation externe de la hanche",
+      "joint_complex": "acetabulofemoral_joint",
+      "joint_or_complex": "acetabulofemoral_joint",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "gluteus_maximus"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "hip_flexion",
+      "definition": "Bring femur toward anterior trunk",
+      "anatomical_region": "hip",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion de la hanche",
+      "joint_complex": "acetabulofemoral_joint",
+      "joint_or_complex": "acetabulofemoral_joint",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "iliopsoas",
+        "rectus_femoris",
+        "tensor_fasciae_latae"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "hip_internal_rotation",
+      "definition": "Rotate femur inward",
+      "anatomical_region": "hip",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Rotation interne de la hanche",
+      "joint_complex": "acetabulofemoral_joint",
+      "joint_or_complex": "acetabulofemoral_joint",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "gluteus_minimus",
+        "tensor_fasciae_latae"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "knee_extension",
+      "definition": "Increase knee angle",
+      "anatomical_region": "knee",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Extension du genou",
+      "joint_complex": "tibiofemoral_complex",
+      "joint_or_complex": "tibiofemoral_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "quadriceps",
+        "rectus_femoris",
+        "vasti"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "knee_flexion",
+      "definition": "Reduce knee angle",
+      "anatomical_region": "knee",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "maeo_2021",
+        "openstax_actions",
+        "openstax_lower"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion du genou",
+      "joint_complex": "tibiofemoral_complex",
+      "joint_or_complex": "tibiofemoral_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "biceps_femoris_short_head",
+        "gastrocnemius",
+        "hamstrings",
+        "hamstrings_biarticular"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "scapular_depression",
+      "definition": "Move scapula inferiorly",
+      "anatomical_region": "scapular",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Scapular actions are scapulothoracic descriptions produced through coordinated shoulder-girdle articulations.",
+      "display_name_fr": "Abaissement scapulaire",
+      "joint_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "joint_or_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "principal_plane": "three_dimensional_scapular_motion",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "pectoralis_minor",
+        "trapezius_lower"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "scapular_downward_rotation",
+      "definition": "Rotate glenoid downward on return",
+      "anatomical_region": "scapular",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Scapular actions are scapulothoracic descriptions produced through coordinated shoulder-girdle articulations.",
+      "display_name_fr": "Rotation scapulaire vers le bas",
+      "joint_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "joint_or_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "principal_plane": "three_dimensional_scapular_motion",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "rhomboids"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "scapular_elevation",
+      "definition": "Move scapula superiorly",
+      "anatomical_region": "scapular",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Scapular actions are scapulothoracic descriptions produced through coordinated shoulder-girdle articulations.",
+      "display_name_fr": "Élévation scapulaire",
+      "joint_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "joint_or_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "principal_plane": "three_dimensional_scapular_motion",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "trapezius_upper"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "scapular_protraction",
+      "definition": "Move scapula anterolaterally around thorax",
+      "anatomical_region": "scapular",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Scapular actions are scapulothoracic descriptions produced through coordinated shoulder-girdle articulations.",
+      "display_name_fr": "Protraction scapulaire",
+      "joint_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "joint_or_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "principal_plane": "three_dimensional_scapular_motion",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "pectoralis_minor",
+        "serratus_anterior"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "scapular_retraction",
+      "definition": "Move scapula toward vertebral column",
+      "anatomical_region": "scapular",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Scapular actions are scapulothoracic descriptions produced through coordinated shoulder-girdle articulations.",
+      "display_name_fr": "Rétraction scapulaire",
+      "joint_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "joint_or_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "principal_plane": "three_dimensional_scapular_motion",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "rhomboids",
+        "trapezius_middle"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "scapular_upward_rotation",
+      "definition": "Rotate glenoid upward during arm elevation",
+      "anatomical_region": "scapular",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Scapular actions are scapulothoracic descriptions produced through coordinated shoulder-girdle articulations.",
+      "display_name_fr": "Rotation scapulaire vers le haut",
+      "joint_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "joint_or_complex": "scapulothoracic_function_via_sternoclavicular_and_acromioclavicular_joints",
+      "principal_plane": "three_dimensional_scapular_motion",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "serratus_anterior",
+        "trapezius_lower",
+        "trapezius_upper"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_abduction",
+      "definition": "Move humerus away from trunk in frontal/scapular plane",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Abduction de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "frontal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_middle",
+        "supraspinatus"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_adduction",
+      "definition": "Move humerus toward trunk",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_pectoralis",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Adduction de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "frontal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "latissimus_dorsi",
+        "pectoralis_major",
+        "pectoralis_major_sternocostal",
+        "teres_major"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_extension",
+      "definition": "Move humerus posteriorly or return from flexion",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Extension de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_posterior",
+        "latissimus_dorsi",
+        "pectoralis_major_sternocostal",
+        "teres_major"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_external_rotation",
+      "definition": "Rotate humerus outward about long axis",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Rotation externe de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_posterior",
+        "infraspinatus",
+        "teres_minor"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_flexion",
+      "definition": "Move humerus anteriorly/elevate forward relative to trunk",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_actions"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_anterior",
+        "pectoralis_major_clavicular"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_horizontal_abduction",
+      "definition": "Move elevated humerus backward in transverse plane",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_actions"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Abduction horizontale de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_posterior"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_horizontal_adduction",
+      "definition": "Bring elevated humerus across anterior trunk",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Adduction horizontale de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_anterior",
+        "pectoralis_major",
+        "pectoralis_major_clavicular",
+        "pectoralis_major_sternocostal"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "shoulder_internal_rotation",
+      "definition": "Rotate humerus inward about long axis",
+      "anatomical_region": "shoulder",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Rotation interne de l’épaule",
+      "joint_complex": "glenohumeral_joint",
+      "joint_or_complex": "glenohumeral_joint",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "deltoid_anterior",
+        "latissimus_dorsi",
+        "pectoralis_major",
+        "subscapularis",
+        "teres_major"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "trunk_extension",
+      "definition": "Extend vertebral column; not synonymous with hip extension",
+      "anatomical_region": "trunk",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_back"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Extension du tronc",
+      "joint_complex": "intervertebral_column_complex",
+      "joint_or_complex": "intervertebral_column_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "erector_spinae",
+        "multifidus"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "trunk_flexion",
+      "definition": "Flex vertebral column; not synonymous with hip flexion",
+      "anatomical_region": "trunk",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_actions",
+        "openstax_trunk"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion du tronc",
+      "joint_complex": "intervertebral_column_complex",
+      "joint_or_complex": "intervertebral_column_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "external_oblique",
+        "internal_oblique",
+        "rectus_abdominis"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "trunk_lateral_flexion",
+      "definition": "Bend vertebral column sideways",
+      "anatomical_region": "trunk",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_actions",
+        "openstax_back",
+        "openstax_trunk"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Inclinaison latérale du tronc",
+      "joint_complex": "intervertebral_column_complex",
+      "joint_or_complex": "intervertebral_column_complex",
+      "principal_plane": "frontal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "erector_spinae",
+        "external_oblique",
+        "internal_oblique",
+        "quadratus_lumborum"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "trunk_rotation",
+      "definition": "Rotate thorax and pelvis relative to each other",
+      "anatomical_region": "trunk",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_actions",
+        "openstax_back",
+        "openstax_trunk"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Rotation du tronc",
+      "joint_complex": "intervertebral_column_complex",
+      "joint_or_complex": "intervertebral_column_complex",
+      "principal_plane": "transverse",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "external_oblique",
+        "internal_oblique",
+        "multifidus"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "wrist_extension",
+      "definition": "Bend dorsum of hand toward posterior forearm",
+      "anatomical_region": "wrist",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Extension du poignet",
+      "joint_complex": "radiocarpal_midcarpal_complex",
+      "joint_or_complex": "radiocarpal_midcarpal_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "forearm_extensors"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    },
+    {
+      "action_id": "wrist_flexion",
+      "definition": "Bend palm toward anterior forearm",
+      "anatomical_region": "wrist",
+      "evidence_type": "established_anatomy",
+      "confidence": "high",
+      "source_refs": [
+        "openstax_actions",
+        "openstax_upper"
+      ],
+      "notes": "Opposite motion in a loaded return may be controlled eccentrically by the same agonists.",
+      "display_name_fr": "Flexion du poignet",
+      "joint_complex": "radiocarpal_midcarpal_complex",
+      "joint_or_complex": "radiocarpal_midcarpal_complex",
+      "principal_plane": "sagittal",
+      "plane_notes": "Nominal anatomical plane; actual exercise can combine planes. Scapular kinematics are three-dimensional.",
+      "contributing_muscle_ids": [
+        "forearm_flexors"
+      ],
+      "contributor_semantics": "Non-exhaustive anatomical capability list; not a primary-role list or inverse EMG ranking. Aggregate/member overlap retained explicitly."
+    }
+  ]
+}

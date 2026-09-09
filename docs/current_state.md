@@ -62,7 +62,9 @@ BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
 BODY_ZONES_TUI_REAL_VALIDATION=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=39/39 PASS
+TRAINING_KNOWLEDGE_V1=PASS
+
+DESKTOP_TESTS=42/42 PASS (recorded validation checkpoint)
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 ```
@@ -72,6 +74,8 @@ HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 Implemented:
 
 - C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
+- UTF-8 cell-aware scrolling training-knowledge screen, tested at the 72x20
+  minimum terminal;
 - SQLite schema v11, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
   definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
@@ -151,6 +155,48 @@ union is retained without rewriting historical occurrence snapshots.
 All Android screens use the shared compact `◆ TRAINLOG ◆` header: the
 Notcurses accent, muted context line, and flat touch layout reproduce the TUI
 plaque without literal terminal box drawing.
+
+## Training knowledge V1
+
+The implemented read-only training-knowledge layer loads six versioned JSON
+catalogs as the sole authored scientific source, generates the immutable C
+catalog representation, and loads the same assets on Android. It has no
+database migration, no auto-seeding, and no synchronization artifact. The
+desktop database remains schema v11 and Android remains schema v10.
+
+Desktop `training_knowledge.h` and Android `TrainingKnowledgeCatalog` expose
+source-linked science lookups and resolved-candidate filters. Desktop
+`training_context.h` and Android `TrainlogRepository` compose one real runtime
+exercise with its persisted zones, compatible equipment, latest explicit MAX,
+and bounded chronological occurrence/set history. Persisted zones remain
+separate from scientific mappings; missing scientific knowledge is valid.
+
+The scientific review passed and the reviewed catalog bytes remain unchanged.
+The independent temporal review returned `TEMPORAL_DELTA_REVIEW=PASS`, with no
+temporal defects or repairs. It reviewed the grammar, calendar and offset
+bounds, fraction precision, bytewise ties, cursor aliasing and exclusivity,
+source capacity, snapshots, and Android/Python parity; it ran the targeted
+Meson and four Python temporal tests. The initial full-tranche engineering
+audit initially failed with stale temporal-defect documentation (BLOCKER),
+Android loader parity gaps (BLOCKER), omitted Meson generator inputs (BLOCKER),
+and a C role-only query mismatch (HIGH). One bounded repair chain resolved all
+four findings; independent repair verification returned
+`FINAL_REVIEW_REPAIR_VERIFICATION=PASS` and
+`TRAINING_KNOWLEDGE_V1_ENGINEERING_REVIEW=PASS`. Fresh final validation passed:
+strict build, 42 Meson tests, eight knowledge and four temporal Python tests,
+knowledge/JSON/import validators, three C17 headers, affected C knowledge and
+context tests under ASan/UBSan plus Python timestamp validation, normal and
+sanitized 12-form temporal probes, and Android 56 tests with zero failures or
+errors and one known missing-real-v9-fixture skip; Java 17 `assembleDebug` also
+passed. Generated C is byte-identical with SHA-256
+`e8c099f67eb111d61621b5d76592c049823af5508d43e73ec646f22e4c377fca`; all six
+Android assets are byte-identical. Preservation before and after repair confirms
+schema v11/v10, unchanged catalog/science/temporal bytes, and unchanged real
+database logical SHA-256 `26139cafeffbde3ec08f6ef23c5069e75afb9cd69ffffb40be5c099006fedc4d`,
+counts, integrity, and foreign keys. `TRAINING_KNOWLEDGE_V1=PASS`. The
+[temporal contract](reviews/training_knowledge_v1_temporal_contract.md)
+defines the settled reader behavior. No manual Android install, manual TUI
+visual validation or manual MTP validation is claimed for this tranche.
 
 ## Synchronization
 

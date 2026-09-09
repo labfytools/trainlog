@@ -42,9 +42,24 @@ BODY_ZONE_SYNC_V1=PASS
 BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=39/39 PASS
+DESKTOP_TESTS=42/42 PASS (recorded validation checkpoint)
 ANDROID_BUILD=PASS
+
+TRAINING_KNOWLEDGE_V1=PASS
 ```
+
+`TRAINING_KNOWLEDGE_V1` has passed its bounded scientific review, independent
+temporal delta review, final engineering audit, repair verification, and final
+executable validation. Its C and
+Android occurrence pages and latest-MAX context share the settled exact-instant
+ordering and source-text cursor contract. The independent temporal review
+returned PASS with no findings. The initial full-tranche audit's four findings
+were resolved by one bounded repair chain and independently verified. Fresh
+validation passed: strict build, 42 Meson tests, Python knowledge/temporal
+tests, validators, headers, sanitizers, 12-form temporal probes, Android 56
+tests with one known fixture skip, and Java 17 debug assembly.
+The [temporal correction record](docs/reviews/training_knowledge_v1_temporal_contract.md)
+defines the accepted grammar, regression evidence and remaining review boundary.
 
 ## Architecture
 
@@ -255,6 +270,8 @@ Exercise-zone metadata travels separately in the sole bidirectional
 - `docs/exchange_format.md`: frozen Trainlog JSON v1 contract;
 - `docs/tests.md`: validation strategy;
 - `docs/roadmap.md`: completed gates and future cursor;
+- `docs/domain/knowledge_system.md`: read-only scientific knowledge system,
+  runtime-context boundary and documented future planning pipeline;
 - `AGENTS.md`: development contract.
 
 ## Development principles

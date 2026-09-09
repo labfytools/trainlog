@@ -1,0 +1,11 @@
+{
+  "format": "trainlog",
+  "version": 1,
+  "exercises": [],
+  "session": {
+    "session_id": "temporal-extended-forms",
+    "started_at": "2026-09-05t18:34:12.12345678901234567890z",
+    "ended_at": "2026-09-06T18:34+23:59",
+    "exercises": []
+  }
+}

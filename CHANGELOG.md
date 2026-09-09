@@ -9,6 +9,19 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- `TRAINING_KNOWLEDGE_V1` read-only scientific knowledge infrastructure:
+  six authored, versioned JSON catalogs with cited references; deterministic C
+  generation; Android immutable asset loading; stable-ID catalog queries; and
+  desktop/Android composition of persisted exercise zones, compatible
+  equipment, explicit MAX and bounded occurrence/set history. The feature
+  introduces no schema migration, database seeding, synchronization artifact,
+  runtime prescription or generated UUID association. Scientific review,
+  independent temporal review, final engineering review, repair verification,
+  and final executable validation passed. The initial audit's four findings
+  were closed by one bounded repair chain. See
+  `docs/reviews/training_knowledge_v1_temporal_contract.md` and
+  `docs/domain/knowledge_system.md`.
+
 - `BODY_ZONES_V1`: the canonical `catalog/body-zones-v1.json` taxonomy with
   stable IDs, French display metadata, hierarchy, deterministic sort order and
   exact stable-exercise-ID migration evidence;

@@ -16,6 +16,10 @@ struct TrainlogTerminal {
     size_t event_index;
     char output[32768];
     size_t output_used;
+    int rows;
+    int columns;
+    bool coordinate_overflow;
+    bool text_overflow;
 };
 
 struct TrainlogPanel { int unused; };
@@ -29,12 +33,14 @@ static void script(TrainlogTerminal *terminal, const int *events, size_t count)
     (void)memset(terminal, 0, sizeof(*terminal));
     (void)memcpy(terminal->events, events, count * sizeof(events[0]));
     terminal->event_count = count;
+    terminal->rows = 24;
+    terminal->columns = 80;
 }
 
 TrainlogTerminal *trainlog_terminal_create(void) { return NULL; }
 void trainlog_terminal_destroy(TrainlogTerminal *terminal) { (void)terminal; }
-int trainlog_terminal_rows(const TrainlogTerminal *terminal) { (void)terminal; return 24; }
-int trainlog_terminal_columns(const TrainlogTerminal *terminal) { (void)terminal; return 80; }
+int trainlog_terminal_rows(const TrainlogTerminal *terminal) { return terminal->rows; }
+int trainlog_terminal_columns(const TrainlogTerminal *terminal) { return terminal->columns; }
 void trainlog_terminal_erase(TrainlogTerminal *terminal) { (void)terminal; }
 void trainlog_terminal_render(TrainlogTerminal *terminal) { (void)terminal; }
 void trainlog_terminal_style_on(TrainlogTerminal *terminal, TrainlogTextStyle style) { (void)terminal; (void)style; }
@@ -44,14 +50,28 @@ void trainlog_terminal_printf(TrainlogTerminal *terminal, int row, int column,
 {
     va_list arguments;
     int written;
-    (void)row;
-    (void)column;
+    if (row < 0 || row >= terminal->rows || column < 0 || column >= terminal->columns)
+        terminal->coordinate_overflow = true;
     if (terminal->output_used >= sizeof(terminal->output)) return;
     va_start(arguments, format);
     written = vsnprintf(terminal->output + terminal->output_used,
         sizeof(terminal->output) - terminal->output_used, format, arguments);
     va_end(arguments);
     if (written > 0 && (size_t)written < sizeof(terminal->output) - terminal->output_used) {
+        const char *text = terminal->output + terminal->output_used;
+        const char *at = text;
+        int cells = 0;
+        while (*at != '\0') {
+            utf8proc_int32_t codepoint;
+            utf8proc_ssize_t bytes = utf8proc_iterate((const utf8proc_uint8_t *)at,
+                -1, &codepoint);
+            int codepoint_cells;
+            if (bytes <= 0) { bytes = 1; codepoint = (unsigned char)*at; }
+            codepoint_cells = utf8proc_charwidth(codepoint);
+            cells += codepoint_cells < 0 ? 1 : codepoint_cells;
+            at += bytes;
+        }
+        if (column + cells >= terminal->columns) terminal->text_overflow = true;
         terminal->output_used += (size_t)written;
         terminal->output[terminal->output_used++] = '\n';
         terminal->output[terminal->output_used] = '\0';
@@ -240,12 +260,39 @@ static bool test_empty_sets_cannot_finish(void)
     return true;
 }
 
+static bool test_knowledge_scrolls_long_lists_at_minimum_terminal(void)
+{
+    TrainlogExercise exercise;
+    TrainlogTerminal terminal;
+    const int events[] = {
+        TRAINLOG_KEY_PAGE_DOWN, TRAINLOG_KEY_PAGE_DOWN, TRAINLOG_KEY_PAGE_DOWN,
+        TRAINLOG_KEY_PAGE_DOWN, 'b'
+    };
+
+    (void)memset(&exercise, 0, sizeof(exercise));
+    (void)snprintf(exercise.exercise_id, sizeof(exercise.exercise_id), "%s",
+        "ex_a72fa713-4b0e-431d-95e2-42d95beb77b1");
+    (void)snprintf(exercise.name, sizeof(exercise.name), "%s", "Lat pull");
+    script(&terminal, events, sizeof(events) / sizeof(events[0]));
+    terminal.rows = 20;
+    terminal.columns = 72;
+    tui_terminal = &terminal;
+    screen_exercise_knowledge(&exercise);
+    CHECK(!terminal.coordinate_overflow);
+    CHECK(!terminal.text_overflow);
+    CHECK(strstr(terminal.output, "Supra-épineux") != NULL);
+    CHECK(strstr(terminal.output, "Sources :") != NULL);
+    tui_terminal = NULL;
+    return true;
+}
+
 int main(void)
 {
     if (!test_assistance_creation_labels() ||
         !test_duration_creation_starts_empty() ||
         !test_append_requires_actual_and_rolls_back() ||
-        !test_empty_sets_cannot_finish()) return 1;
+        !test_empty_sets_cannot_finish() ||
+        !test_knowledge_scrolls_long_lists_at_minimum_terminal()) return 1;
     (void)printf("PASS tui_workflows\n");
     return 0;
 }

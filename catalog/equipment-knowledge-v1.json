@@ -1,0 +1,2220 @@
+{
+  "format": "trainlog-equipment-knowledge-v1",
+  "version": 1,
+  "equipment": [
+    {
+      "equipment_id": "abdominal",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Intended loaded crunch; actual spinal vs hip flexion and pad linkage need verification.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "capabilities": [
+        {
+          "display_name": "abdominal crunch",
+          "exercise_ids": [
+            "ex_9adf7566-f10c-443c-b63b-681d37665693"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "abdominal_crunch",
+            "action_ids": [
+              "trunk_flexion"
+            ],
+            "pattern_ids": [
+              "trunk_flexion"
+            ],
+            "primary_muscle_ids": [
+              "rectus_abdominis"
+            ],
+            "secondary_muscle_ids": [
+              "external_oblique",
+              "internal_oblique"
+            ],
+            "stabilizer_muscle_ids": [
+              "transversus_abdominis"
+            ],
+            "primary_zone_id": "core",
+            "secondary_zone_ids": [],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_abdominal_wall",
+              "openstax_trunk"
+            ],
+            "variant_notes": "Assumes resisted spinal flexion. If movement is predominantly hip flexion, iliopsoas contribution rises and classification needs review. Rectus regions are not independent upper/lower abdominal muscles.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "abdominal_bench",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "bench",
+      "catalog_load_semantics": "bodyweight",
+      "mechanics": "Support and body angle influence gravity moment; crunch and hip-flexing sit-up are distinct executions.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "capabilities": [
+        {
+          "display_name": "abdominal crunch",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "abdominal_crunch",
+            "action_ids": [
+              "trunk_flexion"
+            ],
+            "pattern_ids": [
+              "trunk_flexion"
+            ],
+            "primary_muscle_ids": [
+              "rectus_abdominis"
+            ],
+            "secondary_muscle_ids": [
+              "external_oblique",
+              "internal_oblique"
+            ],
+            "stabilizer_muscle_ids": [
+              "transversus_abdominis"
+            ],
+            "primary_zone_id": "core",
+            "secondary_zone_ids": [],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_abdominal_wall",
+              "openstax_trunk"
+            ],
+            "variant_notes": "Assumes resisted spinal flexion. If movement is predominantly hip flexion, iliopsoas contribution rises and classification needs review. Rectus regions are not independent upper/lower abdominal muscles.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "arm_curl",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Elbow flexion against a machine lever; grip, arm support and cam unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "arm curl",
+          "exercise_ids": [
+            "ex_ec619fc2-4685-4044-873c-86764bd4a0fe"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "arm_curl",
+            "action_ids": [
+              "elbow_flexion"
+            ],
+            "pattern_ids": [
+              "single_joint_elbow_flexion"
+            ],
+            "primary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis"
+            ],
+            "secondary_muscle_ids": [
+              "brachioradialis"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_extensors",
+              "forearm_flexors"
+            ],
+            "primary_zone_id": "arms",
+            "secondary_zone_ids": [],
+            "confidence": "high",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "openstax_upper"
+            ],
+            "variant_notes": "Grip/forearm orientation and shoulder support alter contributions. Curl label does not mean biceps exclusively.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "assisted_dip_chin_machine",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "assisted_bodyweight_machine",
+      "catalog_load_semantics": "assistance",
+      "mechanics": "Counterbalanced body support assists separate dip and chin/pull-up tasks. More assistance generally reduces net demand.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "lehman_2004",
+        "life_fitness_catalog_2024",
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "assisted dip",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "assisted_dip",
+            "action_ids": [
+              "elbow_extension",
+              "shoulder_flexion"
+            ],
+            "pattern_ids": [
+              "vertical_push"
+            ],
+            "primary_muscle_ids": [
+              "pectoralis_major",
+              "triceps_brachii"
+            ],
+            "secondary_muscle_ids": [
+              "deltoid_anterior"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_flexors",
+              "serratus_anterior"
+            ],
+            "primary_zone_id": "arms",
+            "secondary_zone_ids": [
+              "chest",
+              "shoulders"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_pectoralis",
+              "openstax_upper"
+            ],
+            "variant_notes": "Supported-body dip with humerus returning from extension; chest vs triceps emphasis varies with torso/handle geometry. Vertical push is a broad direction convention, not an overhead press equivalent. Single primary BODY ZONE remains a conditional UX choice.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        },
+        {
+          "display_name": "assisted chin pullup",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "assisted_chin_pullup",
+            "action_ids": [
+              "elbow_flexion",
+              "shoulder_adduction",
+              "shoulder_extension"
+            ],
+            "pattern_ids": [
+              "vertical_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_flexors",
+              "rectus_abdominis"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "lehman_2004",
+              "openstax_upper"
+            ],
+            "variant_notes": "Chin-up and pronated pull-up are grip variants requiring separate execution context. Assistance decreases demand; body mass, assistance mechanism and range matter.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "back_extension",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Resisted trunk extension; pelvic restraint determines spinal vs hip motion.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "lee_2015",
+        "openstax_back",
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "back extension",
+          "exercise_ids": [
+            "ex_474ec393-3efa-4aaa-8e08-1a0245ed7835"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "back_extension",
+            "action_ids": [
+              "trunk_extension"
+            ],
+            "pattern_ids": [
+              "trunk_extension"
+            ],
+            "primary_muscle_ids": [
+              "erector_spinae"
+            ],
+            "secondary_muscle_ids": [
+              "multifidus"
+            ],
+            "stabilizer_muscle_ids": [
+              "external_oblique",
+              "internal_oblique",
+              "rectus_abdominis"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "core"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "lee_2015",
+              "openstax_back",
+              "openstax_lower"
+            ],
+            "variant_notes": "Assumes pelvis restrained and actual spinal extension. If pelvis rotates with near-neutral spine, hip extensors may become major movers; observation needed before adding glutes/thighs or relabeling hip dominant.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "battle_ropes",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "functional_equipment",
+      "catalog_load_semantics": "bodyweight",
+      "mechanics": "Moving rope has mass/inertia and wave dynamics; catalog bodyweight is a legacy category, not a valid scalar load model.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": "Existing bodyweight category retained. Rope inertia is not quantified by bodyweight; review future explicit load vocabulary separately.",
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "converging_shoulder_press",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Overhead press with convergence suggested by label; plane and resistance curve unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_deltoid",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "machine shoulder press",
+          "exercise_ids": [
+            "ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "machine_shoulder_press",
+            "action_ids": [
+              "elbow_extension",
+              "scapular_upward_rotation",
+              "shoulder_abduction",
+              "shoulder_flexion"
+            ],
+            "pattern_ids": [
+              "vertical_push"
+            ],
+            "primary_muscle_ids": [
+              "deltoid_anterior",
+              "deltoid_middle"
+            ],
+            "secondary_muscle_ids": [
+              "serratus_anterior",
+              "trapezius_lower",
+              "trapezius_upper",
+              "triceps_brachii"
+            ],
+            "stabilizer_muscle_ids": [
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "shoulders",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_deltoid",
+              "openstax_upper"
+            ],
+            "variant_notes": "Press overhead; exact plane, convergence, back support and available scapular motion are unverified. Clavicular pectoral contribution possible but not a reason to assign chest as a universal secondary zone.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "diverging_lat_pulldown",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Overhead-to-torso pull; divergent path indicated by supplied label, not independently measured.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "lehman_2004",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "capabilities": [
+        {
+          "display_name": "lat pulldown",
+          "exercise_ids": [
+            "ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "lat_pulldown",
+            "action_ids": [
+              "elbow_flexion",
+              "scapular_downward_rotation",
+              "shoulder_adduction",
+              "shoulder_extension"
+            ],
+            "pattern_ids": [
+              "vertical_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_extensors",
+              "forearm_flexors",
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "lehman_2004",
+              "openstax_upper",
+              "vigotsky_2018"
+            ],
+            "variant_notes": "Arm plane and torso lean change relative adduction/extension; grip and divergent linkage do not prove regional isolation. Scapular control accompanies return from overhead.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "diverging_seated_row",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Horizontal pull on reportedly divergent handles; exact path unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "seated row",
+          "exercise_ids": [
+            "ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "seated_row",
+            "action_ids": [
+              "elbow_flexion",
+              "scapular_retraction",
+              "shoulder_extension",
+              "shoulder_horizontal_abduction"
+            ],
+            "pattern_ids": [
+              "horizontal_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi",
+              "rhomboids",
+              "trapezius_middle"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "deltoid_posterior",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "erector_spinae",
+              "forearm_extensors",
+              "forearm_flexors"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "franke_2015",
+              "lehman_2004",
+              "openstax_upper"
+            ],
+            "variant_notes": "Relative lat/scapular/posterior-deltoid roles depend on elbow path, height and torso support. Listed shoulder actions are alternatives/emphases across rows rather than fixed equal contributions.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "dual_adjustable_pulley",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cable_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Two adjustable cable lines; independent stack labels, routing and attachment setup matter.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions",
+        "precor_pulley_example"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "dumbbells",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "free_weight",
+      "catalog_load_semantics": "external",
+      "mechanics": "Free mass under gravity plus inertia; exercise and unilateral/bilateral accounting required.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "eq_0a462c1e-9fb6-4fd7-b0a2-53a0e86f33c6",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "custom_identity_only",
+      "catalog_type": "custom_unresolved",
+      "catalog_load_semantics": null,
+      "mechanics": "Only durable custom identity and display label established; no geometry confirmation.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "machine chest press",
+          "exercise_ids": [
+            "ex_8552dd77-fcd7-4f06-a1cc-d956eb1009af"
+          ],
+          "link_status": "linked_identity_conditional_interpretation",
+          "interpretation": {
+            "family_description": "machine_chest_press",
+            "action_ids": [
+              "elbow_extension",
+              "shoulder_horizontal_adduction"
+            ],
+            "pattern_ids": [
+              "horizontal_push"
+            ],
+            "primary_muscle_ids": [
+              "pectoralis_major"
+            ],
+            "secondary_muscle_ids": [
+              "deltoid_anterior",
+              "triceps_brachii"
+            ],
+            "stabilizer_muscle_ids": [
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "chest",
+            "secondary_zone_ids": [
+              "arms",
+              "shoulders"
+            ],
+            "confidence": "uncertain",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_deltoid",
+              "nih_pectoralis",
+              "openstax_upper"
+            ],
+            "variant_notes": "Assumes seated anterior press near chest height; incline, seat height, elbow path and converging linkage change shoulder flexion/regional contributions. No independent upper/lower chest isolation.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm movement; label is insufficient anatomical evidence."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "Do not merge with similarly named supplied equipment."
+      ],
+      "scientific_status": "equipment_identity_uncertain",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "eq_3f987a36-bbb4-4e29-9c9f-1f201f1596e0",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "custom_identity_only",
+      "catalog_type": "custom_unresolved",
+      "catalog_load_semantics": null,
+      "mechanics": "Only durable custom identity and display label established; no geometry confirmation.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_trunk"
+      ],
+      "capabilities": [
+        {
+          "display_name": "abdominal crunch",
+          "exercise_ids": [
+            "ex_4bd03d55-e644-436e-876e-07837824bde5"
+          ],
+          "link_status": "linked_identity_conditional_interpretation",
+          "interpretation": {
+            "family_description": "abdominal_crunch",
+            "action_ids": [
+              "trunk_flexion"
+            ],
+            "pattern_ids": [
+              "trunk_flexion"
+            ],
+            "primary_muscle_ids": [
+              "rectus_abdominis"
+            ],
+            "secondary_muscle_ids": [
+              "external_oblique",
+              "internal_oblique"
+            ],
+            "stabilizer_muscle_ids": [
+              "transversus_abdominis"
+            ],
+            "primary_zone_id": "core",
+            "secondary_zone_ids": [],
+            "confidence": "uncertain",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_abdominal_wall",
+              "openstax_trunk"
+            ],
+            "variant_notes": "Assumes resisted spinal flexion. If movement is predominantly hip flexion, iliopsoas contribution rises and classification needs review. Rectus regions are not independent upper/lower abdominal muscles.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm movement; label is insufficient anatomical evidence."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "Do not merge with similarly named supplied equipment."
+      ],
+      "scientific_status": "equipment_identity_uncertain",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "eq_c660cd61-5b17-498e-8d51-9eafcf7e2731",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "custom_identity_only",
+      "catalog_type": "custom_unresolved",
+      "catalog_load_semantics": null,
+      "mechanics": "Only durable custom identity and display label established; no geometry confirmation.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "machine chest press",
+          "exercise_ids": [
+            "ex_34a5c9c3-c032-4dfb-be32-8bf09832f72b"
+          ],
+          "link_status": "linked_identity_conditional_interpretation",
+          "interpretation": {
+            "family_description": "machine_chest_press",
+            "action_ids": [
+              "elbow_extension",
+              "shoulder_horizontal_adduction"
+            ],
+            "pattern_ids": [
+              "horizontal_push"
+            ],
+            "primary_muscle_ids": [
+              "pectoralis_major"
+            ],
+            "secondary_muscle_ids": [
+              "deltoid_anterior",
+              "triceps_brachii"
+            ],
+            "stabilizer_muscle_ids": [
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "chest",
+            "secondary_zone_ids": [
+              "arms",
+              "shoulders"
+            ],
+            "confidence": "uncertain",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_deltoid",
+              "nih_pectoralis",
+              "openstax_upper"
+            ],
+            "variant_notes": "Assumes seated anterior press near chest height; incline, seat height, elbow path and converging linkage change shoulder flexion/regional contributions. No independent upper/lower chest isolation.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm movement; label is insufficient anatomical evidence."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "Do not merge with similarly named supplied equipment."
+      ],
+      "scientific_status": "equipment_identity_uncertain",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "functional_trainer",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cable_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Adjustable cable line permits many exercises. Attachment, pulley height, direction, ratio and execution required.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions",
+        "precor_pulley_example"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "hip_abduction",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Pads resist thigh separation; hip-flexion and rotation settings unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "hip abduction",
+          "exercise_ids": [
+            "ex_7e7cf906-2214-4066-bcb7-c16382d83b3b"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "hip_abduction",
+            "action_ids": [
+              "hip_abduction"
+            ],
+            "pattern_ids": [
+              "single_joint_hip_abduction"
+            ],
+            "primary_muscle_ids": [
+              "gluteus_medius",
+              "gluteus_minimus"
+            ],
+            "secondary_muscle_ids": [
+              "gluteus_maximus",
+              "tensor_fasciae_latae"
+            ],
+            "stabilizer_muscle_ids": [],
+            "primary_zone_id": "glutes",
+            "secondary_zone_ids": [],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_gluteus_minimus",
+              "openstax_lower"
+            ],
+            "variant_notes": "Seated hip-flexion angle changes fiber lines of action; no definitive gluteal ranking. Superior gluteus-maximus fibers may assist dynamically depending on hip angle; this is a conditional secondary role.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "hip_adduction",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Pads resist thigh approximation; hip/knee angles unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "hip adduction",
+          "exercise_ids": [
+            "ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "hip_adduction",
+            "action_ids": [
+              "hip_adduction"
+            ],
+            "pattern_ids": [
+              "single_joint_hip_adduction"
+            ],
+            "primary_muscle_ids": [
+              "hip_adductors"
+            ],
+            "secondary_muscle_ids": [],
+            "stabilizer_muscle_ids": [],
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [],
+            "confidence": "high",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "openstax_lower"
+            ],
+            "variant_notes": "Close thighs against resistance; different adductors and gracilis span different joints; seat/knee position affects contribution.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "indoor_cycle",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cardio_machine",
+      "catalog_load_semantics": "cardio",
+      "mechanics": "Cycle ergometer with flywheel/resistance; standing and seated pedaling are distinct contexts.",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "kettlebells",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "free_weight",
+      "catalog_load_semantics": "external",
+      "mechanics": "Free mass with offset grip; ballistic vs slow movement changes inertial demands.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "lat_pull",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Supplied vertical-pull machine; attachment, pulley ratio and arm path unresolved.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "lehman_2004",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "capabilities": [
+        {
+          "display_name": "lat pulldown",
+          "exercise_ids": [
+            "ex_a72fa713-4b0e-431d-95e2-42d95beb77b1"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "lat_pulldown",
+            "action_ids": [
+              "elbow_flexion",
+              "scapular_downward_rotation",
+              "shoulder_adduction",
+              "shoulder_extension"
+            ],
+            "pattern_ids": [
+              "vertical_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_extensors",
+              "forearm_flexors",
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "lehman_2004",
+              "openstax_upper",
+              "vigotsky_2018"
+            ],
+            "variant_notes": "Arm plane and torso lean change relative adduction/extension; grip and divergent linkage do not prove regional isolation. Scapular control accompanies return from overhead.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "lat_pulldown",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Supplied vertical-pull machine; do not equate with other lat machines by name.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "lehman_2004",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "capabilities": [
+        {
+          "display_name": "lat pulldown",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "lat_pulldown",
+            "action_ids": [
+              "elbow_flexion",
+              "scapular_downward_rotation",
+              "shoulder_adduction",
+              "shoulder_extension"
+            ],
+            "pattern_ids": [
+              "vertical_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_extensors",
+              "forearm_flexors",
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "lehman_2004",
+              "openstax_upper",
+              "vigotsky_2018"
+            ],
+            "variant_notes": "Arm plane and torso lean change relative adduction/extension; grip and divergent linkage do not prove regional isolation. Scapular control accompanies return from overhead.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "leg_extension",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Distal lower-leg resistance creates knee-flexion external moment during extension effort; cam unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "leg extension",
+          "exercise_ids": [
+            "ex_1872246a-39ae-44dc-b58d-f87e90ca49ab"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "leg_extension",
+            "action_ids": [
+              "knee_extension"
+            ],
+            "pattern_ids": [
+              "single_joint_knee_extension"
+            ],
+            "primary_muscle_ids": [
+              "quadriceps"
+            ],
+            "secondary_muscle_ids": [],
+            "stabilizer_muscle_ids": [],
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [],
+            "confidence": "high",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "openstax_lower"
+            ],
+            "variant_notes": "Seated resisted knee extension; rectus femoris is biarticular while vasti cross only the knee. Roller/axis alignment and hip angle affect mechanics.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "leg_press",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Supported multi-joint hip/knee extension against a selectorized mechanism.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "martin_fuentes_2020",
+        "openstax_lower",
+        "vigotsky_2018"
+      ],
+      "capabilities": [
+        {
+          "display_name": "leg press",
+          "exercise_ids": [
+            "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "leg_press",
+            "action_ids": [
+              "hip_extension",
+              "knee_extension"
+            ],
+            "pattern_ids": [
+              "knee_dominant"
+            ],
+            "primary_muscle_ids": [
+              "quadriceps"
+            ],
+            "secondary_muscle_ids": [
+              "adductor_magnus",
+              "gluteus_maximus"
+            ],
+            "stabilizer_muscle_ids": [
+              "gastrocnemius",
+              "soleus"
+            ],
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [
+              "glutes"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "martin_fuentes_2020",
+              "openstax_lower",
+              "vigotsky_2018"
+            ],
+            "variant_notes": "Hip and knee extend together. Depth, seat/foot position and device geometry change joint moments. Hamstring coactivation does not make this a knee-flexor substitute. Selectorized and plate-loaded results stay separate contexts.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "low_row",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Lower handle start can change shoulder extension path; geometry unconfirmed.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "seated row",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "seated_row",
+            "action_ids": [
+              "elbow_flexion",
+              "scapular_retraction",
+              "shoulder_extension",
+              "shoulder_horizontal_abduction"
+            ],
+            "pattern_ids": [
+              "horizontal_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi",
+              "rhomboids",
+              "trapezius_middle"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "deltoid_posterior",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "erector_spinae",
+              "forearm_extensors",
+              "forearm_flexors"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "franke_2015",
+              "lehman_2004",
+              "openstax_upper"
+            ],
+            "variant_notes": "Relative lat/scapular/posterior-deltoid roles depend on elbow path, height and torso support. Listed shoulder actions are alternatives/emphases across rows rather than fixed equal contributions.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "medicine_ball",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "functional_equipment",
+      "catalog_load_semantics": "external",
+      "mechanics": "External mass used in holds, throws or other tasks; velocity and impact matter.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "perfect_squat",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "plate_loaded_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Guided squat capability suggested by identity; linkage, support and knee/hip torque distribution unconfirmed.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "plate_loaded_leg_press",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "plate_loaded_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Plate-loaded multi-joint hip/knee extension; sled angle, lever arms, tare and friction unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "martin_fuentes_2020",
+        "openstax_lower",
+        "vigotsky_2018"
+      ],
+      "capabilities": [
+        {
+          "display_name": "leg press",
+          "exercise_ids": [
+            "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "leg_press",
+            "action_ids": [
+              "hip_extension",
+              "knee_extension"
+            ],
+            "pattern_ids": [
+              "knee_dominant"
+            ],
+            "primary_muscle_ids": [
+              "quadriceps"
+            ],
+            "secondary_muscle_ids": [
+              "adductor_magnus",
+              "gluteus_maximus"
+            ],
+            "stabilizer_muscle_ids": [
+              "gastrocnemius",
+              "soleus"
+            ],
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [
+              "glutes"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "martin_fuentes_2020",
+              "openstax_lower",
+              "vigotsky_2018"
+            ],
+            "variant_notes": "Hip and knee extend together. Depth, seat/foot position and device geometry change joint moments. Hamstring coactivation does not make this a knee-flexor substitute. Selectorized and plate-loaded results stay separate contexts.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "prone_leg_curl",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Prone knee flexion; generally less hip flexion than seated configuration.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "prone leg curl",
+          "exercise_ids": [
+            "ex_d7398d9f-d928-4d2e-94e9-74e201da55c5"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "prone_leg_curl",
+            "action_ids": [
+              "knee_flexion"
+            ],
+            "pattern_ids": [
+              "single_joint_knee_flexion"
+            ],
+            "primary_muscle_ids": [
+              "hamstrings"
+            ],
+            "secondary_muscle_ids": [
+              "gastrocnemius"
+            ],
+            "stabilizer_muscle_ids": [],
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [],
+            "confidence": "high",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "maeo_2021",
+              "openstax_lower"
+            ],
+            "variant_notes": "Prone support generally uses less hip flexion than seated curl. Same knee-flexor family, distinct length/geometry context. Gastrocnemius assistance is position dependent.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "rear_delt_pec_fly",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_combo_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Reconfigurable opposing shoulder horizontal-abduction and horizontal-adduction tasks; two separate exercise capabilities.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "franke_2015",
+        "life_fitness_catalog_2024",
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "capabilities": [
+        {
+          "display_name": "rear delt fly",
+          "exercise_ids": [
+            "ex_4cd2433e-80b1-478a-b8df-73fc6ef80962"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "rear_delt_fly",
+            "action_ids": [
+              "scapular_retraction",
+              "shoulder_horizontal_abduction"
+            ],
+            "pattern_ids": [
+              "single_joint_shoulder_horizontal_abduction"
+            ],
+            "primary_muscle_ids": [
+              "deltoid_posterior"
+            ],
+            "secondary_muscle_ids": [
+              "rhomboids",
+              "trapezius_middle"
+            ],
+            "stabilizer_muscle_ids": [
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "shoulders",
+            "secondary_zone_ids": [
+              "back"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "franke_2015",
+              "nih_deltoid",
+              "openstax_upper",
+              "vigotsky_2018"
+            ],
+            "variant_notes": "Reverse-fly configuration on combined machine. Scapular movement and elbow height affect back contribution; external rotation is not guaranteed by reverse-fly name.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        },
+        {
+          "display_name": "pec fly",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "pec_fly",
+            "action_ids": [
+              "shoulder_horizontal_adduction"
+            ],
+            "pattern_ids": [
+              "single_joint_shoulder_horizontal_adduction"
+            ],
+            "primary_muscle_ids": [
+              "pectoralis_major"
+            ],
+            "secondary_muscle_ids": [
+              "deltoid_anterior"
+            ],
+            "stabilizer_muscle_ids": [
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "chest",
+            "secondary_zone_ids": [
+              "shoulders"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_deltoid",
+              "nih_pectoralis",
+              "openstax_upper"
+            ],
+            "variant_notes": "Forward fly configuration with near-fixed elbow; differs from pressing and from rear-delt configuration. Triceps may stabilize but is not a required dynamic synergist.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "recumbent_bike",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cardio_machine",
+      "catalog_load_semantics": "cardio",
+      "mechanics": "Supported reclined cycling; hip position and crank location differ from upright bike.",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "rotary_torso",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Resistance to relative thorax-pelvis rotation; which segment is fixed unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_abdominal_wall",
+        "openstax_back",
+        "openstax_trunk"
+      ],
+      "capabilities": [
+        {
+          "display_name": "rotary torso",
+          "exercise_ids": [
+            "ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0"
+          ],
+          "link_status": "catalog_compatible_not_observed_occurrence",
+          "interpretation": {
+            "family_description": "rotary_torso",
+            "action_ids": [
+              "trunk_rotation"
+            ],
+            "pattern_ids": [
+              "trunk_rotation"
+            ],
+            "primary_muscle_ids": [
+              "external_oblique",
+              "internal_oblique"
+            ],
+            "secondary_muscle_ids": [
+              "multifidus"
+            ],
+            "stabilizer_muscle_ids": [
+              "erector_spinae",
+              "transversus_abdominis"
+            ],
+            "primary_zone_id": "core",
+            "secondary_zone_ids": [],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_abdominal_wall",
+              "openstax_back",
+              "openstax_trunk"
+            ],
+            "variant_notes": "Thorax rotates relative to pelvis, or reverse with thorax restrained. Ipsilateral internal and contralateral external oblique pair for a direction. Do not claim isolated lumbar rotation or spot reduction.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "rowing_machine",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cardio_machine",
+      "catalog_load_semantics": "cardio",
+      "mechanics": "Cyclic leg drive plus trunk/arm sequence; drag setting is not external kilograms.",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "seated_dip",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Seated hand press-down against external resistance; shoulder excursion varies; not assisted bodyweight dip.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "seated dip",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "seated_dip",
+            "action_ids": [
+              "elbow_extension"
+            ],
+            "pattern_ids": [
+              "single_joint_elbow_extension"
+            ],
+            "primary_muscle_ids": [
+              "triceps_brachii"
+            ],
+            "secondary_muscle_ids": [
+              "deltoid_anterior",
+              "pectoralis_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "forearm_flexors"
+            ],
+            "primary_zone_id": "arms",
+            "secondary_zone_ids": [
+              "chest",
+              "shoulders"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_pectoralis",
+              "openstax_upper"
+            ],
+            "variant_notes": "Interpretation limited to the elbow-dominant component; pectoral/anterior-deltoid assistance is conditional on actual path. Machine seated pushdown/dip: shoulder excursion and mechanical linkage must be observed. Not equivalent to assisted bodyweight dip; some variants are multi-joint and require pattern review.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "seated_leg_curl",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Seated knee flexion; hip flexion changes biarticular hamstring length.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "seated leg curl",
+          "exercise_ids": [
+            "ex_617007f9-7420-4408-91b9-8ffb77900f13",
+            "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "seated_leg_curl",
+            "action_ids": [
+              "knee_flexion"
+            ],
+            "pattern_ids": [
+              "single_joint_knee_flexion"
+            ],
+            "primary_muscle_ids": [
+              "hamstrings"
+            ],
+            "secondary_muscle_ids": [
+              "gastrocnemius"
+            ],
+            "stabilizer_muscle_ids": [],
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [],
+            "confidence": "high",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "maeo_2021",
+              "openstax_lower"
+            ],
+            "variant_notes": "Hip flexion lengthens biarticular hamstrings at matched knee angle; biceps short head is not lengthened through hip flexion. Do not infer all variants share MAX or equivalent hypertrophy.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "seated_row",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "selectorized_machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Seated horizontal pull; handle, support and linkage unknown.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "seated row",
+          "exercise_ids": [
+            "ex_33f79331-871c-4eed-babe-346e53a99070"
+          ],
+          "link_status": "linked_existing",
+          "interpretation": {
+            "family_description": "seated_row",
+            "action_ids": [
+              "elbow_flexion",
+              "scapular_retraction",
+              "shoulder_extension",
+              "shoulder_horizontal_abduction"
+            ],
+            "pattern_ids": [
+              "horizontal_pull"
+            ],
+            "primary_muscle_ids": [
+              "latissimus_dorsi",
+              "rhomboids",
+              "trapezius_middle"
+            ],
+            "secondary_muscle_ids": [
+              "biceps_brachii",
+              "brachialis",
+              "brachioradialis",
+              "deltoid_posterior",
+              "teres_major"
+            ],
+            "stabilizer_muscle_ids": [
+              "erector_spinae",
+              "forearm_extensors",
+              "forearm_flexors"
+            ],
+            "primary_zone_id": "back",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "franke_2015",
+              "lehman_2004",
+              "openstax_upper"
+            ],
+            "variant_notes": "Relative lat/scapular/posterior-deltoid roles depend on elbow path, height and torso support. Listed shoulder actions are alternatives/emphases across rows rather than fixed equal contributions.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "stair_climber",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cardio_machine",
+      "catalog_load_semantics": "cardio",
+      "mechanics": "Repeated stepping against gravity/device; step geometry, speed and hand support matter.",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "suspension_trainer",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "functional_equipment",
+      "catalog_load_semantics": "bodyweight",
+      "mechanics": "Body angle, support points and strap line change fraction of bodyweight and joint moments.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "treadmill",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cardio_machine",
+      "catalog_load_semantics": "cardio",
+      "mechanics": "Moving belt supports walking/running; speed, grade and rail support change task.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_gluteus_minimus",
+        "openstax_lower"
+      ],
+      "capabilities": [
+        {
+          "display_name": "walking",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "walking",
+            "action_ids": [
+              "ankle_dorsiflexion",
+              "ankle_plantarflexion",
+              "hip_extension",
+              "hip_flexion",
+              "knee_extension",
+              "knee_flexion"
+            ],
+            "pattern_ids": [
+              "locomotion"
+            ],
+            "primary_muscle_ids": [
+              "gastrocnemius",
+              "gluteus_maximus",
+              "quadriceps",
+              "soleus"
+            ],
+            "secondary_muscle_ids": [
+              "hamstrings",
+              "iliopsoas",
+              "tibialis_anterior"
+            ],
+            "stabilizer_muscle_ids": [
+              "erector_spinae",
+              "gluteus_medius",
+              "gluteus_minimus"
+            ],
+            "primary_zone_id": "full_body",
+            "secondary_zone_ids": [],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_gluteus_minimus",
+              "openstax_lower"
+            ],
+            "variant_notes": "Multi-phase gait: role lists summarize different phases, not simultaneous prime movers. Speed, grade, handrail support and gait mechanics unresolved. Full-body is only an optional UX candidate, not mandatory due to cardio metadata.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "upright_bike",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "cardio_machine",
+      "catalog_load_semantics": "cardio",
+      "mechanics": "Cyclic pedaling with seated geometry; crank resistance, cadence and seat fit matter.",
+      "evidence_type": "practical_inference",
+      "confidence": "moderate",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "vertical_chest_press",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "machine",
+      "catalog_load_semantics": "external",
+      "mechanics": "Vertical can describe apparatus orientation; presumed forward chest-level press, not proof of overhead pressing.",
+      "evidence_type": "biomechanical_interpretation",
+      "confidence": "moderate",
+      "source_refs": [
+        "nih_deltoid",
+        "nih_pectoralis",
+        "openstax_upper"
+      ],
+      "capabilities": [
+        {
+          "display_name": "machine chest press",
+          "exercise_ids": [],
+          "link_status": "unlinked_capability",
+          "interpretation": {
+            "family_description": "machine_chest_press",
+            "action_ids": [
+              "elbow_extension",
+              "shoulder_horizontal_adduction"
+            ],
+            "pattern_ids": [
+              "horizontal_push"
+            ],
+            "primary_muscle_ids": [
+              "pectoralis_major"
+            ],
+            "secondary_muscle_ids": [
+              "deltoid_anterior",
+              "triceps_brachii"
+            ],
+            "stabilizer_muscle_ids": [
+              "infraspinatus",
+              "subscapularis",
+              "supraspinatus",
+              "teres_minor"
+            ],
+            "primary_zone_id": "chest",
+            "secondary_zone_ids": [
+              "arms",
+              "shoulders"
+            ],
+            "confidence": "moderate",
+            "evidence_type": "biomechanical_interpretation",
+            "source_refs": [
+              "nih_deltoid",
+              "nih_pectoralis",
+              "openstax_upper"
+            ],
+            "variant_notes": "Assumes seated anterior press near chest height; incline, seat height, elbow path and converging linkage change shoulder flexion/regional contributions. No independent upper/lower chest isolation.",
+            "role_notes": "Qualitative plausible roles under the specified execution; not percentage force, EMG rankings or equivalent effective sets. Group and child anatomy must not be double-counted."
+          },
+          "requirements": "Confirm actual exercise variant and equipment setup before treating as performed exercise; allocate no synthetic ex_ identity."
+        }
+      ],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "scientifically_documented",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    },
+    {
+      "equipment_id": "weighted_bag",
+      "manufacturer": null,
+      "model": null,
+      "identification_status": "manufacturer_model_unresolved",
+      "catalog_type": "free_weight",
+      "catalog_load_semantics": "external",
+      "mechanics": "External mass; grip and load distribution vary. Carry, squat and lift are different exercises.",
+      "evidence_type": "practical_inference",
+      "confidence": "uncertain",
+      "source_refs": [
+        "openstax_actions"
+      ],
+      "capabilities": [],
+      "requires_actual_exercise": true,
+      "limitations": [
+        "No measured local trajectory, torque curve, calibration or force equivalence.",
+        "Manufacturer sources, when present, are generic examples only."
+      ],
+      "audit_note": null,
+      "scientific_status": "mechanically_identified_anatomy_incomplete",
+      "scientific_status_scope": "Exercise-family anatomy and generic mechanics only; scientifically_documented never certifies a local manufacturer/model, resistance curve or actual execution. Flexible/mode-dependent equipment needs a specified exercise."
+    }
+  ]
+}

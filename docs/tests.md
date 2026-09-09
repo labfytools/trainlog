@@ -528,3 +528,48 @@ inspection/pull. Applying the validated state to both real stores and running
 the two transport directions remains an out-of-sandbox hardware validation.
 
 Detailed retained evidence: [Android draft execution record](reviews/android_session_draft_v1_resume.md).
+
+## 15. Training knowledge V1 validation checkpoint
+
+The current implementation passes the training-knowledge catalog
+validator, eight Python generation/catalog regressions, 42 desktop Meson tests,
+and standalone C17 public-header checks for `training_knowledge.h`,
+`training_context.h` and `database.h`. A targeted AddressSanitizer/Undefined-
+Behavior-Sanitizer build passed the two new desktop API tests. Android
+`testDebugUnitTest assembleDebug` passed with 56 tests, zero failures/errors,
+and one skipped real-v9 fixture test because `TRAINLOG_ANDROID_V9_FIXTURE` was
+not available. The TUI knowledge screen's UTF-8 cell-aware scrolling was tested
+at the 72x20 minimum terminal.
+
+The catalog validator, JSON validator and import-contract validator also pass.
+`git diff --check` passes. Scientific-review metadata and
+catalog hashes were verified separately.
+
+Temporal regressions now cover the original `+14:30`, `+15:00` and lowercase-`t`
+failure, lowercase `z`, omitted seconds, high/negative offsets, exact fractions,
+stable identity ties, cursor reuse, traversal through exhaustion and malformed
+stored values. C tests also cover selected/unselected values beyond its fixed
+output capacity. Four Python tests cover the explicit grammar and exact
+chronology, including actual document admission with missing, strict and
+permissive optional JSON Schema format checkers. An independent twelve-form
+production C probe passes normally and under ASan/UBSan.
+
+Fresh final validation passed: strict build; 42 Meson tests; eight Python
+knowledge tests; four Python temporal tests; knowledge, JSON, and import
+validators; three strict C17 headers; affected C knowledge/context tests under
+ASan/UBSan plus Python timestamp validation; normal and sanitized independent
+12-form temporal probes; Android 56 tests with zero failures/errors and one
+known missing real-v9 fixture skip; Java 17 debug assembly; skill validation;
+and `git diff --check`. Generated C is byte-identical with SHA-256
+`e8c099f67eb111d61621b5d76592c049823af5508d43e73ec646f22e4c377fca`; all six
+Android assets are byte-identical.
+
+`TRAINING_KNOWLEDGE_V1=PASS`. The independent temporal review passed with no
+findings; its coverage included parser grammar and limits, exact chronology,
+ties, cursor semantics, source capacity, snapshots, and Android/Python parity.
+The initial full audit's stale temporal documentation, Android loader, Meson
+dependency, and C role-only query findings were repaired and independently
+verified. See the [temporal contract](reviews/training_knowledge_v1_temporal_contract.md)
+for the established contract. No real Android install,
+manual TUI visual exercise, or manual MTP hardware validation was performed
+for Training Knowledge V1.
