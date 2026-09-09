@@ -84,7 +84,34 @@ def main():
         assert second.returncode == 0, second.stdout + second.stderr
         assert "sessions_skipped=1" in second.stdout
 
-        resumed = payload()
+        renamed = payload()
+        renamed["exercises"][1]["name"] = "Rear Delt"
+        renamed["sessions"][0]["exercises"][1]["name"] = "Rear Delt"
+        artifact.write_text(json.dumps(renamed), encoding="utf-8")
+        rename_result = run(IMPORTER, artifact, "--database", database)
+        assert rename_result.returncode == 0, rename_result.stdout + rename_result.stderr
+        assert "exercises_reconciled=1" in rename_result.stdout
+        assert "sessions_skipped=1" in rename_result.stdout
+        connection = sqlite3.connect(database)
+        assert connection.execute(
+            "SELECT exercise_id,name FROM exercises WHERE exercise_id='ex_rear'"
+        ).fetchone() == ("ex_rear", "Rear Delt")
+        assert connection.execute("SELECT count(*) FROM exercises").fetchone()[0] == 2
+        assert connection.execute("SELECT count(*) FROM sessions").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT se.entry_id,se.equipment_id,mr.max_weight_kg "
+            "FROM max_results mr JOIN session_exercises se "
+            "ON se.id=mr.session_exercise_row_id ORDER BY se.position"
+        ).fetchall() == [
+            ("sxe_pec", "rear_delt_pec_fly", 100.0),
+            ("sxe_rear", "rear_delt_pec_fly", 86.0),
+        ]
+        connection.close()
+        rename_replay = run(IMPORTER, artifact, "--database", database)
+        assert rename_replay.returncode == 0, rename_replay.stdout + rename_replay.stderr
+        assert "sessions_skipped=1" in rename_replay.stdout
+
+        resumed = copy.deepcopy(renamed)
         resumed["sessions"][0]["exercises"][0]["max_weight_kg"] = 101.5
         artifact.write_text(json.dumps(resumed), encoding="utf-8")
         update = run(IMPORTER, artifact, "--database", database)
@@ -100,6 +127,8 @@ def main():
         round_trip = json.loads(exported.read_text(encoding="utf-8"))
         values = round_trip["sessions"][0]["exercises"]
         assert [entry["max_weight_kg"] for entry in values] == [101.5, 86.0]
+        assert values[1]["exercise_id"] == "ex_rear"
+        assert values[1]["name"] == "Rear Delt"
         assert all("sets" not in entry and "continuous" not in entry for entry in values)
 
         invalid = copy.deepcopy(payload())

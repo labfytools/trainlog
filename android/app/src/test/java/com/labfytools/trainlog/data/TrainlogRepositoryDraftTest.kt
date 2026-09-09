@@ -1571,7 +1571,32 @@ class TrainlogRepositoryDraftTest {
         assertEquals(listOf("sxe_max_pec", "sxe_max_rear"), detail.exercises.map { it.entryId })
         assertEquals(listOf(101.5, 86.0), detail.exercises.map { it.maxWeightKg })
         assertTrue(detail.exercises.all { it.sets.isEmpty() })
-        assertEquals(2, reopened.listLatestExerciseMaxima().size)
+        val renamed = reopened.editExercise(
+            ExerciseEditInput(
+                rearDelt.exerciseId,
+                "Rear Delt",
+                rearDelt.recordingMode,
+                rearDelt.trackingMode,
+                rearDelt.dataFields,
+            ),
+        )
+        assertTrue(renamed is EditExerciseResult.Saved)
+        assertEquals(rearDelt.exerciseId, (renamed as EditExerciseResult.Saved).exercise.exerciseId)
+        assertEquals(2, reopened.listExercises().size)
+        val renamedDetail = reopened.getSessionDetail(sessionId)!!
+        assertEquals("Rear Delt", renamedDetail.exercises[1].exerciseName)
+        assertEquals("sxe_max_rear", renamedDetail.exercises[1].entryId)
+        assertEquals(86.0, renamedDetail.exercises[1].maxWeightKg!!, 0.0)
+        assertEquals("rear_delt_pec_fly", renamedDetail.exercises[1].equipmentId)
+        val latestMaxima = reopened.listLatestExerciseMaxima()
+        assertEquals(2, latestMaxima.size)
+        assertTrue(
+            latestMaxima.any {
+                it.exerciseId == rearDelt.exerciseId &&
+                    it.exerciseName == "Rear Delt" &&
+                    it.maxWeightKg == 86.0
+            },
+        )
         try {
             reopened.buildMobileExportJson()
             fail("Frozen V1 must refuse explicit max data")
@@ -1585,6 +1610,8 @@ class TrainlogRepositoryDraftTest {
             .getJSONArray("exercises")
         assertEquals(101.5, exported.getJSONObject(0).getDouble("max_weight_kg"), 0.0)
         assertEquals(86.0, exported.getJSONObject(1).getDouble("max_weight_kg"), 0.0)
+        assertEquals(rearDelt.exerciseId, exported.getJSONObject(1).getString("exercise_id"))
+        assertEquals("Rear Delt", exported.getJSONObject(1).getString("name"))
         assertFalse(exported.getJSONObject(0).has("sets"))
         assertFalse(exported.getJSONObject(1).has("sets"))
         val replay = reopened.applyPcMobileExportV2Json(exportedJson)
