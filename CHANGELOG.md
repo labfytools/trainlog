@@ -9,6 +9,13 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- `SESSION_GENERATOR_V1=PASS`: one frozen shared policy; deterministic bounded previews for
+  11 BODY ZONES and four goals; explicit incomplete coverage and recorded-dose
+  recency; observed exact-equipment 28-day load anchors without MAX-derived
+  numeric fallback; Android normal-draft and TUI normal-editor acceptance; an
+  additive Android v10 -> v11 plan migration; and separate strict V3 mobile
+  exchange preserving plans with actual occurrence data. V1/V2 remain readable.
+
 - `TRAINING_KNOWLEDGE_V1` read-only scientific knowledge infrastructure:
   six authored, versioned JSON catalogs with cited references; deterministic C
   generation; Android immutable asset loading; stable-ID catalog queries; and
@@ -146,9 +153,9 @@ Detailed implementation chronology remains available in Git history and
 
 - desktop SQLite schema v7 and Android SQLite schema v7 preserve historic rows
   while adding durable occurrence identities and occurrence-level equipment;
-- the active Android↔PC completed-session exchange is V2; frozen V1 artifacts
-  remain readable as historical formats and are not redefined for repeated
-  occurrences;
+- the then-active Android↔PC completed-session exchange was V2; frozen V1
+  artifacts remain readable as historical formats and are not redefined for
+  repeated occurrences; the current active artifact is separately versioned V3;
 - synchronization invokes each local helper with the explicit XDG-resolved
   desktop database path and records the concrete equipment-import failure;
 

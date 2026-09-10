@@ -8,6 +8,8 @@ import sys
 import unicodedata
 from pathlib import Path
 
+from validate_json import TrainlogSemanticError, parse_timestamp
+
 
 FORMAT = "trainlog-mobile-export"
 VERSION = 1
@@ -57,6 +59,7 @@ SESSION_EXERCISE_KEYS = {
 V2_SESSION_EXERCISE_KEYS = SESSION_EXERCISE_KEYS | {
     "entry_id", "position", "equipment_id", "max_weight_kg"
 }
+V3_SESSION_EXERCISE_KEYS = V2_SESSION_EXERCISE_KEYS | {"target"}
 
 BODY_BASE_KEYS = {
     "observation_id",
@@ -126,6 +129,16 @@ def require_nonempty_string(value, label):
             f"{label}: chaîne non vide attendue"
         )
 
+    return value
+
+
+def require_v3_timestamp(value, label):
+    """Require the exact shared Trainlog timestamp language for V3 only."""
+    require_nonempty_string(value, label)
+    try:
+        parse_timestamp(value, label)
+    except TrainlogSemanticError as error:
+        raise ImportFailure(f"{label}: date-heure Trainlog invalide") from error
     return value
 
 
@@ -207,12 +220,19 @@ def normalize_name(value):
 
 
 def load_payload(path):
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ImportFailure(f"champ JSON dupliqué: {key}")
+            result[key] = value
+        return result
     try:
         with path.open(
             "r",
             encoding="utf-8",
         ) as handle:
-            payload = json.load(handle)
+            payload = json.load(handle, object_pairs_hook=reject_duplicate_keys)
     except (OSError, json.JSONDecodeError) as error:
         raise ImportFailure(
             f"lecture JSON impossible: {error}"
@@ -230,15 +250,17 @@ def load_payload(path):
             "format mobile export invalide"
         )
 
-    if payload["version"] not in (1, 2):
+    if payload["version"] not in (1, 2, 3):
         raise ImportFailure(
             "version mobile export non supportée"
         )
 
-    require_nonempty_string(
-        payload["generated_at"],
-        "generated_at",
-    )
+    # CONTRACT: V1/V2 retain their published nonempty-string admission. V3 is
+    # the current analysis-bearing artifact and uses the exact Trainlog parser.
+    if payload["version"] == 3:
+        require_v3_timestamp(payload["generated_at"], "generated_at")
+    else:
+        require_nonempty_string(payload["generated_at"], "generated_at")
 
     for key in (
         "exercises",
@@ -425,12 +447,15 @@ def validate_session_exercise(
     label,
     known_exercise_ids,
     session_type,
+    version,
 ):
-    is_v2 = "entry_id" in item or "position" in item or "equipment_id" in item
+    is_v2 = version >= 2
+    keys = V3_SESSION_EXERCISE_KEYS if version == 3 else (
+        V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS)
     require_exact_keys(
         item,
-        V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS,
-        (V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS)
+        keys,
+        keys
         - {"sets", "continuous", "max_weight_kg"},
         label,
     )
@@ -479,15 +504,30 @@ def validate_session_exercise(
             f"{label}: snapshot incompatible avec le profil catalogue"
         )
 
-    if item["load_mode"] != "none":
-        raise ImportFailure(
-            f"{label}: mobile export v1 exige load_mode=none"
-        )
-
-    if item["rest_seconds"] != 0:
-        raise ImportFailure(
-            f"{label}: mobile export v1 exige rest_seconds=0"
-        )
+    if version < 3:
+        if item["load_mode"] != "none" or item["rest_seconds"] != 0:
+            raise ImportFailure(f"{label}: mobile export V1/V2 exige none/0")
+    else:
+        if item["load_mode"] not in ("none", "external", "assistance"):
+            raise ImportFailure(f"{label}.load_mode invalide")
+        require_int(item["rest_seconds"], 0, 86400, f"{label}.rest_seconds")
+        target = item["target"]
+        if target is None:
+            if item["load_mode"] != "none" or item["rest_seconds"] != 0:
+                raise ImportFailure(f"{label}: target null exige none/0")
+        else:
+            if item["recording_mode"] != "sets" or "max_weight_kg" in item:
+                raise ImportFailure(f"{label}: cible interdite pour continuous/MAX")
+            metric = "reps" if item["tracking_mode"] == "reps" else "duration_seconds"
+            require_exact_keys(target, {"sets", metric, "weight_kg"}, {"sets", metric}, f"{label}.target")
+            require_int(target["sets"], 1, 64, f"{label}.target.sets")
+            require_int(target[metric], 1, 10000 if metric == "reps" else 86400, f"{label}.target.{metric}")
+            if "weight_kg" in target:
+                require_positive_number(target["weight_kg"], f"{label}.target.weight_kg")
+                if item["load_mode"] not in ("external", "assistance"):
+                    raise ImportFailure(f"{label}: cible pondérée exige external/assistance")
+            elif item["load_mode"] != "none":
+                raise ImportFailure(f"{label}: cible sans poids exige none")
 
     if "max_weight_kg" in item:
         if not is_v2 or session_type != "max_test":
@@ -632,10 +672,12 @@ def validate_sessions(
 
         seen_ids.add(session_id)
 
-        require_nonempty_string(
-            session["started_at"],
-            f"{label}.started_at",
-        )
+        if payload["version"] == 3:
+            # INVARIANT: accepted V3 history must remain readable by temporal
+            # analysis; validation completes before run_import mutates SQLite.
+            require_v3_timestamp(session["started_at"], f"{label}.started_at")
+        else:
+            require_nonempty_string(session["started_at"], f"{label}.started_at")
 
         if session["session_type"] not in (
             "training",
@@ -670,6 +712,7 @@ def validate_sessions(
                 exercise_label,
                 known_exercise_ids,
                 session["session_type"],
+                payload["version"],
             )
 
             equipment_id = exercise.get("equipment_id")
@@ -677,7 +720,7 @@ def validate_sessions(
             # or custom definition is already known. Validate before run_import
             # opens a transaction so an unknown ID cannot create partial history.
             if (
-                payload["version"] == 2
+                payload["version"] >= 2
                 and equipment_id is not None
                 and equipment_id not in known_equipment_ids
             ):
@@ -733,10 +776,10 @@ def validate_body(payload):
 
         seen_ids.add(observation_id)
 
-        require_nonempty_string(
-            observation["observed_at"],
-            f"{label}.observed_at",
-        )
+        if payload["version"] == 3:
+            require_v3_timestamp(observation["observed_at"], f"{label}.observed_at")
+        else:
+            require_nonempty_string(observation["observed_at"], f"{label}.observed_at")
 
         present_metrics = (
             set(observation.keys())
@@ -1185,6 +1228,18 @@ def session_exists(
     )
 
 
+def occurrence_plan_values(item):
+    """Map validated V3 target metadata without deriving it from actual rows."""
+    target = item.get("target")
+    if target is None:
+        return ("none", 0, None, None, None, None)
+    return (
+        item["load_mode"], item["rest_seconds"], target["sets"],
+        target.get("reps"), target.get("duration_seconds"),
+        target.get("weight_kg"),
+    )
+
+
 def import_set_session_exercise(
     connection,
     session_row_id,
@@ -1204,6 +1259,7 @@ def import_set_session_exercise(
     equipment_columns = ", equipment_id" if schema_version >= 6 else ""
     equipment_values = ", ?" if schema_version >= 6 else ""
     arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row, item["data_fields"], position]
+    arguments.extend(occurrence_plan_values(item))
     if schema_version >= 6:
         arguments.append(item.get("equipment_id"))
     cursor = connection.execute(
@@ -1221,8 +1277,8 @@ def import_set_session_exercise(
             target_duration_seconds,
             target_weight_kg, notes""" + equipment_columns + """
         ) VALUES(
-            """ + values + """?, ?, 'sets', ?, ?, 'none', 0,
-            NULL, NULL, NULL, NULL, NULL""" + equipment_values + """
+            """ + values + """?, ?, 'sets', ?, ?, ?, ?,
+            ?, ?, ?, ?, NULL""" + equipment_values + """
         );
         """,
         arguments,
@@ -1276,6 +1332,7 @@ def import_continuous_session_exercise(
     equipment_columns = ", equipment_id" if schema_version >= 6 else ""
     equipment_values = ", ?" if schema_version >= 6 else ""
     arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row, item["data_fields"], position]
+    arguments.extend(occurrence_plan_values(item))
     if schema_version >= 6:
         arguments.append(item.get("equipment_id"))
     cursor = connection.execute(
@@ -1293,8 +1350,8 @@ def import_continuous_session_exercise(
             target_duration_seconds,
             target_weight_kg, notes""" + equipment_columns + """
         ) VALUES(
-            """ + values + """?, ?, 'continuous', ?, ?, 'none', 0,
-            NULL, NULL, NULL, NULL, NULL""" + equipment_values + """
+            """ + values + """?, ?, 'continuous', ?, ?, ?, ?,
+            ?, ?, ?, ?, NULL""" + equipment_values + """
         );
         """,
         arguments,
@@ -1340,8 +1397,7 @@ def import_max_session_exercise(
             data_fields, position, load_mode, rest_seconds,
             target_sets, target_reps, target_duration_seconds,
             target_weight_kg, notes, equipment_id
-        ) VALUES(?, ?, ?, ?, ?, ?, 'none', 0,
-                 NULL, NULL, NULL, NULL, NULL, ?);
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?);
         """,
         (
             item["entry_id"],
@@ -1350,6 +1406,7 @@ def import_max_session_exercise(
             item["recording_mode"],
             item["data_fields"],
             position,
+            *occurrence_plan_values(item),
             item.get("equipment_id"),
         ),
     )
@@ -1536,17 +1593,29 @@ def session_semantically_matches(
         return False
     rows = connection.execute(
         "SELECT se.id,se.entry_id,se.position,e.exercise_id,se.recording_mode,e.tracking_mode,"
-        "se.data_fields,se.equipment_id FROM session_exercises se JOIN exercises e "
+        "se.data_fields,se.equipment_id,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,"
+        "se.target_duration_seconds,se.target_weight_kg FROM session_exercises se JOIN exercises e "
         "ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position", (session_row_id,)).fetchall()
     items = sorted(incoming["exercises"], key=lambda item: item["position"])
     if len(rows) != len(items):
         return False
     for row, item in zip(rows, items):
+        if "target" not in item and tuple(row[8:14]) != ("none", 0, None, None, None, None):
+            # CONTRACT: legacy actual-only exchange has no authority to erase
+            # or silently ignore locally persisted planning metadata.
+            return False
         canonical_exercise_id = exercise_mapping.get(item["exercise_id"])
         if tuple(row[1:8]) != (item["entry_id"], item["position"], canonical_exercise_id,
                                item["recording_mode"], item["tracking_mode"],
                                item["data_fields"], item.get("equipment_id")):
             return False
+        # V3 equality includes the complete plan beside stable identity and
+        # actual rows; any target delta is an explicit content conflict.
+        if "target" in item:
+            target = item["target"]
+            expected_plan = occurrence_plan_values(item)
+            if tuple(row[8:14]) != expected_plan:
+                return False
         if "max_weight_kg" in item:
             current = connection.execute(
                 "SELECT max_weight_kg FROM max_results "

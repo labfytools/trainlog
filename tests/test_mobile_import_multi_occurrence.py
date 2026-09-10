@@ -201,7 +201,8 @@ def main():
             (EQUIPMENT_EXPORTER, equipment_output, "EQUIPMENT_ASSOCIATIONS_EXPORT=PASS"),
         ):
             result = subprocess.run(
-                [sys.executable, str(tool), str(output), "--database", str(db)],
+                [sys.executable, str(tool), str(output), "--database", str(db)] +
+                (["--version", "2"] if tool == MOBILE_EXPORTER else []),
                 text=True,
                 capture_output=True,
             )
@@ -221,7 +222,7 @@ def main():
         con.close()
         custom_output = root / "custom-mobile-v2.json"
         exported = subprocess.run(
-            [sys.executable, str(MOBILE_EXPORTER), str(custom_output), "--database", str(db)],
+            [sys.executable, str(MOBILE_EXPORTER), str(custom_output), "--database", str(db), "--version", "2"],
             text=True,
             capture_output=True,
         )

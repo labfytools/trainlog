@@ -14,6 +14,10 @@ This document defines the frozen Trainlog v1 exchange contract. Gate 1
 validation and review are complete; incompatible new semantics require a new,
 separately versioned format.
 
+The active completed-session synchronization artifact is separately versioned
+`trainlog-mobile-export` V3 and is documented in [Synchronization
+exchange](sync_exchange.md). It does not redefine this frozen V1 schema.
+
 ## 2. Design goal
 
 Trainlog v1 must represent the training patterns required by the initial applications without turning the Android recorder into a complex training platform.

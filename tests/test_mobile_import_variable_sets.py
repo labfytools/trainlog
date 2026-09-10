@@ -238,7 +238,7 @@ def run_import(
 def run_export(output_path: Path, database_path: Path) -> None:
     result = subprocess.run(
         [sys.executable, str(EXPORTER), str(output_path),
-         "--database", str(database_path)],
+         "--database", str(database_path), "--version", "2"],
         check=False,
         capture_output=True,
         text=True,

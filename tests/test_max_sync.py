@@ -122,7 +122,7 @@ def main():
             "ON se.id=mr.session_exercise_row_id WHERE se.entry_id='sxe_pec'"
         ).fetchone() == (101.5,)
 
-        result = run(EXPORTER, exported, "--database", database)
+        result = run(EXPORTER, exported, "--database", database, "--version", "2")
         assert result.returncode == 0, result.stdout + result.stderr
         round_trip = json.loads(exported.read_text(encoding="utf-8"))
         values = round_trip["sessions"][0]["exercises"]

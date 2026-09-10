@@ -107,8 +107,9 @@ general name rule.
 The read surface supports zone lookup, children, ancestors, direct relations,
 primary/secondary selection and exercises for a zone with optional descendants
 or primary-only participation. Those exercise IDs compose with existing
-performance/MAX history readers, so a future session generator needs no new
-duplicated MAX or history storage. No generator or load proposal exists yet.
+performance/MAX history readers, so the separate session generator needs no new
+duplicated MAX or history storage. The generator's proposals remain optional
+planning metadata and do not alter historical actual work.
 
 ## 4. Load semantics
 
@@ -159,6 +160,13 @@ or progression calculations.
 Desktop-created set sessions may carry explicit planned targets.
 
 Android mobile snapshots can represent actual-only heterogeneous work.
+
+The implemented session generator adds optional target sets/repetitions or
+duration, rest and an optional strictly positive target load to ordinary
+Android occurrences. These are planning metadata, never actual sets. A target
+with no weight uses plan mode `none`; a target with weight records external or
+assistance mode. A targetless occurrence has mode `none` and zero rest.
+Continuous and explicit-MAX occurrences remain targetless.
 
 Desktop schema v5 therefore allows an imported set session to have no synthetic
 uniform target:

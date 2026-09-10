@@ -18,19 +18,19 @@ int main(void)
     CHECK(plan.receive_android && plan.publish_android);
 
     (void)snprintf(entries[0].name, sizeof(entries[0].name), "%s",
-                   "trainlog-mobile-export-v2.json");
+                   "trainlog-mobile-export-v3.json");
     entries[0].item_id = 20U;
     entries[0].modification_unix_seconds = 100U;
     (void)snprintf(entries[1].name, sizeof(entries[1].name), "%s",
-                   "trainlog-mobile-export-v2 (25).json");
+                   "trainlog-mobile-export-v3 (25).json");
     entries[1].item_id = 30U;
     entries[1].modification_unix_seconds = 200U;
     (void)snprintf(entries[2].name, sizeof(entries[2].name), "%s",
-                   "trainlog-mobile-export-v2 (26).json");
+                   "trainlog-mobile-export-v3 (26).json");
     entries[2].item_id = 10U;
     entries[2].modification_unix_seconds = 200U;
     (void)snprintf(entries[3].name, sizeof(entries[3].name), "%s",
-                   "trainlog-mobile-export-v2 (oops).json");
+                   "trainlog-mobile-export-v3 (oops).json");
     entries[3].item_id = 1U;
     entries[3].modification_unix_seconds = 999U;
     (void)snprintf(entries[4].name, sizeof(entries[4].name), "%s",

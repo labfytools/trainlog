@@ -169,7 +169,7 @@ exercise_body_zone_sync
 
 ### Android
 
-Android has an independent local SQLite schema, currently v10. Completed and
+Android has an independent local SQLite schema, currently v11. Completed and
 draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
 resuming a completed Test max records its stable source session in the one
 durable draft.
@@ -212,6 +212,27 @@ screen navigation and data ownership remain independent from the header.
 
 ## 5. Compatibility boundaries
 
+### Session generator V1
+
+`SESSION_GENERATOR_V1=PASS`. `catalog/session-generation-policy-v1.json` is its sole authored
+policy source; generated C data and Android asset loading consume that same
+policy. The generator composes read-only runtime/knowledge context, complete
+history, deterministic selection and explicit uncertainty into an in-memory
+proposal. Preview writes nothing. Android acceptance creates the normal
+singleton draft atomically; TUI acceptance enters the normal editor. There is
+no generated-session persistence silo.
+
+Exposure counts actual positive-repetition completed SETS+REPS rows only.
+The exclusive thresholds are primary/secondary 1/3 at 24 hours and 6/12 at 72
+hours; primary produces `warning`, secondary-only produces `notice`, and `none`
+is available only after successful analysis. Invalid stored time fails analysis;
+these signals do not estimate recovery. Selection is bounded to six exercises,
+uses requested-zone/group coverage, diversity, compatible equipment, exclusions,
+preferences, recency and deterministic ID ties, and returns shortages rather
+than invented candidates. Numeric weight is only an unchanged minimum observed
+qualifying actual external-load dose for the exact exercise/equipment within
+28 days; MAX, assistance and unknown context do not prescribe a number.
+
 ### Frozen Trainlog JSON v1
 
 `TRAINLOG_FORMAT_V1` is frozen and remains a compatibility boundary for its
@@ -224,6 +245,7 @@ Synchronization uses separate formats:
 ```text
 trainlog-mobile-export v1
 trainlog-mobile-export v2
+trainlog-mobile-export v3
 trainlog-pc-catalog v1
 trainlog-equipment-associations v2
 trainlog-equipment-definitions v1
@@ -235,8 +257,8 @@ trainlog-sync-receipt v1
 A new domain requirement must not be forced into frozen v1 by using notes,
 synthetic sets, or data loss.
 
-The active occurrence-aware session exchange remains
-`trainlog-mobile-export` v2. The separate directional
+The active occurrence-aware session exchange is
+`trainlog-mobile-export` v3. V2 remains a readable historical artifact. The separate directional
 `trainlog-equipment-definitions` v1 artifacts carry user-created equipment
 definitions: `trainlog-mobile-equipment-definitions-v1.json` travels from
 Android to PC and `trainlog-pc-equipment-definitions-v1.json` travels from PC
@@ -307,9 +329,9 @@ b = Android -> PC, then PC -> Android
 ```
 
 The Android-to-PC direction receives the mobile equipment-definitions v1
-artifact, mobile-export v2, and equipment-associations v2. The PC-to-Android
+artifact, mobile-export v3, and equipment-associations v2. The PC-to-Android
 direction publishes PC equipment-definitions v1 before dependent artifacts,
-then publishes the PC catalog v1, PC mobile-export v2 (including completed
+then publishes the PC catalog v1, PC mobile-export v3 (including completed
 sessions and body observations), and equipment-associations v2.
 Both directions also transfer the same body-zone companion after exercise
 definitions are established and before completion of the direction.

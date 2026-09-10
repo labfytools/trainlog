@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Publish desktop sessions through the occurrence-aware mobile export V2."""
+"""Publish desktop sessions through current planning-aware mobile export V3."""
 import argparse
 import json
 import os
 import sqlite3
+import math
 from datetime import datetime
 from pathlib import Path
+
+from validate_json import TrainlogSemanticError, parse_timestamp
 
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalog" / "equipment-v1.json"
@@ -22,34 +25,74 @@ def supplied_equipment_ids():
     return {item["id"] for item in catalog["equipment"]}
 
 
+def validate_plan(entry):
+    target_sets = entry["target_sets"]
+    if target_sets is None:
+        if entry["load_mode"] != "none" or entry["rest_seconds"] != 0 or any(
+            entry[name] is not None for name in (
+                "target_reps", "target_duration_seconds", "target_weight_kg")):
+            raise ValueError("plan cible SQLite incohérent")
+        return
+    if not 1 <= target_sets <= 64 or not 0 <= entry["rest_seconds"] <= 86400:
+        raise ValueError("plan cible SQLite hors bornes")
+    reps = entry["target_reps"]
+    duration = entry["target_duration_seconds"]
+    if entry["tracking_mode"] == "reps":
+        if reps is None or not 1 <= reps <= 10000 or duration is not None:
+            raise ValueError("cible répétitions SQLite incohérente")
+    elif duration is None or not 1 <= duration <= 86400 or reps is not None:
+        raise ValueError("cible durée SQLite incohérente")
+    weight = entry["target_weight_kg"]
+    if weight is None:
+        if entry["load_mode"] != "none":
+            raise ValueError("cible sans poids exige load_mode=none")
+    elif not math.isfinite(weight) or weight <= 0 or entry["load_mode"] not in ("external", "assistance"):
+        raise ValueError("cible pondérée SQLite incohérente")
+
+
+def validate_v3_timestamp(value, label):
+    try:
+        parse_timestamp(value, label)
+    except TrainlogSemanticError as error:
+        raise ValueError(f"{label}: date-heure Trainlog persistée invalide") from error
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     parser.add_argument("--database", type=Path, default=default_database())
+    parser.add_argument("--version", type=int, choices=(2, 3), default=3)
     args = parser.parse_args()
     con = sqlite3.connect(args.database)
     con.row_factory = sqlite3.Row
     try:
-        # The V2 shape itself does not read body-zone tables. Accept the true
-        # immediately-previous v10 fixture while production v11 publishes the
-        # separate body-zone companion.
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (10, 11):
-            raise ValueError("schema desktop v10 ou v11 requis")
+        schema_version = con.execute("PRAGMA user_version").fetchone()[0]
+        if schema_version != 11 and not (args.version == 2 and schema_version == 10):
+            raise ValueError("schema desktop v11 requis (v10 accepté pour export V2 explicite)")
         known_equipment = supplied_equipment_ids()
         known_equipment.update(row[0] for row in con.execute(
             "SELECT equipment_id FROM custom_equipment"))
-        root = {"format": "trainlog-mobile-export", "version": 2,
+        root = {"format": "trainlog-mobile-export", "version": args.version,
                 "generated_at": datetime.now().astimezone().isoformat(),
                 "exercises": [], "sessions": [], "body_observations": []}
         for row in con.execute("SELECT exercise_id,name,recording_mode,tracking_mode,data_fields FROM exercises ORDER BY exercise_id"):
             root["exercises"].append(dict(row))
         for session in con.execute("SELECT id,session_id,started_at,session_type FROM sessions ORDER BY started_at,id"):
+            # CONTRACT: a V3 producer must not publish history which the exact
+            # temporal readers reject. V2 export retains its published behavior.
+            if args.version == 3:
+                validate_v3_timestamp(session["started_at"],
+                                      f"session_id={session['session_id']} started_at")
             payload = {key: session[key] for key in ("session_id", "started_at", "session_type")}
             payload["exercises"] = []
             # INVARIANT: tracking mode is catalogue metadata. v7 occurrences
             # retain their stable entry_id but do not duplicate that field.
-            sql = "SELECT se.id,se.entry_id,se.position,se.recording_mode,e.tracking_mode,se.data_fields,se.equipment_id,e.exercise_id,e.name,mr.max_weight_kg FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id WHERE se.session_row_id=? ORDER BY se.position"
+            sql = "SELECT se.id,se.entry_id,se.position,se.recording_mode,e.tracking_mode,se.data_fields,se.equipment_id,e.exercise_id,e.name,mr.max_weight_kg,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id WHERE se.session_row_id=? ORDER BY se.position"
             for entry in con.execute(sql, (session["id"],)):
+                validate_plan(entry)
+                if entry["recording_mode"] == "continuous" or entry["max_weight_kg"] is not None:
+                    if entry["target_sets"] is not None:
+                        raise ValueError("continuous/MAX ne peut pas porter de cible")
                 # CONTRACT: references remain in mobile-export v2 unchanged;
                 # definitions-v1 travels first and makes custom IDs resolvable.
                 if entry["equipment_id"] is not None and entry["equipment_id"] not in known_equipment:
@@ -58,11 +101,32 @@ def main():
                         f"session_id={session['session_id']} "
                         f"entry_id={entry['entry_id']}: {entry['equipment_id']}"
                     )
+                has_target = entry["target_sets"] is not None
+                if args.version == 2 and has_target:
+                    raise ValueError(
+                        "export V2 avec plan interdit "
+                        f"session_id={session['session_id']} entry_id={entry['entry_id']}"
+                    )
                 item = {"entry_id": entry["entry_id"], "position": entry["position"],
                         "exercise_id": entry["exercise_id"], "name": entry["name"],
                         "recording_mode": entry["recording_mode"], "tracking_mode": entry["tracking_mode"],
-                        "data_fields": entry["data_fields"], "load_mode": "none", "rest_seconds": 0,
+                        "data_fields": entry["data_fields"],
+                        "load_mode": entry["load_mode"] if args.version == 3 else "none",
+                        "rest_seconds": entry["rest_seconds"] if args.version == 3 else 0,
                         "equipment_id": entry["equipment_id"]}
+                if args.version == 3:
+                    if not has_target:
+                        if entry["load_mode"] != "none" or entry["rest_seconds"] != 0 or any(
+                            entry[name] is not None for name in (
+                                "target_reps", "target_duration_seconds", "target_weight_kg")):
+                            raise ValueError("plan cible SQLite incohérent")
+                        item["target"] = None
+                    else:
+                        target = {"sets": entry["target_sets"]}
+                        if entry["target_reps"] is not None: target["reps"] = entry["target_reps"]
+                        if entry["target_duration_seconds"] is not None: target["duration_seconds"] = entry["target_duration_seconds"]
+                        if entry["target_weight_kg"] is not None: target["weight_kg"] = entry["target_weight_kg"]
+                        item["target"] = target
                 if entry["max_weight_kg"] is not None:
                     # CONTRACT: explicit max is an occurrence result, never a
                     # synthetic one-repetition performed set.
@@ -86,6 +150,11 @@ def main():
                         "right_thigh_cm", "left_calf_cm", "right_calf_cm")
         columns = ",".join(("observation_id", "observed_at") + metric_names)
         for row in con.execute(f"SELECT {columns} FROM body_observations ORDER BY observed_at,id"):
+            if args.version == 3:
+                # INVARIANT: validate every stored instant before touching the
+                # destination artifact, so corruption cannot clobber a prior file.
+                validate_v3_timestamp(row["observed_at"],
+                                      f"observation_id={row['observation_id']} observed_at")
             item = {"observation_id": row["observation_id"], "observed_at": row["observed_at"]}
             item.update({name: row[name] for name in metric_names if row[name] is not None})
             root["body_observations"].append(item)

@@ -1,0 +1,1672 @@
+{
+  "format": "trainlog-session-generation-fixtures-v1",
+  "version": 1,
+  "required_rule_coverage": [
+    "requested_primary_zone",
+    "requested_secondary_zone_only",
+    "new_primary_zone",
+    "new_pattern",
+    "qualifying_working_load_history",
+    "preferred_exercise",
+    "recent_same_exercise",
+    "recent_same_pattern",
+    "recent_primary_threshold_on_candidate_primary",
+    "recent_secondary_threshold_on_candidate_primary",
+    "repeated_primary_threshold_on_candidate_primary",
+    "repeated_secondary_threshold_on_candidate_primary",
+    "any_exposure_flag_on_candidate_secondary_zones",
+    "full_body_region_coverage",
+    "upper_push_pull_coverage",
+    "lower_extension_flexion_coverage",
+    "exercise_id_tie_equipment_id",
+    "exercise_id_tie_newest_anchor"
+  ],
+  "expected_exercise_templates": {
+    "general_seated_row": {
+      "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+      "equipment_id": "seated_row",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "back",
+      "secondary_zone_ids": [
+        "arms"
+      ],
+      "pattern_ids": [
+        "horizontal_pull"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "load_source": null
+    },
+    "general_shoulder_press": {
+      "exercise_id": "ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b",
+      "equipment_id": "converging_shoulder_press",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "shoulders",
+      "secondary_zone_ids": [
+        "arms"
+      ],
+      "pattern_ids": [
+        "vertical_push"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "nih_deltoid",
+        "openstax_upper"
+      ],
+      "load_source": null
+    },
+    "general_leg_extension": {
+      "exercise_id": "ex_1872246a-39ae-44dc-b58d-f87e90ca49ab",
+      "equipment_id": "leg_extension",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "thighs",
+      "secondary_zone_ids": [],
+      "pattern_ids": [
+        "single_joint_knee_extension"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "high",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "openstax_lower"
+      ],
+      "load_source": null
+    },
+    "general_leg_curl": {
+      "exercise_id": "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163",
+      "equipment_id": "seated_leg_curl",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "thighs",
+      "secondary_zone_ids": [],
+      "pattern_ids": [
+        "single_joint_knee_flexion"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "high",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "maeo_2021",
+        "openstax_lower"
+      ],
+      "load_source": null
+    },
+    "general_leg_press": {
+      "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+      "equipment_id": "leg_press",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "thighs",
+      "secondary_zone_ids": [
+        "glutes"
+      ],
+      "pattern_ids": [
+        "knee_dominant"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "martin_fuentes_2020",
+        "openstax_lower",
+        "vigotsky_2018"
+      ],
+      "load_source": null
+    },
+    "general_leg_press_anchor_60": {
+      "exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","equipment_load_semantics":"external","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"target_sets":2,"target_repetitions":10,"rest_seconds":90,"target_weight_kg":60.0,"planned_load_mode":"external","estimated_seconds":230,"confidence":"moderate","recency":{"recent_same_exercise":false,"recent_same_pattern":false},"exposure_warning_level":"none","rationale_codes":["observed_repeated_dose_anchor","requested_primary_zone","external_equipment_context","new_exact_pattern"],"source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"],"load_source":{"session_id":"se_50000000-0000-4000-8000-000000000000","occurrence_id":"sxe_50000000-0000-4000-8000-000000000000","started_at":"2026-09-01T12:00:00.500Z"}
+    },
+    "general_leg_press_recent_absent": {
+      "exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","equipment_load_semantics":"external","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"target_sets":2,"target_repetitions":10,"rest_seconds":90,"target_weight_kg":null,"planned_load_mode":"none","estimated_seconds":230,"confidence":"moderate","recency":{"recent_same_exercise":true,"recent_same_pattern":true},"exposure_warning_level":"none","rationale_codes":["numeric_load_absent","requested_primary_zone","external_equipment_context","new_exact_pattern","recent_same_exercise_penalty","recent_same_pattern_penalty"],"source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"],"load_source":null
+    },
+    "general_leg_press_max": {
+      "exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","equipment_load_semantics":"external","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"target_sets":2,"target_repetitions":10,"rest_seconds":90,"target_weight_kg":null,"planned_load_mode":"none","estimated_seconds":230,"confidence":"moderate","recency":{"recent_same_exercise":false,"recent_same_pattern":false},"exposure_warning_level":"none","rationale_codes":["explicit_max_present_no_numeric_prescription","requested_primary_zone","external_equipment_context","new_exact_pattern"],"source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"],"load_source":null
+    },
+    "general_hip_adduction": {
+      "exercise_id": "ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef", "equipment_id": "hip_adduction", "equipment_load_semantics": "external", "primary_zone_id": "thighs",
+      "secondary_zone_ids": [], "pattern_ids": ["single_joint_hip_adduction"], "target_sets": 2, "target_repetitions": 10, "rest_seconds": 90, "target_weight_kg": null,
+      "planned_load_mode": "none", "estimated_seconds": 230, "confidence": "high", "recency": {"recent_same_exercise": false, "recent_same_pattern": false}, "exposure_warning_level": "none",
+      "rationale_codes": ["numeric_load_absent", "requested_primary_zone", "external_equipment_context", "new_exact_pattern"], "source_ref_ids": ["openstax_lower"], "load_source": null
+    },
+    "general_abdominal": {
+      "exercise_id": "ex_9adf7566-f10c-443c-b63b-681d37665693", "equipment_id": "abdominal", "equipment_load_semantics": "external", "primary_zone_id": "core",
+      "secondary_zone_ids": [], "pattern_ids": ["trunk_flexion"], "target_sets": 2, "target_repetitions": 10, "rest_seconds": 90, "target_weight_kg": null,
+      "planned_load_mode": "none", "estimated_seconds": 230, "confidence": "moderate", "recency": {"recent_same_exercise": false, "recent_same_pattern": false}, "exposure_warning_level": "none",
+      "rationale_codes": ["numeric_load_absent", "requested_primary_zone", "external_equipment_context", "new_exact_pattern"], "source_ref_ids": ["nih_abdominal_wall", "openstax_trunk"], "load_source": null
+    },
+    "general_diverging_row_recent_pattern": {
+      "exercise_id": "ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de",
+      "equipment_id": "diverging_seated_row",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "back",
+      "secondary_zone_ids": [
+        "arms"
+      ],
+      "pattern_ids": [
+        "horizontal_pull"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": true
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern",
+        "recent_same_pattern_penalty"
+      ],
+      "source_ref_ids": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "load_source": null
+    },
+    "general_plate_leg_press": {
+      "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+      "equipment_id": "plate_loaded_leg_press",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "thighs",
+      "secondary_zone_ids": [
+        "glutes"
+      ],
+      "pattern_ids": [
+        "knee_dominant"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "martin_fuentes_2020",
+        "openstax_lower",
+        "vigotsky_2018"
+      ],
+      "load_source": null
+    },
+    "general_plate_leg_press_anchor": {
+      "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+      "equipment_id": "plate_loaded_leg_press",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "thighs",
+      "secondary_zone_ids": [
+        "glutes"
+      ],
+      "pattern_ids": [
+        "knee_dominant"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": 90.0,
+      "planned_load_mode": "external",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "none",
+      "rationale_codes": [
+        "observed_repeated_dose_anchor",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "martin_fuentes_2020",
+        "openstax_lower",
+        "vigotsky_2018"
+      ],
+      "load_source": {
+        "session_id": "se_60000000-0000-4000-8000-000000000000",
+        "occurrence_id": "sxe_60000000-0000-4000-8000-000000000000",
+        "started_at": "2026-09-20T12:00Z"
+      }
+    },
+    "notice_seated_row": {
+      "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+      "equipment_id": "seated_row",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "back",
+      "secondary_zone_ids": [
+        "arms"
+      ],
+      "pattern_ids": [
+        "horizontal_pull"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": false,
+        "recent_same_pattern": false
+      },
+      "exposure_warning_level": "notice",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_primary_zone",
+        "external_equipment_context",
+        "new_exact_pattern"
+      ],
+      "source_ref_ids": [
+        "franke_2015",
+        "lehman_2004",
+        "openstax_upper"
+      ],
+      "load_source": null
+    },
+    "notice_rear_delt_recent": {
+      "exercise_id": "ex_4cd2433e-80b1-478a-b8df-73fc6ef80962",
+      "equipment_id": "rear_delt_pec_fly",
+      "equipment_load_semantics": "external",
+      "primary_zone_id": "shoulders",
+      "secondary_zone_ids": [
+        "back"
+      ],
+      "pattern_ids": [
+        "single_joint_shoulder_horizontal_abduction"
+      ],
+      "target_sets": 2,
+      "target_repetitions": 10,
+      "rest_seconds": 90,
+      "target_weight_kg": null,
+      "planned_load_mode": "none",
+      "estimated_seconds": 230,
+      "confidence": "moderate",
+      "recency": {
+        "recent_same_exercise": true,
+        "recent_same_pattern": true
+      },
+      "exposure_warning_level": "notice",
+      "rationale_codes": [
+        "numeric_load_absent",
+        "requested_secondary_zone",
+        "external_equipment_context",
+        "new_exact_pattern",
+        "recent_same_exercise_penalty",
+        "recent_same_pattern_penalty"
+      ],
+      "source_ref_ids": [
+        "franke_2015",
+        "nih_deltoid",
+        "openstax_upper",
+        "vigotsky_2018"
+      ],
+      "load_source": null
+    }
+  },
+  "cases": [
+    {
+      "id": "anchor_full_output_and_fractional_boundary",
+      "covers": [
+        "requested_primary_zone",
+        "new_primary_zone",
+        "new_pattern",
+        "qualifying_working_load_history",
+        "recent_same_exercise",
+        "recent_same_pattern",
+        "recent_primary_threshold_on_candidate_primary"
+      ],
+      "zone_id": "thighs",
+      "goal_id": "hypertrophy",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00:00.500Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        }
+      ],
+      "history": [
+        {
+          "session_id": "se_10000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_10000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "started_at": "2026-09-08T12:00:00.501Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10,
+              "weight_kg": 80.0
+            },
+            {
+              "position": 1,
+              "repetitions": 12,
+              "weight_kg": 85.0
+            },
+            {
+              "position": 2,
+              "repetitions": 10,
+              "weight_kg": 80.0
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "estimated_duration_seconds": 720,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 3,
+            "secondary_set_count": 0,
+            "session_count": 1,
+            "pattern_ids": [
+              "knee_dominant"
+            ]
+          },
+          "within_72h": {
+            "primary_set_count": 3,
+            "secondary_set_count": 0,
+            "session_count": 1,
+            "pattern_ids": [
+              "knee_dominant"
+            ]
+          },
+          "recent_exposure": true,
+          "repeated_exposure": false,
+          "warning_level": "warning",
+          "latest": {
+            "started_at": "2026-09-08T12:00:00.501Z",
+            "session_id": "se_10000000-0000-4000-8000-000000000000",
+            "occurrence_id": "sxe_10000000-0000-4000-8000-000000000000",
+            "pattern_ids": [
+              "knee_dominant"
+            ]
+          },
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [
+          {
+            "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+            "equipment_id": "leg_press",
+            "equipment_load_semantics": "external",
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [
+              "glutes"
+            ],
+            "pattern_ids": [
+              "knee_dominant"
+            ],
+            "target_sets": 3,
+            "target_repetitions": 10,
+            "rest_seconds": 120,
+            "target_weight_kg": 80.0,
+            "planned_load_mode": "external",
+            "estimated_seconds": 420,
+            "confidence": "moderate",
+            "recency": {
+              "recent_same_exercise": true,
+              "recent_same_pattern": true
+            },
+            "exposure_warning_level": "warning",
+            "rationale_codes": [
+              "observed_repeated_dose_anchor",
+              "requested_primary_zone",
+              "external_equipment_context",
+              "new_exact_pattern",
+              "recent_same_exercise_penalty",
+              "recent_same_pattern_penalty"
+            ],
+            "source_ref_ids": [
+              "martin_fuentes_2020",
+              "openstax_lower",
+              "vigotsky_2018"
+            ],
+            "load_source": {
+              "session_id": "se_10000000-0000-4000-8000-000000000000",
+              "occurrence_id": "sxe_10000000-0000-4000-8000-000000000000",
+              "started_at": "2026-09-08T12:00:00.501Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "exact_24h_exclusive_and_no_anchor",
+      "covers": [],
+      "zone_id": "thighs",
+      "goal_id": "hypertrophy",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00:00.500Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        }
+      ],
+      "history": [
+        {
+          "session_id": "se_20000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_20000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "started_at": "2026-09-08T12:00:00.500+00:00",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10,
+              "weight_kg": 80.0
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "estimated_duration_seconds": 720,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 1,
+            "secondary_set_count": 0,
+            "session_count": 1,
+            "pattern_ids": [
+              "knee_dominant"
+            ]
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": {
+            "started_at": "2026-09-08T12:00:00.500+00:00",
+            "session_id": "se_20000000-0000-4000-8000-000000000000",
+            "occurrence_id": "sxe_20000000-0000-4000-8000-000000000000",
+            "pattern_ids": [
+              "knee_dominant"
+            ]
+          },
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [
+          {
+            "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+            "equipment_id": "leg_press",
+            "equipment_load_semantics": "external",
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [
+              "glutes"
+            ],
+            "pattern_ids": [
+              "knee_dominant"
+            ],
+            "target_sets": 3,
+            "target_repetitions": 10,
+            "rest_seconds": 120,
+            "target_weight_kg": null,
+            "planned_load_mode": "none",
+            "estimated_seconds": 420,
+            "confidence": "moderate",
+            "recency": {
+              "recent_same_exercise": true,
+              "recent_same_pattern": true
+            },
+            "exposure_warning_level": "none",
+            "rationale_codes": [
+              "numeric_load_absent",
+              "requested_primary_zone",
+              "external_equipment_context",
+              "new_exact_pattern",
+              "recent_same_exercise_penalty",
+              "recent_same_pattern_penalty"
+            ],
+            "source_ref_ids": [
+              "martin_fuentes_2020",
+              "openstax_lower",
+              "vigotsky_2018"
+            ],
+            "load_source": null
+          }
+        ]
+      }
+    },
+    {
+      "id":"inclusive_28_day_anchor","covers":[],"zone_id":"thighs","goal_id":"general","duration_minutes":30,"reference_time":"2026-09-29T12:00:00.500Z",
+      "candidates":[{"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"]}],
+      "history":[{"session_id":"se_50000000-0000-4000-8000-000000000000","occurrence_id":"sxe_50000000-0000-4000-8000-000000000000","exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","started_at":"2026-09-01T12:00:00.500Z","sets":[{"position":0,"repetitions":10,"weight_kg":60.0},{"position":1,"repetitions":10,"weight_kg":65.0}]}],
+      "expected":{"estimated_duration_seconds":530,"insufficient_resolved_candidates":true,"shortage_codes":["insufficient_resolved_candidates"],"exposure":{"within_24h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"within_72h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"recent_exposure":false,"repeated_exposure":false,"warning_level":"none","latest":{"started_at":"2026-09-01T12:00:00.500Z","session_id":"se_50000000-0000-4000-8000-000000000000","occurrence_id":"sxe_50000000-0000-4000-8000-000000000000","pattern_ids":["knee_dominant"]},"unclassified_actual_set_count":0},"exercises":[{"template":"general_leg_press_anchor_60"}]}
+    },
+    {
+      "id":"expired_28_day_anchor","covers":[],"zone_id":"thighs","goal_id":"general","duration_minutes":30,"reference_time":"2026-09-29T12:00:00.500Z",
+      "candidates":[{"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"]}],
+      "history":[{"session_id":"se_60000000-0000-4000-8000-000000000000","occurrence_id":"sxe_60000000-0000-4000-8000-000000000000","exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","started_at":"2026-09-01T12:00:00.499Z","sets":[{"position":0,"repetitions":10,"weight_kg":60.0},{"position":1,"repetitions":10,"weight_kg":60.0}]}],
+      "expected":{"estimated_duration_seconds":530,"insufficient_resolved_candidates":true,"shortage_codes":["insufficient_resolved_candidates"],"exposure":{"within_24h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"within_72h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"recent_exposure":false,"repeated_exposure":false,"warning_level":"none","latest":{"started_at":"2026-09-01T12:00:00.499Z","session_id":"se_60000000-0000-4000-8000-000000000000","occurrence_id":"sxe_60000000-0000-4000-8000-000000000000","pattern_ids":["knee_dominant"]},"unclassified_actual_set_count":0},"exercises":[{"template":"general_leg_press"}]}
+    },
+    {
+      "id":"assistance_history_cannot_anchor_external","covers":[],"zone_id":"thighs","goal_id":"general","duration_minutes":30,"reference_time":"2026-09-09T12:00Z",
+      "candidates":[{"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"]}],
+      "history":[{"session_id":"se_70000000-0000-4000-8000-000000000000","occurrence_id":"sxe_70000000-0000-4000-8000-000000000000","exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","started_at":"2026-09-08T12:00Z","load_mode":"assistance","sets":[{"position":0,"repetitions":10,"weight_kg":60.0},{"position":1,"repetitions":10,"weight_kg":60.0}]}],
+      "expected":{"estimated_duration_seconds":530,"insufficient_resolved_candidates":true,"shortage_codes":["insufficient_resolved_candidates"],"exposure":{"within_24h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"within_72h":{"primary_set_count":2,"secondary_set_count":0,"session_count":1,"pattern_ids":["knee_dominant"]},"recent_exposure":false,"repeated_exposure":false,"warning_level":"none","latest":{"started_at":"2026-09-08T12:00Z","session_id":"se_70000000-0000-4000-8000-000000000000","occurrence_id":"sxe_70000000-0000-4000-8000-000000000000","pattern_ids":["knee_dominant"]},"unclassified_actual_set_count":0},"exercises":[{"template":"general_leg_press_recent_absent"}]}
+    },
+    {
+      "id":"explicit_max_is_context_only","covers":[],"zone_id":"thighs","goal_id":"general","duration_minutes":30,"reference_time":"2026-09-09T12:00Z",
+      "candidates":[{"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","primary_zone_id":"thighs","secondary_zone_ids":["glutes"],"pattern_ids":["knee_dominant"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["martin_fuentes_2020","openstax_lower","vigotsky_2018"]}],
+      "history":[{"session_id":"se_80000000-0000-4000-8000-000000000000","occurrence_id":"sxe_80000000-0000-4000-8000-000000000000","exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","equipment_id":"leg_press","started_at":"2026-09-08T12:00Z","explicit_max":true}],
+      "expected":{"estimated_duration_seconds":530,"insufficient_resolved_candidates":true,"shortage_codes":["insufficient_resolved_candidates"],"exposure":{"within_24h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"within_72h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"recent_exposure":false,"repeated_exposure":false,"warning_level":"none","latest":null,"unclassified_actual_set_count":0},"exercises":[{"template":"general_leg_press_max"}]}
+    },
+    {
+      "id": "sparse_chest",
+      "covers": [],
+      "zone_id": "chest",
+      "goal_id": "strength",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "candidates": [],
+      "history": [],
+      "expected": {
+        "estimated_duration_seconds": 300,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": null,
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": []
+      }
+    },
+    {
+      "id": "full_body_regions",
+      "covers": [
+        "full_body_region_coverage"
+      ],
+      "zone_id": "full_body",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_1872246a-39ae-44dc-b58d-f87e90ca49ab",
+          "equipment_id": "leg_extension",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [],
+          "pattern_ids": [
+            "single_joint_knee_extension"
+          ],
+          "confidence": "high",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "openstax_lower"
+          ]
+        },
+        {
+          "exercise_id": "ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b",
+          "equipment_id": "converging_shoulder_press",
+          "primary_zone_id": "shoulders",
+          "secondary_zone_ids": [
+            "arms"
+          ],
+          "pattern_ids": [
+            "vertical_push"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "nih_deltoid",
+            "openstax_upper"
+          ]
+        },
+        {
+          "exercise_id": "ex_9adf7566-f10c-443c-b63b-681d37665693",
+          "equipment_id": "abdominal",
+          "primary_zone_id": "core",
+          "secondary_zone_ids": [],
+          "pattern_ids": [
+            "trunk_flexion"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "nih_abdominal_wall",
+            "openstax_trunk"
+          ]
+        }
+      ],
+      "history": [],
+      "expected": {
+        "estimated_duration_seconds": 990,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": null,
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [
+          {
+            "exercise_id": "ex_1872246a-39ae-44dc-b58d-f87e90ca49ab",
+            "equipment_id": "leg_extension",
+            "equipment_load_semantics": "external",
+            "primary_zone_id": "thighs",
+            "secondary_zone_ids": [],
+            "pattern_ids": [
+              "single_joint_knee_extension"
+            ],
+            "target_sets": 2,
+            "target_repetitions": 10,
+            "rest_seconds": 90,
+            "target_weight_kg": null,
+            "planned_load_mode": "none",
+            "estimated_seconds": 230,
+            "confidence": "high",
+            "recency": {
+              "recent_same_exercise": false,
+              "recent_same_pattern": false
+            },
+            "exposure_warning_level": "none",
+            "rationale_codes": [
+              "numeric_load_absent",
+              "requested_primary_zone",
+              "external_equipment_context",
+              "new_exact_pattern"
+            ],
+            "source_ref_ids": [
+              "openstax_lower"
+            ],
+            "load_source": null
+          },
+          {
+            "exercise_id": "ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b",
+            "equipment_id": "converging_shoulder_press",
+            "equipment_load_semantics": "external",
+            "primary_zone_id": "shoulders",
+            "secondary_zone_ids": [
+              "arms"
+            ],
+            "pattern_ids": [
+              "vertical_push"
+            ],
+            "target_sets": 2,
+            "target_repetitions": 10,
+            "rest_seconds": 90,
+            "target_weight_kg": null,
+            "planned_load_mode": "none",
+            "estimated_seconds": 230,
+            "confidence": "moderate",
+            "recency": {
+              "recent_same_exercise": false,
+              "recent_same_pattern": false
+            },
+            "exposure_warning_level": "none",
+            "rationale_codes": [
+              "numeric_load_absent",
+              "requested_primary_zone",
+              "external_equipment_context",
+              "new_exact_pattern"
+            ],
+            "source_ref_ids": [
+              "nih_deltoid",
+              "openstax_upper"
+            ],
+            "load_source": null
+          },
+          {
+            "exercise_id": "ex_9adf7566-f10c-443c-b63b-681d37665693",
+            "equipment_id": "abdominal",
+            "equipment_load_semantics": "external",
+            "primary_zone_id": "core",
+            "secondary_zone_ids": [],
+            "pattern_ids": [
+              "trunk_flexion"
+            ],
+            "target_sets": 2,
+            "target_repetitions": 10,
+            "rest_seconds": 90,
+            "target_weight_kg": null,
+            "planned_load_mode": "none",
+            "estimated_seconds": 230,
+            "confidence": "moderate",
+            "recency": {
+              "recent_same_exercise": false,
+              "recent_same_pattern": false
+            },
+            "exposure_warning_level": "none",
+            "rationale_codes": [
+              "numeric_load_absent",
+              "requested_primary_zone",
+              "external_equipment_context",
+              "new_exact_pattern"
+            ],
+            "source_ref_ids": [
+              "nih_abdominal_wall",
+              "openstax_trunk"
+            ],
+            "load_source": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "upper_push_pull",
+      "covers": [
+        "upper_push_pull_coverage"
+      ],
+      "zone_id": "upper_body",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+          "equipment_id": "seated_row",
+          "primary_zone_id": "back",
+          "secondary_zone_ids": [
+            "arms"
+          ],
+          "pattern_ids": [
+            "horizontal_pull"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "franke_2015",
+            "lehman_2004",
+            "openstax_upper"
+          ]
+        },
+        {
+          "exercise_id": "ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b",
+          "equipment_id": "converging_shoulder_press",
+          "primary_zone_id": "shoulders",
+          "secondary_zone_ids": [
+            "arms"
+          ],
+          "pattern_ids": [
+            "vertical_push"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "nih_deltoid",
+            "openstax_upper"
+          ]
+        }
+      ],
+      "history": [],
+      "expected": {
+        "estimated_duration_seconds": 760,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": null,
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [
+          {"template": "general_seated_row"},
+          {"template": "general_shoulder_press"}
+        ]
+      }
+    },
+    {
+      "id": "lower_extension_flexion",
+      "covers": [
+        "lower_extension_flexion_coverage"
+      ],
+      "zone_id": "lower_body",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_1872246a-39ae-44dc-b58d-f87e90ca49ab",
+          "equipment_id": "leg_extension",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [],
+          "pattern_ids": [
+            "single_joint_knee_extension"
+          ],
+          "confidence": "high",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "openstax_lower"
+          ]
+        },
+        {
+          "exercise_id": "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163",
+          "equipment_id": "seated_leg_curl",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [],
+          "pattern_ids": [
+            "single_joint_knee_flexion"
+          ],
+          "confidence": "high",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "maeo_2021",
+            "openstax_lower"
+          ]
+        },
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        }
+      ],
+      "history": [],
+      "expected": {
+        "estimated_duration_seconds": 990,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": null,
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [
+          {"template": "general_leg_extension"},
+          {"template": "general_leg_curl"},
+          {"template": "general_leg_press"}
+        ]
+      }
+    },
+    {
+      "id": "preferred_recent_candidate_loses",
+      "covers": [
+        "preferred_exercise",
+        "recent_same_exercise",
+        "recent_same_pattern"
+      ],
+      "zone_id": "back",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "preferred_ids": [
+        "ex_33f79331-871c-4eed-babe-346e53a99070"
+      ],
+      "candidates": [
+        {
+          "exercise_id": "ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de",
+          "equipment_id": "diverging_seated_row",
+          "primary_zone_id": "back",
+          "secondary_zone_ids": [
+            "arms"
+          ],
+          "pattern_ids": [
+            "horizontal_pull"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "franke_2015",
+            "lehman_2004",
+            "openstax_upper"
+          ]
+        },
+        {
+          "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+          "equipment_id": "seated_row",
+          "primary_zone_id": "back",
+          "secondary_zone_ids": [
+            "arms"
+          ],
+          "pattern_ids": [
+            "horizontal_pull"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "franke_2015",
+            "lehman_2004",
+            "openstax_upper"
+          ]
+        }
+      ],
+      "history": [
+        {
+          "session_id": "se_40000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_40000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+          "equipment_id": "seated_row",
+          "started_at": "2026-09-08T12:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "estimated_duration_seconds": 530,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 1,
+            "secondary_set_count": 0,
+            "session_count": 1,
+            "pattern_ids": [
+              "horizontal_pull"
+            ]
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": {
+            "started_at": "2026-09-08T12:00Z",
+            "session_id": "se_40000000-0000-4000-8000-000000000000",
+            "occurrence_id": "sxe_40000000-0000-4000-8000-000000000000",
+            "pattern_ids": [
+              "horizontal_pull"
+            ]
+          },
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [{"template": "general_diverging_row_recent_pattern"}]
+      }
+    },
+    {
+      "id": "equipment_id_tie",
+      "covers": [
+        "exercise_id_tie_equipment_id"
+      ],
+      "zone_id": "thighs",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-30T12:00Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "plate_loaded_leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        },
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        }
+      ],
+      "history": [],
+      "expected": {
+        "estimated_duration_seconds": 530,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": null,
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [{"template": "general_leg_press"}]
+      }
+    },
+    {
+      "id": "equipment_newest_anchor_wins",
+      "covers": [
+        "exercise_id_tie_newest_anchor",
+        "qualifying_working_load_history"
+      ],
+      "zone_id": "thighs",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-30T12:00Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        },
+        {
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "plate_loaded_leg_press",
+          "primary_zone_id": "thighs",
+          "secondary_zone_ids": [
+            "glutes"
+          ],
+          "pattern_ids": [
+            "knee_dominant"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "martin_fuentes_2020",
+            "openstax_lower",
+            "vigotsky_2018"
+          ]
+        }
+      ],
+      "history": [
+        {
+          "session_id": "se_50000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_50000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "leg_press",
+          "started_at": "2026-09-15T12:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10,
+              "weight_kg": 70.0
+            },
+            {
+              "position": 1,
+              "repetitions": 10,
+              "weight_kg": 70.0
+            }
+          ]
+        },
+        {
+          "session_id": "se_60000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_60000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+          "equipment_id": "plate_loaded_leg_press",
+          "started_at": "2026-09-20T12:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10,
+              "weight_kg": 90.0
+            },
+            {
+              "position": 1,
+              "repetitions": 10,
+              "weight_kg": 95.0
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "estimated_duration_seconds": 530,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 0,
+            "session_count": 0,
+            "pattern_ids": []
+          },
+          "recent_exposure": false,
+          "repeated_exposure": false,
+          "warning_level": "none",
+          "latest": {
+            "started_at": "2026-09-20T12:00Z",
+            "session_id": "se_60000000-0000-4000-8000-000000000000",
+            "occurrence_id": "sxe_60000000-0000-4000-8000-000000000000",
+            "pattern_ids": [
+              "knee_dominant"
+            ]
+          },
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [{"template": "general_plate_leg_press_anchor"}]
+      }
+    },
+    {
+      "id": "complete_secondary_exposure_and_unclassified",
+      "covers": [],
+      "zone_id": "arms",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "candidates": [],
+      "history": [
+        {
+          "session_id": "se_70000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_70000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+          "equipment_id": "seated_row",
+          "started_at": "2026-09-09T11:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10
+            },
+            {
+              "position": 1,
+              "repetitions": 10
+            },
+            {
+              "position": 2,
+              "repetitions": 10
+            }
+          ]
+        },
+        {
+          "session_id": "se_80000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_80000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_ec619fc2-4685-4044-873c-86764bd4a0fe",
+          "equipment_id": "arm_curl",
+          "started_at": "2026-09-07T12:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10
+            }
+          ]
+        },
+        {
+          "session_id": "se_90000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_90000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_ffffffff-ffff-4fff-8fff-ffffffffffff",
+          "equipment_id": null,
+          "started_at": "2026-09-09T10:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 8
+            },
+            {
+              "position": 1,
+              "repetitions": 8
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "estimated_duration_seconds": 300,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 3,
+            "session_count": 1,
+            "pattern_ids": [
+              "horizontal_pull"
+            ]
+          },
+          "within_72h": {
+            "primary_set_count": 1,
+            "secondary_set_count": 3,
+            "session_count": 2,
+            "pattern_ids": [
+              "horizontal_pull",
+              "single_joint_elbow_flexion"
+            ]
+          },
+          "recent_exposure": true,
+          "repeated_exposure": false,
+          "warning_level": "notice",
+          "latest": {
+            "started_at": "2026-09-09T11:00Z",
+            "session_id": "se_70000000-0000-4000-8000-000000000000",
+            "occurrence_id": "sxe_70000000-0000-4000-8000-000000000000",
+            "pattern_ids": [
+              "horizontal_pull"
+            ]
+          },
+          "unclassified_actual_set_count": 2
+        },
+        "exercises": []
+      }
+    },
+    {
+      "id": "six_distinct_patterns_fill_cap", "covers": [], "zone_id": "full_body", "goal_id": "general", "duration_minutes": 30, "reference_time": "2026-09-09T12:00Z",
+      "candidates": [
+        {"exercise_id":"ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef","equipment_id":"hip_adduction","primary_zone_id":"thighs","secondary_zone_ids":[],"pattern_ids":["single_joint_hip_adduction"],"confidence":"high","equipment_load_semantics":"external","source_ref_ids":["openstax_lower"]},
+        {"exercise_id":"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab","equipment_id":"leg_extension","primary_zone_id":"thighs","secondary_zone_ids":[],"pattern_ids":["single_joint_knee_extension"],"confidence":"high","equipment_load_semantics":"external","source_ref_ids":["openstax_lower"]},
+        {"exercise_id":"ex_33f79331-871c-4eed-babe-346e53a99070","equipment_id":"seated_row","primary_zone_id":"back","secondary_zone_ids":["arms"],"pattern_ids":["horizontal_pull"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["franke_2015","lehman_2004","openstax_upper"]},
+        {"exercise_id":"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b","equipment_id":"converging_shoulder_press","primary_zone_id":"shoulders","secondary_zone_ids":["arms"],"pattern_ids":["vertical_push"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["nih_deltoid","openstax_upper"]},
+        {"exercise_id":"ex_9adf7566-f10c-443c-b63b-681d37665693","equipment_id":"abdominal","primary_zone_id":"core","secondary_zone_ids":[],"pattern_ids":["trunk_flexion"],"confidence":"moderate","equipment_load_semantics":"external","source_ref_ids":["nih_abdominal_wall","openstax_trunk"]},
+        {"exercise_id":"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163","equipment_id":"seated_leg_curl","primary_zone_id":"thighs","secondary_zone_ids":[],"pattern_ids":["single_joint_knee_flexion"],"confidence":"high","equipment_load_semantics":"external","source_ref_ids":["maeo_2021","openstax_lower"]}
+      ],
+      "history": [],
+      "expected": {"estimated_duration_seconds":1680,"insufficient_resolved_candidates":false,"shortage_codes":[],"exposure":{"within_24h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"within_72h":{"primary_set_count":0,"secondary_set_count":0,"session_count":0,"pattern_ids":[]},"recent_exposure":false,"repeated_exposure":false,"warning_level":"none","latest":null,"unclassified_actual_set_count":0},"exercises":[{"template":"general_hip_adduction"},{"template":"general_seated_row"},{"template":"general_abdominal"},{"template":"general_shoulder_press"},{"template":"general_leg_extension"},{"template":"general_leg_curl"}]}
+    },
+    {
+      "id": "all_remaining_score_inputs",
+      "covers": [
+        "requested_secondary_zone_only",
+        "recent_primary_threshold_on_candidate_primary",
+        "recent_secondary_threshold_on_candidate_primary",
+        "repeated_primary_threshold_on_candidate_primary",
+        "repeated_secondary_threshold_on_candidate_primary",
+        "any_exposure_flag_on_candidate_secondary_zones"
+      ],
+      "zone_id": "back",
+      "goal_id": "general",
+      "duration_minutes": 30,
+      "reference_time": "2026-09-09T12:00Z",
+      "candidates": [
+        {
+          "exercise_id": "ex_33f79331-871c-4eed-babe-346e53a99070",
+          "equipment_id": "seated_row",
+          "primary_zone_id": "back",
+          "secondary_zone_ids": [
+            "arms"
+          ],
+          "pattern_ids": [
+            "horizontal_pull"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "franke_2015",
+            "lehman_2004",
+            "openstax_upper"
+          ]
+        },
+        {
+          "exercise_id": "ex_4cd2433e-80b1-478a-b8df-73fc6ef80962",
+          "equipment_id": "rear_delt_pec_fly",
+          "primary_zone_id": "shoulders",
+          "secondary_zone_ids": [
+            "back"
+          ],
+          "pattern_ids": [
+            "single_joint_shoulder_horizontal_abduction"
+          ],
+          "confidence": "moderate",
+          "equipment_load_semantics": "external",
+          "source_ref_ids": [
+            "franke_2015",
+            "nih_deltoid",
+            "openstax_upper",
+            "vigotsky_2018"
+          ]
+        }
+      ],
+      "history": [
+        {
+          "session_id": "se_a0000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_a0000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_4cd2433e-80b1-478a-b8df-73fc6ef80962",
+          "equipment_id": "rear_delt_pec_fly",
+          "started_at": "2026-09-09T11:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10
+            },
+            {
+              "position": 1,
+              "repetitions": 10
+            },
+            {
+              "position": 2,
+              "repetitions": 10
+            },
+            {
+              "position": 3,
+              "repetitions": 10
+            },
+            {
+              "position": 4,
+              "repetitions": 10
+            },
+            {
+              "position": 5,
+              "repetitions": 10
+            },
+            {
+              "position": 6,
+              "repetitions": 10
+            },
+            {
+              "position": 7,
+              "repetitions": 10
+            },
+            {
+              "position": 8,
+              "repetitions": 10
+            },
+            {
+              "position": 9,
+              "repetitions": 10
+            },
+            {
+              "position": 10,
+              "repetitions": 10
+            },
+            {
+              "position": 11,
+              "repetitions": 10
+            }
+          ]
+        },
+        {
+          "session_id": "se_b0000000-0000-4000-8000-000000000000",
+          "occurrence_id": "sxe_b0000000-0000-4000-8000-000000000000",
+          "exercise_id": "ex_ec619fc2-4685-4044-873c-86764bd4a0fe",
+          "equipment_id": "arm_curl",
+          "started_at": "2026-09-09T10:00Z",
+          "sets": [
+            {
+              "position": 0,
+              "repetitions": 10
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "estimated_duration_seconds": 760,
+        "insufficient_resolved_candidates": true,
+        "shortage_codes": [
+          "insufficient_resolved_candidates"
+        ],
+        "exposure": {
+          "within_24h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 12,
+            "session_count": 1,
+            "pattern_ids": [
+              "single_joint_shoulder_horizontal_abduction"
+            ]
+          },
+          "within_72h": {
+            "primary_set_count": 0,
+            "secondary_set_count": 12,
+            "session_count": 1,
+            "pattern_ids": [
+              "single_joint_shoulder_horizontal_abduction"
+            ]
+          },
+          "recent_exposure": true,
+          "repeated_exposure": true,
+          "warning_level": "notice",
+          "latest": {
+            "started_at": "2026-09-09T11:00Z",
+            "session_id": "se_a0000000-0000-4000-8000-000000000000",
+            "occurrence_id": "sxe_a0000000-0000-4000-8000-000000000000",
+            "pattern_ids": [
+              "single_joint_shoulder_horizontal_abduction"
+            ]
+          },
+          "unclassified_actual_set_count": 0
+        },
+        "exercises": [
+          {"template": "notice_seated_row"},
+          {"template": "notice_rear_delt_recent"}
+        ]
+      }
+    }
+  ]
+}

@@ -49,9 +49,9 @@ class SyncExporter(
         val bodyZonesJson: String
         try {
             definitionsJson = repository.buildEquipmentDefinitionsJson()
-            /* V2 is the authoritative mobile session exchange. V1 remains
+            /* V3 is the authoritative mobile session exchange. V1/V2 remain
              * readable by desktop for historic devices but is not published. */
-            mobileJson = repository.buildMobileExportV2Json()
+            mobileJson = repository.buildMobileExportV3Json()
             associationsJson = repository.buildEquipmentAssociationsJson()
             bodyZonesJson = repository.buildExerciseBodyZonesJson()
         } catch (error: Exception) {
@@ -77,9 +77,9 @@ class SyncExporter(
                 "/Trainlog/"
 
         val displayName =
-            "trainlog-mobile-export-v2.json"
+            "trainlog-mobile-export-v3.json"
 
-        /* Definitions are visible before any v2 file which may reference a
+        /* Definitions are visible before any session file which may reference a
          * custom ID; a failed definition write aborts the bundle. */
         val definitionsError = writeEquipmentDefinitions(definitionsJson)
         if (definitionsError != null) return SyncExportResult.Error(definitionsError)

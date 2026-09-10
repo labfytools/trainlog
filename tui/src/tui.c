@@ -38,6 +38,8 @@
 #include "trainlog/sync_history.h"
 #include "trainlog/sync_screen_action.h"
 #include "trainlog/reps.h"
+#include "trainlog/session_generation.h"
+#include "trainlog/session_generation_policy_internal.h"
 #include "trainlog/theme.h"
 #include "trainlog/timeutil.h"
 #include "trainlog/training_knowledge.h"
@@ -72,6 +74,7 @@ static TrainlogTerminal *tui_terminal;
 
 typedef enum DashboardAction {
     DASHBOARD_NEW_SESSION = 0,
+    DASHBOARD_GENERATE_SESSION,
     DASHBOARD_HISTORY,
     DASHBOARD_EXERCISES,
     DASHBOARD_EQUIPMENT,
@@ -5491,7 +5494,7 @@ static DashboardAction screen_dashboard(
 )
 {
     static const char *const footer =
-        "←→ naviguer  Entrée ouvrir  0 accueil  F1-F5 accès direct  q quitter";
+        "←→ naviguer  Entrée ouvrir  g générer une séance  q quitter";
 
     int selected = 0;
 
@@ -5537,6 +5540,10 @@ static DashboardAction screen_dashboard(
             int width =
                 (int)strlen(primary_nav_labels[index]) + 4;
 
+            if (!large_layout && index != selected) {
+                continue;
+            }
+
             if (index == selected) {
                 trainlog_terminal_style_on(tui_terminal,
                     TRAINLOG_TEXT_REVERSE |
@@ -5551,7 +5558,7 @@ static DashboardAction screen_dashboard(
                     ? nav_top + 1
                     : trainlog_terminal_rows(tui_terminal) - 3,
                 column,
-                " %s ",
+                large_layout ? " %s " : " ← %s → ",
                 primary_nav_labels[index]
             );
 
@@ -5637,6 +5644,10 @@ static DashboardAction screen_dashboard(
         case TRAINLOG_KEY_F1:
         case '1':
             return DASHBOARD_NEW_SESSION;
+
+        case 'g':
+        case 'G':
+            return DASHBOARD_GENERATE_SESSION;
 
         case TRAINLOG_KEY_F2:
         case '2':
@@ -6866,6 +6877,19 @@ static void draft_set_summary(
             sizeof(duration)
         );
         (void)snprintf(output, output_size, "Continu · %s", duration);
+    } else if (draft->input.set_count == 0U &&
+        draft->input.target_sets > 0 && draft->input.target_reps > 0) {
+        if (draft->input.target_has_weight) {
+            (void)snprintf(output, output_size,
+                "Plan %d×%d · %.2f kg · repos %d s · 0 réalisée",
+                draft->input.target_sets, draft->input.target_reps,
+                draft->input.target_weight_kg, draft->input.rest_seconds);
+        } else {
+            (void)snprintf(output, output_size,
+                "Plan %d×%d · charge absente · repos %d s · 0 réalisée",
+                draft->input.target_sets, draft->input.target_reps,
+                draft->input.rest_seconds);
+        }
     } else {
         int written = snprintf(output, output_size, "%zu séries · ",
             draft->input.set_count);
@@ -7472,6 +7496,258 @@ static bool persist_draft_replacement(
     ) == TRAINLOG_STATUS_OK;
 }
 
+typedef struct TrainlogGeneratorPreviewItem {
+    char exercise_name[TRAINLOG_NAME_MAX + 1U];
+    char equipment_name[TRAINLOG_NAME_MAX + 1U];
+    char zone_name[TRAINLOG_NAME_MAX + 1U];
+    char movement_name[TRAINLOG_NAME_MAX + 1U];
+} TrainlogGeneratorPreviewItem;
+
+static const char *generator_goal_label(const char *goal_id)
+{
+    if (strcmp(goal_id, "general") == 0) return "Général";
+    if (strcmp(goal_id, "strength") == 0) return "Force";
+    if (strcmp(goal_id, "hypertrophy") == 0) return "Hypertrophie";
+    if (strcmp(goal_id, "endurance") == 0) return "Endurance";
+    return goal_id;
+}
+
+static bool generator_choose_zone(const TrainlogBodyZone **output)
+{
+    size_t selected = 0U;
+    size_t count = trainlog_body_zone_catalog_count();
+    if (output == NULL || count == 0U || count > MAX_BODY_ZONES) return false;
+    for (;;) {
+        size_t index;
+        int key;
+        draw_shell("Générer une séance — zone", "↑↓ choisir  Entrée continuer  q annuler");
+        for (index = 0U; index < count; ++index) {
+            const TrainlogBodyZone *zone = trainlog_body_zone_catalog_at(index);
+            if (index == selected) trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+            trainlog_terminal_printf(tui_terminal, 3 + (int)index, 4,
+                " %c %-40.40s ", index == selected ? '>' : ' ',
+                zone != NULL ? zone->display_name : "?");
+            if (index == selected) trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+        }
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 'q' || key == 'Q' || key == 27 || key == TRAINLOG_KEY_ESCAPE) return false;
+        if (key == TRAINLOG_KEY_UP) selected = selected > 0U ? selected - 1U : count - 1U;
+        else if (key == TRAINLOG_KEY_DOWN) selected = selected + 1U < count ? selected + 1U : 0U;
+        else if (key == '\n' || key == TRAINLOG_KEY_ENTER) {
+            *output = trainlog_body_zone_catalog_at(selected);
+            return *output != NULL;
+        }
+    }
+}
+
+static bool generator_choose_goal(const TrainlogSessionGenerationGoalPolicy **output)
+{
+    size_t selected = 0U;
+    size_t count = trainlog_session_generation_policy_v1.goal_count;
+    if (output == NULL || count == 0U) return false;
+    for (;;) {
+        size_t index;
+        int key;
+        draw_shell("Générer une séance — objectif", "↑↓ choisir  Entrée continuer  q annuler");
+        for (index = 0U; index < count; ++index) {
+            const TrainlogSessionGenerationGoalPolicy *goal =
+                &trainlog_session_generation_policy_v1.goals[index];
+            if (index == selected) trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+            trainlog_terminal_printf(tui_terminal, 4 + (int)index, 4,
+                " %c %-18.18s  %d × %d  repos %d s ",
+                index == selected ? '>' : ' ', generator_goal_label(goal->id),
+                goal->sets, goal->repetitions, goal->rest_seconds);
+            if (index == selected) trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+        }
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 'q' || key == 'Q' || key == 27 || key == TRAINLOG_KEY_ESCAPE) return false;
+        if (key == TRAINLOG_KEY_UP) selected = selected > 0U ? selected - 1U : count - 1U;
+        else if (key == TRAINLOG_KEY_DOWN) selected = selected + 1U < count ? selected + 1U : 0U;
+        else if (key == '\n' || key == TRAINLOG_KEY_ENTER) {
+            *output = &trainlog_session_generation_policy_v1.goals[selected];
+            return true;
+        }
+    }
+}
+
+static bool generator_choose_duration(int *output_minutes)
+{
+    size_t selected = 0U;
+    size_t count = trainlog_session_generation_policy_v1.duration_preset_count;
+    if (output_minutes == NULL || count == 0U) return false;
+    for (;;) {
+        size_t index;
+        int key;
+        draw_shell("Générer une séance — durée", "↑↓ choisir  Entrée continuer  q annuler");
+        for (index = 0U; index < count; ++index) {
+            if (index == selected) trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+            trainlog_terminal_printf(tui_terminal, 4 + (int)index, 4,
+                " %c %d minutes ", index == selected ? '>' : ' ',
+                trainlog_session_generation_policy_v1.duration_presets_minutes[index]);
+            if (index == selected) trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+        }
+        if (selected == count) trainlog_terminal_style_on(tui_terminal,
+            TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+        trainlog_terminal_printf(tui_terminal, 4 + (int)count, 4,
+            " %c Durée personnalisée ", selected == count ? '>' : ' ');
+        if (selected == count) trainlog_terminal_style_off(tui_terminal,
+            TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 'q' || key == 'Q' || key == 27 || key == TRAINLOG_KEY_ESCAPE) return false;
+        if (key == TRAINLOG_KEY_UP) selected = selected > 0U ? selected - 1U : count;
+        else if (key == TRAINLOG_KEY_DOWN) selected = selected < count ? selected + 1U : 0U;
+        else if (key == '\n' || key == TRAINLOG_KEY_ENTER) {
+            if (selected < count) {
+                *output_minutes = trainlog_session_generation_policy_v1.duration_presets_minutes[selected];
+                return true;
+            }
+            return prompt_int_value(10, "Durée personnalisée (minutes)",
+                trainlog_session_generation_policy_v1.min_minutes,
+                trainlog_session_generation_policy_v1.max_minutes,
+                trainlog_session_generation_policy_v1.min_minutes, output_minutes);
+        }
+    }
+}
+
+static int generator_confirm_exposure(const TrainlogBodyZone *zone,
+    const TrainlogBodyZoneRecentExposure *exposure)
+{
+    int key;
+    if (exposure->warning_level == TRAINLOG_GENERATION_WARNING_NONE) return 1;
+    draw_shell("Zone travaillée récemment", "c continuer  z choisir une autre zone  q annuler");
+    trainlog_terminal_printf(tui_terminal, 4, 4, "%s travaillé récemment.", zone->display_name);
+    trainlog_terminal_printf(tui_terminal, 6, 4,
+        "24 h : %zu séries principales, %zu secondaires (%zu séances)",
+        exposure->within_24h.primary_set_count, exposure->within_24h.secondary_set_count,
+        exposure->within_24h.session_count);
+    trainlog_terminal_printf(tui_terminal, 7, 4,
+        "72 h : %zu séries principales, %zu secondaires (%zu séances)",
+        exposure->within_72h.primary_set_count, exposure->within_72h.secondary_set_count,
+        exposure->within_72h.session_count);
+    if (exposure->has_latest) trainlog_terminal_printf(tui_terminal, 9, 4,
+        "Dernière exposition réelle : %.48s", exposure->latest_started_at);
+    trainlog_terminal_printf(tui_terminal, 11, 4,
+        "Indicateur de récence uniquement; il ne mesure pas la récupération.");
+    trainlog_terminal_render(tui_terminal);
+    for (;;) {
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 'c' || key == 'C' || key == '\n' || key == TRAINLOG_KEY_ENTER) return 1;
+        if (key == 'z' || key == 'Z') return 0;
+        if (key == 'q' || key == 'Q' || key == 27 || key == TRAINLOG_KEY_ESCAPE) return -1;
+    }
+}
+
+static bool generator_prepare_preview(TrainlogDatabase *database,
+    const TrainlogGeneratedSession *session, TrainlogGeneratorPreviewItem *items)
+{
+    size_t index;
+    for (index = 0U; index < session->exercise_count; ++index) {
+        TrainlogExercise exercise;
+        TrainlogResolvedEquipment equipment;
+        const TrainlogBodyZone *zone;
+        const TrainlogKnowledgeMovementPattern *pattern = NULL;
+        if (trainlog_database_get_exercise_profile(database,
+                session->exercises[index].exercise_id, &exercise) != TRAINLOG_STATUS_OK ||
+            trainlog_database_resolve_equipment(database,
+                session->exercises[index].equipment_id, &equipment) != TRAINLOG_STATUS_OK) return false;
+        zone = trainlog_body_zone_catalog_lookup(session->exercises[index].primary_zone_id);
+        if (session->exercises[index].pattern_count > 0U)
+            pattern = trainlog_knowledge_movement_pattern_lookup(session->exercises[index].pattern_ids[0]);
+        (void)snprintf(items[index].exercise_name, sizeof(items[index].exercise_name), "%s", exercise.name);
+        (void)snprintf(items[index].equipment_name, sizeof(items[index].equipment_name), "%s", equipment.display_name);
+        (void)snprintf(items[index].zone_name, sizeof(items[index].zone_name), "%s",
+            zone != NULL ? zone->display_name : session->exercises[index].primary_zone_id);
+        (void)snprintf(items[index].movement_name, sizeof(items[index].movement_name), "%s",
+            pattern != NULL ? pattern->display_name_fr : "mouvement non classé");
+    }
+    return true;
+}
+
+static bool generator_preview(const TrainlogGeneratedSession *session,
+    const TrainlogGeneratorPreviewItem *items)
+{
+    size_t selected = 0U;
+    for (;;) {
+        size_t index, top;
+        int key;
+        int visible = (trainlog_terminal_rows(tui_terminal) - 7) / 3;
+        if (visible < 1) visible = 1;
+        top = selected >= (size_t)visible ? selected - (size_t)visible + 1U : 0U;
+        draw_shell("Aperçu de la séance générée",
+            "↑↓ parcourir  a accepter et saisir le réalisé  q annuler");
+        trainlog_terminal_printf(tui_terminal, 3, 4,
+            "%zu exercice(s) · estimation %d min · cibles indicatives",
+            session->exercise_count, session->estimated_duration_seconds / 60);
+        for (index = top; index < session->exercise_count && index - top < (size_t)visible; ++index) {
+            const TrainlogGeneratedExercise *exercise = &session->exercises[index];
+            int row = 5 + (int)(index - top) * 3;
+            char weight[64];
+            if (exercise->has_target_weight) (void)snprintf(weight, sizeof(weight),
+                " · %.2f kg observés · %.19s", exercise->target_weight_kg,
+                exercise->load_source_started_at);
+            else (void)snprintf(weight, sizeof(weight), " · aucune prescription numérique");
+            if (index == selected) trainlog_terminal_style_on(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+            trainlog_terminal_printf(tui_terminal, row, 3, "%c %zu. %-31.31s · %-24.24s",
+                index == selected ? '>' : ' ', index + 1U, items[index].exercise_name, items[index].equipment_name);
+            trainlog_terminal_printf(tui_terminal, row + 1, 5,
+                "%d×%d%s · repos %d s", exercise->target_sets,
+                exercise->target_repetitions, weight, exercise->rest_seconds);
+            trainlog_terminal_printf(tui_terminal, row + 2, 5, "%.24s · %.32s%s",
+                items[index].zone_name, items[index].movement_name,
+                exercise->exposure_warning_level != TRAINLOG_GENERATION_WARNING_NONE ? " · récence" : "");
+            if (index == selected) trainlog_terminal_style_off(tui_terminal,
+                TRAINLOG_TEXT_REVERSE | trainlog_theme_style(TRAINLOG_COLOR_ACCENT));
+        }
+        trainlog_terminal_render(tui_terminal);
+        key = trainlog_terminal_get_key(tui_terminal);
+        if (key == 'a' || key == 'A' || key == '\n' || key == TRAINLOG_KEY_ENTER) return true;
+        if (key == 'q' || key == 'Q' || key == 27 || key == TRAINLOG_KEY_ESCAPE) return false;
+        if (key == TRAINLOG_KEY_UP) selected = selected > 0U ? selected - 1U : session->exercise_count - 1U;
+        else if (key == TRAINLOG_KEY_DOWN) selected = selected + 1U < session->exercise_count ? selected + 1U : 0U;
+    }
+}
+
+static bool generator_build_drafts(TrainlogDatabase *database,
+    const TrainlogGeneratedSession *session, TrainlogSessionDraftExercise *drafts)
+{
+    size_t index;
+    for (index = 0U; index < session->exercise_count; ++index) {
+        const TrainlogGeneratedExercise *generated = &session->exercises[index];
+        TrainlogExercise exercise;
+        if (trainlog_database_get_exercise_profile(database, generated->exercise_id,
+                &exercise) != TRAINLOG_STATUS_OK) return false;
+        (void)memset(&drafts[index], 0, sizeof(drafts[index]));
+        (void)snprintf(drafts[index].input.exercise_id,
+            sizeof(drafts[index].input.exercise_id), "%s", generated->exercise_id);
+        (void)snprintf(drafts[index].input.equipment_id,
+            sizeof(drafts[index].input.equipment_id), "%s", generated->equipment_id);
+        (void)snprintf(drafts[index].name, sizeof(drafts[index].name), "%s", exercise.name);
+        drafts[index].tracking_mode = TRAINLOG_TRACKING_REPS;
+        drafts[index].input.recording_mode = TRAINLOG_RECORDING_SETS;
+        drafts[index].input.load_mode = generated->planned_load_mode;
+        drafts[index].input.target_sets = generated->target_sets;
+        drafts[index].input.target_reps = generated->target_repetitions;
+        drafts[index].input.rest_seconds = generated->rest_seconds;
+        drafts[index].input.target_has_weight = generated->has_target_weight;
+        drafts[index].input.target_weight_kg = generated->target_weight_kg;
+        /* INVARIANT: generated dose is a plan. No performed row exists until
+         * the normal editor records a real metric supplied by the user. */
+        drafts[index].input.set_count = 0U;
+        draft_bind_input(&drafts[index]);
+    }
+    return true;
+}
+
 static void edit_persisted_session(
     TrainlogDatabase *database,
     const char *session_id
@@ -7532,6 +7808,149 @@ static void edit_persisted_session(
     }
 
     wait_key();
+}
+
+static TrainlogStatus persist_new_session_drafts(TrainlogDatabase *database,
+    TrainlogSessionDraftExercise *drafts, size_t exercise_count,
+    const char *started_at)
+{
+    TrainlogSessionExerciseInput *inputs;
+    TrainlogSessionInput session;
+    char session_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char ended_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    TrainlogStatus status;
+    size_t index;
+    if (database == NULL || drafts == NULL || started_at == NULL ||
+        exercise_count == 0U ||
+        exercise_count > MAX_SESSION_EXERCISES) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    inputs = calloc(exercise_count, sizeof(*inputs));
+    if (inputs == NULL) return TRAINLOG_STATUS_SYSTEM_ERROR;
+    if (trainlog_id_generate("se", session_id, sizeof(session_id)) != TRAINLOG_STATUS_OK ||
+        trainlog_time_now_rfc3339(ended_at, sizeof(ended_at)) != TRAINLOG_STATUS_OK) {
+        free(inputs);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    for (index = 0U; index < exercise_count; ++index) {
+        draft_bind_input(&drafts[index]);
+        inputs[index] = drafts[index].input;
+    }
+    (void)memset(&session, 0, sizeof(session));
+    session.session_type = TRAINLOG_SESSION_TRAINING;
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s", session_id);
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s", started_at);
+    (void)snprintf(session.ended_at, sizeof(session.ended_at), "%s", ended_at);
+    session.exercises = inputs;
+    session.exercise_count = exercise_count;
+    status = trainlog_database_insert_session(database, &session);
+    free(inputs);
+    return status;
+}
+
+static void generator_show_empty(const TrainlogGeneratedSession *session)
+{
+    size_t index;
+    draw_shell("Séance non générée", "Une touche pour revenir");
+    trainlog_terminal_printf(tui_terminal, 4, 4,
+        "Pas assez d’exercices résolus et compatibles pour cette demande.");
+    for (index = 0U; index < session->shortage_count && index < 6U; ++index)
+        trainlog_terminal_printf(tui_terminal, 6 + (int)index, 4, "· %.58s",
+            session->shortage_codes[index]);
+    trainlog_terminal_printf(tui_terminal, 14, 4,
+        "Aucune correspondance n’a été inventée; rien ne peut être enregistré.");
+    wait_key();
+}
+
+static void screen_session_generator(TrainlogDatabase *database)
+{
+    const TrainlogBodyZone *zone;
+    const TrainlogSessionGenerationGoalPolicy *goal;
+    int duration_minutes;
+    if (!generator_choose_zone(&zone) || !generator_choose_goal(&goal) ||
+        !generator_choose_duration(&duration_minutes)) return;
+    for (;;) {
+        TrainlogGeneratedSession *generated = calloc(1U, sizeof(*generated));
+        TrainlogGeneratorPreviewItem *items = calloc(TRAINLOG_GENERATOR_MAX_SELECTED,
+            sizeof(*items));
+        TrainlogGenerationDatabaseRequest request;
+        char reference_time[TRAINLOG_TIMESTAMP_MAX + 1U];
+        TrainlogStatus status;
+        int exposure_choice;
+        if (generated == NULL || items == NULL) {
+            free(generated); free(items);
+            status_line("Mémoire insuffisante pour générer la séance.", TRAINLOG_COLOR_ERROR);
+            wait_key(); return;
+        }
+        if (trainlog_time_now_rfc3339(reference_time, sizeof(reference_time)) != TRAINLOG_STATUS_OK) {
+            free(generated); free(items); return;
+        }
+        (void)memset(&request, 0, sizeof(request));
+        request.zone_id = zone->zone_id;
+        request.goal_id = goal->id;
+        request.duration_minutes = duration_minutes;
+        request.reference_time = reference_time;
+        /* NULL is deliberate: omitted equipment means all exact compatible
+         * supplied contexts, distinct from an explicit empty inventory. */
+        request.available_equipment_ids = NULL;
+        status = trainlog_session_generate_from_database(database, &request, generated);
+        if (status != TRAINLOG_STATUS_OK) {
+            draw_shell("Génération impossible", "Une touche pour revenir");
+            status_line(status == TRAINLOG_STATUS_DATABASE_ERROR
+                ? "Analyse refusée : horodatage ou historique stocké invalide."
+                : "La demande de génération est invalide ou incomplète.",
+                TRAINLOG_COLOR_ERROR);
+            free(generated); free(items); wait_key(); return;
+        }
+        exposure_choice = generator_confirm_exposure(zone, &generated->exposure);
+        if (exposure_choice < 0) { free(generated); free(items); return; }
+        if (exposure_choice == 0) {
+            free(generated); free(items);
+            if (!generator_choose_zone(&zone)) return;
+            continue;
+        }
+        if (generated->exercise_count == 0U) {
+            generator_show_empty(generated);
+            free(generated); free(items); return;
+        }
+        if (!generator_prepare_preview(database, generated, items)) {
+            free(generated); free(items);
+            status_line("Impossible de résoudre les libellés de l’aperçu.", TRAINLOG_COLOR_ERROR);
+            wait_key(); return;
+        }
+        if (!generator_preview(generated, items)) {
+            free(generated); free(items); return;
+        }
+        {
+            TrainlogSessionDraftExercise *drafts = calloc(MAX_SESSION_EXERCISES,
+                sizeof(*drafts));
+            char accepted_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+            size_t count = generated->exercise_count;
+            bool built = drafts != NULL && generator_build_drafts(database, generated, drafts);
+            free(generated); free(items);
+            if (!built) {
+                free(drafts);
+                status_line("Impossible de préparer l’éditeur de séance.", TRAINLOG_COLOR_ERROR);
+                wait_key(); return;
+            }
+            if (trainlog_time_now_rfc3339(accepted_at, sizeof(accepted_at)) != TRAINLOG_STATUS_OK) {
+                free(drafts); return;
+            }
+            if (!edit_session_draft(database, drafts, &count, TRAINLOG_SESSION_TRAINING)) {
+                free(drafts);
+                draw_shell("Séance abandonnée", "Une touche pour revenir");
+                status_line("Aucune donnée de séance n’a été enregistrée.", TRAINLOG_COLOR_MUTED);
+                wait_key(); return;
+            }
+            status = persist_new_session_drafts(database, drafts, count, accepted_at);
+            free(drafts);
+            draw_shell("Fin de séance", "Une touche pour revenir");
+            status_line(status == TRAINLOG_STATUS_OK
+                ? "✓ Séance générée et réalisée enregistrée."
+                : "Échec lors de l’enregistrement de la séance.",
+                status == TRAINLOG_STATUS_OK ? TRAINLOG_COLOR_SUCCESS : TRAINLOG_COLOR_ERROR);
+            wait_key();
+            return;
+        }
+    }
 }
 
 static void screen_new_session(
@@ -12508,6 +12927,9 @@ int trainlog_tui_run(TrainlogDatabase *database)
         switch (action) {
         case DASHBOARD_NEW_SESSION:
             screen_new_session(database);
+            break;
+        case DASHBOARD_GENERATE_SESSION:
+            screen_session_generator(database);
             break;
         case DASHBOARD_HISTORY:
             screen_history(database);

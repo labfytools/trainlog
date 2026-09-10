@@ -14,6 +14,7 @@ fun HomeScreen(
     activeDraft: ActiveSessionDraft?,
     draftError: String?,
     onSession: () -> Unit,
+    onGenerateSession: () -> Unit,
     onDiscardDraft: () -> Unit,
     onExercise: () -> Unit,
     onBody: () -> Unit,
@@ -110,6 +111,12 @@ fun HomeScreen(
                         "Ouvrir la séance en cours sans l'écraser."
                     },
                 onClick = onSession,
+            )
+
+            TrainlogAction(
+                label = "Générer une séance",
+                description = "Préparer une proposition modifiable à partir d'une zone, d'un objectif et d'une durée.",
+                onClick = onGenerateSession,
             )
 
             TrainlogAction(

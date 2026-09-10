@@ -113,6 +113,7 @@ class DraftUiTestActivity : ComponentActivity() {
                         onBody = {},
                         onHistory = {},
                         onSync = {},
+                        onGenerateSession = {},
                     )
                 }
             }

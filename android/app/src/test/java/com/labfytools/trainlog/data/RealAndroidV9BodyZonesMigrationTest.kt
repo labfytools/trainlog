@@ -71,7 +71,7 @@ class RealAndroidV9BodyZonesMigrationTest {
         SQLiteDatabase.openDatabase(
             migratedPath.path, null, SQLiteDatabase.OPEN_READWRITE,
         ).use { migrated ->
-            assertEquals(10, scalarInt(migrated, "PRAGMA user_version;"))
+            assertEquals(11, scalarInt(migrated, "PRAGMA user_version;"))
             assertEquals("ok", scalarString(migrated, "PRAGMA integrity_check;"))
             migrated.rawQuery("PRAGMA foreign_key_check;", null).use {
                 assertFalse(it.moveToFirst())
@@ -81,9 +81,9 @@ class RealAndroidV9BodyZonesMigrationTest {
                 "active_session_draft", "body_observations",
                 "catalog_exercise_equipment", "continuous_activity",
                 "draft_continuous_activity", "draft_max_results",
-                "draft_performed_sets", "draft_session_exercises", "equipment",
+                "draft_performed_sets", "equipment",
                 "equipment_aliases", "exercise_equipment", "exercises",
-                "max_results", "performed_sets", "session_exercises", "sessions",
+                "max_results", "performed_sets", "sessions",
             )
             historicalTables.forEach { table ->
                 /* Table names are a closed test constant; values remain bound
@@ -94,6 +94,17 @@ class RealAndroidV9BodyZonesMigrationTest {
                 assertEquals(0, scalarInt(migrated,
                     "SELECT COUNT(*) FROM (SELECT * FROM before_v9.$table " +
                         "EXCEPT SELECT * FROM main.$table);"))
+            }
+            for ((table, columns) in listOf(
+                "session_exercises" to "id,session_row_id,exercise_row_id,position,recording_mode,tracking_mode,data_fields,equipment_row_id,entry_id",
+                "draft_session_exercises" to "id,draft_id,exercise_row_id,position,recording_mode,tracking_mode,data_fields,equipment_row_id,entry_id",
+            )) {
+                assertEquals(0, scalarInt(migrated,
+                    "SELECT COUNT(*) FROM (SELECT $columns FROM main.$table EXCEPT SELECT $columns FROM before_v9.$table);"))
+                assertEquals(0, scalarInt(migrated,
+                    "SELECT COUNT(*) FROM (SELECT $columns FROM before_v9.$table EXCEPT SELECT $columns FROM main.$table);"))
+                assertEquals(0, scalarInt(migrated,
+                    "SELECT COUNT(*) FROM main.$table WHERE load_mode<>'none' OR rest_seconds<>0 OR target_sets IS NOT NULL OR target_reps IS NOT NULL OR target_duration_seconds IS NOT NULL OR target_weight_kg IS NOT NULL;"))
             }
             assertEquals(32, scalarInt(migrated,
                 "SELECT COUNT(*) FROM exercise_body_zones;"))

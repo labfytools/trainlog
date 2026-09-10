@@ -19,6 +19,7 @@ TRAINLOG_FORMAT_V1=FROZEN
 DESKTOP_SCHEMA_V11=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
 ANDROID_LOCAL_DATABASE_V10=PASS
+ANDROID_LOCAL_DATABASE_V11=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 EXERCISE_EDIT_V1=PASS
 ANDROID_BANNER_PARITY_V1=PASS
@@ -42,10 +43,11 @@ BODY_ZONE_SYNC_V1=PASS
 BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=42/42 PASS (recorded validation checkpoint)
+DESKTOP_TESTS=45/45 PASS (latest validated checkpoint)
 ANDROID_BUILD=PASS
 
 TRAINING_KNOWLEDGE_V1=PASS
+SESSION_GENERATOR_V1=PASS
 ```
 
 `TRAINING_KNOWLEDGE_V1` has passed its bounded scientific review, independent
@@ -193,7 +195,7 @@ export or desktop synchronization as completed sessions.
 Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v10. Its additive v4 -> v10 chain adds the shared
+The current Android schema is v11. Its additive v4 -> v10 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
 identities, custom-equipment definition support, explicit MAX results and
 stable-source Test max resumption, then direct primary/secondary body-zone
@@ -252,7 +254,7 @@ Sync
 
 The request is consumed by `trainlog-syncd`, the shared bidirectional engine
 runs, a receipt is returned to Android, and the PC catalog is applied locally.
-The active completed-session exchange is V2 and preserves occurrence
+The active completed-session exchange is V3 and preserves occurrence
 `entry_id`, per-set weights and equipment associations. Frozen V1 artifacts
 remain readable as legacy artifacts; they are not silently redefined as V2.
 Exercise-zone metadata travels separately in the sole bidirectional

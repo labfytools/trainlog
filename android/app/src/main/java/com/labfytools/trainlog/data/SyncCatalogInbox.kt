@@ -176,18 +176,27 @@ class SyncCatalogInbox(
     }
 
     private fun importPcSessions(directory: DocumentFile): String? {
-        val file = directory.findFile("trainlog-pc-mobile-export-v2.json") ?: return null
+        /* CONTRACT: a present V3 artifact is authoritative. Invalid V3 must
+         * surface its error and never fall back to a stale V2 snapshot. */
+        val v3 = directory.findFile("trainlog-pc-mobile-export-v3.json")
+        val file = v3 ?: directory.findFile("trainlog-pc-mobile-export-v2.json") ?: return null
         return try {
             val json = appContext.contentResolver.openInputStream(file.uri)
                 ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: return "Lecture snapshot séances V2 impossible."
-            when (val result = repository.applyPcMobileExportV2Json(json)) {
+                ?: return "Lecture snapshot séances impossible."
+            val result = if (v3 != null) repository.applyPcMobileExportV3Json(json)
+                else repository.applyPcMobileExportV2Json(json)
+            when (result) {
                 is MobileSessionImportResult.Applied -> null
                 is MobileSessionImportResult.Invalid -> result.message
-                MobileSessionImportResult.DatabaseError -> "Erreur base locale séances V2."
+                MobileSessionImportResult.DatabaseError -> "Erreur base locale séances."
             }
-        } catch (error: Exception) { error.message ?: "Import séances V2 impossible." }
+        } catch (error: Exception) { error.message ?: "Import séances impossible." }
     }
+
+    /** Test seam for the real filename-priority boundary; production uses the same method. */
+    internal fun importPcSessionsFromDirectoryForTest(directory: DocumentFile): String? =
+        importPcSessions(directory)
 
     private fun importPcBodyZones(directory: DocumentFile): String? {
         val file = directory.findFile("trainlog-exercise-body-zones-v1.json") ?: return null

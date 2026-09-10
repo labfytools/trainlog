@@ -172,6 +172,13 @@ insertion and draft deletion are one transaction. Drafts are excluded from
 completed history and mobile export. Preserve raw partial form input and use
 an explicit, non-destructive migration for future Android schema changes.
 
+Android schema v11 additionally stores optional planning metadata separately
+from actual occurrence data after the additive v10 -> v11 migration. Existing
+rows retain `load_mode=none`, zero rest and NULL targets. Desktop remains schema
+v11. The active completed-session exchange is the separate strict
+`trainlog-mobile-export` V3; V1/V2 remain readable and `TRAINLOG_FORMAT_V1`
+remains unchanged.
+
 ## 7. Synchronization architecture
 
 Desktop access to Android uses physical-device discovery with `libudev` and

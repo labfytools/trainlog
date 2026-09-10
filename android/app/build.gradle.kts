@@ -33,6 +33,9 @@ android {
              * are the canonical shared sources. Android must not fork either
              * taxonomy into Kotlin constants. */
             assets.directories.add("../../catalog")
+            /* Shared production golden inputs are read by Kotlin directly and
+             * generated into the C runner; neither platform authors copies. */
+            assets.directories.add("../../tests/fixtures")
         }
     }
 

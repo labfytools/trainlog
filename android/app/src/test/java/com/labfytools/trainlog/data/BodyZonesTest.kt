@@ -321,7 +321,7 @@ class BodyZonesTest {
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null,
             SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery("PRAGMA user_version", null).use { cursor ->
-                assertTrue(cursor.moveToFirst()); assertEquals(10, cursor.getInt(0))
+                assertTrue(cursor.moveToFirst()); assertEquals(11, cursor.getInt(0))
             }
             db.rawQuery("SELECT id FROM exercises", null).use { cursor ->
                 assertTrue(cursor.moveToFirst()); assertEquals(42L, cursor.getLong(0))

@@ -452,7 +452,8 @@ def main():
             (EXPORT_MOBILE, pc_mobile),
             (EXPORT_ASSOCIATIONS, pc_associations),
         ):
-            run(tool, output, "--database", complete_db)
+            run(tool, output, "--database", complete_db,
+                *(["--version", "2"] if tool == EXPORT_MOBILE else []))
 
         exported = json.loads(pc_mobile.read_text(encoding="utf-8"))
         walk = next(

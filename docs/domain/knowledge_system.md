@@ -104,10 +104,16 @@ No API infers range of motion, setup, actual force, or comparability of raw
 kilogram labels. Equipment, resistance semantics and execution context remain
 explicit. There are no prescriptions in V1.
 
-## Documented future pipeline only
+`SESSION_GENERATOR_V1` is a separate frozen policy and implementation layer
+over this read-only knowledge boundary. It consumes resolved candidates and
+history without mutating the knowledge catalogs; its separate policy and
+limitations are documented in [session generation](session_generation.md).
 
-The following is an architectural boundary for later work, not a V1 generator,
-scoring algorithm, proposal, database change, or user-interface behavior.
+## Session-generation boundary
+
+The following is the boundary consumed by the separate generator policy. It
+does not make this knowledge layer itself a scoring algorithm, proposal,
+database change, or user-interface behavior.
 
 ```text
 Session inputs
@@ -116,8 +122,8 @@ Session inputs
     -> real resolved candidates
     -> explicit availability
     -> recent history and explicit-MAX context
-    -> future fatigue/recent-coverage interpretation
-    -> a future proposal
+    -> recorded exposure/recency interpretation
+    -> session-generator proposal
 ```
 
 Candidate selection must seek diverse movement patterns rather than repeatedly
@@ -126,4 +132,5 @@ take the goal, available days, functions/zones, recent frequency, recovery,
 progression, equipment and history, then reason across sessions. Medical
 constraints would be explicit inputs; no diagnosis or rehabilitation status is
 to be inferred. V1 prescribes no exercises, weights, sets, fatigue scores,
-progression or schedule.
+progression or schedule. Those bounded conventions belong only to the separate
+frozen session-generation policy.

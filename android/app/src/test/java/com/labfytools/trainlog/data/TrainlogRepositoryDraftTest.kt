@@ -3,6 +3,7 @@ package com.labfytools.trainlog.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
+import androidx.documentfile.provider.DocumentFile
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
@@ -13,6 +14,8 @@ import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionDraftForm
 import com.labfytools.trainlog.model.SessionExerciseDraft
+import com.labfytools.trainlog.model.SessionExercisePlan
+import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
@@ -1502,7 +1505,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(10, cursor.getInt(0))
+                assertEquals(11, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1629,7 +1632,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(10, cursor.getInt(0))
+                assertEquals(11, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -1848,6 +1851,263 @@ class TrainlogRepositoryDraftTest {
                 assertTrue(it.moveToFirst()); assertEquals("ok", it.getString(0))
             }
         }
+    }
+
+    @Test
+    fun planningSurvivesDraftRestartCompletionDetailAndV3Export() {
+        val first = openRepository()
+        val reps = createExercise(first, "Plan reps", RecordingMode.SETS, TrackingMode.REPS)
+        val duration = createExercise(first, "Plan durée", RecordingMode.SETS, TrackingMode.DURATION)
+        val repsPlan = SessionExercisePlan(
+            sets = 3, reps = 8, weightKg = 42.5,
+            loadMode = SessionLoadMode.EXTERNAL, restSeconds = 120,
+        )
+        val durationPlan = SessionExercisePlan(
+            sets = 2, durationSeconds = 45, restSeconds = 75,
+        )
+        val active = ActiveSessionDraft(exercises = listOf(
+            SessionExerciseDraft(exercise = reps, plan = repsPlan,
+                sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0))),
+            SessionExerciseDraft(exercise = duration, plan = durationPlan,
+                sets = listOf(SessionSetDraft(durationSeconds = 40))),
+        ))
+        assertEquals(ActiveDraftMutationResult.Saved, first.saveActiveSessionDraft(active))
+        first.close(); repository = null
+
+        val reopened = openRepository()
+        assertEquals(listOf(repsPlan, durationPlan),
+            loadDraft(reopened).exercises.map { it.plan })
+        val saved = reopened.finalizeActiveSessionDraft() as FinalizeActiveDraftResult.Saved
+        assertEquals(listOf(repsPlan, durationPlan),
+            reopened.getSessionDetail(saved.sessionId)!!.exercises.map { it.plan })
+        val entries = JSONObject(reopened.buildMobileExportV3Json())
+            .getJSONArray("sessions").getJSONObject(0).getJSONArray("exercises")
+        assertEquals(3, entries.getJSONObject(0).getJSONObject("target").getInt("sets"))
+        assertEquals("external", entries.getJSONObject(0).getString("load_mode"))
+        assertEquals(45, entries.getJSONObject(1).getJSONObject("target").getInt("duration_seconds"))
+        assertEquals("none", entries.getJSONObject(1).getString("load_mode"))
+        try {
+            reopened.buildMobileExportV2Json()
+            fail("V2 publication silently discarded plans")
+        } catch (_: IllegalStateException) { }
+    }
+
+    @Test
+    fun targetOnlyDraftPersistsButCannotFinalizeWithoutActualWork() {
+        val repo = openRepository()
+        val exercise = createExercise(repo, "Plan seul", RecordingMode.SETS, TrackingMode.REPS)
+        val draft = ActiveSessionDraft(exercises = listOf(SessionExerciseDraft(
+            exercise = exercise,
+            plan = SessionExercisePlan(sets = 4, reps = 10, restSeconds = 90),
+        )))
+        assertEquals(ActiveDraftMutationResult.Saved, repo.saveActiveSessionDraft(draft))
+        assertEquals(draft.exercises.single().plan, loadDraft(repo).exercises.single().plan)
+        assertTrue(repo.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Invalid)
+        assertTrue(repo.loadActiveSessionDraft() is ActiveDraftLoadResult.Loaded)
+    }
+
+    @Test
+    fun pcMobileV3ReplaysPlansAndRejectsDivergentStableIdentityAtomically() {
+        val source = openRepository()
+        val exercise = createExercise(source, "Import plan", RecordingMode.SETS, TrackingMode.REPS)
+        assertTrue(source.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+            entryId = "sxe_v3_plan", exercise = exercise,
+            plan = SessionExercisePlan(sets = 2, reps = 6, weightKg = 18.0,
+                loadMode = SessionLoadMode.ASSISTANCE, restSeconds = 150),
+            sets = listOf(SessionSetDraft(reps = 6, weightKg = 20.0)),
+        )))) is SaveSessionResult.Saved)
+        val artifact = JSONObject(source.buildMobileExportV3Json())
+        val sessionId = artifact.getJSONArray("sessions").getJSONObject(0).getString("session_id")
+        artifact.getJSONArray("body_observations").put(JSONObject()
+            .put("observation_id", "bo_v3_time")
+            .put("observed_at", "2026-03-02t11:30:00.123456789012345678900z")
+            .put("body_weight_kg", 71.5))
+        val beforeMalformedTime = snapshotBusinessTables(context.getDatabasePath(databaseName).path)
+        listOf<Pair<String, (JSONObject) -> Unit>>(
+            "started_at" to { it.getJSONArray("sessions").getJSONObject(0).put("started_at", "not-a-time") },
+            "observed_at" to { it.getJSONArray("body_observations").getJSONObject(0).put("observed_at", "2026-02-30T12:00Z") },
+            "generated_at" to { it.put("generated_at", "2026-03-02 12:00:00Z") },
+        ).forEach { (_, mutate) ->
+            val malformed = JSONObject(artifact.toString()); mutate(malformed)
+            assertTrue(source.applyPcMobileExportV3Json(malformed.toString()) is MobileSessionImportResult.Invalid)
+            assertEquals(beforeMalformedTime, snapshotBusinessTables(context.getDatabasePath(databaseName).path))
+        }
+        // Exact grammar coverage includes omitted seconds and extreme offsets.
+        val exactTimes = JSONObject(artifact.toString()).put("generated_at", "2026-03-02t12:00z")
+        exactTimes.getJSONArray("sessions").getJSONObject(0)
+            .put("started_at", "2026-03-02T10:00+23:59")
+        exactTimes.getJSONArray("body_observations").getJSONObject(0)
+            .put("observed_at", "2026-03-02T11:30:00.1000-23:59")
+        assertTrue(source.applyPcMobileExportV3Json(exactTimes.toString()) is MobileSessionImportResult.Invalid)
+        // The existing session differs only in timestamp, so Invalid proves the
+        // valid spelling crossed structural validation and reached identity conflict.
+        assertEquals(MobileSessionImportResult.Applied(0, 1, 1, 0),
+            source.applyPcMobileExportV3Json(artifact.toString()))
+        assertEquals(SessionLoadMode.ASSISTANCE,
+            source.getSessionDetail(sessionId)!!.exercises.single().plan!!.loadMode)
+        val legacy = JSONObject(artifact.toString()).put("version", 2)
+        val legacyEntry = legacy.getJSONArray("sessions").getJSONObject(0)
+            .getJSONArray("exercises").getJSONObject(0)
+        legacyEntry.remove("target")
+        legacyEntry.put("load_mode", "none").put("rest_seconds", 0)
+        assertTrue(source.applyPcMobileExportV2Json(legacy.toString()) is MobileSessionImportResult.Invalid)
+        assertEquals(6, source.getSessionDetail(sessionId)!!.exercises.single().plan!!.reps)
+        val duplicateKey = artifact.toString().replace("\"sets\":2", "\"sets\":2,\"sets\":3")
+        assertTrue(source.applyPcMobileExportV3Json(duplicateKey) is MobileSessionImportResult.Invalid)
+        listOf<(JSONObject) -> Unit>(
+            { it.getJSONObject("target").put("sets", 65) },
+            { it.getJSONObject("target").put("reps", 10001) },
+            { it.put("rest_seconds", 86401) },
+            { it.put("load_mode", "none") },
+            { it.put("target", JSONObject.NULL) },
+        ).forEach { mutate ->
+            val malformed = JSONObject(artifact.toString())
+            val malformedEntry = malformed.getJSONArray("sessions").getJSONObject(0)
+                .getJSONArray("exercises").getJSONObject(0)
+            mutate(malformedEntry)
+            assertTrue(source.applyPcMobileExportV3Json(malformed.toString()) is MobileSessionImportResult.Invalid)
+            assertEquals(6, source.getSessionDetail(sessionId)!!.exercises.single().plan!!.reps)
+        }
+        artifact.getJSONArray("sessions").getJSONObject(0).getJSONArray("exercises")
+            .getJSONObject(0).getJSONObject("target").put("reps", 7)
+        assertTrue(source.applyPcMobileExportV3Json(artifact.toString()) is MobileSessionImportResult.Invalid)
+        assertEquals(6, source.getSessionDetail(sessionId)!!.exercises.single().plan!!.reps)
+
+        source.close(); repository = null
+        SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READWRITE).use {
+            it.execSQL("UPDATE sessions SET started_at='bad-stored-time' WHERE session_id=?", arrayOf(sessionId))
+            it.execSQL("UPDATE session_exercises SET load_mode='none',rest_seconds=0,target_sets=NULL," +
+                "target_reps=NULL,target_duration_seconds=NULL,target_weight_kg=NULL WHERE entry_id='sxe_v3_plan'")
+        }
+        val reopened = openRepository()
+        try {
+            reopened.buildMobileExportV3Json()
+            fail("V3 export should reject malformed persisted started_at")
+        } catch (error: IllegalStateException) {
+            assertTrue(error.message!!.contains("started_at"))
+        }
+        reopened.close(); repository = null
+        SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READWRITE).use {
+            it.execSQL("UPDATE sessions SET started_at='2026-03-02T10:00:00+01:00' WHERE session_id=?", arrayOf(sessionId))
+            it.execSQL("UPDATE body_observations SET observed_at='bad-stored-time' WHERE observation_id='bo_v3_time'")
+        }
+        val bodyCorrupt = openRepository()
+        try {
+            bodyCorrupt.buildMobileExportV3Json()
+            fail("V3 export should reject malformed persisted observed_at")
+        } catch (error: IllegalStateException) {
+            assertTrue(error.message!!.contains("observed_at"))
+        }
+        // V2 behavior remains published and therefore still serializes the
+        // historical nonempty timestamp without applying the new V3 rule.
+        assertEquals("bad-stored-time", JSONObject(bodyCorrupt.buildMobileExportV2Json())
+            .getJSONArray("body_observations").getJSONObject(0).getString("observed_at"))
+    }
+
+    @Test
+    fun pcMobileV3TimestampValidationUsesFreshDestinationAndPreservesExactText() {
+        val source = openRepository()
+        val exercise = createExercise(source, "Fresh timestamp", RecordingMode.SETS, TrackingMode.REPS)
+        assertTrue(source.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+            entryId = "sxe_fresh_time", exercise = exercise,
+            sets = listOf(SessionSetDraft(reps = 5)),
+        )))) is SaveSessionResult.Saved)
+        val artifact = JSONObject(source.buildMobileExportV3Json())
+        artifact.getJSONArray("body_observations").put(JSONObject()
+            .put("observation_id", "bo_fresh_time")
+            .put("observed_at", "2026-03-02T11:30Z")
+            .put("body_weight_kg", 70.0))
+        source.close(); repository = null
+        context.deleteDatabase(databaseName)
+
+        val destination = openRepository()
+        val catalog = JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+            .put("exercises", artifact.getJSONArray("exercises"))
+        assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+        listOf(
+            "started_at" to { value: JSONObject -> value.getJSONArray("sessions").getJSONObject(0).put("started_at", "not-a-time") },
+            "observed_at" to { value: JSONObject -> value.getJSONArray("body_observations").getJSONObject(0).put("observed_at", "2026-02-30T12:00Z") },
+            "generated_at" to { value: JSONObject -> value.put("generated_at", "2026-03-02 12:00:00Z") },
+        ).forEach { (field, mutate) ->
+            val malformed = JSONObject(artifact.toString()); mutate(malformed)
+            val result = destination.applyPcMobileExportV3Json(malformed.toString())
+            assertTrue(result is MobileSessionImportResult.Invalid)
+            assertTrue((result as MobileSessionImportResult.Invalid).message.contains(field))
+            assertTrue(destination.listSessions().isEmpty())
+            assertTrue(destination.listBodyObservations().isEmpty())
+        }
+
+        val valid = JSONObject(artifact.toString()).put("generated_at", "2026-03-02t12:00z")
+        val rawStartedAt = "2026-03-02T10:00:00.123456789012345678900+23:59"
+        val rawObservedAt = "2026-03-02t11:30-23:59"
+        valid.getJSONArray("sessions").getJSONObject(0).put("started_at", rawStartedAt)
+        valid.getJSONArray("body_observations").getJSONObject(0).put("observed_at", rawObservedAt)
+        assertEquals(MobileSessionImportResult.Applied(1, 0, 1, 0),
+            destination.applyPcMobileExportV3Json(valid.toString()))
+        assertEquals(rawStartedAt, destination.listSessions().single().startedAt)
+        assertEquals(rawObservedAt, destination.listBodyObservations().single().observedAt)
+    }
+
+    @Test
+    fun inboxPresentMalformedV3DoesNotFallBackToValidV2() {
+        val source = openRepository()
+        val exercise = createExercise(source, "Inbox priority", RecordingMode.SETS, TrackingMode.REPS)
+        assertTrue(source.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+            entryId = "sxe_inbox_priority", exercise = exercise,
+            sets = listOf(SessionSetDraft(reps = 7)),
+        )))) is SaveSessionResult.Saved)
+        val validV3 = JSONObject(source.buildMobileExportV3Json())
+        val malformedV3 = JSONObject(validV3.toString())
+        malformedV3.getJSONArray("sessions").getJSONObject(0).put("started_at", "not-a-time")
+        val validV2 = JSONObject(validV3.toString()).put("version", 2)
+        validV2.getJSONArray("sessions").getJSONObject(0).getJSONArray("exercises")
+            .getJSONObject(0).remove("target")
+        source.close(); repository = null
+        context.deleteDatabase(databaseName)
+
+        val destination = openRepository()
+        val catalog = JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+            .put("exercises", validV3.getJSONArray("exercises"))
+        assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+        val directory = Files.createTempDirectory("trainlog-inbox-priority-").toFile()
+        try {
+            val v3File = File(directory, "trainlog-pc-mobile-export-v3.json")
+            v3File.writeText(malformedV3.toString())
+            File(directory, "trainlog-pc-mobile-export-v2.json").writeText(validV2.toString())
+            val inbox = SyncCatalogInbox(context, destination)
+            val documentDirectory = DocumentFile.fromFile(directory)
+            val error = inbox.importPcSessionsFromDirectoryForTest(documentDirectory)
+            assertTrue(error!!.contains("started_at"))
+            assertTrue(destination.listSessions().isEmpty())
+            assertTrue(v3File.delete())
+            assertEquals(null, inbox.importPcSessionsFromDirectoryForTest(documentDirectory))
+            assertEquals(1, destination.listSessions().size)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun sharedPythonV3FixtureImportsAndPublishesWithoutChangingPlanOrActuals() {
+        val repo = openRepository()
+        val fixture = findRepositoryFile("tests/fixtures/session-mobile-export-v3.json").readText()
+        val root = JSONObject(fixture)
+        val catalog = JSONObject()
+            .put("format", "trainlog-pc-catalog")
+            .put("version", 1)
+            .put("exercises", root.getJSONArray("exercises"))
+        assertTrue(repo.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+        assertEquals(MobileSessionImportResult.Applied(1, 0, 0, 0),
+            repo.applyPcMobileExportV3Json(fixture))
+        val detail = repo.getSessionDetail("se_33333333-3333-4333-8333-333333333333")!!
+            .exercises.single()
+        assertEquals(SessionExercisePlan(3, reps = 9, weightKg = 55.5,
+            loadMode = SessionLoadMode.EXTERNAL, restSeconds = 135), detail.plan)
+        assertEquals(listOf(52.5, null, 0.0), detail.sets.map { it.weightKg })
+        val exported = JSONObject(repo.buildMobileExportV3Json()).getJSONArray("sessions")
+            .getJSONObject(0).getJSONArray("exercises").getJSONObject(0)
+        assertEquals(9, exported.getJSONObject("target").getInt("reps"))
+        assertEquals(3, exported.getJSONArray("sets").length())
     }
 
     private fun openRepository(): TrainlogRepository {

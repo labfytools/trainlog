@@ -16,6 +16,8 @@ GATE_2=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 DESKTOP_SCHEMA_V11=PASS
 ANDROID_LOCAL_DATABASE_V10=PASS
+ANDROID_LOCAL_DATABASE_V11=PASS
+SESSION_GENERATOR_V1=PASS
 
 DIRECT_MTP_TRANSPORT=PASS
 BIDIRECTIONAL_SYNC_V1=PASS
@@ -31,7 +33,7 @@ BODY_ZONES_V1=PASS
 BODY_ZONE_SYNC_V1=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=42/42 PASS (recorded validation checkpoint)
+DESKTOP_TESTS=45/45 PASS (latest validated checkpoint)
 TUI_NOTCURSES_V1=PASS
 NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
 NOTCURSES_TRUECOLOR_THEME=PASS
@@ -57,11 +59,12 @@ The current product baseline includes:
 - supplied and custom equipment definitions with occurrence-level links;
 - shared synchronization engine and `trainlog-syncd`.
 
-`BODY_ZONES_V1` is complete infrastructure for later planning: one shared
+`BODY_ZONES_V1` is complete infrastructure for session generation: one shared
 manifest, desktop v11/Android v10 relations, Android/TUI edit and display,
 descendant-aware filters, unclassified history and one explicit-conflict sync
-companion. It does not implement a session generator, custom zones or proposed
-loads.
+companion. The implemented generator uses this infrastructure; custom zones are
+still outside this checkpoint and proposed loads remain editable plans rather
+than actual work.
 
 `TRAINING_KNOWLEDGE_V1=PASS` is read-only infrastructure. Scientific review,
 independent temporal review, final engineering review, repair verification, and
@@ -69,10 +72,10 @@ final executable validation passed. The temporal contract preserves source text
 and exact C/Android chronological pagination; one bounded repair chain closed
 the audit's stale-documentation, Android-loader, Meson-input, and role-only C
 query findings.
-It provides catalog-backed scientific lookup and
-runtime context composition without prescriptions, schema changes or catalog
-seeding. The documented future session/program input pipeline is deliberately
-not a roadmap gate or an implemented generator; see
+It provides catalog-backed scientific lookup and runtime context composition
+without prescriptions, schema changes or catalog seeding. The implemented
+separate session generator consumes that boundary; multi-session programming is
+still not a roadmap gate. See
 [Training knowledge system V1](domain/knowledge_system.md).
 
 `EXERCISE_EDIT_V1` is a completed capture correction: Android permits
@@ -199,59 +202,15 @@ Gate:
 EXERCISE_METADATA_V1=PASS
 ```
 
-## Session planner v1
+## Session generator v1
 
-The desktop TUI becomes the canonical session-planning surface.
-
-A planned session should allow:
-
-- selecting exercises from the real gym catalog;
-- ordering exercises;
-- planned sets/repetitions or duration;
-- planned rest;
-- optional planned load where semantically valid;
-- synchronization to Android.
-
-Android should then open a prepared session and require only actual performance
-entry during training.
-
-The existing Body Zones V1 read APIs can later list exercises by direct or
-descendant zone, optionally primary-only, and compose those IDs with existing
-latest MAX and performance history. A future generator may use that surface,
-but this planner tranche must still define its own selection policy and must not
-duplicate MAX/history or infer a load automatically.
-
-Target workflow:
-
-```text
-Desktop TUI
--> prepare session
--> sync
-
-Android
--> open planned session
--> enter actual values
--> save
--> sync
-
-Desktop TUI
--> history and analytics
-```
-
-The feature should also make later support possible for:
-
-```text
-duplicate previous session
-reuse a planned session
-session templates
-```
-
-Gates:
-
-```text
-SESSION_PLANNER_V1=PASS
-ANDROID_PLANNED_SESSION_ENTRY=PASS
-```
+`SESSION_GENERATOR_V1=PASS`.
+It provides
+a bounded policy-driven generator in both UIs, then hands accepted nonempty
+proposals to normal draft/editor flows where actual work is captured separately.
+It does not create reusable templates, a planned-session sync product surface,
+or a multi-session program. The one deep final audit found repairable gaps;
+its bounded repairs, review, and final validation matrix passed.
 
 ## Session templates v1
 

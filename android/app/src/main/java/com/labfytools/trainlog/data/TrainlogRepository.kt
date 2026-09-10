@@ -3,8 +3,11 @@ package com.labfytools.trainlog.data
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteConstraintException
+import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import android.util.JsonReader
+import android.util.JsonToken
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.BodyObservationSummary
@@ -20,12 +23,15 @@ import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSummary
 import com.labfytools.trainlog.model.SessionDetail
 import com.labfytools.trainlog.model.SessionExerciseDetail
+import com.labfytools.trainlog.model.SessionExercisePlan
+import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
+import java.io.StringReader
 import java.time.OffsetDateTime
 import java.util.Locale
 import java.util.UUID
@@ -254,6 +260,10 @@ class TrainlogRepository(
     private val applicationContext = context.applicationContext
     private val bodyZones = BodyZoneCatalog.load(applicationContext)
     private val trainingKnowledge = TrainingKnowledgeCatalog.load(applicationContext, bodyZones)
+    private val sessionGenerationPolicy =
+        SessionGenerationPolicyLoader.load(applicationContext, trainingKnowledge, bodyZones)
+    private val sessionGenerationEngine =
+        SessionGenerationEngine(sessionGenerationPolicy, trainingKnowledge, bodyZones)
     private val database =
         TrainlogDatabaseHelper(
             applicationContext,
@@ -338,6 +348,13 @@ class TrainlogRepository(
 
     /** Return manifest sort order; definitions are immutable application assets. */
     fun listBodyZones(): List<BodyZone> = bodyZones.zones
+
+    fun sessionGenerationFormOptions(): SessionGenerationFormOptions = SessionGenerationFormOptions(
+        zoneIds = sessionGenerationPolicy.zoneExpansion.keys.toList(),
+        goalIds = sessionGenerationPolicy.goals.keys.toList(),
+        durationPresets = sessionGenerationPolicy.durationPresets,
+        customMinutes = sessionGenerationPolicy.customMinutes,
+    )
 
     /** Stable-ID lookup; null means the ID is not part of taxonomy V1. */
     fun bodyZone(zoneId: String): BodyZone? = bodyZones.lookup(zoneId)
@@ -817,7 +834,7 @@ class TrainlogRepository(
     ): ActiveDraftMutationResult {
         if (
             draft.exercises.any {
-                !validateSessionExercise(it, draft.sessionType)
+                !validateSessionExercise(it, draft.sessionType, allowTargetOnly = true)
             } ||
             (draft.sourceSessionId != null &&
                 (draft.sourceSessionId.isBlank() || draft.sessionType != SessionType.MAX_TEST)) ||
@@ -1084,6 +1101,7 @@ class TrainlogRepository(
                                 .dataFields
                         )
                         put("entry_id", exerciseDraft.entryId)
+                        putSessionPlan(exerciseDraft.plan)
                         val equipmentRowId = lookupEquipmentRowIdOrNull(
                             db,
                             exerciseDraft.equipmentId,
@@ -1981,7 +1999,7 @@ class TrainlogRepository(
     fun buildMobileExportJson(): String = buildMobileExport(1)
 
     private fun buildMobileExport(version: Int): String {
-        require(version == 1 || version == 2)
+        require(version in 1..3)
         val root = JSONObject()
         root.put("format", "trainlog-mobile-export")
         root.put("version", version)
@@ -2010,14 +2028,22 @@ class TrainlogRepository(
         ).use { sessions ->
             while (sessions.moveToNext()) {
                 val sessionRowId = sessions.getLong(0)
+                val startedAt = sessions.getString(2)
+                /* CONTRACT: current V3 publication admits only the exact
+                 * Trainlog timestamp language consumed by later analysis. */
+                check(version != 3 || TrainlogTimestamp.parse(startedAt) != null) {
+                    "started_at persistant invalide pour session_id=${sessions.getString(1)}"
+                }
                 val session = JSONObject()
                     .put("session_id", sessions.getString(1))
-                    .put("started_at", sessions.getString(2))
+                    .put("started_at", startedAt)
                     .put("session_type", sessions.getString(3))
                 val sessionExercises = JSONArray()
                 db.rawQuery(
                     "SELECT se.id, e.exercise_id, e.name, se.recording_mode, se.tracking_mode, se.data_fields, " +
-                        "se.entry_id,se.position,eq.equipment_id,mr.max_weight_kg " +
+                        "se.entry_id,se.position,eq.equipment_id,mr.max_weight_kg," +
+                        "se.load_mode,se.rest_seconds,se.target_sets,se.target_reps," +
+                        "se.target_duration_seconds,se.target_weight_kg " +
                         "FROM session_exercises AS se JOIN exercises AS e ON e.id = se.exercise_row_id " +
                         "LEFT JOIN equipment AS eq ON eq.id=se.equipment_row_id " +
                         "LEFT JOIN max_results AS mr ON mr.session_exercise_row_id=se.id " +
@@ -2028,24 +2054,60 @@ class TrainlogRepository(
                         val sessionExerciseRowId = exerciseCursor.getLong(0)
                         val recording = exerciseCursor.getString(3)
                         val tracking = exerciseCursor.getString(4)
+                        val exportPlan = readSessionPlan(exerciseCursor, 10)
+                        val hasPlan = exportPlan != null
+                        if (version < 3 && exportPlan != null) {
+                            error("Un plan de séance exige l'export mobile V3.")
+                        }
+                        if (exportPlan != null) {
+                            check(recording == "sets" && exerciseCursor.isNull(9) &&
+                                exportPlan.sets in 1..MAX_PLAN_SETS &&
+                                exportPlan.restSeconds in 0..MAX_PLAN_REST_SECONDS &&
+                                if (tracking == "reps") {
+                                    exportPlan.reps in 1..MAX_PLAN_REPS && exportPlan.durationSeconds == null
+                                } else {
+                                    exportPlan.durationSeconds in 1..MAX_PLAN_DURATION_SECONDS && exportPlan.reps == null
+                                }) { "Plan de séance SQLite incohérent" }
+                            check(if (exportPlan.weightKg == null) exportPlan.loadMode == SessionLoadMode.NONE
+                                else exportPlan.weightKg.isFinite() && exportPlan.weightKg > 0.0 &&
+                                    exportPlan.loadMode != SessionLoadMode.NONE) {
+                                "Mode de charge du plan SQLite incohérent"
+                            }
+                        }
                         val item = JSONObject()
                             .put("exercise_id", exerciseCursor.getString(1))
                             .put("name", exerciseCursor.getString(2))
                             .put("recording_mode", recording)
                             .put("tracking_mode", tracking)
                             .put("data_fields", exerciseCursor.getInt(5))
-                            .put("load_mode", "none")
-                            .put("rest_seconds", 0)
+                            .put("load_mode", if (version == 3) exerciseCursor.getString(10) else "none")
+                            .put("rest_seconds", if (version == 3) exerciseCursor.getInt(11) else 0)
                         if (version == 2) {
                             item.put("entry_id", exerciseCursor.getString(6))
                             item.put("position", exerciseCursor.getInt(7))
                             if (exerciseCursor.isNull(8)) item.put("equipment_id", JSONObject.NULL)
                             else item.put("equipment_id", exerciseCursor.getString(8))
                         }
+                        if (version == 3) {
+                            item.put("entry_id", exerciseCursor.getString(6))
+                            item.put("position", exerciseCursor.getInt(7))
+                            if (exerciseCursor.isNull(8)) item.put("equipment_id", JSONObject.NULL)
+                            else item.put("equipment_id", exerciseCursor.getString(8))
+                            if (!hasPlan) {
+                                item.put("target", JSONObject.NULL)
+                            } else {
+                                val plan = checkNotNull(exportPlan)
+                                val target = JSONObject().put("sets", plan.sets)
+                                plan.reps?.let { target.put("reps", it) }
+                                plan.durationSeconds?.let { target.put("duration_seconds", it) }
+                                plan.weightKg?.let { target.put("weight_kg", it) }
+                                item.put("target", target)
+                            }
+                        }
                         if (!exerciseCursor.isNull(9)) {
                             /* TRAINLOG_FORMAT_V1 is frozen and has no max
                              * result shape. Refuse instead of inventing 1x1. */
-                            check(version == 2) {
+                            check(version >= 2) {
                                 "Un résultat max explicite exige l'export mobile V2."
                             }
                             item.put("max_weight_kg", exerciseCursor.getDouble(9))
@@ -2086,7 +2148,7 @@ class TrainlogRepository(
                                     } else {
                                         set.put("duration_seconds", setCursor.getInt(1))
                                     }
-                                    if (version == 2 && !setCursor.isNull(2)) {
+                                    if (version >= 2 && !setCursor.isNull(2)) {
                                         set.put("weight_kg", setCursor.getDouble(2))
                                     }
                                     sets.put(set)
@@ -2116,9 +2178,13 @@ class TrainlogRepository(
                 "left_thigh_cm", "right_thigh_cm", "left_calf_cm", "right_calf_cm",
             )
             while (cursor.moveToNext()) {
+                val observedAt = cursor.getString(1)
+                check(version != 3 || TrainlogTimestamp.parse(observedAt) != null) {
+                    "observed_at persistant invalide pour observation_id=${cursor.getString(0)}"
+                }
                 val item = JSONObject()
                     .put("observation_id", cursor.getString(0))
-                    .put("observed_at", cursor.getString(1))
+                    .put("observed_at", observedAt)
                 for (index in names.indices) {
                     val column = index + 2
                     if (!cursor.isNull(column)) {
@@ -2139,12 +2205,25 @@ class TrainlogRepository(
      */
     fun buildMobileExportV2Json(): String = buildMobileExport(2)
 
+    /** Current occurrence exchange; planning and actual rows travel atomically. */
+    fun buildMobileExportV3Json(): String = buildMobileExport(3)
+
     /** Apply the same V2 session artifact emitted by desktop, keyed by entry_id. */
     fun applyPcMobileExportV2Json(json: String): MobileSessionImportResult {
+        return applyPcMobileExportJson(json, 2)
+    }
+
+    fun applyPcMobileExportV3Json(json: String): MobileSessionImportResult =
+        applyPcMobileExportJson(json, 3)
+
+    private fun applyPcMobileExportJson(json: String, version: Int): MobileSessionImportResult {
+        if (!hasStrictJsonShape(json)) {
+            return MobileSessionImportResult.Invalid("Snapshot séances JSON invalide ou champ dupliqué.")
+        }
         val root = try { JSONObject(json) } catch (_: Exception) {
             return MobileSessionImportResult.Invalid("Snapshot séances JSON invalide.")
         }
-        validatePcMobileExportV2(root)?.let { return MobileSessionImportResult.Invalid(it) }
+        validatePcMobileExport(root, version)?.let { return MobileSessionImportResult.Invalid(it) }
         val sessions = root.getJSONArray("sessions")
         val db = database.writableDatabase
         var sessionsAdded = 0
@@ -2181,7 +2260,7 @@ class TrainlogRepository(
                     if (it.moveToFirst()) it.getLong(0) else null
                 }
                 if (existingRowId != null) {
-                    if (pcSessionV2Matches(db, existingRowId, session)) {
+                    if (pcSessionMatches(db, existingRowId, session, version)) {
                         sessionsSkipped += 1
                         continue
                     }
@@ -2226,6 +2305,20 @@ class TrainlogRepository(
                         put("entry_id", entryId); put("session_row_id", rowId); put("exercise_row_id", exerciseRow.rowId)
                         put("position", position); put("recording_mode", recording); put("tracking_mode", tracking)
                         put("data_fields", entry.optInt("data_fields", 0))
+                        if (version == 3) {
+                            val target = entry.optJSONObject("target")
+                            put("load_mode", entry.getString("load_mode"))
+                            put("rest_seconds", entry.getInt("rest_seconds"))
+                            if (target == null) {
+                                putNull("target_sets"); putNull("target_reps")
+                                putNull("target_duration_seconds"); putNull("target_weight_kg")
+                            } else {
+                                put("target_sets", target.getInt("sets"))
+                                if (target.has("reps")) put("target_reps", target.getInt("reps")) else putNull("target_reps")
+                                if (target.has("duration_seconds")) put("target_duration_seconds", target.getInt("duration_seconds")) else putNull("target_duration_seconds")
+                                if (target.has("weight_kg")) put("target_weight_kg", target.getDouble("weight_kg")) else putNull("target_weight_kg")
+                            }
+                        }
                         if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                     }
                     val occurrence = db.insertOrThrow("session_exercises", null, values)
@@ -2299,13 +2392,16 @@ class TrainlogRepository(
         } finally { db.endTransaction() }
     }
 
-    private fun validatePcMobileExportV2(root: JSONObject): String? {
+    private fun validatePcMobileExport(root: JSONObject, version: Int): String? {
         val rootKeys = setOf("format", "version", "generated_at", "exercises", "sessions", "body_observations")
         if (!root.hasExactKeys(rootKeys) || root.value("format") != "trainlog-mobile-export" ||
-            !root.value("version").isJsonInt(2, 2) || !root.value("generated_at").isNonemptyJsonString() ||
+            !root.value("version").isJsonInt(version, version) || !root.value("generated_at").isNonemptyJsonString() ||
             root.value("exercises") !is JSONArray || root.value("sessions") !is JSONArray ||
             root.value("body_observations") !is JSONArray) {
             return "Snapshot séances V2 invalide."
+        }
+        if (version == 3 && TrainlogTimestamp.parse(root.getString("generated_at")) == null) {
+            return "Snapshot séances V3 invalide: generated_at invalide."
         }
         return try {
             val exerciseIds = mutableSetOf<String>()
@@ -2340,6 +2436,9 @@ class TrainlogRepository(
                     session.value("session_type") !in setOf("training", "max_test") || entries == null || entries.length() == 0) {
                     return "Session V2 invalide."
                 }
+                if (version == 3 && TrainlogTimestamp.parse(session.getString("started_at")) == null) {
+                    return "Session V3 invalide: sessions[$sessionIndex].started_at invalide."
+                }
                 val entryIds = mutableSetOf<String>()
                 val positions = mutableSetOf<Int>()
                 for (entryIndex in 0 until entries.length()) {
@@ -2347,7 +2446,7 @@ class TrainlogRepository(
                     val recording = entry.value("recording_mode")
                     val tracking = entry.value("tracking_mode")
                     val hasMax = entry.has("max_weight_kg")
-                    val expectedKeys = entryBaseKeys + when {
+                    val expectedKeys = entryBaseKeys + (if (version == 3) setOf("target") else emptySet()) + when {
                         hasMax -> setOf("max_weight_kg")
                         recording == "continuous" -> setOf("continuous")
                         else -> setOf("sets")
@@ -2357,7 +2456,7 @@ class TrainlogRepository(
                     val positionValue = entry.value("position")
                     if (!entry.hasExactKeys(expectedKeys) || !entryId.isNonemptyJsonString() || !entryIds.add(entryId as String) ||
                         !exerciseId.isNonemptyJsonString() || exerciseId !in exerciseIds || !entry.value("name").isNonemptyJsonString() ||
-                        !validJsonProfile(entry) || entry.value("load_mode") != "none" || !entry.value("rest_seconds").isJsonInt(0, 0) ||
+                        !validJsonProfile(entry) || !validEntryPlan(entry, version, recording as String, tracking as String, hasMax) ||
                         !positionValue.isJsonInt(0, 100000) || !positions.add((positionValue as Number).toInt()) ||
                         !(entry.value("equipment_id") === JSONObject.NULL || entry.value("equipment_id").isNonemptyJsonString())) {
                         return "Entrée de séance V2 invalide."
@@ -2426,6 +2525,9 @@ class TrainlogRepository(
                     presentMetrics.isEmpty() || presentMetrics.any { !item.value(it).isPositiveJsonNumber() }) {
                     return "Observation corporelle V2 invalide."
                 }
+                if (version == 3 && TrainlogTimestamp.parse(item.getString("observed_at")) == null) {
+                    return "Observation corporelle V3 invalide: body_observations[$index].observed_at invalide."
+                }
             }
             null
         } catch (_: Exception) {
@@ -2444,6 +2546,74 @@ class TrainlogRepository(
             !(recording == "sets" && (dataFields as Number).toInt() != 0)
     }
 
+    private fun hasStrictJsonShape(json: String): Boolean = try {
+        JsonReader(StringReader(json)).use { reader ->
+            reader.isLenient = false
+            fun readValue() {
+                when (reader.peek()) {
+                    JsonToken.BEGIN_OBJECT -> {
+                        reader.beginObject()
+                        val names = mutableSetOf<String>()
+                        while (reader.hasNext()) {
+                            check(names.add(reader.nextName())) { "duplicate JSON key" }
+                            readValue()
+                        }
+                        reader.endObject()
+                    }
+                    JsonToken.BEGIN_ARRAY -> {
+                        reader.beginArray()
+                        while (reader.hasNext()) readValue()
+                        reader.endArray()
+                    }
+                    JsonToken.STRING -> reader.nextString()
+                    JsonToken.NUMBER -> {
+                        val value = reader.nextString().toDouble()
+                        check(value.isFinite()) { "non-finite JSON number" }
+                    }
+                    JsonToken.BOOLEAN -> reader.nextBoolean()
+                    JsonToken.NULL -> reader.nextNull()
+                    else -> error("unexpected JSON token")
+                }
+            }
+            readValue()
+            check(reader.peek() == JsonToken.END_DOCUMENT) { "trailing JSON" }
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun validEntryPlan(
+        entry: JSONObject,
+        version: Int,
+        recording: String,
+        tracking: String,
+        hasMax: Boolean,
+    ): Boolean {
+        if (version == 2) {
+            return entry.value("load_mode") == "none" && entry.value("rest_seconds").isJsonInt(0, 0)
+        }
+        val loadMode = entry.value("load_mode")
+        val rest = entry.value("rest_seconds")
+        if (loadMode !in setOf("none", "external", "assistance") ||
+            !rest.isJsonInt(0, MAX_PLAN_REST_SECONDS)) return false
+        val targetValue = entry.value("target")
+        if (targetValue === JSONObject.NULL) {
+            return loadMode == "none" && rest.isJsonInt(0, 0)
+        }
+        if (recording != "sets" || hasMax) return false
+        val target = targetValue as? JSONObject ?: return false
+        val metric = if (tracking == "reps") "reps" else "duration_seconds"
+        val otherMetric = if (tracking == "reps") "duration_seconds" else "reps"
+        val allowed = setOf("sets", metric, "weight_kg")
+        if (!target.hasOnlyKeys(allowed, setOf("sets", metric)) || target.has(otherMetric) ||
+            !target.value("sets").isJsonInt(1, MAX_PLAN_SETS) ||
+            !target.value(metric).isJsonInt(1, if (tracking == "reps") MAX_PLAN_REPS else MAX_PLAN_DURATION_SECONDS)) return false
+        val hasWeight = target.has("weight_kg")
+        if (hasWeight && !target.value("weight_kg").isPositiveJsonNumber()) return false
+        return if (hasWeight) loadMode == "external" || loadMode == "assistance" else loadMode == "none"
+    }
+
     private fun JSONObject.value(key: String): Any? = if (has(key)) get(key) else null
     private fun JSONObject.hasExactKeys(expected: Set<String>): Boolean = keys().asSequence().toSet() == expected
     private fun JSONObject.hasOnlyKeys(allowed: Set<String>, required: Set<String>): Boolean {
@@ -2460,7 +2630,7 @@ class TrainlogRepository(
     private fun Any?.isNonnegativeJsonNumber(): Boolean =
         this is Number && toDouble().isFinite() && toDouble() >= 0.0
 
-    private fun pcSessionV2Matches(db: SQLiteDatabase, rowId: Long, session: JSONObject): Boolean {
+    private fun pcSessionMatches(db: SQLiteDatabase, rowId: Long, session: JSONObject, version: Int): Boolean {
         val headerMatches = db.rawQuery("SELECT started_at,session_type FROM sessions WHERE id=?", arrayOf(rowId.toString())).use {
             it.moveToFirst() && it.getString(0) == session.optString("started_at") && it.getString(1) == session.optString("session_type")
         }
@@ -2469,21 +2639,34 @@ class TrainlogRepository(
         val rows = mutableListOf<Long>()
         val metadata = mutableListOf<List<Any?>>()
         db.rawQuery(
-            "SELECT se.id,se.entry_id,se.position,e.exercise_id,se.recording_mode,se.tracking_mode,se.data_fields,eq.equipment_id " +
+            "SELECT se.id,se.entry_id,se.position,e.exercise_id,se.recording_mode,se.tracking_mode,se.data_fields,eq.equipment_id," +
+                "se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg " +
                 "FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN equipment eq ON eq.id=se.equipment_row_id " +
                 "WHERE se.session_row_id=? ORDER BY se.position", arrayOf(rowId.toString())).use { cursor ->
             while (cursor.moveToNext()) {
                 rows += cursor.getLong(0)
-                metadata += listOf(cursor.getString(1), cursor.getInt(2), cursor.getString(3), cursor.getString(4),
+                val base = mutableListOf<Any?>(cursor.getString(1), cursor.getInt(2), cursor.getString(3), cursor.getString(4),
                     cursor.getString(5), cursor.getInt(6), if (cursor.isNull(7)) null else cursor.getString(7))
+                if (version == 2 && (cursor.getString(8) != "none" || cursor.getInt(9) != 0 ||
+                        (10..13).any { !cursor.isNull(it) })) return false
+                if (version == 3) base.addAll(listOf(cursor.getString(8), cursor.getInt(9),
+                    if (cursor.isNull(10)) null else cursor.getInt(10), if (cursor.isNull(11)) null else cursor.getInt(11),
+                    if (cursor.isNull(12)) null else cursor.getInt(12), if (cursor.isNull(13)) null else cursor.getDouble(13)))
+                metadata += base
             }
         }
         if (rows.size != incoming.length()) return false
         for (index in rows.indices) {
             val item = incoming.getJSONObject(index)
-            val expected = listOf(item.optString("entry_id"), item.optInt("position", -1), item.optString("exercise_id"),
+            val expected = mutableListOf<Any?>(item.optString("entry_id"), item.optInt("position", -1), item.optString("exercise_id"),
                 item.optString("recording_mode"), item.optString("tracking_mode"), item.optInt("data_fields", -1),
                 if (item.isNull("equipment_id")) null else item.optString("equipment_id"))
+            if (version == 3) {
+                val target = item.optJSONObject("target")
+                expected.addAll(listOf(item.getString("load_mode"), item.getInt("rest_seconds"),
+                    target?.getInt("sets"), target?.optIntOrNull("reps"),
+                    target?.optIntOrNull("duration_seconds"), target?.optDoubleOrNull("weight_kg")))
+            }
             if (metadata[index] != expected) return false
             if (item.has("max_weight_kg")) {
                 val current = db.rawQuery(
@@ -3039,6 +3222,12 @@ class TrainlogRepository(
                 se.data_fields,
                 eq.equipment_id,
                 eq.display_name,
+                se.load_mode,
+                se.rest_seconds,
+                se.target_sets,
+                se.target_reps,
+                se.target_duration_seconds,
+                se.target_weight_kg,
                 mr.max_weight_kg
             FROM session_exercises AS se
             JOIN sessions AS s
@@ -3088,7 +3277,8 @@ class TrainlogRepository(
                     cursor.getInt(6)
                 val equipmentId = if (cursor.isNull(7)) null else cursor.getString(7)
                 val equipmentDisplayName = if (cursor.isNull(8)) null else cursor.getString(8)
-                val maxWeightKg = if (cursor.isNull(9)) null else cursor.getDouble(9)
+                val plan = readSessionPlan(cursor, 9)
+                val maxWeightKg = if (cursor.isNull(15)) null else cursor.getDouble(15)
 
                 if (maxWeightKg != null) {
                     exercises +=
@@ -3101,6 +3291,7 @@ class TrainlogRepository(
                             recordingMode = recording,
                             trackingMode = tracking,
                             dataFields = dataFields,
+                            plan = plan,
                             maxWeightKg = maxWeightKg,
                         )
                 } else if (
@@ -3148,6 +3339,7 @@ class TrainlogRepository(
                                     tracking,
                                 dataFields =
                                     dataFields,
+                                plan = plan,
                                 continuousDurationSeconds =
                                     continuous
                                         .getInt(0),
@@ -3240,6 +3432,7 @@ class TrainlogRepository(
                                 tracking,
                             dataFields =
                                 dataFields,
+                            plan = plan,
                             sets = sets,
                         )
                 }
@@ -3250,6 +3443,288 @@ class TrainlogRepository(
             summary = summary,
             exercises = exercises,
         )
+    }
+
+    /**
+     * Build one transient suggestion from current runtime identities and the
+     * complete actual history. No draft/history row is written by this path.
+     */
+    fun generateSessionPreview(request: SessionGenerationRequest): SessionGenerationResult {
+        if (request.referenceTime.isBlank() || request.durationMinutes !in sessionGenerationPolicy.customMinutes ||
+            request.zoneId !in sessionGenerationPolicy.zoneExpansion ||
+            request.goalId !in sessionGenerationPolicy.goals) {
+            return SessionGenerationResult.Invalid("Demande de génération invalide.")
+        }
+        val db = database.readableDatabase
+        val ownsTransaction = !db.inTransaction()
+        return try {
+            if (ownsTransaction) db.beginTransactionNonExclusive()
+            val runtime = mutableMapOf<Pair<String, String>, Pair<String, String>>()
+            val candidates = mutableListOf<GenerationCandidate>()
+            db.rawQuery(
+                "SELECT e.exercise_id,e.name,eq.equipment_id,eq.display_name,eq.load_semantics " +
+                    "FROM exercises e CROSS JOIN equipment eq " +
+                    "WHERE e.recording_mode='sets' AND e.tracking_mode='reps' ORDER BY e.exercise_id,eq.equipment_id;",
+                null,
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val exerciseId = cursor.requiredText(0, "exercise_id")
+                    val equipmentId = cursor.requiredText(2, "equipment_id")
+                    if (request.availableEquipmentIds != null && equipmentId !in request.availableEquipmentIds) continue
+                    val record = trainingKnowledge.getExerciseKnowledge(exerciseId) ?: continue
+                    val interpretation = record.interpretation ?: continue
+                    if (record.resolutionStatus != ExerciseKnowledgeStatus.RESOLVED_FAMILY_VARIANT_LIMITED ||
+                        record.confidence !in setOf(KnowledgeConfidence.HIGH, KnowledgeConfidence.MODERATE) ||
+                        equipmentId !in record.equipmentIds) continue
+                    val equipment = trainingKnowledge.getEquipmentKnowledge(equipmentId) ?: continue
+                    val runtimeSemantics = parseLoadSemantics(cursor.requiredText(4, "load_semantics"))
+                    if (equipment.catalogLoadSemantics != null && equipment.catalogLoadSemantics != runtimeSemantics) continue
+                    candidates += GenerationCandidate(
+                        exerciseId, equipmentId, interpretation.primaryZoneId,
+                        interpretation.secondaryZoneIds, interpretation.patternIds,
+                        (record.sourceRefs + interpretation.sourceRefs + equipment.sourceRefs).distinct().sorted(),
+                        record.confidence, equipment.catalogLoadSemantics,
+                    )
+                    runtime[exerciseId to equipmentId] =
+                        cursor.requiredText(1, "exercise_name") to cursor.requiredText(3, "equipment_name")
+                }
+            }
+            if (candidates.size > 64) {
+                return SessionGenerationResult.Invalid("Trop de contextes compatibles pour une génération bornée.")
+            }
+            val engineRequest = GenerationRequest(
+                request.zoneId, request.goalId, request.durationMinutes, request.referenceTime,
+                candidates, request.preferredExerciseIds, request.excludedExerciseIds,
+                request.excludedPatternIds,
+            )
+            val suggestion = sessionGenerationEngine.generate(engineRequest) { visitor ->
+                streamGenerationHistory(db, visitor)
+            }
+            val previewExercises = suggestion.exercises.map { generated ->
+                val labels = checkNotNull(runtime[generated.exerciseId to generated.equipmentId]) {
+                    "Contexte généré absent de la vue runtime"
+                }
+                val zoneName = checkNotNull(bodyZones.lookup(generated.primaryZoneId)) {
+                    "Zone générée inconnue"
+                }.displayName
+                SessionGenerationPreviewExercise(
+                    generated.exerciseId, labels.first, generated.equipmentId, labels.second,
+                    generated.primaryZoneId, zoneName, generated.patternIds,
+                    generated.patternIds.map { pattern ->
+                        checkNotNull(trainingKnowledge.getMovementPattern(pattern)).displayNameFr
+                    },
+                    SessionExercisePlan(
+                        generated.targetSets, reps = generated.targetRepetitions,
+                        weightKg = generated.targetWeightKg,
+                        loadMode = generated.plannedLoadMode, restSeconds = generated.restSeconds,
+                    ),
+                    generated.estimatedSeconds, generated.recency, generated.rationaleCodes,
+                    generated.loadSourceSessionId, generated.loadSourceOccurrenceId,
+                    generated.loadSourceStartedAt,
+                )
+            }
+            if (ownsTransaction) db.setTransactionSuccessful()
+            SessionGenerationResult.Generated(SessionGenerationPreview(
+                request, previewExercises, suggestion.estimatedDurationSeconds,
+                suggestion.insufficientResolvedCandidates, suggestion.exposure, suggestion.shortageCodes,
+            ))
+        } catch (error: IllegalArgumentException) {
+            SessionGenerationResult.Invalid(error.message ?: "Demande de génération invalide.")
+        } catch (error: Exception) {
+            SessionGenerationResult.DatabaseError(error.message ?: "Analyse de l'historique impossible.")
+        } finally {
+            if (ownsTransaction && db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    /** Atomically install a generated suggestion as the ordinary singleton draft. */
+    fun acceptGeneratedSession(preview: SessionGenerationPreview): AcceptGeneratedSessionResult {
+        if (preview.exercises.isEmpty()) return AcceptGeneratedSessionResult.Invalid("La proposition est vide.")
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            val exists = db.rawQuery("SELECT 1 FROM active_session_draft WHERE id=?;",
+                arrayOf(ACTIVE_DRAFT_ID.toString())).use { it.moveToFirst() }
+            if (exists) return AcceptGeneratedSessionResult.ExistingActiveDraft
+            val exercises = preview.exercises.mapIndexed { index, item ->
+                check(index <= 100000)
+                val row = findExerciseRow(db, "exercise_id=?", arrayOf(item.exerciseId))
+                    ?: return AcceptGeneratedSessionResult.Invalid("Exercice généré introuvable.")
+                if (row.recordingMode != RecordingMode.SETS || row.trackingMode != TrackingMode.REPS || row.dataFields != 0)
+                    return AcceptGeneratedSessionResult.Invalid("Profil généré devenu incompatible.")
+                val runtimeEquipment = readRuntimeEquipment(db, item.equipmentId)
+                    ?: return AcceptGeneratedSessionResult.Invalid("Équipement généré introuvable.")
+                val knowledge = trainingKnowledge.getExerciseKnowledge(item.exerciseId)
+                val equipmentKnowledge = trainingKnowledge.getEquipmentKnowledge(item.equipmentId)
+                if (knowledge == null || item.equipmentId !in knowledge.equipmentIds ||
+                    equipmentKnowledge == null || equipmentKnowledge.catalogLoadSemantics != runtimeEquipment.second)
+                    return AcceptGeneratedSessionResult.Invalid("Contexte scientifique généré devenu incompatible.")
+                val profile = readExerciseProfileExact(db, item.exerciseId)
+                    ?: return AcceptGeneratedSessionResult.Invalid("Exercice généré introuvable.")
+                val draft = SessionExerciseDraft(
+                    entryId = "sxe_" + UUID.randomUUID(), exercise = profile,
+                    equipmentId = item.equipmentId, plan = item.plan, sets = emptyList(),
+                )
+                if (!validateSessionExercise(draft, SessionType.TRAINING, allowTargetOnly = true))
+                    return AcceptGeneratedSessionResult.Invalid("Cible générée invalide.")
+                check(runtimeEquipment.first > 0)
+                draft
+            }
+            persistActiveSessionDraft(db, ActiveSessionDraft(exercises = exercises))
+            db.setTransactionSuccessful()
+            AcceptGeneratedSessionResult.Accepted
+        } catch (error: Exception) {
+            AcceptGeneratedSessionResult.DatabaseError(error.message ?: "Acceptation de la proposition impossible.")
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    fun editGeneratedDose(
+        preview: SessionGenerationPreview,
+        index: Int,
+        targetSets: Int,
+        targetRepetitions: Int,
+        restSeconds: Int,
+        manualWeightKg: Double?,
+    ): SessionGenerationResult {
+        val current = preview.exercises.getOrNull(index)
+            ?: return SessionGenerationResult.Invalid("Exercice de proposition introuvable.")
+        if (targetSets !in 1..MAX_PLAN_SETS || targetRepetitions !in 1..MAX_PLAN_REPS ||
+            restSeconds !in 0..MAX_PLAN_REST_SECONDS ||
+            (manualWeightKg != null && (!manualWeightKg.isFinite() || manualWeightKg <= 0.0)))
+            return SessionGenerationResult.Invalid("Dose cible invalide.")
+        val db = database.readableDatabase
+        val ownsTransaction = !db.inTransaction()
+        return try {
+            if (ownsTransaction) db.beginTransactionNonExclusive()
+            val candidate = generationCandidate(db, current.exerciseId, current.equipmentId)
+                ?: return SessionGenerationResult.Invalid("Contexte généré devenu incompatible.")
+            val qualified = sessionGenerationEngine.requalifyDose(
+                candidate, preview.request.referenceTime, targetSets, targetRepetitions, restSeconds,
+            ) { visitor -> streamGenerationHistory(db, visitor) }
+            val semantics = candidate.equipmentLoadSemantics
+            val plan = if (manualWeightKg == null) {
+                SessionExercisePlan(qualified.targetSets, reps = qualified.targetRepetitions,
+                    weightKg = qualified.targetWeightKg, loadMode = qualified.plannedLoadMode,
+                    restSeconds = qualified.restSeconds)
+            } else {
+                val mode = when (semantics) {
+                    EquipmentLoadSemantics.ASSISTANCE -> SessionLoadMode.ASSISTANCE
+                    EquipmentLoadSemantics.EXTERNAL -> SessionLoadMode.EXTERNAL
+                    else -> return SessionGenerationResult.Invalid("Cet équipement ne porte pas de charge cible manuelle.")
+                }
+                SessionExercisePlan(targetSets, reps = targetRepetitions,
+                    weightKg = manualWeightKg, loadMode = mode, restSeconds = restSeconds)
+            }
+            val changed = current.copy(
+                plan = plan,
+                estimatedSeconds = sessionGenerationEngine.estimateExerciseSeconds(
+                    targetSets, targetRepetitions, restSeconds),
+                rationaleCodes = if (manualWeightKg == null) listOf(qualified.rationaleCode)
+                    else listOf("manual_target_load"),
+                loadSourceSessionId = if (manualWeightKg == null) qualified.sourceSessionId else null,
+                loadSourceOccurrenceId = if (manualWeightKg == null) qualified.sourceOccurrenceId else null,
+                loadSourceStartedAt = if (manualWeightKg == null) qualified.sourceStartedAt else null,
+            )
+            val exercises = preview.exercises.toMutableList().also { it[index] = changed }
+            val total = Math.addExact(sessionGenerationPolicy.preparationSeconds,
+                exercises.fold(0) { sum, exercise -> Math.addExact(sum, exercise.estimatedSeconds) })
+            if (ownsTransaction) db.setTransactionSuccessful()
+            SessionGenerationResult.Generated(preview.copy(exercises = exercises, estimatedDurationSeconds = total))
+        } catch (error: IllegalArgumentException) {
+            SessionGenerationResult.Invalid(error.message ?: "Dose cible invalide.")
+        } catch (error: Exception) {
+            SessionGenerationResult.DatabaseError(error.message ?: "Réévaluation de charge impossible.")
+        } finally {
+            if (ownsTransaction && db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    private fun generationCandidate(
+        db: SQLiteDatabase,
+        exerciseId: String,
+        equipmentId: String,
+    ): GenerationCandidate? {
+        val record = trainingKnowledge.getExerciseKnowledge(exerciseId) ?: return null
+        val interpretation = record.interpretation ?: return null
+        val equipment = trainingKnowledge.getEquipmentKnowledge(equipmentId) ?: return null
+        val runtimeEquipment = readRuntimeEquipment(db, equipmentId) ?: return null
+        if (record.resolutionStatus != ExerciseKnowledgeStatus.RESOLVED_FAMILY_VARIANT_LIMITED ||
+            record.confidence !in setOf(KnowledgeConfidence.HIGH, KnowledgeConfidence.MODERATE) ||
+            equipmentId !in record.equipmentIds ||
+            equipment.catalogLoadSemantics != runtimeEquipment.second) return null
+        return GenerationCandidate(exerciseId, equipmentId, interpretation.primaryZoneId,
+            interpretation.secondaryZoneIds, interpretation.patternIds,
+            (record.sourceRefs + interpretation.sourceRefs + equipment.sourceRefs).distinct().sorted(),
+            record.confidence, equipment.catalogLoadSemantics)
+    }
+
+    private fun readRuntimeEquipment(
+        db: SQLiteDatabase,
+        equipmentId: String,
+    ): Pair<Long, EquipmentLoadSemantics>? = db.rawQuery(
+        "SELECT id,load_semantics FROM equipment WHERE equipment_id=?;",
+        arrayOf(equipmentId),
+    ).use { cursor ->
+        if (!cursor.moveToFirst()) null else cursor.getLong(0) to
+            parseLoadSemantics(cursor.requiredText(1, "load_semantics"))
+    }
+
+    private fun streamGenerationHistory(db: SQLiteDatabase, visitor: (GenerationHistoryRow) -> Unit) {
+        db.rawQuery(
+            "SELECT s.session_id,se.entry_id,e.exercise_id,s.started_at,eq.equipment_id," +
+                "se.recording_mode,se.tracking_mode,se.load_mode,se.rest_seconds," +
+                "se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg," +
+                "ps.position,ps.reps,ps.weight_kg,CASE WHEN mr.session_exercise_row_id IS NULL THEN 0 ELSE 1 END " +
+                "FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id " +
+                "JOIN exercises e ON e.id=se.exercise_row_id " +
+                "LEFT JOIN equipment eq ON eq.id=se.equipment_row_id " +
+                "LEFT JOIN performed_sets ps ON ps.session_exercise_row_id=se.id " +
+                "LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id " +
+                "ORDER BY s.id,se.position,ps.position;", null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val recording = parseRecordingMode(cursor.requiredText(5, "recording_mode"))
+                val tracking = parseTrackingMode(cursor.requiredText(6, "tracking_mode"))
+                val loadMode = SessionLoadMode.fromWire(cursor.requiredText(7, "load_mode"))
+                val rest = checkedBoundedInt(cursor.getLong(8), 0, MAX_PLAN_REST_SECONDS, "rest_seconds")
+                val targetSets = if (cursor.isNull(9)) null else
+                    checkedBoundedInt(cursor.getLong(9), 1, MAX_PLAN_SETS, "target_sets")
+                val targetReps = if (cursor.isNull(10)) null else
+                    checkedBoundedInt(cursor.getLong(10), 1, MAX_PLAN_REPS, "target_reps")
+                val targetDuration = if (cursor.isNull(11)) null else
+                    checkedBoundedInt(cursor.getLong(11), 1, MAX_PLAN_DURATION_SECONDS, "target_duration_seconds")
+                val targetWeight = if (cursor.isNull(12)) null else cursor.getDouble(12).also {
+                    check(it.isFinite() && it > 0.0) { "target_weight_kg corrompu" }
+                }
+                val hasExplicitMax = cursor.getInt(16) != 0
+                val hasTarget = targetSets != null || targetReps != null || targetDuration != null || targetWeight != null
+                if (!hasTarget) {
+                    check(loadMode == SessionLoadMode.NONE && rest == 0) { "plan absent incohérent" }
+                } else {
+                    check(recording == RecordingMode.SETS && !hasExplicitMax) { "cible interdite sur ce passage" }
+                    check(targetSets != null && ((targetReps != null) xor (targetDuration != null))) { "forme de cible corrompue" }
+                    check((tracking == TrackingMode.REPS) == (targetReps != null)) { "métrique de cible corrompue" }
+                    check(if (targetWeight == null) loadMode == SessionLoadMode.NONE
+                        else loadMode == SessionLoadMode.EXTERNAL || loadMode == SessionLoadMode.ASSISTANCE) {
+                        "mode de charge cible incohérent"
+                    }
+                }
+                val setPosition = if (cursor.isNull(13)) null else
+                    checkedBoundedInt(cursor.getLong(13), 0, 100000, "set_position")
+                val repetitions = if (cursor.isNull(14)) null else
+                    checkedBoundedInt(cursor.getLong(14), 0, MAX_PLAN_REPS, "reps")
+                visitor(GenerationHistoryRow(
+                    cursor.requiredText(0, "session_id"), cursor.requiredText(1, "entry_id"),
+                    cursor.requiredText(2, "exercise_id"), cursor.requiredText(3, "started_at"),
+                    cursor.optionalText(4), recording, tracking,
+                    loadMode, rest, hasTarget, setPosition, repetitions,
+                    if (cursor.isNull(15)) null else cursor.finiteNonNegativeDouble(15, "weight_kg"),
+                    hasExplicitMax,
+                ))
+            }
+        }
     }
 
     /**
@@ -3526,6 +4001,10 @@ class TrainlogRepository(
     private fun android.database.Cursor.finiteNonNegativeDouble(index: Int, name: String, strictlyPositive: Boolean = false): Double = getDouble(index).also { check(it.isFinite() && if (strictlyPositive) it > 0.0 else it >= 0.0) { "$name invalide" } }
     private fun android.database.Cursor.optionalFinitePositiveDouble(index: Int, name: String): Double? = if (isNull(index)) null else finiteNonNegativeDouble(index, name, true)
     private fun checkedNonNegativeInt(value: Long, name: String): Int { check(value in 0..Int.MAX_VALUE.toLong()) { "$name hors plage" }; return value.toInt() }
+    private fun checkedBoundedInt(value: Long, minimum: Int, maximum: Int, name: String): Int {
+        check(value in minimum.toLong()..maximum.toLong()) { "$name hors plage" }
+        return value.toInt()
+    }
 
     private companion object {
         const val MAX_OCCURRENCE_PAGE_SIZE = 32
@@ -3692,6 +4171,12 @@ class TrainlogRepository(
                 de.data_fields,
                 eq.equipment_id,
                 de.entry_id,
+                de.load_mode,
+                de.rest_seconds,
+                de.target_sets,
+                de.target_reps,
+                de.target_duration_seconds,
+                de.target_weight_kg,
                 mr.max_weight_kg
             FROM draft_session_exercises AS de
             JOIN exercises AS e
@@ -3727,7 +4212,8 @@ class TrainlogRepository(
                     )
                 val equipmentId = if (cursor.isNull(7)) null else cursor.getString(7)
                 val entryId = cursor.getString(8)
-                val maxWeightKg = if (cursor.isNull(9)) null else cursor.getDouble(9)
+                val plan = readSessionPlan(cursor, 9)
+                val maxWeightKg = if (cursor.isNull(15)) null else cursor.getDouble(15)
 
                 if (maxWeightKg != null) {
                     exercises +=
@@ -3736,6 +4222,7 @@ class TrainlogRepository(
                             exercise = exercise,
                             equipmentId = equipmentId,
                             maxWeightKg = maxWeightKg,
+                            plan = plan,
                         )
                 } else if (
                     exercise.recordingMode ==
@@ -3763,6 +4250,7 @@ class TrainlogRepository(
                                 entryId = entryId,
                                 exercise = exercise,
                                 equipmentId = equipmentId,
+                                plan = plan,
                                 continuousDurationSeconds =
                                     item.getInt(0),
                                 speedKmh =
@@ -3820,6 +4308,7 @@ class TrainlogRepository(
                             entryId = entryId,
                             exercise = exercise,
                             equipmentId = equipmentId,
+                            plan = plan,
                             sets = sets,
                         )
                 }
@@ -3927,6 +4416,7 @@ class TrainlogRepository(
                         exerciseDraft.exercise.dataFields,
                     )
                     put("entry_id", exerciseDraft.entryId)
+                    putSessionPlan(exerciseDraft.plan)
                     val equipmentRowId = lookupEquipmentRowIdOrNull(
                         db,
                         exerciseDraft.equipmentId,
@@ -4076,6 +4566,7 @@ class TrainlogRepository(
                     )
                     put("data_fields", exerciseDraft.exercise.dataFields)
                     put("entry_id", exerciseDraft.entryId)
+                    putSessionPlan(exerciseDraft.plan)
                     val equipmentRowId = lookupEquipmentRowIdOrNull(
                         db,
                         exerciseDraft.equipmentId,
@@ -4228,7 +4719,9 @@ class TrainlogRepository(
     private fun validateSessionExercise(
         draft: SessionExerciseDraft,
         sessionType: SessionType,
+        allowTargetOnly: Boolean = false,
     ): Boolean {
+        if (!validateSessionPlan(draft)) return false
         val maxWeight = draft.maxWeightKg
         if (maxWeight != null) {
             /* INVARIANT: max is a first-class result owned by the movement
@@ -4239,7 +4732,8 @@ class TrainlogRepository(
                 draft.sets.isEmpty() &&
                 draft.continuousDurationSeconds == 0 &&
                 draft.speedKmh == null &&
-                draft.distanceKm == null
+                draft.distanceKm == null &&
+                draft.plan == null
         }
 
         return when (
@@ -4248,7 +4742,7 @@ class TrainlogRepository(
             RecordingMode.CONTINUOUS -> {
                 if (
                     draft.continuousDurationSeconds <= 0 ||
-                    draft.sets.isNotEmpty()
+                    draft.sets.isNotEmpty() || draft.plan != null
                 ) {
                     false
                 } else {
@@ -4279,7 +4773,7 @@ class TrainlogRepository(
 
             RecordingMode.SETS -> {
                 if (
-                    draft.sets.isEmpty() ||
+                    (draft.sets.isEmpty() && !(allowTargetOnly && draft.plan != null)) ||
                     draft.continuousDurationSeconds != 0 ||
                     draft.speedKmh != null ||
                     draft.distanceKm != null
@@ -4308,6 +4802,24 @@ class TrainlogRepository(
                 }
             }
         }
+    }
+
+    private fun validateSessionPlan(draft: SessionExerciseDraft): Boolean {
+        val plan = draft.plan ?: return true
+        if (draft.exercise.recordingMode != RecordingMode.SETS ||
+            plan.sets !in 1..MAX_PLAN_SETS ||
+            plan.restSeconds !in 0..MAX_PLAN_REST_SECONDS ||
+            (plan.weightKg != null && (!plan.weightKg.isFinite() || plan.weightKg <= 0.0))) return false
+        val metricValid = when (draft.exercise.trackingMode) {
+            TrackingMode.REPS -> plan.reps in 1..MAX_PLAN_REPS && plan.durationSeconds == null
+            TrackingMode.DURATION -> plan.durationSeconds in 1..MAX_PLAN_DURATION_SECONDS && plan.reps == null
+        }
+        val modeValid = if (plan.weightKg == null) {
+            plan.loadMode == SessionLoadMode.NONE
+        } else {
+            plan.loadMode == SessionLoadMode.EXTERNAL || plan.loadMode == SessionLoadMode.ASSISTANCE
+        }
+        return metricValid && modeValid
     }
 
     private fun lookupExerciseRowId(
@@ -4450,8 +4962,48 @@ private fun ContentValues.putOptionalString(
     if (value == null) putNull(key) else put(key, value)
 }
 
+private fun ContentValues.putSessionPlan(plan: SessionExercisePlan?) {
+    put("load_mode", plan?.loadMode?.wireValue ?: "none")
+    put("rest_seconds", plan?.restSeconds ?: 0)
+    if (plan == null) {
+        putNull("target_sets")
+        putNull("target_reps")
+        putNull("target_duration_seconds")
+        putNull("target_weight_kg")
+    } else {
+        put("target_sets", plan.sets)
+        if (plan.reps == null) putNull("target_reps") else put("target_reps", plan.reps)
+        if (plan.durationSeconds == null) putNull("target_duration_seconds")
+        else put("target_duration_seconds", plan.durationSeconds)
+        putOptionalDouble("target_weight_kg", plan.weightKg)
+    }
+}
+
+private fun readSessionPlan(cursor: Cursor, start: Int): SessionExercisePlan? {
+    val loadMode = SessionLoadMode.fromWire(cursor.getString(start))
+    val restSeconds = cursor.getInt(start + 1)
+    if (cursor.isNull(start + 2)) {
+        check(loadMode == SessionLoadMode.NONE && restSeconds == 0 &&
+            cursor.isNull(start + 3) && cursor.isNull(start + 4) && cursor.isNull(start + 5)) {
+            "Métadonnées de plan cible incohérentes"
+        }
+        return null
+    }
+    return SessionExercisePlan(
+        sets = cursor.getInt(start + 2),
+        reps = if (cursor.isNull(start + 3)) null else cursor.getInt(start + 3),
+        durationSeconds = if (cursor.isNull(start + 4)) null else cursor.getInt(start + 4),
+        weightKg = if (cursor.isNull(start + 5)) null else cursor.getDouble(start + 5),
+        loadMode = loadMode,
+        restSeconds = restSeconds,
+    )
+}
+
 private fun JSONObject.optDoubleOrNull(key: String): Double? =
     if (has(key) && !isNull(key)) getDouble(key) else null
+
+private fun JSONObject.optIntOrNull(key: String): Int? =
+    if (has(key) && !isNull(key)) getInt(key) else null
 
 private fun equipmentAliasNormalize(value: String): String =
     Normalizer.normalize(value, Normalizer.Form.NFD)
@@ -4463,6 +5015,10 @@ private const val ANDROID_DATABASE_NAME =
     "trainlog-android.db"
 private const val ACTIVE_DRAFT_ID = 1
 private const val MAX_DRAFT_FORM_TEXT_LENGTH = 4096
+private const val MAX_PLAN_SETS = 64
+private const val MAX_PLAN_REPS = 10000
+private const val MAX_PLAN_DURATION_SECONDS = 86400
+private const val MAX_PLAN_REST_SECONDS = 86400
 private const val ANDROID_LEG_PRESS_LEGACY_ID =
     "ex_d68a1af1-7247-4fb3-a48b-da8516906a29"
 private const val DESKTOP_LEG_PRESS_CANONICAL_ID =
@@ -4478,7 +5034,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    10,
+    11,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -4589,6 +5145,15 @@ private class TrainlogDatabaseHelper(
             createBodyZoneTables(db)
             seedInitialBodyZones(db)
             version = 10
+        }
+
+        if (version < 11 && newVersion >= 11) {
+            /* CONTRACT: v11 is additive and never reconstructs prescriptions
+             * from historical actuals. SQLite defaults make every old row the
+             * exact targetless none/zero representation. */
+            addOccurrencePlanColumns(db, "session_exercises")
+            addOccurrencePlanColumns(db, "draft_session_exercises")
+            version = 11
         }
 
         if (version != newVersion) {
@@ -4939,6 +5504,15 @@ private class TrainlogDatabaseHelper(
                     REFERENCES equipment(id)
                     ON DELETE SET NULL,
                 entry_id TEXT NOT NULL UNIQUE,
+                load_mode TEXT NOT NULL DEFAULT 'none'
+                    CHECK(load_mode IN ('none', 'external', 'assistance')),
+                rest_seconds INTEGER NOT NULL DEFAULT 0
+                    CHECK(rest_seconds BETWEEN 0 AND 86400),
+                target_sets INTEGER CHECK(target_sets BETWEEN 1 AND 64),
+                target_reps INTEGER CHECK(target_reps BETWEEN 1 AND 10000),
+                target_duration_seconds INTEGER
+                    CHECK(target_duration_seconds BETWEEN 1 AND 86400),
+                target_weight_kg REAL CHECK(target_weight_kg > 0.0),
                 UNIQUE(
                     session_row_id,
                     position
@@ -5007,6 +5581,23 @@ private class TrainlogDatabaseHelper(
             );
             """.trimIndent()
         )
+    }
+
+    private fun addOccurrencePlanColumns(db: SQLiteDatabase, table: String) {
+        check(table == "session_exercises" || table == "draft_session_exercises")
+        val present = mutableSetOf<String>()
+        db.rawQuery("PRAGMA table_info($table);", null).use { cursor ->
+            while (cursor.moveToNext()) present += cursor.getString(1)
+        }
+        fun add(name: String, declaration: String) {
+            if (name !in present) db.execSQL("ALTER TABLE $table ADD COLUMN $name $declaration;")
+        }
+        add("load_mode", "TEXT NOT NULL DEFAULT 'none' CHECK(load_mode IN ('none','external','assistance'))")
+        add("rest_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK(rest_seconds BETWEEN 0 AND 86400)")
+        add("target_sets", "INTEGER CHECK(target_sets BETWEEN 1 AND 64)")
+        add("target_reps", "INTEGER CHECK(target_reps BETWEEN 1 AND 10000)")
+        add("target_duration_seconds", "INTEGER CHECK(target_duration_seconds BETWEEN 1 AND 86400)")
+        add("target_weight_kg", "REAL CHECK(target_weight_kg > 0.0)")
     }
 
 
@@ -5138,6 +5729,15 @@ private class TrainlogDatabaseHelper(
                     REFERENCES equipment(id)
                     ON DELETE SET NULL,
                 entry_id TEXT NOT NULL UNIQUE,
+                load_mode TEXT NOT NULL DEFAULT 'none'
+                    CHECK(load_mode IN ('none', 'external', 'assistance')),
+                rest_seconds INTEGER NOT NULL DEFAULT 0
+                    CHECK(rest_seconds BETWEEN 0 AND 86400),
+                target_sets INTEGER CHECK(target_sets BETWEEN 1 AND 64),
+                target_reps INTEGER CHECK(target_reps BETWEEN 1 AND 10000),
+                target_duration_seconds INTEGER
+                    CHECK(target_duration_seconds BETWEEN 1 AND 86400),
+                target_weight_kg REAL CHECK(target_weight_kg > 0.0),
                 UNIQUE(draft_id, position)
             );
             """.trimIndent()

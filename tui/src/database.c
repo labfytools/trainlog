@@ -8,6 +8,7 @@
 #include "trainlog/duration.h"
 #include "trainlog/equipment_catalog.h"
 #include "trainlog/id.h"
+#include "trainlog/session_generation.h"
 #include "timestamp.h"
 
 #include <math.h>
@@ -51,6 +52,121 @@ TrainlogStatus trainlog_database_read_snapshot_end(TrainlogDatabase *database, b
         return TRAINLOG_STATUS_DATABASE_ERROR;
     database->read_snapshot_depth = depth;
     return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_scan_generation_history(
+    TrainlogDatabase *database, TrainlogGenerationHistoryVisitor visitor, void *context)
+{
+    static const char *const SQL =
+        "SELECT s.session_id,s.started_at,se.entry_id,e.exercise_id,e.recording_mode,"
+        "e.tracking_mode,se.equipment_id,se.load_mode,se.rest_seconds,"
+        "se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg,"
+        "ps.position,ps.reps,ps.weight_kg,mr.max_weight_kg "
+        "FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id "
+        "JOIN exercises e ON e.id=se.exercise_row_id "
+        "LEFT JOIN performed_sets ps ON ps.session_exercise_row_id=se.id "
+        "LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id "
+        "ORDER BY s.session_id COLLATE BINARY,se.entry_id COLLATE BINARY,ps.position;";
+    sqlite3_stmt *statement = NULL;
+    TrainlogStatus status;
+    int rc;
+    if (database == NULL || visitor == NULL) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    status = trainlog_database_read_snapshot_begin(database);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    if (sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL) != SQLITE_OK) {
+        (void)trainlog_database_read_snapshot_end(database, false);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        TrainlogGenerationHistoryRow row;
+        const unsigned char *recording, *tracking, *load;
+        int index;
+        (void)memset(&row, 0, sizeof(row));
+        /* CONTRACT: SQLite affinity cannot turn corrupt dynamic types into a
+         * complete scientific result; validate every projected field before
+         * the borrowed callback row is exposed. */
+        for (index = 0; index <= 3; ++index)
+            if (sqlite3_column_type(statement, index) != SQLITE_TEXT) {
+                status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+            }
+        for (index = 4; index <= 5; ++index)
+            if (sqlite3_column_type(statement, index) != SQLITE_TEXT) {
+                status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+            }
+        if (sqlite3_column_type(statement, 6) != SQLITE_NULL &&
+            sqlite3_column_type(statement, 6) != SQLITE_TEXT) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        if (sqlite3_column_type(statement, 7) != SQLITE_TEXT ||
+            sqlite3_column_type(statement, 8) != SQLITE_INTEGER) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        row.session_id = (const char *)sqlite3_column_text(statement, 0);
+        row.started_at = (const char *)sqlite3_column_text(statement, 1);
+        row.occurrence_id = (const char *)sqlite3_column_text(statement, 2);
+        row.exercise_id = (const char *)sqlite3_column_text(statement, 3);
+        recording = sqlite3_column_text(statement, 4);
+        tracking = sqlite3_column_text(statement, 5);
+        row.equipment_id = sqlite3_column_type(statement, 6) == SQLITE_NULL ? NULL :
+            (const char *)sqlite3_column_text(statement, 6);
+        load = sqlite3_column_text(statement, 7);
+        if (strcmp((const char *)recording, "sets") == 0) row.recording_mode = TRAINLOG_RECORDING_SETS;
+        else if (strcmp((const char *)recording, "continuous") == 0) row.recording_mode = TRAINLOG_RECORDING_CONTINUOUS;
+        else { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+        if (strcmp((const char *)tracking, "reps") == 0) row.tracking_mode = TRAINLOG_TRACKING_REPS;
+        else if (strcmp((const char *)tracking, "duration") == 0) row.tracking_mode = TRAINLOG_TRACKING_DURATION;
+        else { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+        if (strcmp((const char *)load, "none") == 0) row.load_mode = TRAINLOG_LOAD_NONE;
+        else if (strcmp((const char *)load, "external") == 0) row.load_mode = TRAINLOG_LOAD_EXTERNAL;
+        else if (strcmp((const char *)load, "assistance") == 0) row.load_mode = TRAINLOG_LOAD_ASSISTANCE;
+        else { status = TRAINLOG_STATUS_DATABASE_ERROR; goto done; }
+        row.rest_seconds = sqlite3_column_int(statement, 8);
+        row.has_target_sets = sqlite3_column_type(statement, 9) != SQLITE_NULL;
+        row.has_target_reps = sqlite3_column_type(statement, 10) != SQLITE_NULL;
+        row.has_target_duration = sqlite3_column_type(statement, 11) != SQLITE_NULL;
+        row.has_target_weight = sqlite3_column_type(statement, 12) != SQLITE_NULL;
+        row.has_actual_set = sqlite3_column_type(statement, 13) != SQLITE_NULL;
+        row.has_explicit_max = sqlite3_column_type(statement, 16) != SQLITE_NULL;
+        if (row.has_explicit_max &&
+            ((sqlite3_column_type(statement, 16) != SQLITE_FLOAT &&
+              sqlite3_column_type(statement, 16) != SQLITE_INTEGER) ||
+             !isfinite(sqlite3_column_double(statement, 16)) ||
+             sqlite3_column_double(statement, 16) <= 0.0)) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+        }
+        if (row.has_actual_set) {
+            sqlite3_int64 position = sqlite3_column_int64(statement, 13);
+            if (sqlite3_column_type(statement, 13) != SQLITE_INTEGER || position < 0 ||
+                (uint64_t)position > (uint64_t)SIZE_MAX ||
+                (sqlite3_column_type(statement, 14) != SQLITE_INTEGER &&
+                 sqlite3_column_type(statement, 14) != SQLITE_NULL)) {
+                status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+            }
+            row.set_position = (size_t)position;
+            row.repetitions = sqlite3_column_type(statement, 14) == SQLITE_NULL ? 0 :
+                sqlite3_column_int(statement, 14);
+            row.has_weight = sqlite3_column_type(statement, 15) != SQLITE_NULL;
+            if (row.has_weight) {
+                if (sqlite3_column_type(statement, 15) != SQLITE_FLOAT &&
+                    sqlite3_column_type(statement, 15) != SQLITE_INTEGER) {
+                    status = TRAINLOG_STATUS_DATABASE_ERROR; goto done;
+                }
+                row.weight_kg = sqlite3_column_double(statement, 15);
+            }
+        }
+        status = visitor(context, &row);
+        if (status != TRAINLOG_STATUS_OK) goto done;
+    }
+    status = rc == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+done:
+    if (sqlite3_finalize(statement) != SQLITE_OK && status == TRAINLOG_STATUS_OK)
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+    {
+        TrainlogStatus end_status = trainlog_database_read_snapshot_end(database,
+            status == TRAINLOG_STATUS_OK);
+        if (status == TRAINLOG_STATUS_OK) status = end_status;
+    }
+    return status;
 }
 
 static TrainlogStatus lookup_exercise_row_id(

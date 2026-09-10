@@ -1,6 +1,6 @@
 # Current implementation state
 
-Canonical snapshot: 2026-09-09.
+Canonical snapshot: 2026-09-10.
 
 This document is the compact source of truth for the implemented Trainlog
 baseline. Detailed behavior belongs in the topic-specific documents.
@@ -16,6 +16,7 @@ TRAINLOG_FORMAT_V1=FROZEN
 
 DESKTOP_SCHEMA_V11=PASS
 ANDROID_LOCAL_DATABASE_V10=PASS
+ANDROID_LOCAL_DATABASE_V11=PASS
 ANDROID_SESSION_DRAFT_V1=PASS
 ANDROID_DRAFT_DURABLE=PASS
 ANDROID_DRAFT_BACKGROUND_SURVIVAL=PASS
@@ -63,8 +64,9 @@ BODY_ZONES_TUI_REAL_VALIDATION=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
 TRAINING_KNOWLEDGE_V1=PASS
+SESSION_GENERATOR_V1=PASS
 
-DESKTOP_TESTS=42/42 PASS (recorded validation checkpoint)
+DESKTOP_TESTS=45/45 PASS (latest validated checkpoint)
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 ```
@@ -120,7 +122,7 @@ Primary navigation:
 Implemented:
 
 - native Kotlin/Compose application;
-- local SQLite database v10, with non-destructive v3 -> v10 migration;
+- local SQLite database v11, with non-destructive v3 -> v11 migration;
 - one durable active-session draft, Home resume and raw-form restoration;
 - explicit confirmed discard and atomic completed-save/draft-clear;
 - exercise creation;
@@ -162,7 +164,7 @@ The implemented read-only training-knowledge layer loads six versioned JSON
 catalogs as the sole authored scientific source, generates the immutable C
 catalog representation, and loads the same assets on Android. It has no
 database migration, no auto-seeding, and no synchronization artifact. The
-desktop database remains schema v11 and Android remains schema v10.
+desktop database remains schema v11 and Android remains schema v11.
 
 Desktop `training_knowledge.h` and Android `TrainingKnowledgeCatalog` expose
 source-linked science lookups and resolved-candidate filters. Desktop
@@ -211,14 +213,14 @@ Artifacts:
 ```text
 Android -> PC
     trainlog-mobile-equipment-definitions-v1.json
-    trainlog-mobile-export-v2.json
+    trainlog-mobile-export-v3.json
     trainlog-equipment-associations-v2.json
     trainlog-exercise-body-zones-v1.json
 
 PC -> Android
     trainlog-pc-equipment-definitions-v1.json
     trainlog-pc-catalog-v1.json
-    trainlog-pc-mobile-export-v2.json
+    trainlog-pc-mobile-export-v3.json
     trainlog-equipment-associations-v2.json
     trainlog-exercise-body-zones-v1.json
 
@@ -286,6 +288,39 @@ in the validated merged database copy.
 No SQLite file is copied.
 
 No mounted Android filesystem is required.
+
+## Session generator V1
+
+`SESSION_GENERATOR_V1=PASS`.
+The frozen separate policy is loaded identically by C and Android. It generates a
+read-only, editable proposal for `full_body`, `upper_body`, `lower_body`, or
+one of the eight remaining leaf zones, with four goals and policy-owned duration
+bounds. It uses complete completed-history evidence, deterministic candidate
+selection, explicit shortages, and an observed repeated-dose load only when the
+exact exercise and compatible external equipment have a qualifying 28-day
+anchor. MAX is context only and never produces a numeric target.
+
+The Android v10 -> v11 migration adds nullable planning metadata to normal and
+draft occurrences. Existing rows receive `load_mode=none`, `rest_seconds=0`,
+and null targets without reconstruction. Android acceptance atomically creates
+the existing normal singleton draft with no actual sets; an existing draft is a
+non-mutating conflict. TUI `g` opens its preview and then the normal editor;
+completion still needs actual work. Empty proposals cannot be accepted.
+Nonempty partial proposals retain explicit shortages and may enter normal draft
+editing. The separate active V3 mobile export preserves plan and actual fields
+atomically; V1/V2 remain readable legacy formats.
+
+The initial [independent engineering delta review](reviews/session_generator_v1_engineering_review.md)
+found no findings, and the one deep final audit then found three repairable
+blockers. Its bounded repairs and bounded final repair review passed. The final
+matrix passed 45/45 Meson tests, named ASan/UBSan 4/4, and Android 75 tests with
+zero failures/errors and one known unavailable external real-v9 fixture skip;
+the structural v10 migration test executed and passed. Validators, strict C17
+headers, deterministic generation and APK asset byte comparisons passed. Real
+desktop preservation is baseline-equal with logical SHA-256
+`5bff76850581cc3abafd583377a5de2c16d6313607a4cacb812376cfebd36cce`, ten
+protected catalog/format files unchanged, and an empty index. No real app
+upgrade/install or hardware MTP exercise is claimed.
 
 ## Validation checkpoint
 

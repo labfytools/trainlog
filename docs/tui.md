@@ -162,6 +162,18 @@ Persistent duration/rest units remain seconds.
 Continuous exercise entry asks for duration and configured supplemental fields
 without set/rest/load prompts.
 
+### Session generator
+
+On the dashboard, `g` opens the generator. It selects a policy BODY ZONE, goal
+and duration, captures one explicit reference time, and renders a SQLite-free
+preview containing target sets/repetitions, optional observed load/source,
+rest, equipment, primary zone, patterns, exposure and shortage reasons.
+Preview, resize and cancel write nothing. A generator result with no exercise
+cannot enter persistence; a nonempty partial result remains editable with its
+warnings visible. Accepting a preview builds the ordinary normal session draft
+with zero actual rows and enters the existing editor. The existing completion
+guard still requires actual rows for every SETS exercise.
+
 ## 6. Session history and editing
 
 History is keyboard navigable.
@@ -271,9 +283,9 @@ b   run bidirectional synchronization
 r   refresh device status
 ```
 
-`a` imports definitions V1, mobile V2, the body-zone companion and associations
+`a` imports definitions V1, mobile V3, the body-zone companion and associations
 V2 only. `p` publishes definitions V1, catalog V1, the body-zone companion,
-mobile V2 (including body observations), and associations V2 only. `b`
+mobile V3 (including body observations), and associations V2 only. `b`
 completes that inbound sequence before beginning the outbound sequence.
 
 The direction keys are direct actions: pressing `a`, `p`, or `b` opens one

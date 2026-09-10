@@ -17,6 +17,7 @@ EQUIPMENT_ASSOCIATIONS_V2=PASS
 EQUIPMENT_DEFINITIONS_V1=PASS
 EXERCISE_RECONCILIATION_V2=PASS
 EXPLICIT_MAX_RESULTS_V2=PASS
+SESSION_GENERATOR_V1=PASS
 BODY_ZONE_SYNC_V1=PASS
 BODY_ZONE_SYNC_V1_LIVE_DEVICE=PASS
 
@@ -44,13 +45,13 @@ Framework folder grant.
 | Direction | File | Format |
 | --- | --- | --- |
 | Android -> PC | `trainlog-mobile-export-v1.json` | `trainlog-mobile-export` v1 |
-| Android -> PC | `trainlog-mobile-export-v2.json` | `trainlog-mobile-export` v2 (active) |
+| Android -> PC | `trainlog-mobile-export-v3.json` | `trainlog-mobile-export` v3 (active) |
 | Android -> PC | `trainlog-mobile-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | Android -> PC | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | Android -> PC | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | PC -> Android | `trainlog-pc-catalog-v1.json` | `trainlog-pc-catalog` v1 |
 | PC -> Android | `trainlog-pc-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
-| PC -> Android | `trainlog-pc-mobile-export-v2.json` | `trainlog-mobile-export` v2 |
+| PC -> Android | `trainlog-pc-mobile-export-v3.json` | `trainlog-mobile-export` v3 (active) |
 | PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | PC -> Android | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
@@ -60,7 +61,7 @@ No SQLite file is transferred.
 
 Android scoped storage can preserve a prior MTP-created object and create a
 new artifact with the provider collision suffix, for example
-`trainlog-mobile-export-v2 (N).json` or
+`trainlog-mobile-export-v3 (N).json` or
 `trainlog-mobile-equipment-definitions-v1 (N).json`, or
 `trainlog-equipment-associations-v2 (N).json`, or
 `trainlog-exercise-body-zones-v1 (N).json`, or
@@ -80,6 +81,23 @@ occurrences of the same exercise without fusion. V1 remains readable with its
 frozen contract. A V1 historical session is reconciled with V2 only when the
 exercise/order correspondence is unambiguous; otherwise the importer reports
 a conflict rather than silently overwriting data.
+
+V3 is a separate, strict session artifact. It retains V2 identity, position,
+equipment and actual-data shapes and additionally requires `load_mode`,
+`rest_seconds`, and `target`. `target` is null or an object with positive
+`sets`, exactly one positive `reps` or `duration_seconds`, and optional finite
+positive `weight_kg`; bounds are position 0..100000, sets 1..64, reps 1..10000,
+duration 1..86400 seconds and rest 0..86400 seconds. Continuous rows require target null, mode none
+and zero rest; MAX remains actual-data-exclusive and targetless. Mode/target
+contradictions reject before persistence.
+
+Current publication uses V3 and never emits a lossy V2 rewrite of planned
+history. V1/V2 readers retain their contracts. Selected V3 takes priority:
+malformed or conflicting V3 fails explicitly with no V2 fallback; only V3
+absence permits legacy selection. Equal stable-ID V3 replay skips idempotently;
+divergent content conflicts and rolls back. A legacy replay cannot erase local
+nondefault planning data. Existing definition-first, companion reconciliation
+and filename-suffix selection rules continue to apply.
 
 ## 4. Equipment definitions V1
 
@@ -144,7 +162,7 @@ user intent. A mobile creator ID already reconciled by the immediately
 preceding V2 exercise import is accepted only with that retained V2 definition
 as proof, never from a name-only guess.
 
-## 5. Android -> PC mobile snapshot
+## 5. Android -> PC mobile snapshot and retained V2 entry shape
 
 Header:
 
@@ -163,12 +181,15 @@ sessions
 body_observations
 ```
 
-Android captures its custom-definition V1 companion, this V2 snapshot, body
-zones, and the equipment-association companion before it publishes any of
-them. It then publishes in that order: definitions, V2 snapshot, body zones,
-associations. A malformed
-persisted custom definition aborts publication before a V2 file can advertise
-its reference; bundled manifest equipment is never copied into definitions V1.
+For current publication, Android captures its custom-definition V1 companion,
+the mobile V3 snapshot, body zones V1, and the equipment-associations V2
+companion before it publishes any of them. It publishes definitions V1, mobile
+V3, body zones V1, then associations V2. A malformed persisted custom
+definition aborts publication before a mobile V3 file can advertise its
+reference; bundled manifest equipment is never copied into definitions V1.
+
+The following V2 entry-shape description is retained for legacy-reader
+compatibility only; it does not describe current publication.
 
 V2 session entries additionally carry:
 
@@ -282,9 +303,9 @@ explicit max result kept separate from sets
 
 The importer never invents a uniform target merely to fit desktop persistence.
 
-### Exercise identity reconciliation
+### Exercise identity reconciliation retained from V2
 
-The active V2/catalog path may reconcile distinct `exercise_id` values sharing
+The retained V2/catalog reconciliation path may reconcile distinct `exercise_id` values sharing
 one normalized name only when recording mode and tracking mode are equal, all
 other represented invariants are compatible, and one bounded `data_fields`
 mask contains the other. The existing desktop identity is deterministic
@@ -415,8 +436,8 @@ Android request
 The engine has three explicit modes:
 
 ```text
-a   Android -> PC: definition V1 -> mobile V2 -> body zones V1 -> association V2; no publish
-p   PC -> Android: definition V1 -> catalog V1 -> body zones V1 -> mobile V2
+a   Android -> PC: definition V1 -> mobile V3 -> body zones V1 -> association V2; no publish
+p   PC -> Android: definition V1 -> catalog V1 -> body zones V1 -> mobile V3
     (including bodies) -> association V2; no receive
 b   bidirectional: complete inbound sequence, then complete outbound sequence
 ```
@@ -529,7 +550,7 @@ overloading frozen Trainlog JSON v1
 `trainlog-equipment-associations`, version `2`. Each row is identified by
 `(session_id, entry_id)` and contains `exercise_id` as consistency metadata,
 then either `state: set` with a canonical `equipment_id`, or `state: cleared`
-for an intentional removal. In the current V2 flow, the mobile snapshot already
+for an intentional removal. In the V2 association contract, the mobile snapshot already
 carries the occurrence equipment value and the companion validates it. A
 missing companion conveys no equipment information and cannot clear a
 previously known choice. Unknown canonical IDs, unknown entries, ambiguous

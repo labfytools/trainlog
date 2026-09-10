@@ -8,13 +8,17 @@ It is a native Kotlin/Jetpack Compose application with local SQLite persistence.
 
 The desktop remains the canonical long-term history and analytics store.
 
-## Session exchange V2
+## Session exchange V3
 
 Completed session occurrences persist an `entry_id`; it is never regenerated
-for exchange. Android publishes `trainlog-mobile-export-v2.json` as the active
-desktop snapshot and imports `trainlog-pc-mobile-export-v2.json` after the PC
+for exchange. Android publishes `trainlog-mobile-export-v3.json` as the active
+desktop snapshot and imports `trainlog-pc-mobile-export-v3.json` after the PC
 catalogue. The artifact preserves occurrence order, continuous metrics, set
 weights and equipment. The legacy V1 contract remains separate and readable.
+
+V3 preserves ordinary plan metadata atomically with occurrence identity,
+equipment, actual sets and MAX. V1/V2 remain readable legacy artifacts and are
+never silently rewritten as V3.
 
 ## 2. Implemented navigation
 
@@ -33,7 +37,7 @@ Accueil
 Android local database version:
 
 ```text
-10
+11
 ```
 
 Domain tables cover:
@@ -60,6 +64,21 @@ Exactly one active draft is supported; it is separate from completed history.
 Schema v9 adds explicit completed/draft MAX results. Schema v10 additively
 stores direct primary/secondary body-zone relations and their private sync
 baseline; the taxonomy itself remains the shared manifest asset.
+
+## Session generator V1
+
+Home exposes **Générer une séance**. The generator uses the shared frozen
+policy for all 11 selectable BODY ZONES, four goals, policy duration presets
+and custom bounds. A generated preview is read-only until acceptance and
+explains target dose, rest, equipment, observed-load source or absence,
+exposure/recency, and explicit shortages. It never claims measured recovery.
+
+Users can edit, remove, reorder, regenerate or cancel the in-memory proposal.
+Acceptance of a nonempty proposal is one transaction into the ordinary active
+draft, with target plans and zero actual rows. An existing draft yields the
+non-mutating `existing_active_draft` conflict. Empty results cannot be accepted;
+nonempty partial results may be accepted and edited normally. Final completion
+continues to require actual captured work.
 
 ## 4. Exercise catalog
 
@@ -266,17 +285,17 @@ bo_<uuid-v4>
 Android maintains:
 
 ```text
-Download/Trainlog/trainlog-mobile-export-v2.json
+Download/Trainlog/trainlog-mobile-export-v3.json
 ```
 
-The V2 snapshot is refreshed after relevant local changes, including exercise,
+The V3 snapshot is refreshed after relevant local changes, including exercise,
 session, body-observation, equipment association and PC-catalog updates. It
 preserves `entry_id`, occurrence position, optional equipment and actual
-per-set weights. Android also publishes the V2 companion
+per-set weights and ordinary planning metadata. Android also publishes the V2 companion
 `trainlog-equipment-associations-v2.json`; its `set` and `cleared` states are
 targeted by `(session_id, entry_id)`.
 
-Before either V2 artifact, Android publishes its user-created equipment
+Before either dependent artifact, Android publishes its user-created equipment
 definitions as `trainlog-mobile-equipment-definitions-v1.json`. The strict
 `trainlog-equipment-definitions` v1 format uses stable IDs and the fields
 `equipment_id`, `display_name`, `label_name`, `equipment_type`, and
@@ -416,7 +435,7 @@ During exercise entry, `Machine / équipement (optionnel)` searches the shared
 catalogue by display name, physical-machine label and aliases. The selected
 canonical ID belongs to that session exercise entry, is durable in the active
 draft and completed session, and is visible in session detail. It may be
-cleared. The active V2 exchange preserves multiple ordered occurrences of the
+cleared. The active V3 exchange preserves multiple ordered occurrences of the
 same exercise in one session through `entry_id`. The frozen V1 artifacts remain
 readable only as legacy artifacts and keep their historical one-exercise
 identity assumptions; V1 is not rewritten to claim V2 support.

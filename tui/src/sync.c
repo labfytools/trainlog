@@ -29,13 +29,16 @@
 #define SYNC_REQUEST_TEXT_MAX 4095U
 
 static const char *const MOBILE_EXPORT_NAME =
+    "trainlog-mobile-export-v3.json";
+
+static const char *const MOBILE_EXPORT_V2_NAME =
     "trainlog-mobile-export-v2.json";
 
 static const char *const MOBILE_EXPORT_V1_NAME =
     "trainlog-mobile-export-v1.json";
 
 static const char *const PC_MOBILE_EXPORT_NAME =
-    "trainlog-pc-mobile-export-v2.json";
+    "trainlog-pc-mobile-export-v3.json";
 
 static const char *const PC_CATALOG_NAME =
     "trainlog-pc-catalog-v1.json";
@@ -59,10 +62,10 @@ static const char *const SYNC_RECEIPT_NAME =
     "trainlog-sync-receipt-v1.json";
 
 static const char *const MOBILE_EXPORT_LOCAL =
-    "/tmp/trainlog-mobile-export-v2.json";
+    "/tmp/trainlog-mobile-export-v3.json";
 
 static const char *const PC_MOBILE_EXPORT_LOCAL =
-    "/tmp/trainlog-pc-mobile-export-v2.json";
+    "/tmp/trainlog-pc-mobile-export-v3.json";
 
 static const char *const PC_CATALOG_LOCAL =
     "/tmp/trainlog-pc-catalog-v1.json";
@@ -2614,7 +2617,7 @@ TrainlogStatus trainlog_sync_run(
     bool silence_active = false;
     bool run_started = false;
     bool receipt_published = false;
-    bool mobile_export_is_v2 = false;
+    bool mobile_export_has_companions = false;
 
     if (output == NULL || direction < TRAINLOG_SYNC_ANDROID_TO_PC ||
         direction > TRAINLOG_SYNC_BIDIRECTIONAL ||
@@ -2840,7 +2843,7 @@ TrainlogStatus trainlog_sync_run(
         goto outbound;
     }
 
-    /* Definitions must reconcile before either v2 reference artifact. A
+    /* Definitions must reconcile before either V3/V2 reference artifact. A
      * missing file is accepted only for historic snapshots with no custom ID. */
     status = sync_receive_current_android_artifact(
         &device,
@@ -2886,14 +2889,16 @@ TrainlogStatus trainlog_sync_run(
         MOBILE_EXPORT_LOCAL,
         &ignored_size
     );
-    mobile_export_is_v2 = status == TRAINLOG_STATUS_OK;
+    if (status == TRAINLOG_STATUS_NOT_FOUND) {
+        /* CONTRACT: selected V3 content is authoritative. Only absence permits
+         * V2 selection; an invalid V3 is imported and fails without fallback. */
+        status = sync_receive_current_android_artifact(
+            &device, folder_id, MOBILE_EXPORT_V2_NAME,
+            MOBILE_EXPORT_LOCAL, &ignored_size);
+    }
+    mobile_export_has_companions = status == TRAINLOG_STATUS_OK;
 
-    if (
-        status !=
-        TRAINLOG_STATUS_OK
-    ) {
-        /* Explicit historic fallback only: a V1 file is never mistaken for
-         * V2, and V2 remains the default path for all current Android apps. */
+    if (status == TRAINLOG_STATUS_NOT_FOUND) {
         status = sync_receive_named(&device, folder_id, MOBILE_EXPORT_V1_NAME,
                                     MOBILE_EXPORT_LOCAL, &ignored_size);
     }
@@ -2957,11 +2962,11 @@ TrainlogStatus trainlog_sync_run(
     );
 
     /* CONTRACT: body zones are one directional-neutral companion. Historic
-     * V2 publishers may omit it; when present it is applied only after the
+     * V2 publishers may omit it; when present beside V3/V2 it is applied after
      * exercise definitions above established every ID or a source-V2-proven
      * normalized-name alias. The helper consumes the retained mobile snapshot
      * solely as reconciliation proof; it never infers identity from a name. */
-    status = mobile_export_is_v2
+    status = mobile_export_has_companions
         ? sync_receive_current_android_artifact(&device, folder_id,
             EXERCISE_BODY_ZONES_NAME, EXERCISE_BODY_ZONES_LOCAL, &ignored_size)
         : TRAINLOG_STATUS_NOT_FOUND;
@@ -2986,12 +2991,12 @@ TrainlogStatus trainlog_sync_run(
         goto finalize;
     }
 
-    /* V1 exports carry no equipment signal. A V2 companion beside a historic
+    /* V1 exports carry no equipment signal. A V3/V2 companion beside a historic
      * V1 snapshot belongs to another generation and must not be applied. Its
      * absence therefore preserves existing associations rather than clearing
-     * them. Scoped storage may suffix every V2 Android publication, so the V2
+     * them. Scoped storage may suffix every current Android publication, so the
      * path selects its newest candidate instead of an older canonical object. */
-    status = mobile_export_is_v2
+    status = mobile_export_has_companions
         ? sync_receive_current_android_artifact(
             &device,
             folder_id,
@@ -3156,13 +3161,13 @@ outbound:
                                   database_path,
                                   PC_CATALOG_RESULT, tool_output, sizeof(tool_output));
     if (status != TRAINLOG_STATUS_OK || strstr(tool_output, "PC_MOBILE_EXPORT=PASS") == NULL) {
-        (void)snprintf(output->error, sizeof(output->error), "PC→Android : export séances V2 échoué.");
+        (void)snprintf(output->error, sizeof(output->error), "PC→Android : export séances V3 échoué.");
         final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
         goto finalize;
     }
     status = sync_publish_named(&device, folder_id, PC_MOBILE_EXPORT_LOCAL, PC_MOBILE_EXPORT_NAME);
     if (status != TRAINLOG_STATUS_OK) {
-        (void)snprintf(output->error, sizeof(output->error), "PC→Android : publication séances V2 échouée.");
+        (void)snprintf(output->error, sizeof(output->error), "PC→Android : publication séances V3 échouée.");
         final_status = status;
         goto finalize;
     }

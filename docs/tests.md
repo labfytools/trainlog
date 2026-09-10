@@ -57,7 +57,7 @@ new unique identity -> create
 ```
 
 That command validates the frozen Trainlog JSON V1 importer contract. Active
-mobile V2 synchronization has a separate, stricter safe-reconciliation policy
+mobile V3 synchronization has a separate, stricter safe-reconciliation policy
 covered below; it does not modify the frozen V1 expectation.
 
 ## 4. Desktop Meson suite
@@ -110,8 +110,24 @@ tui_workflows
 Validated current suite:
 
 ```text
-39/39 Meson tests PASS
+45/45 Meson tests PASS
 ```
+
+`SESSION_GENERATOR_V1` validation covered policy shape and shared fixtures,
+full-history exposure/recency boundaries, selection and observed-load anchors,
+Android v10 -> v11 planning migration, V3 round trips and malformed-V3
+priority, and ordinary draft/editor acceptance. The checkpoint also passed 4/4
+selected ASan/UBSan tests and Android 73 tests with zero failures/errors; one
+known historical real-v9 fixture skipped while the structural v10 migration
+test executed and passed. No hardware MTP or real app-upgrade/install validation
+is claimed for this checkpoint.
+
+The completed post-repair matrix passed 45/45 Meson tests, named ASan/UBSan
+4/4, and Android 75 tests with zero failures/errors and one unavailable
+external Android-v9 fixture skip. The structural Android v10 planning migration
+executed and passed. Validators, strict C17 headers, deterministic policy/
+fixture/knowledge regeneration, and APK asset byte comparisons passed. The
+earlier sanitizer invocation that selected no tests is not used as evidence.
 
 The desktop executable is additionally smoke-checked in isolated tmux PTYs at
 100x30, the exact 72x20 minimum, and the 60x15 fallback; a resize down/up must
@@ -190,7 +206,7 @@ Notable regression coverage:
   replay, complete definitions/mobile/associations/body import, outbound
   publication, and stable second replay;
 - a production PC-exporter to Android-importer regression over definitions,
-  catalog, mobile V2, and association V2 artifacts: the fixture includes
+  catalog, mobile V3, and association V2 artifacts: the fixture includes
   Marche, Leg press, two Marche occurrences, per-set loads, body data, a
   durable draft, and custom equipment; after the first import, both the second
   and third imports report zero additions and an exact snapshot of every

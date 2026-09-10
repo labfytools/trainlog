@@ -24,6 +24,32 @@ data class SessionSetDraft(
     val weightKg: Double? = null,
 )
 
+enum class SessionLoadMode(val wireValue: String) {
+    NONE("none"),
+    EXTERNAL("external"),
+    ASSISTANCE("assistance");
+
+    companion object {
+        fun fromWire(value: String): SessionLoadMode =
+            entries.firstOrNull { it.wireValue == value }
+                ?: error("Mode de charge inconnu: $value")
+    }
+}
+
+/**
+ * Planned occurrence metadata is deliberately separate from performed rows.
+ * A generator may create a target-only draft, while normal completion still
+ * requires actual work before the occurrence enters completed history.
+ */
+data class SessionExercisePlan(
+    val sets: Int,
+    val reps: Int? = null,
+    val durationSeconds: Int? = null,
+    val weightKg: Double? = null,
+    val loadMode: SessionLoadMode = SessionLoadMode.NONE,
+    val restSeconds: Int = 0,
+)
+
 data class SessionExerciseDraft(
     /** Stable occurrence identity; exercise_id identifies only the catalogue movement. */
     val entryId: String = "sxe_" + java.util.UUID.randomUUID().toString(),
@@ -36,6 +62,7 @@ data class SessionExerciseDraft(
      * mutually exclusive with sets/continuous data.
      */
     val maxWeightKg: Double? = null,
+    val plan: SessionExercisePlan? = null,
     val sets: List<SessionSetDraft> = emptyList(),
     val continuousDurationSeconds: Int = 0,
     val speedKmh: Double? = null,
@@ -96,6 +123,7 @@ data class SessionExerciseDetail(
     val dataFields: Int,
     /** Explicit max result; null also represents a preserved legacy max entry. */
     val maxWeightKg: Double? = null,
+    val plan: SessionExercisePlan? = null,
     val sets: List<SessionSetDraft> = emptyList(),
     val continuousDurationSeconds: Int = 0,
     val speedKmh: Double? = null,

@@ -130,6 +130,15 @@ fun SessionDetailScreen(
                     exercise.equipmentDisplayName?.let { equipment ->
                         TrainlogInfo("Équipement : $equipment", color = colors.muted)
                     }
+                    exercise.plan?.let { plan ->
+                        TrainlogInfo(
+                            "Plan : ${plan.sets} × ${plan.reps ?: plan.durationSeconds} · " +
+                                "repos ${plan.restSeconds} s · " +
+                                (plan.weightKg?.let { "charge cible $it kg" }
+                                    ?: "sans charge numérique"),
+                            color = colors.muted,
+                        )
+                    }
                     if (editingEntryId == exercise.entryId) {
                         TrainlogInputField(
                             label = "Rechercher une machine",

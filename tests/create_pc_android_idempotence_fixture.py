@@ -21,10 +21,10 @@ LEG_PRESS_ENTRY_ID = "sxe_22222222-2222-4222-8222-222222222223"
 BODY_OBSERVATION_ID = "bo_33333333-3333-4333-8333-333333333333"
 
 
-def run_export(tool, output, database):
+def run_export(tool, output, database, *extra):
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools" / tool), str(output),
-         "--database", str(database)],
+         "--database", str(database), *extra],
         text=True,
         capture_output=True,
     )
@@ -41,6 +41,7 @@ def main():
 
     connection = sqlite3.connect(database)
     connection.executescript(SCHEMA)
+    connection.execute("PRAGMA user_version=11")
     connection.executemany(
         "INSERT INTO exercises(exercise_id,name,normalized_name,tracking_mode,"
         "recording_mode,data_fields) VALUES(?,?,?,?,?,?);",
@@ -119,7 +120,8 @@ def main():
         ("export_pc_mobile.py", "trainlog-pc-mobile-export-v2.json"),
         ("export_equipment_associations.py", "trainlog-equipment-associations-v2.json"),
     ):
-        run_export(tool, output_directory / filename, database)
+        run_export(tool, output_directory / filename, database,
+                   *(('--version', '2') if tool == 'export_pc_mobile.py' else ()))
 
     print("PASS pc_android_idempotence_fixture")
 

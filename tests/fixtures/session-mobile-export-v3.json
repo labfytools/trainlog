@@ -1,0 +1,42 @@
+{
+  "format": "trainlog-mobile-export",
+  "version": 3,
+  "generated_at": "2026-09-09T14:00:00+02:00",
+  "exercises": [
+    {
+      "exercise_id": "ex_33333333-3333-4333-8333-333333333333",
+      "name": "Fixture V3 partagée",
+      "recording_mode": "sets",
+      "tracking_mode": "reps",
+      "data_fields": 0
+    }
+  ],
+  "sessions": [
+    {
+      "session_id": "se_33333333-3333-4333-8333-333333333333",
+      "started_at": "2026-09-09T14:01:00+02:00",
+      "session_type": "training",
+      "exercises": [
+        {
+          "entry_id": "sxe_33333333-3333-4333-8333-333333333333",
+          "position": 0,
+          "exercise_id": "ex_33333333-3333-4333-8333-333333333333",
+          "name": "Fixture V3 partagée",
+          "recording_mode": "sets",
+          "tracking_mode": "reps",
+          "data_fields": 0,
+          "load_mode": "external",
+          "rest_seconds": 135,
+          "equipment_id": "leg_press",
+          "target": {"sets": 3, "reps": 9, "weight_kg": 55.5},
+          "sets": [
+            {"reps": 9, "weight_kg": 52.5},
+            {"reps": 8},
+            {"reps": 7, "weight_kg": 0.0}
+          ]
+        }
+      ]
+    }
+  ],
+  "body_observations": []
+}

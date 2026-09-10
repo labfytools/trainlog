@@ -52,6 +52,23 @@ training_knowledge_generated = custom_target(
             meson.project_source_root() / 'catalog', '@OUTPUT@'],
 )
 
+session_generation_policy_generated = custom_target(
+  'session_generation_policy_generated',
+  input: meson.project_source_root() / 'catalog/session-generation-policy-v1.json',
+  output: 'session_generation_policy_generated.c',
+  depend_files: [
+    meson.project_source_root() / 'tools/generate_session_generation_policy.py',
+    meson.project_source_root() / 'tools/validate_session_generation_policy.py',
+    meson.project_source_root() / 'catalog/body-zones-v1.json',
+    meson.project_source_root() / 'catalog/movement-patterns-v1.json',
+    meson.project_source_root() / 'catalog/exercise-knowledge-v1.json',
+    meson.project_source_root() / 'catalog/equipment-knowledge-v1.json',
+    meson.project_source_root() / 'catalog/science-references-v1.json',
+  ],
+  command: [find_program('python3'), meson.project_source_root() / 'tools/generate_session_generation_policy.py',
+            '@INPUT@', meson.project_source_root() / 'catalog', '@OUTPUT@'],
+)
+
 strict_c_args = [
   '-D_POSIX_C_SOURCE=200809L',
   '-Wconversion',
@@ -71,6 +88,7 @@ trainlog_core_sources = files(
   'src/usb.c',
   'src/mtp.c',
   'src/reps.c',
+  'src/session_generation.c',
   'src/measured_max.c',
   'src/sync.c',
   'src/sync_history.c',
@@ -79,6 +97,7 @@ trainlog_core_sources = files(
 trainlog_core_sources += equipment_catalog_generated
 trainlog_core_sources += body_zone_catalog_generated
 trainlog_core_sources += training_knowledge_generated
+trainlog_core_sources += session_generation_policy_generated
 
 trainlog_core = static_library(
   'trainlog_core',
@@ -174,6 +193,27 @@ test_training_knowledge = executable(
   c_args: strict_c_args,
 )
 test('training_knowledge', test_training_knowledge)
+
+test_session_generation = executable(
+  'test_session_generation',
+  ['tests/test_session_generation.c', custom_target(
+    'session_generation_fixtures_generated',
+    input: meson.project_source_root() / 'tests/fixtures/session-generation-v1.json',
+    output: 'session_generation_fixtures_generated.c',
+    command: [find_program('python3'), meson.project_source_root() / 'tools/generate_session_generation_fixtures.py', '@INPUT@', '@OUTPUT@'],
+  )],
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('session_generation', test_session_generation)
+
+test(
+  'session_generation_policy_validation',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tools/validate_session_generation_policy.py',
+         meson.project_source_root() / 'catalog/session-generation-policy-v1.json',
+         meson.project_source_root() / 'catalog'],
+)
 
 test_training_context = executable(
   'test_training_context',
@@ -464,6 +504,12 @@ test(
   'max_sync',
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_max_sync.py'],
+)
+
+test(
+  'session_exchange_v3',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_session_exchange_v3.py'],
 )
 
 test(

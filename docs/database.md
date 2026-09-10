@@ -429,7 +429,23 @@ Desktop and Android schema versions are not required to match.
 
 Do not synchronize SQLite database files.
 
-## 10. Validation
+## 10. Session-generation planning metadata
+
+Desktop schema remains v11. Android schema v11 adds, through its additive
+v10 -> v11 migration, `load_mode`, `rest_seconds`, `target_sets`,
+`target_reps`, `target_duration_seconds`, and `target_weight_kg` to both normal
+completed and durable-draft occurrences. Existing rows receive mode `none`,
+zero rest and NULL targets; no historical plan is reconstructed. Row IDs,
+identities, positions, equipment, actual sets, continuous rows, MAX results and
+raw partial draft input are preserved.
+
+Targets are nullable planning metadata separate from actual rows. A plan has
+positive sets and exactly one positive repetitions or duration value; a target
+weight is finite and positive when present. An absent target has no target shape.
+Continuous and explicit-MAX occurrences are targetless. Plan persistence does
+not weaken normal completion's requirement for actual work.
+
+## 11. Validation
 
 ```bash
 meson compile -C build

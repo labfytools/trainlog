@@ -21,6 +21,7 @@ import com.labfytools.trainlog.data.SyncRequestOutbox
 private enum class TrainlogScreenId {
     HOME,
     SESSION,
+    SESSION_GENERATOR,
     EXERCISE,
     BODY,
     HISTORY,
@@ -164,6 +165,10 @@ fun TrainlogApp(
                         }
                     }
                 },
+                onGenerateSession = {
+                    draftMessage = null
+                    screen = TrainlogScreenId.SESSION_GENERATOR
+                },
                 onDiscardDraft = {
                     when (
                         val result =
@@ -224,6 +229,21 @@ fun TrainlogApp(
                 onSessionSaved = {
                     exporter.exportMobileBundle()
                     draftRevision += 1
+                },
+            )
+
+        TrainlogScreenId.SESSION_GENERATOR ->
+            SessionGeneratorScreen(
+                repository = repository,
+                onBack = { screen = TrainlogScreenId.HOME },
+                onAccepted = {
+                    draftRevision += 1
+                    screen = TrainlogScreenId.SESSION
+                },
+                onExistingDraft = {
+                    draftMessage = "Une séance est déjà en cours. Reprenez-la ou supprimez-la explicitement depuis l'accueil."
+                    draftRevision += 1
+                    screen = TrainlogScreenId.HOME
                 },
             )
 

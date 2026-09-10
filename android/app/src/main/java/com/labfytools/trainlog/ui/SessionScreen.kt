@@ -297,6 +297,19 @@ fun SessionScreen(
                             color =
                                 colors.text,
                         )
+                        draft.plan?.let { plan ->
+                            TrainlogInfo(
+                                "Plan : ${plan.sets} × ${plan.reps ?: plan.durationSeconds} · " +
+                                    "repos ${plan.restSeconds} s · " +
+                                    (plan.weightKg?.let { "charge cible $it kg" }
+                                        ?: "aucune charge numérique proposée"),
+                                color = colors.muted,
+                            )
+                            if (draft.sets.isEmpty()) TrainlogInfo(
+                                "Aucune série réalisée saisie : ajoutez les valeurs réellement effectuées.",
+                                color = colors.warning,
+                            )
+                        }
 
                         TrainlogAction(
                             label = "Modifier ${draft.exercise.name}",
@@ -382,7 +395,11 @@ fun SessionScreen(
                             currentDraft.copy(
                                 exercises = editIndex?.let { replacingIndex ->
                                     currentDraft.exercises.mapIndexed { index, existing ->
-                                        if (index == replacingIndex) draft else existing
+                                        /* INVARIANT: normal performed-value edits
+                                         * preserve generator planning metadata. */
+                                        if (index == replacingIndex) {
+                                            draft.copy(plan = existing.plan)
+                                        } else existing
                                     }
                                 } ?: (currentDraft.exercises + draft),
                                 form =

@@ -84,7 +84,16 @@ void trainlog_terminal_clear_to_end(TrainlogTerminal *terminal) { (void)terminal
 void trainlog_terminal_cursor_visible(TrainlogTerminal *terminal, bool visible) { (void)terminal; (void)visible; }
 void trainlog_terminal_draw(TrainlogTerminal *terminal, int row, int column, uint32_t codepoint) { (void)terminal; (void)row; (void)column; (void)codepoint; }
 void trainlog_terminal_box(TrainlogTerminal *terminal, int top, int left, int bottom, int right) { (void)terminal; (void)top; (void)left; (void)bottom; (void)right; }
-int trainlog_terminal_get_key(TrainlogTerminal *terminal) { return terminal->event_index < terminal->event_count ? terminal->events[terminal->event_index++] : TRAINLOG_KEY_NONE; }
+int trainlog_terminal_get_key(TrainlogTerminal *terminal)
+{
+    int key = terminal->event_index < terminal->event_count
+        ? terminal->events[terminal->event_index++] : TRAINLOG_KEY_NONE;
+    if (key == TRAINLOG_KEY_RESIZE) {
+        terminal->rows = 20;
+        terminal->columns = 72;
+    }
+    return key;
+}
 bool trainlog_terminal_read_unicode(TrainlogTerminal *terminal, int *codepoint, char utf8[5])
 {
     int value = trainlog_terminal_get_key(terminal);
@@ -286,13 +295,214 @@ static bool test_knowledge_scrolls_long_lists_at_minimum_terminal(void)
     return true;
 }
 
+static size_t generator_zone_events(const char *zone_id, int *events)
+{
+    size_t index;
+    for (index = 0U; index < trainlog_body_zone_catalog_count(); ++index) {
+        const TrainlogBodyZone *zone = trainlog_body_zone_catalog_at(index);
+        if (zone != NULL && strcmp(zone->zone_id, zone_id) == 0) {
+            size_t event;
+            for (event = 0U; event < index; ++event) events[event] = TRAINLOG_KEY_DOWN;
+            events[index] = TRAINLOG_KEY_ENTER;
+            return index + 1U;
+        }
+    }
+    return 0U;
+}
+
+static bool seed_generator_leg_press(TrainlogDatabase *database)
+{
+    return trainlog_database_insert_exercise_profiled(database,
+        "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde", "Leg press", "leg press",
+        TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS, 0U) == TRAINLOG_STATUS_OK;
+}
+
+static bool test_generator_dashboard_entry_and_policy_choices(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogTerminal terminal;
+    const TrainlogSessionGenerationGoalPolicy *goal = NULL;
+    int minutes = 0;
+    const int dashboard_events[] = {'g'};
+    const int goal_events[] = {TRAINLOG_KEY_DOWN, TRAINLOG_KEY_ENTER};
+    const int duration_events[] = {TRAINLOG_KEY_DOWN, TRAINLOG_KEY_ENTER};
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    script(&terminal, dashboard_events, sizeof(dashboard_events) / sizeof(dashboard_events[0]));
+    terminal.rows = 20; terminal.columns = 72; tui_terminal = &terminal;
+    CHECK(screen_dashboard(database) == DASHBOARD_GENERATE_SESSION);
+    CHECK(strstr(terminal.output, "g générer une séance") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+    script(&terminal, goal_events, sizeof(goal_events) / sizeof(goal_events[0]));
+    CHECK(generator_choose_goal(&goal));
+    CHECK(goal == &trainlog_session_generation_policy_v1.goals[1]);
+    script(&terminal, duration_events, sizeof(duration_events) / sizeof(duration_events[0]));
+    CHECK(generator_choose_duration(&minutes));
+    CHECK(minutes == trainlog_session_generation_policy_v1.duration_presets_minutes[1]);
+    tui_terminal = NULL; trainlog_database_close(database); return true;
+}
+
+static bool test_generator_plan_drafts_have_no_actual_sets(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogGeneratedSession generated;
+    TrainlogSessionDraftExercise drafts[1];
+    char summary[160];
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(seed_generator_leg_press(database));
+    (void)memset(&generated, 0, sizeof(generated));
+    generated.exercise_count = 1U;
+    (void)snprintf(generated.exercises[0].exercise_id,
+        sizeof(generated.exercises[0].exercise_id), "%s",
+        "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde");
+    (void)snprintf(generated.exercises[0].equipment_id,
+        sizeof(generated.exercises[0].equipment_id), "%s", "leg_press");
+    generated.exercises[0].target_sets = 3;
+    generated.exercises[0].target_repetitions = 10;
+    generated.exercises[0].rest_seconds = 120;
+    generated.exercises[0].planned_load_mode = TRAINLOG_LOAD_NONE;
+    CHECK(generator_build_drafts(database, &generated, drafts));
+    CHECK(drafts[0].input.target_sets == 3 && drafts[0].input.target_reps == 10);
+    CHECK(drafts[0].input.rest_seconds == 120);
+    CHECK(drafts[0].input.set_count == 0U && drafts[0].input.sets == drafts[0].sets);
+    draft_set_summary(&drafts[0], summary, sizeof(summary));
+    CHECK(strstr(summary, "Plan 3×10") != NULL);
+    CHECK(strstr(summary, "0 réalisée") != NULL);
+    trainlog_database_close(database); return true;
+}
+
+static bool test_generator_preview_scrolls_at_minimum_terminal(void)
+{
+    TrainlogGeneratedSession generated;
+    TrainlogGeneratorPreviewItem items[TRAINLOG_GENERATOR_MAX_SELECTED];
+    TrainlogTerminal terminal;
+    size_t index;
+    const int events[] = {TRAINLOG_KEY_RESIZE, TRAINLOG_KEY_DOWN, TRAINLOG_KEY_DOWN,
+        TRAINLOG_KEY_DOWN, TRAINLOG_KEY_DOWN, TRAINLOG_KEY_DOWN, 'q'};
+    (void)memset(&generated, 0, sizeof(generated));
+    (void)memset(items, 0, sizeof(items));
+    generated.exercise_count = TRAINLOG_GENERATOR_MAX_SELECTED;
+    generated.estimated_duration_seconds = 1800;
+    for (index = 0U; index < generated.exercise_count; ++index) {
+        generated.exercises[index].target_sets = 3;
+        generated.exercises[index].target_repetitions = 10;
+        generated.exercises[index].rest_seconds = 120;
+        (void)snprintf(items[index].exercise_name, sizeof(items[index].exercise_name), "Exercice %zu", index + 1U);
+        (void)snprintf(items[index].equipment_name, sizeof(items[index].equipment_name), "Machine %zu", index + 1U);
+        (void)snprintf(items[index].zone_name, sizeof(items[index].zone_name), "Cuisses");
+        (void)snprintf(items[index].movement_name, sizeof(items[index].movement_name), "Extension du genou");
+    }
+    script(&terminal, events, sizeof(events) / sizeof(events[0]));
+    terminal.rows = 30; terminal.columns = 100; tui_terminal = &terminal;
+    CHECK(!generator_preview(&generated, items));
+    CHECK(strstr(terminal.output, "Exercice 6") != NULL);
+    CHECK(strstr(terminal.output, "aucune prescription numérique") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+    tui_terminal = NULL; return true;
+}
+
+static bool test_generator_recency_continue_and_cancel(void)
+{
+    TrainlogBodyZoneRecentExposure exposure;
+    TrainlogTerminal terminal;
+    const TrainlogBodyZone *zone = trainlog_body_zone_catalog_lookup("back");
+    const int continue_events[] = {'c'};
+    const int cancel_events[] = {'q'};
+    (void)memset(&exposure, 0, sizeof(exposure));
+    exposure.warning_level = TRAINLOG_GENERATION_WARNING_WARNING;
+    exposure.within_24h.primary_set_count = 2U;
+    exposure.within_72h.secondary_set_count = 4U;
+    exposure.has_latest = true;
+    (void)snprintf(exposure.latest_started_at, sizeof(exposure.latest_started_at),
+        "%s", "2026-09-10T08:00:00.250+02:00");
+    CHECK(zone != NULL);
+    script(&terminal, continue_events, sizeof(continue_events) / sizeof(continue_events[0]));
+    terminal.rows = 20; terminal.columns = 72; tui_terminal = &terminal;
+    CHECK(generator_confirm_exposure(zone, &exposure) == 1);
+    CHECK(strstr(terminal.output, "Dos travaillé récemment") != NULL);
+    CHECK(strstr(terminal.output, "2 séries principales") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+    script(&terminal, cancel_events, sizeof(cancel_events) / sizeof(cancel_events[0]));
+    CHECK(generator_confirm_exposure(zone, &exposure) == -1);
+    tui_terminal = NULL; return true;
+}
+
+static bool test_generator_cancel_preview_writes_nothing(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogTerminal terminal;
+    int events[32];
+    size_t count = generator_zone_events("thighs", events);
+    size_t sessions = 99U;
+    CHECK(count > 0U);
+    events[count++] = TRAINLOG_KEY_ENTER;
+    events[count++] = TRAINLOG_KEY_ENTER;
+    events[count++] = 'q';
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(seed_generator_leg_press(database));
+    script(&terminal, events, count); tui_terminal = &terminal;
+    screen_session_generator(database);
+    CHECK(trainlog_database_session_count(database, &sessions) == TRAINLOG_STATUS_OK);
+    CHECK(sessions == 0U);
+    CHECK(strstr(terminal.output, "Aperçu de la séance générée") != NULL);
+    tui_terminal = NULL; trainlog_database_close(database); return true;
+}
+
+static bool test_generator_accept_requires_and_persists_actual(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogTerminal terminal;
+    int events[48];
+    size_t count = generator_zone_events("thighs", events);
+    size_t sessions = 0U;
+    CHECK(count > 0U);
+    events[count++] = TRAINLOG_KEY_ENTER;
+    events[count++] = TRAINLOG_KEY_ENTER;
+    events[count++] = 'a';
+    events[count++] = TRAINLOG_KEY_ENTER;
+    events[count++] = 'a'; events[count++] = '8'; events[count++] = '\n';
+    events[count++] = 'f'; events[count++] = 'f'; events[count++] = 'x';
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(seed_generator_leg_press(database));
+    script(&terminal, events, count); tui_terminal = &terminal;
+    screen_session_generator(database);
+    CHECK(trainlog_database_session_count(database, &sessions) == TRAINLOG_STATUS_OK);
+    CHECK(sessions == 1U);
+    CHECK(strstr(terminal.output, "Valeurs réellement effectuées") != NULL);
+    CHECK(strstr(terminal.output, "Séance générée et réalisée enregistrée") != NULL);
+    tui_terminal = NULL; trainlog_database_close(database); return true;
+}
+
+static bool test_generator_empty_knowledge_cannot_save(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogTerminal terminal;
+    const int events[] = {TRAINLOG_KEY_ENTER, TRAINLOG_KEY_ENTER,
+        TRAINLOG_KEY_ENTER, 'x'};
+    size_t sessions = 99U;
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    script(&terminal, events, sizeof(events) / sizeof(events[0]));
+    tui_terminal = &terminal; screen_session_generator(database);
+    CHECK(trainlog_database_session_count(database, &sessions) == TRAINLOG_STATUS_OK);
+    CHECK(sessions == 0U);
+    CHECK(strstr(terminal.output, "Pas assez d’exercices résolus") != NULL);
+    CHECK(strstr(terminal.output, "rien ne peut être enregistré") != NULL);
+    tui_terminal = NULL; trainlog_database_close(database); return true;
+}
+
 int main(void)
 {
     if (!test_assistance_creation_labels() ||
         !test_duration_creation_starts_empty() ||
         !test_append_requires_actual_and_rolls_back() ||
         !test_empty_sets_cannot_finish() ||
-        !test_knowledge_scrolls_long_lists_at_minimum_terminal()) return 1;
+        !test_knowledge_scrolls_long_lists_at_minimum_terminal() ||
+        !test_generator_dashboard_entry_and_policy_choices() ||
+        !test_generator_plan_drafts_have_no_actual_sets() ||
+        !test_generator_preview_scrolls_at_minimum_terminal() ||
+        !test_generator_recency_continue_and_cancel() ||
+        !test_generator_cancel_preview_writes_nothing() ||
+        !test_generator_accept_requires_and_persists_actual() ||
+        !test_generator_empty_knowledge_cannot_save()) return 1;
     (void)printf("PASS tui_workflows\n");
     return 0;
 }
