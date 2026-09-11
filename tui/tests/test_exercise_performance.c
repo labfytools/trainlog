@@ -60,7 +60,9 @@ static bool test_performance_semantics(void)
     TrainlogSetInput assistance_sets[2];
     TrainlogSetInput bodyweight_sets[2];
 
-    TrainlogSessionExerciseInput exercises[3];
+    TrainlogSessionExerciseInput exercises[4];
+    TrainlogSetInput second_external_set;
+    TrainlogCustomEquipment custom_equipment;
     TrainlogSessionInput session;
 
     TrainlogExercisePerformancePoint points[8];
@@ -82,6 +84,20 @@ static bool test_performance_semantics(void)
             TRAINLOG_TRACKING_REPS
         ) == TRAINLOG_STATUS_OK
     );
+
+    (void)memset(&custom_equipment, 0, sizeof(custom_equipment));
+    (void)snprintf(custom_equipment.equipment_id,
+        sizeof(custom_equipment.equipment_id), "%s", "stats_test_cable");
+    (void)snprintf(custom_equipment.display_name,
+        sizeof(custom_equipment.display_name), "%s", "Stats Test Cable");
+    (void)snprintf(custom_equipment.label_name,
+        sizeof(custom_equipment.label_name), "%s", "STATS TEST CABLE");
+    (void)snprintf(custom_equipment.equipment_type,
+        sizeof(custom_equipment.equipment_type), "%s", "cable");
+    (void)snprintf(custom_equipment.load_semantics,
+        sizeof(custom_equipment.load_semantics), "%s", "external");
+    CHECK(trainlog_database_create_custom_equipment(database,
+        &custom_equipment) == TRAINLOG_STATUS_OK);
 
     CHECK(
         trainlog_database_insert_exercise(
@@ -167,6 +183,15 @@ static bool test_performance_semantics(void)
         2U
     );
 
+    (void)memset(&second_external_set, 0, sizeof(second_external_set));
+    second_external_set.reps = 12;
+    second_external_set.has_weight = true;
+    second_external_set.weight_kg = 50.0;
+    bind_exercise(&exercises[3], "ex_external", TRAINLOG_LOAD_EXTERNAL,
+        50.0, &second_external_set, 1U);
+    (void)snprintf(exercises[3].equipment_id,
+        sizeof(exercises[3].equipment_id), "%s", "stats_test_cable");
+
     (void)memset(&session, 0, sizeof(session));
 
     (void)snprintf(
@@ -191,7 +216,7 @@ static bool test_performance_semantics(void)
     );
 
     session.exercises = exercises;
-    session.exercise_count = 3U;
+    session.exercise_count = 4U;
 
     CHECK(
         trainlog_database_insert_session(
@@ -210,11 +235,14 @@ static bool test_performance_semantics(void)
         ) == TRAINLOG_STATUS_OK
     );
 
+    /* PUBLIC CONTRACT: the reader retains one representative per session;
+     * multiple same-exercise occurrences do not change cardinality. */
     CHECK(count == 1U);
     CHECK(points[0].has_performance != 0);
     CHECK(points[0].weight_kg > 89.99);
     CHECK(points[0].weight_kg < 90.01);
     CHECK(points[0].metric_value == 5);
+    CHECK(points[0].actual_set_count == 3U);
 
     CHECK(
         trainlog_database_list_exercise_performance(

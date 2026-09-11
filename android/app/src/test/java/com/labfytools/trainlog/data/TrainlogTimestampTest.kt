@@ -30,4 +30,14 @@ class TrainlogTimestampTest {
             "2026-09-05T18:34:12+24:00",
         ).forEach { assertNull(it, TrainlogTimestamp.parse(it)) }
     }
+
+    @Test fun preservesRepresentedLocalCalendarDateAcrossEquivalentInstants() {
+        val march = TrainlogTimestamp.parse("2026-03-01T00:30:00+02:00")!!
+        val february = TrainlogTimestamp.parse("2026-02-28T22:30:00Z")!!
+
+        assertEquals(0, march.compareTo(february))
+        assertEquals(march, february)
+        assertEquals(listOf(2026, 3, 1), listOf(march.localYear, march.localMonth, march.localDay))
+        assertEquals(listOf(2026, 2, 28), listOf(february.localYear, february.localMonth, february.localDay))
+    }
 }

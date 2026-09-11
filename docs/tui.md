@@ -22,6 +22,29 @@ top-level Historique entry. Existing mensurations, body graphs/analysis,
 exercise performance and explicit MAX views are reached through
 `Statistiques`; this relocation adds no statistic or analytical interpretation.
 
+`STATS_V1` makes the Statistics root a data-fed Unicode dashboard rather than a
+plain list. Before rendering, its controller takes one bounded read snapshot:
+the newest actual-history working-performance series is identified by exact
+exercise, nonempty resolved external equipment, tracking, load and performed
+dose context; the latest recorded body metric
+shows its real trend; and the selected period shows actual-work session counts.
+An explicit MAX is reported separately and is never folded into the working
+series. Assistance, targets, empty sessions and unavailable measurements do
+not become progress facts. Timestamp selection and ordering use Trainlog's
+exact instant comparator, including offsets and arbitrary fractional seconds.
+Presentation buckets use the local date written in each persisted timestamp;
+they never reinterpret history in the current machine timezone.
+Malformed legacy timestamps are skipped before statistics sorting and produce a
+nonfatal ignored-data warning; valid dashboard facts remain available. The same
+four panels and detail actions remain visible at 72x20; terminals of at least
+100 columns place performance and measurements side by side with frequency and
+catalogue distribution below, rather than reusing the compact vertical stack.
+Trend presentation is deliberately sparse: no observation presents an honest
+unavailable state, one observation states that the trend is unavailable and
+draws no graph, and two or more observations draw only their observed trend.
+Dashboard exercise labels resolve the canonical display name from the stable
+`exercise_id` when one is mapped; the resolved equipment label remains
+secondary context rather than becoming the exercise identity.
 The geometry policy is exact:
 
 ```text
@@ -55,6 +78,9 @@ q                   quit from the application shell
 
 The root aliases and contextual actions are built from one action registry:
 the footer and F7 therefore advertise the same enabled actions that dispatch.
+After contextual and shell actions are collected, their stable action identities
+are deduplicated before footer layout, so `F6 Navigation` and `F7 Actions` each
+appear once.
 The intentional APP_SHELL_V1 shortcut changes are the replacement of the old
 top-level Historique/Corps aliases by `2/F2 Séances effectuées` and
 `5/F5 Mensurations`, F6 Navigation and F7 Actions, as approved in design
@@ -272,12 +298,25 @@ visibly distinct; `i` opens the resolved equipment detail.
 
 `Statistiques → Mensurations` (direct alias `5/F5`) provides:
 
-- newest-first body observations;
+- a current-profile snapshot of the selected newest-first body observation;
+- `↑`/`↓` historical-observation selection and `Entrée` detail access;
+- weight, when present, on a separate `kg` line;
+- only present circumferences as exact `cm` values with thin horizontal bars
+  scaled to the largest circumference in that observation;
+- `←`/`→` selection among only metrics that exist in recorded observations,
+  with weight selected by default when available;
+- an evolution section that reports no data for zero points, reports
+  `1 relevé · tendance indisponible` without a graph for one point, and draws a
+  Unicode time series from real dated values for two or more points;
 - detail and correction;
 - body trend visualization;
 - normalized multi-metric overlay;
-- left/right metric separation;
 - no invented zero values for missing measurements.
+
+The profile and evolution sections are deliberately separate: kilograms never
+share a circumference scale, missing measurements are omitted, and the profile
+bars make no progress or trend claim. The sections stack responsively down to
+the supported 72x20 terminal.
 
 Editing preserves observation identity, timestamp, and optional session link.
 
@@ -285,6 +324,51 @@ Editing preserves observation identity, timestamp, and optional session link.
 
 The rolling 12-month normalized body graph has moved from the dashboard to
 `Statistiques → Mensurations`; its data rules are unchanged.
+
+The landing dashboard itself is a read-only projection over persisted facts.
+Rendering consumes the route-owned snapshot and performs no SQLite access.
+Its performance plot is a selected-period bucket count of improvement events,
+never a sum of
+kilograms across exercises or equipment. Every performed set is a working
+observation. Working and explicit-MAX improvements are separate and require a
+strictly earlier canonical-instant comparable point; equal-instant stable IDs
+only order presentation. Raw series remain in the
+per-exercise drill-down. The 30-day default switches with `1` through `5` to 7,
+30, 90, 365 days or all history. Progression and frequency share a deterministic
+projection of that selection: seven daily buckets for 7 days, six 5-day buckets
+for 30 days, six 15-day buckets for 90 days, twelve 31-day presentation buckets
+for one year, and at most twelve equal day spans covering represented history
+for Tout. Canonical rolling membership is unchanged; local persisted dates only
+place included facts into a display bucket, with boundary dates clamped into the
+first or current bucket. The summary reports actual sessions, performed sets,
+distinct actual exercises as `Exercices pratiqués`, and explicit MAX records.
+The body summary
+selects the most recently observed metric; one point has no delta or graph.
+Observable session history and the
+frequency histogram include a stable session ID exactly once when an occurrence
+owns a persisted performed set, continuous activity, or explicit MAX result.
+`ended_at` is presentation/lifecycle metadata, not the history gate; planned
+targets and empty occurrences do not count. A capacity warning is shown when a
+bounded source reaches its local limit.
+Malformed persisted timestamps are excluded before sorting, reported as ignored
+legacy data, and do not make the remaining dashboard unavailable.
+
+`Répartition du catalogue` is a separate global catalogue projection. It
+counts every active canonical exercise exactly once by its persisted **primary**
+BODY ZONE; secondary zones do not inflate the result, merged source IDs are not
+catalogue rows, and an exercise with no primary zone is shown as `Non classés`.
+Buckets are ordered by descending count then label. Each landing-chart row owns
+an independent Unicode horizontal bar between its left label and right count;
+the bounded leading buckets remain at compact sizes without colliding with the
+frequency chart. Enter opens the existing global exercise catalogue, never an
+arbitrary exercise detail.
+
+The dashboard rendering regression covers global event/summary facts, primary
+zone/unclassified catalogue projection, and sparse or multi-point measurements
+at 120x35, 100x30, 80x24, and the 72x20 minimum. Unicode blocks/line/point
+glyphs provide chart geometry; text totals remain the accessible factual
+equivalent at every supported width. Detail charts show no graph for zero or
+one actual point, and no ASCII placeholder trace for two or more points.
 
 Rules include:
 

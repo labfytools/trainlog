@@ -30,6 +30,13 @@ body_zone_catalog_generated = custom_target(
   command: [find_program('python3'), meson.project_source_root() / 'tools/generate_body_zone_catalog.py', '@INPUT@', '@OUTPUT@'],
 )
 
+exercise_name_catalog_generated = custom_target(
+  'exercise_name_catalog_generated',
+  input: meson.project_source_root() / 'catalog/exercise-names-v1.json',
+  output: 'exercise_name_catalog_generated.c',
+  command: [find_program('python3'), meson.project_source_root() / 'tools/generate_exercise_name_catalog.py', '@INPUT@', '@OUTPUT@'],
+)
+
 training_knowledge_generated = custom_target(
   'training_knowledge_generated',
   input: [
@@ -96,6 +103,7 @@ trainlog_core_sources = files(
 )
 trainlog_core_sources += equipment_catalog_generated
 trainlog_core_sources += body_zone_catalog_generated
+trainlog_core_sources += exercise_name_catalog_generated
 trainlog_core_sources += training_knowledge_generated
 trainlog_core_sources += session_generation_policy_generated
 

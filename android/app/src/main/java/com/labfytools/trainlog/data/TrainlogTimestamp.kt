@@ -3,7 +3,18 @@ package com.labfytools.trainlog.data
 internal data class TrainlogTimestampKey(
     val utcSecond: Long,
     val fraction: String,
+    val localYear: Int = 1,
+    val localMonth: Int = 1,
+    val localDay: Int = 1,
 ) : Comparable<TrainlogTimestampKey> {
+    /* Calendar metadata is deliberately excluded: key identity remains the
+     * same canonical-instant representation used before local grouping was
+     * added. */
+    override fun equals(other: Any?): Boolean =
+        other is TrainlogTimestampKey && utcSecond == other.utcSecond && fraction == other.fraction
+
+    override fun hashCode(): Int = 31 * utcSecond.hashCode() + fraction.hashCode()
+
     override fun compareTo(other: TrainlogTimestampKey): Int {
         utcSecond.compareTo(other.utcSecond).takeIf { it != 0 }?.let { return it }
         val count = maxOf(fraction.length, other.fraction.length)
@@ -64,7 +75,13 @@ internal object TrainlogTimestamp {
         }
         val localSecond = dayNumber(year, month, day) * 86400L +
             hour * 3600L + minute * 60L + second
-        return TrainlogTimestampKey(localSecond - offsetSeconds, fraction)
+        return TrainlogTimestampKey(
+            localSecond - offsetSeconds,
+            fraction,
+            year,
+            month,
+            day,
+        )
     }
 
     /** Bytewise identity order shared with C's unsigned memcmp semantics. */

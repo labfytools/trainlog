@@ -115,7 +115,7 @@ app_shell
 ```
 
 The current desktop suite, including APP_SHELL_V1 production-transition
-coverage, is 47/47. The following generator-specific checkpoint counts remain
+coverage, is 48/48. The following generator-specific checkpoint counts remain
 historical evidence:
 
 ```text
@@ -248,10 +248,16 @@ bounded deterministic read-only equipment page reader, including pagination,
 invalid arguments, offsets and corrupt values. This coverage replaces former
 nested-screen-loop workflow claims.
 
+The Mensurations workflow regression separates the selected observation's
+profile from its metric history: singleton circumference bars without a trend,
+independent kg/cm rendering, missing-field omission, a real two-date Unicode
+series, historical selection updates, availability-filtered metric navigation,
+and bounded 120x35, 100x30, 80x24 and 72x20 geometry without ASCII chart glyphs.
+
 The APP_SHELL PTY validation exercises six TUI sizes—72x20, 80x24, 100x25,
 100x30, 120x31 and 120x35—plus help, search clear/close, F6/F7, compact focus,
 resize/overlay restoration, clean exit, and navigation with no temporary
-database write. Normal and ASan/UBSan Meson suites each passed 47/47; the
+database write. Normal and ASan/UBSan Meson suites each passed 48/48; the
 current normal and sanitizer real-PTY runs each passed 100/100 checks. The
 sanitizer run used the upstream-prescribed Notcurses compatibility setting
 `ASAN_OPTIONS=use_sigaltstack=0:detect_leaks=1:halt_on_error=1` and reported
@@ -415,8 +421,18 @@ Coverage proves:
 - the real TUI `/` path resolves through the registered action, focuses search,
   filters live, then follows clear-before-close Escape semantics;
 - action stable identifiers are unique, preventing footer/F7 duplication.
+- Statistics-dashboard rendering covers global summary/event facts, primary-zone
+  and unclassified active-catalogue projection without merged-alias double
+  counts, zero/one-point without-graph and multi-point Unicode detail-chart
+  states; readable selected-period frequency with non-duplicating MAX markers;
+  daily/multi-day period projection and independent catalogue bars with
+  right-side counts; exact-dose per-set parity, equal-instant
+  working/MAX non-events, malformed-timestamp availability, distinct wide versus
+  stacked compact geometry, and Unicode blocks used only as chart geometry;
+  and footer F6/F7 single-occurrence output at 120x35, 100x30, 80x24, and
+  72x20.
 
-Historical validation checkpoint (the current desktop suite is 47/47):
+Historical validation checkpoint (the current desktop suite is 48/48):
 
 ```text
 39/39 Meson tests PASS
@@ -441,7 +457,7 @@ Coverage includes:
 - missing required circumference handling;
 - invalid estimation-profile rejection.
 
-Historical validation checkpoint (the current desktop suite is 47/47):
+Historical validation checkpoint (the current desktop suite is 48/48):
 
 ```text
 39/39 Meson tests PASS

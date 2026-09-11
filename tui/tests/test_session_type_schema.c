@@ -32,6 +32,9 @@ static bool test_session_type_roundtrip(void)
     TrainlogDatabase *database = NULL;
     TrainlogSessionInput training;
     TrainlogSessionInput max_test;
+    TrainlogSessionExerciseInput training_occurrence;
+    TrainlogSessionExerciseInput max_occurrence;
+    TrainlogSetInput set = {8, 0, false, 0.0};
     TrainlogSessionSummary sessions[4];
     size_t count = 0U;
 
@@ -41,8 +44,19 @@ static bool test_session_type_roundtrip(void)
             &database
         ) == TRAINLOG_STATUS_OK
     );
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_33333333-3333-4333-8333-333333333333", "Presse test",
+        "presse test", TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
 
     (void)memset(&training, 0, sizeof(training));
+    (void)memset(&training_occurrence, 0, sizeof(training_occurrence));
+    (void)snprintf(training_occurrence.exercise_id,
+        sizeof(training_occurrence.exercise_id), "%s",
+        "ex_33333333-3333-4333-8333-333333333333");
+    training_occurrence.recording_mode = TRAINLOG_RECORDING_SETS;
+    training_occurrence.sets = &set;
+    training_occurrence.set_count = 1U;
 
     (void)snprintf(
         training.session_id,
@@ -62,6 +76,8 @@ static bool test_session_type_roundtrip(void)
         training.session_type ==
         TRAINLOG_SESSION_TRAINING
     );
+    training.exercises = &training_occurrence;
+    training.exercise_count = 1U;
 
     CHECK(
         trainlog_database_insert_session(
@@ -71,6 +87,13 @@ static bool test_session_type_roundtrip(void)
     );
 
     (void)memset(&max_test, 0, sizeof(max_test));
+    (void)memset(&max_occurrence, 0, sizeof(max_occurrence));
+    (void)snprintf(max_occurrence.exercise_id,
+        sizeof(max_occurrence.exercise_id), "%s",
+        "ex_33333333-3333-4333-8333-333333333333");
+    max_occurrence.recording_mode = TRAINLOG_RECORDING_SETS;
+    max_occurrence.has_max_weight = true;
+    max_occurrence.max_weight_kg = 100.0;
 
     (void)snprintf(
         max_test.session_id,
@@ -88,6 +111,8 @@ static bool test_session_type_roundtrip(void)
 
     max_test.session_type =
         TRAINLOG_SESSION_MAX_TEST;
+    max_test.exercises = &max_occurrence;
+    max_test.exercise_count = 1U;
 
     CHECK(
         trainlog_database_insert_session(

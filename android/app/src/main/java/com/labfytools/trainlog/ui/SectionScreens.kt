@@ -37,17 +37,6 @@ fun SessionsHub(
 }
 
 @Composable
-fun StatisticsHub(onBody: () -> Unit, onMaxima: () -> Unit) {
-    TrainlogScreen("Statistiques") {
-        TrainlogFrame("Données existantes") {
-            TrainlogAction("Mensurations", "Ajouter et consulter les relevés corporels locaux.", onBody)
-            TrainlogAction("Derniers MAX", "Consulter les derniers résultats MAX explicites par exercice.", onMaxima)
-        }
-        TrainlogInfo("Les tendances et analyses supplémentaires restent sur le PC canonique.")
-    }
-}
-
-@Composable
 fun LatestMaximaScreen(repository: TrainlogRepository) {
     val colors = LocalTrainlogColors.current
     val maxima = remember { repository.listLatestExerciseMaxima() }

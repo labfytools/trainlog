@@ -99,7 +99,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             AppRoute.Equipment -> EquipmentScreen(repository, equipmentState, { open(AppRoute.EquipmentCreate(AppRoute.Equipment)) }, { open(AppRoute.EquipmentDetail(it)) })
             is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId)
             is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exporter.exportMobileBundle(); catalogRevision++; back() }
-            AppRoute.Statistics -> StatisticsHub({ open(AppRoute.BodyMeasurements) }, { open(AppRoute.LatestMaxima) })
+            AppRoute.Statistics -> StatisticsDashboard(repository)
             AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exporter.exportMobileBundle() }, { back() })
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)
             AppRoute.Sync -> SyncScreen(inbox, requestOutbox, { exporter.exportMobileBundle(); catalogRevision++ }, { back() })

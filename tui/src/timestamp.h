@@ -7,6 +7,7 @@
 
 typedef struct TrainlogTimestampKey {
     int64_t utc_second;
+    int64_t local_day;
     const char *fraction;
     size_t fraction_length;
 } TrainlogTimestampKey;

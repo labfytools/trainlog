@@ -10,6 +10,7 @@
 #include "trainlog/id.h"
 #include "trainlog/session_generation.h"
 #include "timestamp.h"
+#include "database_internal.h"
 
 #include <math.h>
 #include <limits.h>
@@ -19,11 +20,6 @@
 #include <string.h>
 
 #include <sqlite3.h>
-
-struct TrainlogDatabase {
-    sqlite3 *connection;
-    unsigned int read_snapshot_depth;
-};
 
 TrainlogStatus trainlog_database_read_snapshot_begin(TrainlogDatabase *database)
 {
@@ -3727,6 +3723,12 @@ TrainlogStatus trainlog_database_list_sessions(
     size_t *output_count
 )
 {
+    /* WHY: imported and historically persisted actual work can legitimately
+     * have no ended_at, while a planned/empty occurrence is not observed work.
+     * CONTRACT: observable session history contains a session exactly once
+     * when it owns a performed set, continuous activity, or explicit MAX.
+     * INVARIANT: this read-only predicate never infers work from targets and
+     * never mutates or backfills the persisted lifecycle timestamps. */
     static const char *const SQL =
         "SELECT "
         "s.session_id, "
@@ -3737,6 +3739,15 @@ TrainlogStatus trainlog_database_list_sessions(
         "FROM sessions AS s "
         "LEFT JOIN session_exercises AS se "
         "ON se.session_row_id = s.id "
+        "WHERE EXISTS (SELECT 1 FROM session_exercises AS actual_se "
+        "JOIN performed_sets AS ps ON ps.session_exercise_row_id = actual_se.id "
+        "WHERE actual_se.session_row_id = s.id) "
+        "OR EXISTS (SELECT 1 FROM session_exercises AS actual_se "
+        "JOIN continuous_activity AS ca ON ca.session_exercise_row_id = actual_se.id "
+        "WHERE actual_se.session_row_id = s.id) "
+        "OR EXISTS (SELECT 1 FROM session_exercises AS actual_se "
+        "JOIN max_results AS mr ON mr.session_exercise_row_id = actual_se.id "
+        "WHERE actual_se.session_row_id = s.id) "
         "GROUP BY s.id "
         "ORDER BY s.started_at DESC, s.id DESC;";
 

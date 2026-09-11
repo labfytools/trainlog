@@ -40,6 +40,38 @@ canonical route and exposes selected semantics; it is not maintained as a
 second navigation state. The drawer itself scrolls when vertical space is
 limited.
 
+## STATS_V1
+
+The Statistics landing page defaults to 30 days and is a Material 3 dashboard using the existing
+Catppuccin Mocha/Lavender semantic theme. It filters a read-only projection by
+7 days, 30 days, 90 days, one year, or all history, then presents performance,
+body-measurement, and weekly-frequency cards plus detail routes.
+
+The landing performance chart contains weekly classified event counts, never
+summed or averaged kilograms. Every actual performed set is an observation. A
+working event is strictly later in canonical time and greater than the prior
+best for the same canonical exercise, nonempty resolved equipment, external
+equipment semantics, external-load mode and exact performed reps/duration dose.
+Explicit MAX uses a separate strictly-later-record-above-prior-MAX rule in the
+same exercise/resolved-external-equipment context. Equal-instant IDs only order
+presentation and never create events. A one-point class
+cannot create an event; context-owned raw series remain available in the
+exercise drill-down. Assistance, plans and missing actual loads are omitted.
+
+The selected-period summary reports actual sessions, performed sets, distinct
+actual exercises and explicit MAX records. Body curves use only recorded
+observations (no fabricated interpolation), are bounded and ordered by the
+most recently observed metric; one point has no delta or graph. Observable session
+history and frequency include a stable session ID exactly once when one of its
+occurrences owns a persisted performed set, continuous activity, or explicit
+MAX result; `ended_at` is not an inclusion gate. Planned targets and empty
+occurrences do not count. MAX sessions are labelled separately. Calendar buckets use the local date
+written in each persisted timestamp (including its literal offset), with Monday
+as the first day of the week; rolling windows and chronology still compare the
+exact represented instant and never use the device timezone.
+Malformed legacy timestamps are omitted only from the statistics projection;
+the dashboard remains available and reports that invalid history was ignored.
+
 The section roots are:
 
 ```text
@@ -47,7 +79,7 @@ Accueil          durable-draft resume, generation/manual capture, concise local 
 Séances          current session, programme a session, manual entry, completed sessions
 Exercices        catalogue, detail, create, and contextual edit
 Équipements      catalogue, detail, and custom-equipment creation
-Statistiques     measurements and local latest explicit MAX
+Statistiques     STATS_V1 dashboard, conservative graphs and detailed local drill-downs
 Synchronisation  existing request, result, and diagnostic workflow
 Paramètres       exchange-folder authorization and explicit PC-catalog refresh
 ```

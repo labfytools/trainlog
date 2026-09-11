@@ -83,7 +83,8 @@ bool trainlog_timestamp_parse(
         offset_sign = value[zone] == '+' ? 1 : -1;
     }
 
-    local_second = day_number(year, month, day) * INT64_C(86400) +
+    output->local_day = day_number(year, month, day);
+    local_second = output->local_day * INT64_C(86400) +
         (int64_t)hour * INT64_C(3600) + (int64_t)minute * INT64_C(60) + second;
     output->utc_second = local_second - offset_sign *
         ((int64_t)offset_hour * INT64_C(3600) + (int64_t)offset_minute * INT64_C(60));

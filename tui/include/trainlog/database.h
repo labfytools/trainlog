@@ -292,6 +292,9 @@ TrainlogStatus trainlog_database_session_count(
     size_t *output_count
 );
 
+/* Observable history only: a returned session owns at least one persisted
+ * performed set, continuous activity, or explicit MAX result. ended_at is
+ * presentation metadata and is not an actual-work gate. */
 TrainlogStatus trainlog_database_list_sessions(
     TrainlogDatabase *database,
     TrainlogSessionSummary *output,

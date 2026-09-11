@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 
 #include <utf8proc.h>
 #include <uuid/uuid.h>
+#include <sqlite3.h>
 
 #include "trainlog/terminal.h"
 #include "trainlog/app_shell.h"
@@ -32,6 +34,7 @@
 #include "trainlog/catalog.h"
 #include "trainlog/duration.h"
 #include "trainlog/equipment_catalog.h"
+#include "trainlog/exercise_name_catalog.h"
 #include "trainlog/id.h"
 #include "trainlog/measured_max.h"
 #include "trainlog/mtp.h"
@@ -45,6 +48,8 @@
 #include "trainlog/timeutil.h"
 #include "trainlog/training_knowledge.h"
 #include "trainlog/usb.h"
+#include "timestamp.h"
+#include "database_internal.h"
 
 #define MAX_EXERCISES 128U
 #define MAX_SESSION_EXERCISES 32U
@@ -56,6 +61,9 @@
 
 #define MAX_BODY_METRIC_POINTS 256U
 #define EXERCISE_GRAPH_POINTS 12U
+#define DASHBOARD_BUCKET_COUNT 12U
+#define DASHBOARD_FACT_CAPACITY 4096U
+#define DASHBOARD_ZONE_BUCKET_CAPACITY (MAX_BODY_ZONES + 1U)
 
 /* TRAINLOG_TUI_V02_POLISH */
 /* TRAINLOG_TUI_PROFILED_EXERCISE_CREATION */
@@ -610,13 +618,13 @@ typedef struct TrainlogGlobalBodySeries {
     size_t count;
     double baseline;
     double latest_percent;
-    char symbol;
+    uint32_t symbol;
     TrainlogColorRole role;
 } TrainlogGlobalBodySeries;
 
-static const char GLOBAL_BODY_SYMBOLS[] = {
-    'P', 'N', 'E', 'C', 'T', 'H', 'A',
-    'B', 'F', 'G', 'Q', 'R', 'M', 'D'
+static const uint32_t GLOBAL_BODY_SYMBOLS[] = {
+    0x25cfU, 0x25c6U, 0x25b2U, 0x25a0U, 0x25cbU, 0x25bcU, 0x25c7U,
+    0x25efU, 0x25c8U, 0x25b3U, 0x25a1U, 0x25bdU, 0x25ceU, 0x25c9U
 };
 
 static const TrainlogColorRole GLOBAL_BODY_ROLES[] = {
@@ -2556,6 +2564,87 @@ typedef struct TrainlogSyncController {
     TrainlogAppSyncRun run;
 } TrainlogSyncController;
 
+typedef struct TrainlogDashboardWeek {
+    int64_t start_day;
+    int64_t span_days;
+    char label[12];
+    size_t sessions;
+    size_t maxima;
+    size_t working_improvements;
+    size_t max_improvements;
+} TrainlogDashboardWeek;
+
+typedef struct TrainlogDashboardZoneBucket {
+    char label[TRAINLOG_NAME_MAX + 1U];
+    size_t count;
+} TrainlogDashboardZoneBucket;
+
+typedef enum TrainlogStatisticsPeriod {
+    TRAINLOG_STATS_30_DAYS = 0,
+    TRAINLOG_STATS_7_DAYS,
+    TRAINLOG_STATS_90_DAYS,
+    TRAINLOG_STATS_YEAR,
+    TRAINLOG_STATS_ALL
+} TrainlogStatisticsPeriod;
+
+typedef struct TrainlogDashboardSnapshot {
+    bool error;
+    bool partial;
+    bool invalid_data;
+    bool has_performance;
+    TrainlogExercise exercise;
+    TrainlogLoadMode performance_load_mode;
+    TrainlogTrackingMode performance_tracking_mode;
+    int performance_dose;
+    char performance_equipment_id[TRAINLOG_ID_MAX + 1U];
+    char performance_equipment_label[TRAINLOG_NAME_MAX + 1U];
+    TrainlogExercisePerformancePoint performance[MAX_SESSIONS];
+    size_t performance_count;
+    bool has_explicit_max;
+    TrainlogExercise max_exercise;
+    double max_weight_kg;
+    char max_timestamp[TRAINLOG_TIMESTAMP_MAX + 1U];
+    bool has_body;
+    size_t body_metric;
+    TrainlogBodyMetricPoint body[MAX_BODY_METRIC_POINTS];
+    size_t body_count;
+    TrainlogDashboardWeek weeks[DASHBOARD_BUCKET_COUNT];
+    size_t week_count;
+    size_t completed_session_count;
+    size_t performed_set_count;
+    size_t distinct_exercise_count;
+    size_t explicit_max_count;
+    /* WHY: this is a catalogue dashboard, not a history-derived muscle
+     * claim. CONTRACT: every active canonical exercise contributes once to
+     * its persisted primary zone, or to the explicit unclassified bucket.
+     * INVARIANT: aliases and secondary zones never affect these counts. */
+    TrainlogDashboardZoneBucket zones[DASHBOARD_ZONE_BUCKET_CAPACITY];
+    size_t zone_count;
+    TrainlogStatisticsPeriod period;
+} TrainlogDashboardSnapshot;
+
+typedef enum TrainlogDashboardFactKind {
+    TRAINLOG_DASHBOARD_WORK,
+    TRAINLOG_DASHBOARD_MAX,
+    TRAINLOG_DASHBOARD_CONTINUOUS
+} TrainlogDashboardFactKind;
+
+typedef struct TrainlogDashboardFact {
+    TrainlogDashboardFactKind kind;
+    TrainlogTimestampKey time;
+    char session_id[TRAINLOG_ID_MAX + 1U];
+    char entry_id[TRAINLOG_ID_MAX + 1U];
+    char exercise_id[TRAINLOG_ID_MAX + 1U];
+    char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    char equipment_id[TRAINLOG_ID_MAX + 1U];
+    TrainlogTrackingMode tracking_mode;
+    TrainlogLoadMode load_mode;
+    size_t set_position;
+    int dose;
+    bool has_weight;
+    double weight_kg;
+} TrainlogDashboardFact;
+
 typedef struct TrainlogAppContext {
     TrainlogDatabase *database;
     TrainlogTerminal *terminal;
@@ -2566,6 +2655,7 @@ typedef struct TrainlogAppContext {
     TrainlogBodyController body_controller;
     TrainlogProfileController profile_controller;
     TrainlogSyncController sync_controller;
+    TrainlogDashboardSnapshot dashboard;
     TrainlogFocusTarget focus;
     TrainlogActionModel actions;
     TrainlogOverlayStack overlays;
@@ -2634,6 +2724,8 @@ static void app_shell_open_route(TrainlogAppContext *app,
                                  TrainlogAppRoute route);
 static void app_shell_load_exercise_detail_metadata(TrainlogAppContext *app);
 static void app_shell_refresh_list(TrainlogAppContext *app);
+static void app_shell_load_body_global(TrainlogAppContext *app);
+static void app_shell_select_available_body_metric(TrainlogAppContext *app);
 
 static void body_metric_slot(TrainlogBodyObservationInput *input, size_t field,
                              bool **present, double **value)
@@ -2732,8 +2824,13 @@ static bool body_controller_persist(TrainlogAppContext *app)
     (void)snprintf(controller->message, sizeof(controller->message), "%s",
         controller->editing ? "Relevé corrigé; identité, date et séance conservées."
                             : "Relevé corporel enregistré.");
-    if (app->navigation.current.route == TRAINLOG_ROUTE_BODY)
+    if (app->navigation.current.route == TRAINLOG_ROUTE_BODY) {
         app_shell_refresh_list(app);
+        /* INVARIANT: a successful edit refreshes both halves of the body
+         * dashboard from the same committed database state. */
+        app_shell_load_body_global(app);
+        app_shell_select_available_body_metric(app);
+    }
     if (controller->editing &&
         app->navigation.current.route == TRAINLOG_ROUTE_BODY_DETAIL)
         (void)trainlog_database_get_body_observation(app->database,
@@ -3419,6 +3516,36 @@ static void app_shell_load_body_global(TrainlogAppContext *app)
             sizeof(app->body_global_dates[0]), global_date_compare);
 }
 
+static void app_shell_select_available_body_metric(TrainlogAppContext *app)
+{
+    size_t metric;
+    /* CONTRACT: the profile dashboard offers only measurements backed by at
+     * least one real observation. Weight is the deterministic first choice;
+     * otherwise BODY_METRICS catalogue order is the stable fallback. */
+    if (app->body_metric_selected < 14U &&
+        app->body_global_series[app->body_metric_selected].count > 0U) return;
+    app->body_metric_selected = 0U;
+    for (metric = 0U; metric < 14U; ++metric) {
+        if (app->body_global_series[metric].count > 0U) {
+            app->body_metric_selected = metric;
+            return;
+        }
+    }
+}
+
+static void app_shell_move_available_body_metric(TrainlogAppContext *app,
+                                                  int direction)
+{
+    size_t step;
+    for (step = 0U; step < 14U; ++step) {
+        app->body_metric_selected = direction < 0
+            ? (app->body_metric_selected + 13U) % 14U
+            : (app->body_metric_selected + 1U) % 14U;
+        if (app->body_global_series[app->body_metric_selected].count > 0U)
+            return;
+    }
+}
+
 static void app_shell_load_body_analytics(TrainlogAppContext *app)
 {
     size_t count = 0U;
@@ -3428,6 +3555,673 @@ static void app_shell_load_body_analytics(TrainlogAppContext *app)
             &count) != TRAINLOG_STATUS_OK;
     app->loaded_count = count;
     app->body_has_profile = body_analytics_profile_load(&app->body_profile);
+}
+
+static bool dashboard_copy_sql_text(sqlite3_stmt *statement, int column,
+                                    char *output, size_t capacity)
+{
+    const unsigned char *value;
+    int bytes;
+    if (sqlite3_column_type(statement, column) != SQLITE_TEXT) return false;
+    value = sqlite3_column_text(statement, column);
+    bytes = sqlite3_column_bytes(statement, column);
+    if (value == NULL || bytes < 0 || (size_t)bytes >= capacity) return false;
+    (void)memcpy(output, value, (size_t)bytes);
+    output[bytes] = '\0';
+    return true;
+}
+
+/* WHY: the global dashboard compares occurrence-owned facts, while the public
+ * performance reader deliberately collapses each session to one representative.
+ * CONTRACT: this private projection emits every performed set, every explicit
+ * MAX exactly once, and every continuous occurrence exactly once. INVARIANT:
+ * malformed legacy timestamps are omitted before sorting and reported through
+ * invalid_data; they can never reach a comparator with uninitialized keys. */
+static TrainlogStatus dashboard_database_list_facts(TrainlogDatabase *database,
+    TrainlogDashboardFact *output, size_t capacity, size_t *output_count,
+    bool *truncated, bool *invalid_data)
+{
+    static const char *const SQL =
+        "SELECT 0,s.started_at,s.session_id,se.entry_id,e.exercise_id,"
+        "COALESCE(se.equipment_id,''),e.tracking_mode,se.load_mode,ps.position,"
+        "CASE WHEN e.tracking_mode='reps' THEN ps.reps ELSE ps.duration_seconds END,"
+        "ps.weight_kg FROM performed_sets ps "
+        "JOIN session_exercises se ON se.id=ps.session_exercise_row_id "
+        "JOIN sessions s ON s.id=se.session_row_id "
+        "JOIN exercises e ON e.id=se.exercise_row_id "
+        "UNION ALL "
+        "SELECT 1,s.started_at,s.session_id,se.entry_id,e.exercise_id,"
+        "COALESCE(se.equipment_id,''),e.tracking_mode,se.load_mode,0,0,"
+        "mr.max_weight_kg FROM max_results mr "
+        "JOIN session_exercises se ON se.id=mr.session_exercise_row_id "
+        "JOIN sessions s ON s.id=se.session_row_id "
+        "JOIN exercises e ON e.id=se.exercise_row_id "
+        "UNION ALL "
+        "SELECT 2,s.started_at,s.session_id,se.entry_id,e.exercise_id,"
+        "COALESCE(se.equipment_id,''),e.tracking_mode,se.load_mode,0,"
+        "ca.duration_seconds,NULL FROM continuous_activity ca "
+        "JOIN session_exercises se ON se.id=ca.session_exercise_row_id "
+        "JOIN sessions s ON s.id=se.session_row_id "
+        "JOIN exercises e ON e.id=se.exercise_row_id;";
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    int rc;
+    if (output_count != NULL) *output_count = 0U;
+    if (truncated != NULL) *truncated = false;
+    if (invalid_data != NULL) *invalid_data = false;
+    if (database == NULL || database->connection == NULL || output_count == NULL ||
+        truncated == NULL || invalid_data == NULL ||
+        (capacity > 0U && output == NULL)) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    rc = sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        TrainlogDashboardFact fact;
+        const unsigned char *tracking;
+        const unsigned char *load;
+        int kind;
+        (void)memset(&fact, 0, sizeof(fact));
+        if (sqlite3_column_type(statement, 0) != SQLITE_INTEGER ||
+            !dashboard_copy_sql_text(statement, 1, fact.started_at,
+                sizeof(fact.started_at)) ||
+            !dashboard_copy_sql_text(statement, 2, fact.session_id,
+                sizeof(fact.session_id)) ||
+            !dashboard_copy_sql_text(statement, 3, fact.entry_id,
+                sizeof(fact.entry_id)) ||
+            !dashboard_copy_sql_text(statement, 4, fact.exercise_id,
+                sizeof(fact.exercise_id)) ||
+            !dashboard_copy_sql_text(statement, 5, fact.equipment_id,
+                sizeof(fact.equipment_id)) ||
+            sqlite3_column_type(statement, 6) != SQLITE_TEXT ||
+            sqlite3_column_type(statement, 7) != SQLITE_TEXT ||
+            !trainlog_timestamp_parse(fact.started_at, strlen(fact.started_at),
+                &fact.time)) {
+            *invalid_data = true;
+            continue;
+        }
+        kind = sqlite3_column_int(statement, 0);
+        if (kind < 0 || kind > 2) {
+            *invalid_data = true;
+            continue;
+        }
+        fact.kind = (TrainlogDashboardFactKind)kind;
+        tracking = sqlite3_column_text(statement, 6);
+        load = sqlite3_column_text(statement, 7);
+        if (strcmp((const char *)tracking, "reps") == 0)
+            fact.tracking_mode = TRAINLOG_TRACKING_REPS;
+        else if (strcmp((const char *)tracking, "duration") == 0)
+            fact.tracking_mode = TRAINLOG_TRACKING_DURATION;
+        else { *invalid_data = true; continue; }
+        if (strcmp((const char *)load, "none") == 0)
+            fact.load_mode = TRAINLOG_LOAD_NONE;
+        else if (strcmp((const char *)load, "external") == 0)
+            fact.load_mode = TRAINLOG_LOAD_EXTERNAL;
+        else if (strcmp((const char *)load, "assistance") == 0)
+            fact.load_mode = TRAINLOG_LOAD_ASSISTANCE;
+        else { *invalid_data = true; continue; }
+        if (fact.kind == TRAINLOG_DASHBOARD_WORK) {
+            sqlite3_int64 position;
+            if (sqlite3_column_type(statement, 8) != SQLITE_INTEGER ||
+                sqlite3_column_type(statement, 9) != SQLITE_INTEGER) {
+                *invalid_data = true; continue;
+            }
+            position = sqlite3_column_int64(statement, 8);
+            if (position < 0 || (uint64_t)position > (uint64_t)SIZE_MAX) {
+                *invalid_data = true; continue;
+            }
+            fact.set_position = (size_t)position;
+            fact.dose = sqlite3_column_int(statement, 9);
+        } else if (fact.kind == TRAINLOG_DASHBOARD_CONTINUOUS) {
+            if (sqlite3_column_type(statement, 9) != SQLITE_INTEGER) {
+                *invalid_data = true; continue;
+            }
+            fact.dose = sqlite3_column_int(statement, 9);
+        }
+        if (fact.kind != TRAINLOG_DASHBOARD_CONTINUOUS) {
+            int type = sqlite3_column_type(statement, 10);
+            if (type == SQLITE_NULL && fact.kind == TRAINLOG_DASHBOARD_WORK) {
+                fact.has_weight = false;
+            } else if ((type != SQLITE_FLOAT && type != SQLITE_INTEGER) ||
+                       !isfinite(sqlite3_column_double(statement, 10))) {
+                *invalid_data = true; continue;
+            } else {
+                fact.has_weight = true;
+                fact.weight_kg = sqlite3_column_double(statement, 10);
+            }
+            if (fact.kind == TRAINLOG_DASHBOARD_MAX && fact.weight_kg <= 0.0) {
+                *invalid_data = true; continue;
+            }
+        }
+        if (count == capacity) { *truncated = true; continue; }
+        output[count++] = fact;
+    }
+    if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    *output_count = count;
+    return TRAINLOG_STATUS_OK;
+}
+
+static int dashboard_fact_time_compare(const void *left, const void *right)
+{
+    const TrainlogDashboardFact *a = left;
+    const TrainlogDashboardFact *b = right;
+    int result = trainlog_timestamp_compare(&a->time, &b->time);
+    if (result != 0) return result;
+    result = strcmp(a->session_id, b->session_id);
+    if (result != 0) return result;
+    result = strcmp(a->entry_id, b->entry_id);
+    if (result != 0) return result;
+    if (a->kind != b->kind) return a->kind < b->kind ? -1 : 1;
+    return a->set_position == b->set_position ? 0 :
+        (a->set_position < b->set_position ? -1 : 1);
+}
+
+static int dashboard_performance_time_compare(const void *left, const void *right)
+{
+    const TrainlogExercisePerformancePoint *a = left;
+    const TrainlogExercisePerformancePoint *b = right;
+    TrainlogTimestampKey a_key;
+    TrainlogTimestampKey b_key;
+    (void)trainlog_timestamp_parse(a->started_at, strlen(a->started_at), &a_key);
+    (void)trainlog_timestamp_parse(b->started_at, strlen(b->started_at), &b_key);
+    {
+        int result = trainlog_timestamp_compare(&a_key, &b_key);
+        return result != 0 ? result : strcmp(a->session_id, b->session_id);
+    }
+}
+
+static int dashboard_body_time_compare(const void *left, const void *right)
+{
+    const TrainlogBodyMetricPoint *a = left;
+    const TrainlogBodyMetricPoint *b = right;
+    TrainlogTimestampKey a_key;
+    TrainlogTimestampKey b_key;
+    (void)trainlog_timestamp_parse(a->observed_at, strlen(a->observed_at), &a_key);
+    (void)trainlog_timestamp_parse(b->observed_at, strlen(b->observed_at), &b_key);
+    return trainlog_timestamp_compare(&a_key, &b_key);
+}
+
+static int64_t dashboard_floor_div(int64_t value, int64_t divisor)
+{
+    return value >= 0 ? value / divisor : -((-value + divisor - 1) / divisor);
+}
+
+static int64_t dashboard_period_days(TrainlogStatisticsPeriod period)
+{
+    switch (period) {
+        case TRAINLOG_STATS_7_DAYS: return 7;
+        case TRAINLOG_STATS_30_DAYS: return 30;
+        case TRAINLOG_STATS_90_DAYS: return 90;
+        case TRAINLOG_STATS_YEAR: return 365;
+        case TRAINLOG_STATS_ALL: return 0;
+    }
+    return 30;
+}
+
+static bool dashboard_in_period(const TrainlogTimestampKey *key,
+    TrainlogStatisticsPeriod period)
+{
+    const int64_t days = dashboard_period_days(period);
+    /* Unix time and Trainlog's proleptic day zero differ by 719162 days. */
+    const int64_t now = (int64_t)time(NULL) + INT64_C(719162) * INT64_C(86400);
+    return key->utc_second <= now &&
+        (days == 0 || key->utc_second >= now - days * INT64_C(86400));
+}
+
+/* WHY: the selected period must change both dashboard charts, while the
+ * canonical rolling membership test above remains the sole inclusion rule.
+ * CONTRACT: 7/30/90/365 days use respectively daily, five-day, fifteen-day
+ * and roughly monthly (31-day) presentation buckets; Tout uses at most twelve
+ * equal day spans covering represented history. INVARIANT: every included
+ * local date is clamped into exactly one leading-to-current bucket. */
+static void dashboard_prepare_period_buckets(TrainlogDashboardSnapshot *dashboard,
+    int64_t current_day, int64_t earliest_day)
+{
+    size_t count;
+    int64_t span;
+    size_t index;
+    switch (dashboard->period) {
+        case TRAINLOG_STATS_7_DAYS: count = 7U; span = 1; break;
+        case TRAINLOG_STATS_30_DAYS: count = 6U; span = 5; break;
+        case TRAINLOG_STATS_90_DAYS: count = 6U; span = 15; break;
+        case TRAINLOG_STATS_YEAR: count = 12U; span = 31; break;
+        case TRAINLOG_STATS_ALL: {
+            int64_t represented = current_day >= earliest_day
+                ? current_day - earliest_day + 1 : 1;
+            count = represented < (int64_t)DASHBOARD_BUCKET_COUNT
+                ? (size_t)represented : DASHBOARD_BUCKET_COUNT;
+            if (count == 0U) count = 1U;
+            span = (represented + (int64_t)count - 1) / (int64_t)count;
+            break;
+        }
+    }
+    dashboard->week_count = count;
+    for (index = 0U; index < count; ++index) {
+        int64_t distance = (int64_t)(count - 1U - index) * span;
+        dashboard->weeks[index].start_day = current_day - distance - span + 1;
+        dashboard->weeks[index].span_days = span;
+        if (index + 1U == count)
+            (void)snprintf(dashboard->weeks[index].label,
+                sizeof(dashboard->weeks[index].label), "%s", "actuel");
+        else if (dashboard->period == TRAINLOG_STATS_7_DAYS)
+            (void)snprintf(dashboard->weeks[index].label,
+                sizeof(dashboard->weeks[index].label), "J−%zu", count - 1U - index);
+        else if (dashboard->period == TRAINLOG_STATS_YEAR)
+            (void)snprintf(dashboard->weeks[index].label,
+                sizeof(dashboard->weeks[index].label), "M−%zu", count - 1U - index);
+        else
+            (void)snprintf(dashboard->weeks[index].label,
+                sizeof(dashboard->weeks[index].label), "P−%zu", count - 1U - index);
+    }
+}
+
+static size_t dashboard_period_bucket(const TrainlogDashboardSnapshot *dashboard,
+    int64_t local_day)
+{
+    int64_t first;
+    int64_t span;
+    size_t slot;
+    if (dashboard->week_count == 0U) return 0U;
+    first = dashboard->weeks[0].start_day;
+    span = dashboard->weeks[0].span_days;
+    if (local_day <= first) return 0U;
+    slot = (size_t)((local_day - first) / span);
+    return slot < dashboard->week_count ? slot : dashboard->week_count - 1U;
+}
+
+static const char *dashboard_period_bucket_summary(TrainlogStatisticsPeriod period)
+{
+    switch (period) {
+        case TRAINLOG_STATS_7_DAYS: return "7 jours · quotidien";
+        case TRAINLOG_STATS_30_DAYS: return "30 jours · pas de 5 j";
+        case TRAINLOG_STATS_90_DAYS: return "90 jours · pas de 15 j";
+        case TRAINLOG_STATS_YEAR: return "1 an · pas de 31 j";
+        case TRAINLOG_STATS_ALL: return "Tout · 12 périodes max.";
+    }
+    return "Période";
+}
+
+static bool dashboard_fact_external_context_qualifies(TrainlogAppContext *app,
+    const TrainlogDashboardFact *fact)
+{
+    TrainlogResolvedEquipment equipment;
+    if (fact->equipment_id[0] == '\0' ||
+        trainlog_database_resolve_equipment(app->database, fact->equipment_id,
+            &equipment) != TRAINLOG_STATUS_OK) return false;
+    return strcmp(equipment.load_semantics, "external") == 0;
+}
+
+static TrainlogExercise *dashboard_find_exercise(TrainlogExercise *exercises,
+    size_t count, const char *exercise_id)
+{
+    size_t index;
+    for (index = 0U; index < count; ++index)
+        if (strcmp(exercises[index].exercise_id, exercise_id) == 0)
+            return &exercises[index];
+    return NULL;
+}
+
+static int dashboard_zone_bucket_compare(const void *left, const void *right)
+{
+    const TrainlogDashboardZoneBucket *a = left;
+    const TrainlogDashboardZoneBucket *b = right;
+    if (a->count != b->count) return a->count > b->count ? -1 : 1;
+    return strcmp(a->label, b->label);
+}
+
+/* WHY: a body-zone dashboard must describe the current catalogue rather than
+ * infer classifications from history or commercial names. CONTRACT: one
+ * canonical exercise is counted once, using only its persisted primary body
+ * zone. INVARIANT: missing primary relations remain visible as "Non classés";
+ * secondary relations and aliases can neither create nor duplicate a bucket. */
+static bool dashboard_load_zone_distribution(TrainlogAppContext *app,
+    const TrainlogExercise *exercises, size_t exercise_count)
+{
+    TrainlogDashboardSnapshot *dashboard = &app->dashboard;
+    size_t exercise_index;
+    for (exercise_index = 0U; exercise_index < exercise_count; ++exercise_index) {
+        TrainlogExerciseBodyZone relations[MAX_BODY_ZONES];
+        const char *label = "Non classés";
+        size_t relation_count = 0U;
+        size_t relation_index;
+        size_t bucket;
+        if (trainlog_database_list_exercise_body_zones(app->database,
+                exercises[exercise_index].exercise_id, relations, MAX_BODY_ZONES,
+                &relation_count) != TRAINLOG_STATUS_OK) return false;
+        for (relation_index = 0U; relation_index < relation_count; ++relation_index) {
+            if (relations[relation_index].role == TRAINLOG_BODY_ZONE_PRIMARY) {
+                const TrainlogBodyZone *zone = trainlog_body_zone_catalog_lookup(
+                    relations[relation_index].zone_id);
+                if (zone != NULL && !zone->is_group) label = zone->display_name;
+                break;
+            }
+        }
+        for (bucket = 0U; bucket < dashboard->zone_count; ++bucket)
+            if (strcmp(dashboard->zones[bucket].label, label) == 0) break;
+        if (bucket == dashboard->zone_count) {
+            if (bucket == DASHBOARD_ZONE_BUCKET_CAPACITY) return false;
+            (void)snprintf(dashboard->zones[bucket].label,
+                sizeof(dashboard->zones[bucket].label), "%s", label);
+            ++dashboard->zone_count;
+        }
+        ++dashboard->zones[bucket].count;
+    }
+    qsort(dashboard->zones, dashboard->zone_count, sizeof(dashboard->zones[0]),
+        dashboard_zone_bucket_compare);
+    return true;
+}
+
+/* WHY: the landing page must remain useful without rendering-time SQL.
+ * CONTRACT: this bounded controller snapshot contains only actual persisted
+ * facts. One working-performance series has an exact exercise/equipment/load
+ * identity; explicit MAX is separate, and assistance/planned targets never
+ * enter it. All chronology is decided by Trainlog's timestamp parser, not
+ * SQLite text ordering. */
+static void app_shell_load_dashboard(TrainlogAppContext *app)
+{
+    TrainlogDashboardSnapshot *dashboard = &app->dashboard;
+    TrainlogStatisticsPeriod period = dashboard->period;
+    TrainlogExercise *exercises = NULL;
+    TrainlogDashboardFact *facts = NULL;
+    TrainlogBodyMetricPoint body[MAX_BODY_METRIC_POINTS];
+    TrainlogSessionSummary sessions[MAX_SESSIONS];
+    TrainlogTimestampKey newest_performance;
+    char newest_body[TRAINLOG_TIMESTAMP_MAX + 1U] = "";
+    size_t exercise_count = 0U;
+    size_t fact_count = 0U;
+    size_t session_count = 0U;
+    size_t exercise_index;
+    int64_t current_day;
+    int64_t earliest_day = INT64_MAX;
+    time_t now;
+    bool has_newest_performance = false;
+    bool facts_truncated = false;
+    bool facts_invalid = false;
+
+    (void)memset(dashboard, 0, sizeof(*dashboard));
+    dashboard->period = period;
+    facts = calloc(DASHBOARD_FACT_CAPACITY, sizeof(*facts));
+    if (facts == NULL) {
+        dashboard->error = true;
+        return;
+    }
+    if (trainlog_database_read_snapshot_begin(app->database) != TRAINLOG_STATUS_OK) {
+        dashboard->error = true;
+        free(facts);
+        return;
+    }
+    if (trainlog_database_list_sessions(app->database, sessions, MAX_SESSIONS,
+            &session_count) != TRAINLOG_STATUS_OK) {
+        dashboard->error = true;
+        goto finish;
+    }
+    dashboard->partial = session_count == MAX_SESSIONS;
+    /* CONTRACT: frequency is one count per actual session; a MAX marker is an
+     * attribute of that count and never a second session. Rolling membership
+     * uses canonical instants, while buckets use represented local dates.
+     * Presentation always ends at the canonical current day, so the bucket
+     * containing that day remains explicit even when it is zero. */
+    now = time(NULL);
+    if (now == (time_t)-1) {
+        dashboard->error = true;
+        goto finish;
+    }
+    current_day = dashboard_floor_div((int64_t)now +
+        INT64_C(719162) * INT64_C(86400), INT64_C(86400));
+    for (exercise_index = 0U; exercise_index < session_count; ++exercise_index) {
+        TrainlogTimestampKey key;
+        if (!trainlog_timestamp_parse(sessions[exercise_index].started_at,
+                strlen(sessions[exercise_index].started_at), &key)) {
+            dashboard->invalid_data = true;
+            continue;
+        }
+        if (!dashboard_in_period(&key, dashboard->period)) continue;
+        ++dashboard->completed_session_count;
+        if (key.local_day < earliest_day) earliest_day = key.local_day;
+    }
+    dashboard_prepare_period_buckets(dashboard, current_day,
+        earliest_day == INT64_MAX ? current_day : earliest_day);
+    for (exercise_index = 0U; exercise_index < session_count; ++exercise_index) {
+        TrainlogTimestampKey key;
+        size_t slot;
+        if (!trainlog_timestamp_parse(sessions[exercise_index].started_at,
+                strlen(sessions[exercise_index].started_at), &key) ||
+            !dashboard_in_period(&key, dashboard->period)) continue;
+        slot = dashboard_period_bucket(dashboard, key.local_day);
+        ++dashboard->weeks[slot].sessions;
+        if (sessions[exercise_index].session_type == TRAINLOG_SESSION_MAX_TEST)
+            ++dashboard->weeks[slot].maxima;
+    }
+    if (trainlog_database_list_exercises(app->database, NULL, 0U,
+            &exercise_count) != TRAINLOG_STATUS_OK ||
+        exercise_count > SIZE_MAX / sizeof(*exercises)) {
+        dashboard->error = true;
+        goto finish;
+    }
+    if (exercise_count > 0U) {
+        exercises = calloc(exercise_count, sizeof(*exercises));
+        if (exercises == NULL || trainlog_database_list_exercises(app->database,
+                exercises, exercise_count, &exercise_count) != TRAINLOG_STATUS_OK) {
+            dashboard->error = true;
+            goto finish;
+        }
+    }
+    if (!dashboard_load_zone_distribution(app, exercises, exercise_count)) {
+        dashboard->error = true;
+        goto finish;
+    }
+    if (dashboard_database_list_facts(app->database, facts,
+            DASHBOARD_FACT_CAPACITY, &fact_count, &facts_truncated,
+            &facts_invalid) != TRAINLOG_STATUS_OK) {
+        dashboard->error = true;
+        goto finish;
+    }
+    dashboard->partial = dashboard->partial || facts_truncated;
+    dashboard->invalid_data = dashboard->invalid_data || facts_invalid;
+    qsort(facts, fact_count, sizeof(facts[0]), dashboard_fact_time_compare);
+    for (exercise_index = 0U; exercise_index < fact_count; ++exercise_index) {
+        TrainlogDashboardFact *fact = &facts[exercise_index];
+        TrainlogExercise *exercise;
+        bool external;
+        bool comparable_work;
+        bool comparable_max;
+        size_t prior;
+        bool has_prior = false;
+        double prior_best = 0.0;
+        exercise = dashboard_find_exercise(exercises, exercise_count,
+            fact->exercise_id);
+        if (!dashboard_in_period(&fact->time, dashboard->period)) continue;
+        if (fact->kind == TRAINLOG_DASHBOARD_WORK)
+            ++dashboard->performed_set_count;
+        else if (fact->kind == TRAINLOG_DASHBOARD_MAX)
+            ++dashboard->explicit_max_count;
+        {
+            size_t seen;
+            for (seen = 0U; seen < exercise_index; ++seen)
+                if (dashboard_in_period(&facts[seen].time, dashboard->period) &&
+                    strcmp(facts[seen].exercise_id, fact->exercise_id) == 0)
+                    break;
+            if (seen == exercise_index) ++dashboard->distinct_exercise_count;
+        }
+        external = dashboard_fact_external_context_qualifies(app, fact);
+        comparable_work = fact->kind == TRAINLOG_DASHBOARD_WORK && external &&
+            fact->load_mode == TRAINLOG_LOAD_EXTERNAL && fact->dose > 0 &&
+            fact->has_weight && isfinite(fact->weight_kg) &&
+            fact->weight_kg >= 0.0;
+        comparable_max = fact->kind == TRAINLOG_DASHBOARD_MAX && external &&
+            fact->load_mode != TRAINLOG_LOAD_ASSISTANCE && fact->weight_kg > 0.0;
+
+        /* CONTRACT: Android and TUI compare the same actual observations:
+         * exact exercise + nonempty resolved external equipment + external
+         * load semantics + exact performed dose. Only facts at a strictly
+         * earlier canonical instant establish the prior best; bytewise IDs
+         * order equal-instant presentation but never manufacture an event. */
+        if (comparable_work || comparable_max) {
+            for (prior = 0U; prior < exercise_index; ++prior) {
+                TrainlogDashboardFact *old = &facts[prior];
+                bool same = old->kind == fact->kind &&
+                    strcmp(old->exercise_id, fact->exercise_id) == 0 &&
+                    strcmp(old->equipment_id, fact->equipment_id) == 0 &&
+                    old->tracking_mode == fact->tracking_mode &&
+                    old->load_mode == fact->load_mode &&
+                    (fact->kind != TRAINLOG_DASHBOARD_WORK ||
+                        old->dose == fact->dose);
+                if (!same || trainlog_timestamp_compare(&old->time,
+                        &fact->time) >= 0) continue;
+                if (!has_prior || old->weight_kg > prior_best)
+                    prior_best = old->weight_kg;
+                has_prior = true;
+            }
+            if (has_prior && fact->weight_kg > prior_best &&
+                dashboard->week_count > 0U) {
+                size_t slot = dashboard_period_bucket(dashboard,
+                    fact->time.local_day);
+                if (comparable_work)
+                    ++dashboard->weeks[slot].working_improvements;
+                else ++dashboard->weeks[slot].max_improvements;
+            }
+        }
+        if (comparable_max && exercise != NULL) {
+            TrainlogTimestampKey current_max;
+            int order = 1;
+            if (dashboard->has_explicit_max &&
+                trainlog_timestamp_parse(dashboard->max_timestamp,
+                    strlen(dashboard->max_timestamp), &current_max))
+                order = trainlog_timestamp_compare(&fact->time, &current_max);
+            if (!dashboard->has_explicit_max || order > 0 ||
+                (order == 0 && strcmp(fact->exercise_id,
+                    dashboard->max_exercise.exercise_id) < 0)) {
+                dashboard->has_explicit_max = true;
+                dashboard->max_exercise = *exercise;
+                dashboard->max_weight_kg = fact->weight_kg;
+                (void)snprintf(dashboard->max_timestamp,
+                    sizeof(dashboard->max_timestamp), "%s", fact->started_at);
+            }
+        }
+        if (comparable_work && exercise != NULL) {
+            int order = has_newest_performance ?
+                trainlog_timestamp_compare(&fact->time, &newest_performance) : 1;
+            if (!has_newest_performance || order > 0 ||
+                (order == 0 && strcmp(fact->exercise_id,
+                    dashboard->exercise.exercise_id) < 0)) {
+                dashboard->has_performance = true;
+                dashboard->exercise = *exercise;
+                dashboard->performance_load_mode = fact->load_mode;
+                dashboard->performance_tracking_mode = fact->tracking_mode;
+                dashboard->performance_dose = fact->dose;
+                (void)snprintf(dashboard->performance_equipment_id,
+                    sizeof(dashboard->performance_equipment_id), "%s",
+                    fact->equipment_id);
+                newest_performance = fact->time;
+                has_newest_performance = true;
+            }
+        }
+    }
+    if (dashboard->has_performance) {
+        TrainlogResolvedEquipment equipment;
+        size_t index;
+        if (trainlog_database_resolve_equipment(app->database,
+                dashboard->performance_equipment_id, &equipment) ==
+                TRAINLOG_STATUS_OK)
+            (void)snprintf(dashboard->performance_equipment_label,
+                sizeof(dashboard->performance_equipment_label), "%s",
+                equipment.display_name);
+        for (index = 0U; index < fact_count &&
+             dashboard->performance_count < MAX_SESSIONS; ++index) {
+            TrainlogDashboardFact *fact = &facts[index];
+            TrainlogExercisePerformancePoint *point;
+            if (fact->kind != TRAINLOG_DASHBOARD_WORK || fact->dose <= 0 ||
+                fact->load_mode != dashboard->performance_load_mode ||
+                fact->tracking_mode != dashboard->performance_tracking_mode ||
+                fact->dose != dashboard->performance_dose ||
+                strcmp(fact->exercise_id, dashboard->exercise.exercise_id) != 0 ||
+                strcmp(fact->equipment_id,
+                    dashboard->performance_equipment_id) != 0 ||
+                !dashboard_in_period(&fact->time, dashboard->period)) continue;
+            point = &dashboard->performance[dashboard->performance_count++];
+            (void)memset(point, 0, sizeof(*point));
+            (void)snprintf(point->session_id, sizeof(point->session_id), "%s",
+                fact->session_id);
+            (void)snprintf(point->started_at, sizeof(point->started_at), "%s",
+                fact->started_at);
+            point->tracking_mode = fact->tracking_mode;
+            point->load_mode = fact->load_mode;
+            point->actual_set_count = 1U;
+            point->has_performance = 1;
+            point->metric_value = fact->dose;
+            point->has_weight = 1;
+            point->weight_kg = fact->weight_kg;
+            (void)snprintf(point->equipment_id, sizeof(point->equipment_id), "%s",
+                fact->equipment_id);
+        }
+        if (dashboard->performance_count == MAX_SESSIONS)
+            dashboard->partial = true;
+        qsort(dashboard->performance, dashboard->performance_count,
+            sizeof(dashboard->performance[0]), dashboard_performance_time_compare);
+    }
+
+    for (exercise_index = 0U; exercise_index < 14U; ++exercise_index) {
+        size_t count = 0U;
+        size_t point_index;
+        if (trainlog_database_list_body_metric_points(app->database,
+                BODY_METRICS[exercise_index].metric, body,
+                MAX_BODY_METRIC_POINTS, &count) != TRAINLOG_STATUS_OK) {
+            dashboard->error = true;
+            continue;
+        }
+        if (count == MAX_BODY_METRIC_POINTS) dashboard->partial = true;
+        for (point_index = 0U; point_index < count; ++point_index) {
+            TrainlogTimestampKey candidate;
+            TrainlogTimestampKey current;
+            int order = 1;
+            if (!trainlog_timestamp_parse(body[point_index].observed_at,
+                    strlen(body[point_index].observed_at), &candidate)) {
+                dashboard->invalid_data = true;
+                continue;
+            }
+            if (!dashboard_in_period(&candidate, dashboard->period)) continue;
+            if (newest_body[0] != '\0') {
+                (void)trainlog_timestamp_parse(newest_body, strlen(newest_body), &current);
+                order = trainlog_timestamp_compare(&candidate, &current);
+            }
+            if (newest_body[0] == '\0' || order > 0 ||
+                (order == 0 && exercise_index < dashboard->body_metric)) {
+                dashboard->has_body = true;
+                dashboard->body_metric = exercise_index;
+                (void)snprintf(newest_body, sizeof(newest_body), "%s",
+                    body[point_index].observed_at);
+            }
+        }
+    }
+    if (dashboard->has_body) {
+        size_t count = 0U;
+        size_t point_index;
+        if (trainlog_database_list_body_metric_points(app->database,
+                BODY_METRICS[dashboard->body_metric].metric, body,
+                MAX_BODY_METRIC_POINTS, &count) != TRAINLOG_STATUS_OK) {
+            dashboard->error = true;
+            goto finish;
+        }
+        if (count == MAX_BODY_METRIC_POINTS)
+            dashboard->partial = true;
+        for (point_index = 0U; point_index < count; ++point_index) {
+            TrainlogTimestampKey key;
+            if (!trainlog_timestamp_parse(body[point_index].observed_at,
+                    strlen(body[point_index].observed_at), &key)) {
+                dashboard->invalid_data = true;
+                continue;
+            }
+            if (dashboard_in_period(&key, dashboard->period))
+                dashboard->body[dashboard->body_count++] = body[point_index];
+        }
+        qsort(dashboard->body, dashboard->body_count, sizeof(dashboard->body[0]),
+            dashboard_body_time_compare);
+    }
+
+finish:
+    if (trainlog_database_read_snapshot_end(app->database, !dashboard->error) !=
+        TRAINLOG_STATUS_OK) dashboard->error = true;
+    free(exercises);
+    free(facts);
 }
 
 static void sync_controller_load_history(TrainlogSyncController *sync)
@@ -4343,6 +5137,10 @@ static void app_shell_actions(TrainlogAppContext *app)
             TRAINLOG_INTENT_NONE, route);
         app_shell_add_action(app, "body.global", 'o', "o Vue globale", 6U,
             TRAINLOG_INTENT_NONE, route);
+        app_shell_add_action(app, "body.profile.metric.previous", TRAINLOG_KEY_LEFT,
+            "← Mesure précédente", 7U, TRAINLOG_INTENT_NONE, route);
+        app_shell_add_action(app, "body.profile.metric.next", TRAINLOG_KEY_RIGHT,
+            "→ Mesure suivante", 8U, TRAINLOG_INTENT_NONE, route);
     }
     if (route == TRAINLOG_ROUTE_BODY_DETAIL)
         app_shell_add_action(app, "body.detail.edit", 'e', "e Modifier", 1U,
@@ -4426,8 +5224,9 @@ static void app_shell_actions(TrainlogAppContext *app)
 static void app_shell_render_footer(TrainlogAppContext *app)
 {
     const TrainlogOverlay *overlay = trainlog_overlays_top(&app->overlays);
-    const TrainlogAction *first;
-    const TrainlogAction *second;
+    const TrainlogAction *contextual[2] = {NULL, NULL};
+    size_t position;
+    size_t contextual_count = 0U;
     trainlog_surface_erase(app->footer);
     trainlog_surface_set_role(app->footer, TRAINLOG_COLOR_DEFAULT,
         TRAINLOG_RGB_MANTLE, TRAINLOG_TEXT_NORMAL);
@@ -4443,10 +5242,24 @@ static void app_shell_render_footer(TrainlogAppContext *app)
         trainlog_surface_printf(app->footer, 1, 2, "Échap fermer   F7 Actions   ? Aide");
         return;
     }
-    first = trainlog_actions_at_priority(&app->actions, 0U);
-    second = trainlog_actions_at_priority(&app->actions, 1U);
-    if (first != NULL) trainlog_surface_printf(app->footer, 0, 2, "%s", first->label);
-    if (second != NULL) trainlog_surface_printf(app->footer, 0, 24, "%s", second->label);
+    /* INVARIANT: stable action identity is deduplicated after every screen,
+     * focus and shell-wide contributor has been aggregated, before layout.
+     * Reserved global actions remain in F7 but are rendered once in row two. */
+    for (position = 0U; position < app->actions.count && contextual_count < 2U;
+         ++position) {
+        const TrainlogAction *candidate = trainlog_actions_at_priority(
+            &app->actions, position);
+        if (candidate == NULL ||
+            strcmp(candidate->identifier, "navigation") == 0 ||
+            strcmp(candidate->identifier, "actions") == 0 ||
+            strcmp(candidate->identifier, "help") == 0 ||
+            strcmp(candidate->identifier, "back") == 0) continue;
+        contextual[contextual_count++] = candidate;
+    }
+    if (contextual[0] != NULL)
+        trainlog_surface_printf(app->footer, 0, 2, "%s", contextual[0]->label);
+    if (contextual[1] != NULL)
+        trainlog_surface_printf(app->footer, 0, 24, "%s", contextual[1]->label);
     trainlog_surface_printf(app->footer, 1, 2,
         "F6 Navigation   F7 Actions   ? Aide   %s",
         app->navigation.current.route == TRAINLOG_ROUTE_HOME ? "q Quitter" : "Échap Retour");
@@ -4865,8 +5678,28 @@ static int app_shell_graph_height(const TrainlogAppContext *app, int top)
     return available;
 }
 
+/* WHY: a statistical line must show the relationship between two observations,
+ * rather than fill horizontal space with decorative ASCII. CONTRACT: callers
+ * pass distinct x coordinates inside their plot; this helper writes only
+ * Unicode line glyphs between them. INVARIANT: each interpolated cell stays in
+ * the caller-owned chart rectangle. */
+static void app_shell_draw_chart_segment(TrainlogSurface *surface, int x1, int y1,
+    int x2, int y2)
+{
+    int x;
+    if (surface == NULL || x2 <= x1) return;
+    for (x = x1 + 1; x < x2; ++x) {
+        int y = y1 + ((y2 - y1) * (x - x1)) / (x2 - x1);
+        int delta = y2 - y1;
+        uint32_t glyph = delta == 0 ? 0x2500U :
+            (delta < 0 ? 0x2571U : 0x2572U);
+        trainlog_surface_draw(surface, y, x, glyph);
+    }
+}
+
 static void app_shell_draw_performance_graph(
     TrainlogAppContext *app,
+    const TrainlogExercisePerformancePoint *context,
     TrainlogLoadMode mode,
     TrainlogTrackingMode tracking_mode,
     int top,
@@ -4891,12 +5724,22 @@ static void app_shell_draw_performance_graph(
         const TrainlogExercisePerformancePoint *point =
             &app->performance_points[index];
         if (point->has_performance != 0 && point->load_mode == mode &&
+            (context == NULL || strcmp(point->equipment_id,
+                context->equipment_id) == 0) &&
             (!measured_max || point->session_type == TRAINLOG_SESSION_MAX_TEST))
             indices[selected_count++] = index;
     }
     if (selected_count == 0U) {
         trainlog_surface_printf(app->content, top, 2,
-            "Aucune performance réussie pour ce mode.");
+            "Aucun point exploitable pour ce contexte.");
+        return;
+    }
+    if (selected_count == 1U) {
+        char value[128];
+        exercise_format_performance(&app->performance_points[indices[0]], value,
+            sizeof(value));
+        trainlog_surface_printf(app->content, top, 2,
+            "%s · 1 point · tendance indisponible", value);
         return;
     }
     minimum = exercise_graph_value(&app->performance_points[indices[0]]);
@@ -4907,7 +5750,6 @@ static void app_shell_draw_performance_graph(
         if (value < minimum) minimum = value;
         if (value > maximum) maximum = value;
     }
-    if (maximum == minimum) { minimum -= 1.0; maximum += 1.0; }
     trainlog_surface_set_role(app->content,
         mode == TRAINLOG_LOAD_ASSISTANCE ? TRAINLOG_COLOR_WARNING
                                          : TRAINLOG_COLOR_DEFAULT,
@@ -4921,35 +5763,31 @@ static void app_shell_draw_performance_graph(
             : tracking_mode == TRAINLOG_TRACKING_DURATION
             ? (measured_max ? "Durée MAX mesurée" : "Meilleure durée")
             : (measured_max ? "Répétitions MAX mesurées" : "Meilleures répétitions"));
-    trainlog_surface_printf(app->content, top, 2, "%.1f", maximum);
-    trainlog_surface_printf(app->content, top + height - 1, 2, "%.1f", minimum);
+    trainlog_surface_printf(app->content, top, 2, "haut %.1f", maximum);
+    trainlog_surface_printf(app->content, top + height - 1, 2, "bas  %.1f", minimum);
     trainlog_surface_set_role(app->content, TRAINLOG_COLOR_GRAPH,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
     {
         int previous_x = -1;
         int previous_y = -1;
+        for (int axis_row = top; axis_row < top + height; ++axis_row)
+            trainlog_surface_draw(app->content, axis_row, left - 2, 0x2502U);
         size_t order;
         for (order = selected_count; order > 0U; --order) {
             size_t chronological = selected_count - order;
             const TrainlogExercisePerformancePoint *point =
                 &app->performance_points[indices[order - 1U]];
-            double ratio = (exercise_graph_value(point) - minimum) /
-                (maximum - minimum);
-            int x = selected_count == 1U ? left + width / 2 : left +
+            int x = left +
                 (int)((chronological * (size_t)(width - 1)) /
                       (selected_count - 1U));
-            int y = top + height - 1 -
-                (int)(ratio * (double)(height - 1));
+            int y = normalized_graph_row(exercise_graph_value(point), minimum,
+                maximum, top, height);
             if (previous_x >= 0 && x > previous_x) {
-                int line_x;
-                for (line_x = previous_x + 1; line_x < x; ++line_x) {
-                    int line_y = previous_y + ((y - previous_y) *
-                        (line_x - previous_x)) / (x - previous_x);
-                    trainlog_surface_draw(app->content, line_y, line_x, '.');
-                }
+                app_shell_draw_chart_segment(app->content, previous_x, previous_y,
+                    x, y);
             }
             trainlog_surface_draw(app->content, y, x,
-                chronological + 1U == selected_count ? 'O' : '*');
+                chronological + 1U == selected_count ? 0x25cfU : 0x25cbU);
             previous_x = x;
             previous_y = y;
         }
@@ -4985,6 +5823,11 @@ static void app_shell_draw_body_points(TrainlogAppContext *app,
             "Aucune donnée pour cette mesure.");
         return;
     }
+    if (count == 1U) {
+        trainlog_surface_printf(app->content, top, 2,
+            "%.2f %s · 1 relevé · tendance indisponible", points[0].value, unit);
+        return;
+    }
     if (height < 3 || width < 10 || top + height >= app->layout.content.height)
         return;
     start = count > (size_t)width ? count - (size_t)width : 0U;
@@ -4994,23 +5837,157 @@ static void app_shell_draw_body_points(TrainlogAppContext *app,
         if (points[index].value < minimum) minimum = points[index].value;
         if (points[index].value > maximum) maximum = points[index].value;
     }
-    if (maximum == minimum) { minimum -= 1.0; maximum += 1.0; }
-    trainlog_surface_printf(app->content, top, 2, "%.1f", maximum);
-    trainlog_surface_printf(app->content, top + height - 1, 2, "%.1f", minimum);
+    trainlog_surface_printf(app->content, top, 2, "haut %.1f", maximum);
+    trainlog_surface_printf(app->content, top + height - 1, 2, "bas  %.1f", minimum);
     trainlog_surface_set_role(app->content, TRAINLOG_COLOR_GRAPH,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
-    for (index = start; index < count; ++index) {
-        double ratio = (points[index].value - minimum) / (maximum - minimum);
-        int x = left + (int)(index - start);
-        int y = top + height - 1 - (int)(ratio * (double)(height - 1));
-        trainlog_surface_draw(app->content, y, x, '*');
+    for (int axis_row = top; axis_row < top + height; ++axis_row)
+        trainlog_surface_draw(app->content, axis_row, left - 2, 0x2502U);
+    {
+        int previous_x = -1;
+        int previous_y = -1;
+        size_t visible = count - start;
+        for (index = start; index < count; ++index) {
+            int x = left + (int)(((index - start) * (size_t)(width - 1)) /
+                (visible - 1U));
+            int y = normalized_graph_row(points[index].value, minimum, maximum,
+                top, height);
+            if (previous_x >= 0)
+                app_shell_draw_chart_segment(app->content, previous_x, previous_y,
+                    x, y);
+            trainlog_surface_draw(app->content, y, x,
+                index + 1U == count ? 0x25cfU : 0x25cbU);
+            previous_x = x;
+            previous_y = y;
+        }
     }
     trainlog_surface_set_role(app->content, TRAINLOG_COLOR_MUTED,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
-    trainlog_surface_printf(app->content, top + height, left,
-        "%zu point(s) · %s", count, unit);
+    {
+        char oldest[11];
+        char newest[11];
+        exercise_short_date(points[start].observed_at, oldest);
+        exercise_short_date(points[count - 1U].observed_at, newest);
+        trainlog_surface_printf(app->content, top + height, left,
+            "%s → %s · %zu relevés · %s", oldest, newest, count, unit);
+    }
     trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+}
+
+static void app_shell_render_body_profile(TrainlogAppContext *app)
+{
+    const TrainlogBodyObservationRecord *record;
+    const bool *present[13];
+    const double *values[13];
+    double maximum = 0.0;
+    size_t circumference_count = 0U;
+    size_t shown = 0U;
+    size_t index;
+    int evolution_top;
+    int profile_row = 6;
+    int bar_left = 23;
+    int bar_capacity = app->layout.content.width - bar_left - 10;
+    TrainlogGlobalBodySeries *series;
+
+    if (app->body_snapshot_error) {
+        trainlog_surface_printf(app->content, 3, 2,
+            "Impossible de lire les mensurations.");
+        return;
+    }
+    if (app->loaded_count == 0U) {
+        trainlog_surface_printf(app->content, 3, 2,
+            "Aucun relevé corporel. a pour ajouter un relevé.");
+        trainlog_surface_printf(app->content, 5, 2,
+            "ÉVOLUTION DANS LE TEMPS · aucune métrique disponible");
+        return;
+    }
+    if (app->list.selected_index >= app->loaded_count)
+        app->list.selected_index = 0U;
+    record = &app->body_records[app->list.selected_index];
+    {
+        const bool *const flags[13] = {&record->has_neck,
+            &record->has_shoulders, &record->has_chest, &record->has_waist,
+            &record->has_hips, &record->has_left_arm, &record->has_right_arm,
+            &record->has_left_forearm, &record->has_right_forearm,
+            &record->has_left_thigh, &record->has_right_thigh,
+            &record->has_left_calf, &record->has_right_calf};
+        const double *const measurements[13] = {&record->neck_cm,
+            &record->shoulders_cm, &record->chest_cm, &record->waist_cm,
+            &record->hips_cm, &record->left_arm_cm, &record->right_arm_cm,
+            &record->left_forearm_cm, &record->right_forearm_cm,
+            &record->left_thigh_cm, &record->right_thigh_cm,
+            &record->left_calf_cm, &record->right_calf_cm};
+        (void)memcpy(present, flags, sizeof(present));
+        (void)memcpy(values, measurements, sizeof(values));
+    }
+    for (index = 0U; index < 13U; ++index) {
+        if (!*present[index]) continue;
+        ++circumference_count;
+        if (*values[index] > maximum) maximum = *values[index];
+    }
+
+    /* WHY: weight and circumference have unrelated units and must never share
+     * a visual scale. INVARIANT: absent circumference fields produce no row;
+     * every rendered bar encodes the selected observation's actual centimetres. */
+    trainlog_surface_printf(app->content, 3, 2,
+        "PROFIL ACTUEL · relevé %zu/%zu · %s", app->list.selected_index + 1U,
+        app->loaded_count, record->observed_at);
+    if (record->has_body_weight)
+        trainlog_surface_printf(app->content, 4, 2, "Poids : %.2f kg",
+            record->body_weight_kg);
+    else trainlog_surface_printf(app->content, 4, 2,
+        "Poids : non renseigné");
+    trainlog_surface_printf(app->content, 5, 2,
+        "PROFIL CIRCONFÉRENCES · échelle au plus grand cm présent");
+
+    evolution_top = app->layout.content.height >= 26
+        ? 20 : app->layout.content.height - 6;
+    if (evolution_top < 10) evolution_top = 10;
+    if (bar_capacity < 1) bar_capacity = 1;
+    for (index = 0U; index < 13U && profile_row < evolution_top - 1; ++index) {
+        int length;
+        int column;
+        if (!*present[index]) continue;
+        length = maximum > 0.0
+            ? (int)((*values[index] / maximum) * (double)bar_capacity) : 1;
+        if (length < 1) length = 1;
+        if (length > bar_capacity) length = bar_capacity;
+        trainlog_surface_printf(app->content, profile_row, 2, "%-19s",
+            BODY_METRICS[index + 1U].label);
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_GRAPH,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        for (column = 0; column < length; ++column)
+            trainlog_surface_draw(app->content, profile_row,
+                bar_left + column, 0x2586U);
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_printf(app->content, profile_row,
+            bar_left + length + 1, "%.1f cm", *values[index]);
+        ++profile_row;
+        ++shown;
+    }
+    if (circumference_count == 0U)
+        trainlog_surface_printf(app->content, profile_row, 2,
+            "Aucune circonférence dans ce relevé.");
+    else if (shown < circumference_count)
+        trainlog_surface_printf(app->content, evolution_top - 1, 2,
+            "… %zu autre(s) circonférence(s) · ↑↓ change le relevé",
+            circumference_count - shown);
+
+    series = &app->body_global_series[app->body_metric_selected];
+    if (series->count == 0U) {
+        trainlog_surface_printf(app->content, evolution_top, 2,
+            "ÉVOLUTION DANS LE TEMPS · aucune métrique disponible");
+        return;
+    }
+    trainlog_surface_printf(app->content, evolution_top, 2,
+        "ÉVOLUTION DANS LE TEMPS · ←/→ %s",
+        BODY_METRICS[app->body_metric_selected].label);
+    app_shell_draw_body_points(app, series->points, series->count,
+        evolution_top + 1,
+        app->layout.content.height - evolution_top - 2,
+        BODY_METRICS[app->body_metric_selected].unit);
 }
 
 static void app_shell_render_body_controller(TrainlogAppContext *app)
@@ -5112,6 +6089,381 @@ static void app_shell_surface_segment(TrainlogSurface *surface, int x1, int y1,
     }
 }
 
+static void app_shell_dashboard_sparkline(TrainlogAppContext *app,
+    const double *values, size_t count, int left, int top, int width, int height)
+{
+    double minimum;
+    double maximum;
+    size_t start;
+    size_t index;
+    int previous_x = -1;
+    int previous_y = -1;
+    /* INVARIANT: a line encodes change between actual observations. A single
+     * point has no trend and must never acquire a synthetic axis or baseline. */
+    if (count < 2U || width < 4 || height < 2) return;
+    start = count > (size_t)width ? count - (size_t)width : 0U;
+    minimum = values[start];
+    maximum = values[start];
+    for (index = start + 1U; index < count; ++index) {
+        if (values[index] < minimum) minimum = values[index];
+        if (values[index] > maximum) maximum = values[index];
+    }
+    if (minimum == maximum) { minimum -= 1.0; maximum += 1.0; }
+    trainlog_surface_set_role(app->content, TRAINLOG_COLOR_GRAPH,
+        TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+    for (index = start; index < count; ++index) {
+        size_t relative = index - start;
+        size_t visible = count - start;
+        int x = visible == 1U ? left + width / 2 : left +
+            (int)((relative * (size_t)(width - 1)) / (visible - 1U));
+        int y = top + height - 1 - (int)(((values[index] - minimum) /
+            (maximum - minimum)) * (double)(height - 1));
+        if (previous_x >= 0)
+            app_shell_surface_segment(app->content, previous_x, previous_y,
+                x, y, 0x2584U);
+        trainlog_surface_draw(app->content, y, x,
+            index + 1U == count ? 0x2588U : 0x2584U);
+        previous_x = x;
+        previous_y = y;
+    }
+    trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+        TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+}
+
+static void app_shell_dashboard_performance_events(TrainlogAppContext *app,
+    const TrainlogDashboardSnapshot *dashboard, int row, int column)
+{
+    size_t index;
+    size_t working = 0U;
+    size_t maxima = 0U;
+    for (index = 0U; index < dashboard->week_count; ++index) {
+        working += dashboard->weeks[index].working_improvements;
+        maxima += dashboard->weeks[index].max_improvements;
+    }
+    /* Text totals are the accessible equivalent of the Unicode plot. Empty
+     * buckets remain dots: a low block would falsely suggest an event. */
+    trainlog_surface_printf(app->content, row, column,
+        "%s · travail %zu · MAX %zu%s",
+        dashboard_period_bucket_summary(dashboard->period), working, maxima,
+        working + maxima == 0U ? " · données insuffisantes" : "");
+    for (index = 0U; index < dashboard->week_count &&
+         column + 2 + (int)index * 3 < app->layout.content.width; ++index) {
+        size_t level = dashboard->weeks[index].working_improvements +
+            dashboard->weeks[index].max_improvements;
+        trainlog_surface_set_role(app->content,
+            dashboard->weeks[index].max_improvements > 0U ?
+                TRAINLOG_COLOR_WARNING : TRAINLOG_COLOR_GRAPH,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_draw(app->content, row + 1, column + 2 + (int)index * 3,
+            level > 0U ? 0x2588U : 0x00b7U);
+    }
+    trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+        TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+}
+
+static void app_shell_dashboard_wide_performance_events(TrainlogAppContext *app,
+    const TrainlogDashboardSnapshot *dashboard, int row, int column)
+{
+    size_t index;
+    size_t working = 0U;
+    size_t maxima = 0U;
+    for (index = 0U; index < dashboard->week_count; ++index) {
+        working += dashboard->weeks[index].working_improvements;
+        maxima += dashboard->weeks[index].max_improvements;
+    }
+    trainlog_surface_printf(app->content, row, column,
+        "%s · travail %zu · MAX %zu",
+        dashboard_period_bucket_summary(dashboard->period), working, maxima);
+    for (index = 0U; index < dashboard->week_count; ++index) {
+        size_t level = dashboard->weeks[index].working_improvements +
+            dashboard->weeks[index].max_improvements;
+        trainlog_surface_set_role(app->content,
+            dashboard->weeks[index].max_improvements > 0U ?
+                TRAINLOG_COLOR_WARNING : TRAINLOG_COLOR_GRAPH,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_draw(app->content, row + 1,
+            column + (int)index * 3, level > 0U ? 0x2588U : 0x00b7U);
+    }
+    if (working + maxima == 0U)
+        trainlog_surface_printf(app->content, row + 2, column,
+            "Données insuffisantes.");
+    trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+        TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+}
+
+static void app_shell_dashboard_decimal_comma(double value, char *output,
+                                              size_t output_size)
+{
+    char *separator;
+    if (output == NULL || output_size == 0U) return;
+    (void)snprintf(output, output_size, "%.2f", value);
+    separator = strchr(output, '.');
+    if (separator != NULL) *separator = ',';
+}
+
+/* WHY: the landing page needs a genuinely global catalogue view, while the
+ * exercise list remains the destination for inspection. CONTRACT: bars encode
+ * active canonical-exercise counts prepared in the dashboard snapshot only.
+ * INVARIANT: zero counts never receive invented bars, and a compact viewport
+ * deterministically retains the count/label-sorted leading buckets. */
+static void app_shell_dashboard_zone_chart(TrainlogAppContext *app,
+    const TrainlogDashboardSnapshot *dashboard, int top, int left, int width,
+    int rows)
+{
+    size_t index;
+    size_t bucket_rows;
+    size_t maximum = 0U;
+    bool separated_rows;
+    int row_stride;
+    int label_width;
+    int bar_width;
+    if (width < 20 || rows < 1) return;
+    if (dashboard->zone_count == 0U) {
+        trainlog_surface_printf(app->content, top, left,
+            "Aucun exercice actif à répartir.");
+        return;
+    }
+    for (index = 0U; index < dashboard->zone_count; ++index)
+        if (dashboard->zones[index].count > maximum) maximum = dashboard->zones[index].count;
+    label_width = width >= 64 ? 20 : width >= 48 ? 16 : 12;
+    bar_width = width - label_width - 6;
+    if (bar_width < 4) return;
+    /* Spacing is a wide-layout enhancement, never a reason to hide catalogue
+     * buckets which already fit. Thin bars remain independently legible on
+     * adjacent rows when the available chart height cannot hold every gap. */
+    separated_rows = app->layout.columns >= 100 &&
+        dashboard->zone_count <= (size_t)((rows + 1) / 2);
+    row_stride = separated_rows ? 2 : 1;
+    bucket_rows = separated_rows ? (size_t)((rows + 1) / 2) : (size_t)rows;
+    if (dashboard->zone_count < bucket_rows) bucket_rows = dashboard->zone_count;
+    if (dashboard->zone_count > bucket_rows) {
+        size_t summary_row = separated_rows
+            ? bucket_rows * (size_t)row_stride - 1U : bucket_rows;
+        if (summary_row >= (size_t)rows && bucket_rows > 1U) --bucket_rows;
+    }
+    for (index = 0U; index < bucket_rows; ++index) {
+        int row = top + (int)index * row_stride;
+        int blocks = maximum == 0U ? 0 : (int)((dashboard->zones[index].count *
+            (size_t)bar_width + maximum - 1U) / maximum);
+        int block;
+        /* CONTRACT: label, bar and right-edge count own separate columns;
+         * independently scaled partial-height rows can never form the former
+         * solid staircase. Wide layouts leave a blank row between buckets. */
+        trainlog_surface_printf(app->content, row, left,
+            "%-*.*s", label_width, label_width, dashboard->zones[index].label);
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_GRAPH,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        for (block = 0; block < blocks; ++block)
+            trainlog_surface_draw(app->content, row,
+                left + label_width + 1 + block, 0x2586U);
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_printf(app->content, row,
+            left + label_width + 2 + bar_width, "%zu",
+            dashboard->zones[index].count);
+    }
+    if (dashboard->zone_count > bucket_rows) {
+        size_t summary_row = separated_rows
+            ? bucket_rows * (size_t)row_stride - 1U : bucket_rows;
+        if (summary_row >= (size_t)rows) return;
+        trainlog_surface_printf(app->content,
+            top + (int)summary_row, left,
+            "+ %zu zones dans le catalogue", dashboard->zone_count - bucket_rows);
+    }
+}
+
+static void app_shell_dashboard_frequency_chart(TrainlogAppContext *app,
+    const TrainlogDashboardSnapshot *dashboard, int top, int left, int width,
+    int height)
+{
+    size_t index;
+    size_t maximum = 0U;
+    int baseline;
+    if (width < 12 || height < 1) return;
+    if (dashboard->week_count == 0U) {
+        trainlog_surface_printf(app->content, top, left,
+            "Aucune séance dans cette période.");
+        return;
+    }
+    for (index = 0U; index < dashboard->week_count; ++index)
+        if (dashboard->weeks[index].sessions > maximum)
+            maximum = dashboard->weeks[index].sessions;
+    trainlog_surface_printf(app->content, top, left,
+        "%s · actuel %zu séance%s · MAX %zu",
+        dashboard_period_bucket_summary(dashboard->period),
+        dashboard->weeks[dashboard->week_count - 1U].sessions,
+        dashboard->weeks[dashboard->week_count - 1U].sessions == 1U ? "" : "s",
+        dashboard->weeks[dashboard->week_count - 1U].maxima);
+    baseline = top + height;
+    for (index = 0U; index < dashboard->week_count; ++index) {
+        const char *label = dashboard->weeks[index].label;
+        int label_margin = 3;
+        int x = dashboard->week_count > 1U
+            ? left + label_margin + (int)((index * (size_t)(width - 2 * label_margin - 1)) /
+                (dashboard->week_count - 1U))
+            : left + width / 2;
+        int level = maximum == 0U ? 0 : (int)((dashboard->weeks[index].sessions *
+            (size_t)height + maximum - 1U) / maximum);
+        int bar_row;
+        trainlog_surface_set_role(app->content,
+            dashboard->weeks[index].maxima > 0U ? TRAINLOG_COLOR_WARNING :
+            (index + 1U == dashboard->week_count ? TRAINLOG_COLOR_ACCENT :
+             TRAINLOG_COLOR_GRAPH), TRAINLOG_RGB_BASE,
+            index + 1U == dashboard->week_count ? TRAINLOG_TEXT_BOLD :
+            TRAINLOG_TEXT_NORMAL);
+        if (level == 0) trainlog_surface_draw(app->content, baseline, x, 0x00b7U);
+        else for (bar_row = 0; bar_row < level; ++bar_row)
+            trainlog_surface_draw(app->content, baseline - bar_row, x, 0x2588U);
+        /* Each period bucket owns one x coordinate: the count, optional MAX
+         * marker, bar and label all remain vertically aligned at that point. */
+        trainlog_surface_printf(app->content, baseline - (level > 0 ? level - 1 : 0),
+            x, "%zu", dashboard->weeks[index].sessions);
+        if (dashboard->weeks[index].maxima > 0U) {
+            /* WHY: the minimum dashboard has one bar row; lifting its marker
+             * would overwrite the frequency summary. CONTRACT: compact MAX
+             * markers sit beside the count, taller charts keep them above it. */
+            int marker_row = height == 1 ? baseline :
+                baseline - (level > 0 ? level : 0);
+            int marker_column = height == 1 ? x - 2 : x;
+            trainlog_surface_draw(app->content, marker_row, marker_column,
+                0x25c6U);
+        }
+        trainlog_surface_printf(app->content, baseline + 1,
+            x - (index + 1U == dashboard->week_count ? 3 : 1), "%s", label);
+    }
+    trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+        TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+}
+
+static void app_shell_render_dashboard(TrainlogAppContext *app)
+{
+    const TrainlogDashboardSnapshot *dashboard = &app->dashboard;
+    double body_values[MAX_BODY_METRIC_POINTS];
+    size_t index;
+    for (index = 0U; index < dashboard->body_count; ++index)
+        body_values[index] = dashboard->body[index].value;
+    trainlog_surface_printf(app->content, 2, 2,
+        "Période  %s  %s  %s  %s  %s",
+        dashboard->period == TRAINLOG_STATS_7_DAYS ? "[7j]" : "7j",
+        dashboard->period == TRAINLOG_STATS_30_DAYS ? "[30j]" : "30j",
+        dashboard->period == TRAINLOG_STATS_90_DAYS ? "[90j]" : "90j",
+        dashboard->period == TRAINLOG_STATS_YEAR ? "[1an]" : "1an",
+        dashboard->period == TRAINLOG_STATS_ALL ? "[Tout]" : "Tout");
+    trainlog_surface_printf(app->content, 3, 2,
+        "Séances %zu   Séries %zu   Exercices pratiqués %zu   MAX %zu",
+        dashboard->completed_session_count, dashboard->performed_set_count,
+        dashboard->distinct_exercise_count, dashboard->explicit_max_count);
+    if (dashboard->error)
+        trainlog_surface_printf(app->content, 4, 2,
+            "Certaines données n’ont pas pu être lues.");
+    else if (dashboard->invalid_data)
+        trainlog_surface_printf(app->content, 4, 2,
+            "Données historiques invalides ignorées.");
+    else if (dashboard->partial)
+        trainlog_surface_printf(app->content, 4, 2,
+            "Vue bornée : historique récent partiel.");
+    if (app->layout.columns >= 100 && app->layout.content.width >= 70) {
+        int right = app->layout.content.width / 2 + 2;
+        int body_width = app->layout.content.width - right - 2;
+        int frequency_top = 10;
+        int chart_height = app->layout.content.height - frequency_top - 11;
+        int zones_top;
+        int zone_rows;
+        if (chart_height > 5) chart_height = 5;
+        if (chart_height < 2) chart_height = 2;
+        trainlog_surface_printf(app->content, 5, 2, "%s Progression globale",
+            app->content_selected == 0U ? "▶" : " ");
+        app_shell_dashboard_wide_performance_events(app, dashboard, 6, 4);
+        trainlog_surface_printf(app->content, 5, right, "%s Mensurations",
+            app->content_selected == 1U ? "▶" : " ");
+        if (dashboard->has_body && dashboard->body_count > 0U) {
+            double latest = dashboard->body[dashboard->body_count - 1U].value;
+            char latest_text[32];
+            app_shell_dashboard_decimal_comma(latest, latest_text,
+                sizeof(latest_text));
+            if (dashboard->body_count == 1U)
+                trainlog_surface_printf(app->content, 6, right,
+                    "%s · %s %s · 1 relevé",
+                    BODY_METRICS[dashboard->body_metric].label, latest_text,
+                    BODY_METRICS[dashboard->body_metric].unit);
+            else {
+                double delta = latest - dashboard->body[
+                    dashboard->body_count - 2U].value;
+                char delta_text[32];
+                app_shell_dashboard_decimal_comma(fabs(delta), delta_text,
+                    sizeof(delta_text));
+                trainlog_surface_printf(app->content, 6, right,
+                    "%s · %s %s · Δ %c%s",
+                    BODY_METRICS[dashboard->body_metric].label, latest_text,
+                    BODY_METRICS[dashboard->body_metric].unit,
+                    delta >= 0.0 ? '+' : '-', delta_text);
+                app_shell_dashboard_sparkline(app, body_values,
+                    dashboard->body_count, right, 7, body_width, 2);
+            }
+        } else trainlog_surface_printf(app->content, 6, right,
+            "Aucune mensuration.");
+        trainlog_surface_printf(app->content, 10, 2, "%s Fréquence",
+            app->content_selected == 2U ? "▶" : " ");
+        app_shell_dashboard_frequency_chart(app, dashboard, 11, 4,
+            app->layout.content.width - 8, chart_height);
+        /* INVARIANT: frequency owns summary, bars, MAX markers and labels;
+         * distribution begins strictly after its final label row. */
+        zones_top = 14 + chart_height;
+        zone_rows = app->layout.content.height - zones_top - 2;
+        trainlog_surface_printf(app->content, zones_top - 1, 2,
+            "%s Répartition du catalogue",
+            app->content_selected == 3U ? "▶" : " ");
+        app_shell_dashboard_zone_chart(app, dashboard, zones_top, 4,
+            app->layout.content.width - 8, zone_rows);
+        if (app->layout.content.height > zones_top + 4)
+            trainlog_surface_printf(app->content,
+                app->layout.content.height - 2, 2,
+                "↑↓ région · Entrée détail · chiffres période");
+        return;
+    }
+    /* Compact planes retain each dashboard region. The smaller form omits a
+     * decorative body sparkline, not data: a real two-point chart belongs in
+     * the detail view, while the zone bars and frequency bars stay visible. */
+    trainlog_surface_printf(app->content, 5, 2, "%s Progression globale",
+        app->content_selected == 0U ? "▶" : " ");
+    app_shell_dashboard_performance_events(app, dashboard, 5, 25);
+    trainlog_surface_printf(app->content, 7, 2, "%s Mensurations",
+        app->content_selected == 1U ? "▶" : " ");
+    if (dashboard->has_body && dashboard->body_count > 0U) {
+        double latest = dashboard->body[dashboard->body_count - 1U].value;
+        char latest_text[32];
+        app_shell_dashboard_decimal_comma(latest, latest_text, sizeof(latest_text));
+        if (dashboard->body_count == 1U)
+            trainlog_surface_printf(app->content, 8, 4,
+                "%s · %s %s · 1 relevé, tendance indisponible",
+                BODY_METRICS[dashboard->body_metric].label, latest_text,
+                BODY_METRICS[dashboard->body_metric].unit);
+        else {
+            double delta = latest - dashboard->body[dashboard->body_count - 2U].value;
+            char delta_text[32];
+            app_shell_dashboard_decimal_comma(fabs(delta), delta_text,
+                sizeof(delta_text));
+            trainlog_surface_printf(app->content, 8, 4,
+                "%s · %s %s · Δ %c%s",
+                BODY_METRICS[dashboard->body_metric].label, latest_text,
+                BODY_METRICS[dashboard->body_metric].unit,
+                delta >= 0.0 ? '+' : '-', delta_text);
+        }
+    } else trainlog_surface_printf(app->content, 8, 4,
+        "Aucune mensuration saisie.");
+    trainlog_surface_printf(app->content, 10, 2, "%s Fréquence",
+        app->content_selected == 2U ? "▶" : " ");
+    app_shell_dashboard_frequency_chart(app, dashboard, 11, 4,
+        app->layout.content.width - 8,
+        1);
+    trainlog_surface_printf(app->content, 14, 2, "%s Répartition du catalogue",
+        app->content_selected == 3U ? "▶" : " ");
+    if (app->layout.content.height >= 16)
+        app_shell_dashboard_zone_chart(app, dashboard, 15, 4,
+            app->layout.content.width - 8,
+            app->layout.content.height - 15);
+}
+
 static void app_shell_render_body_global(TrainlogAppContext *app)
 {
     size_t metric;
@@ -5164,11 +6516,9 @@ static void app_shell_render_body_global(TrainlogAppContext *app)
                 y = normalized_graph_row(value, minimum, maximum,
                     graph_top, graph_height);
                 if (previous_x >= 0)
-                    app_shell_surface_segment(app->content, previous_x,
-                        previous_y, x, y,
-                        (uint32_t)(unsigned char)series->symbol);
-                else trainlog_surface_draw(app->content, y, x,
-                    (uint32_t)(unsigned char)series->symbol);
+                    app_shell_draw_chart_segment(app->content, previous_x,
+                        previous_y, x, y);
+                trainlog_surface_draw(app->content, y, x, series->symbol);
                 previous_x = x;
                 previous_y = y;
             }
@@ -5182,11 +6532,13 @@ static void app_shell_render_body_global(TrainlogAppContext *app)
              app->layout.content.height; ++metric) {
         int row = graph_top + graph_height + 2 + (int)(metric % 7U);
         int column = metric < 7U ? 2 : app->layout.content.width / 2;
-        trainlog_surface_printf(app->content, row, column, "%c [%c] %-15s %+.1f%%",
+        trainlog_surface_printf(app->content, row, column, "%c   [%c] %-15s %+.1f%%",
             app->body_global_selected == metric ? '>' : ' ',
             app->body_global_enabled[metric] ? 'x' : ' ',
             BODY_METRICS[metric].label,
             app->body_global_series[metric].latest_percent);
+        trainlog_surface_draw(app->content, row, column + 2,
+            app->body_global_series[metric].symbol);
     }
     if (app->body_global_partial)
         trainlog_surface_printf(app->content, app->layout.content.height - 1, 2,
@@ -5286,10 +6638,9 @@ static void app_shell_render_body_trends(TrainlogAppContext *app)
                 (DASHBOARD_MONTH_COUNT - 1U));
             y = normalized_graph_row(percent, minimum, maximum, top, height);
             if (previous_x >= 0 && previous_month + 1L == (long)month)
-                app_shell_surface_segment(app->content, previous_x, previous_y,
-                    x, y, (uint32_t)(unsigned char)GLOBAL_BODY_SYMBOLS[metric]);
-            else trainlog_surface_draw(app->content, y, x,
-                (uint32_t)(unsigned char)GLOBAL_BODY_SYMBOLS[metric]);
+                app_shell_draw_chart_segment(app->content, previous_x, previous_y,
+                    x, y);
+            trainlog_surface_draw(app->content, y, x, GLOBAL_BODY_SYMBOLS[metric]);
             previous_x = x; previous_y = y; previous_month = (long)month;
         }
     }
@@ -5501,18 +6852,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
         trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
             TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
     } else if (route == TRAINLOG_ROUTE_STATS) {
-        static const char *const rows[] = {"Par exercice", "Mensurations", "Capacités / MAX"};
-        size_t index;
-        for (index = 0U; index < 3U; ++index) {
-            trainlog_surface_set_role(app->content,
-                app->content_selected == index ? TRAINLOG_COLOR_ACCENT : TRAINLOG_COLOR_DEFAULT,
-                TRAINLOG_RGB_BASE,
-                app->content_selected == index ? TRAINLOG_TEXT_BOLD : TRAINLOG_TEXT_NORMAL);
-            trainlog_surface_printf(app->content, 4 + (int)index * 2, 2,
-                "%s %s", app->content_selected == index ? "▶ [SÉLECTION]" : "  ", rows[index]);
-        }
-        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
-            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        app_shell_render_dashboard(app);
     } else if (route == TRAINLOG_ROUTE_SESSION_DETAIL) {
         int row = 3;
         if (app->session_detail_error) trainlog_surface_printf(app->content, row, 2,
@@ -5690,7 +7030,9 @@ static void app_shell_render_content(TrainlogAppContext *app)
         const TrainlogExercisePerformancePoint *latest = NULL;
         const TrainlogExercisePerformancePoint *best = NULL;
         TrainlogLoadMode mode = TRAINLOG_LOAD_NONE;
+        TrainlogResolvedEquipment equipment;
         size_t index;
+        size_t context_points = 0U;
         int row = 4;
         char latest_text[128];
         char best_text[128];
@@ -5705,12 +7047,31 @@ static void app_shell_render_content(TrainlogAppContext *app)
             for (index = 0U; latest != NULL && index < app->performance_count; ++index)
                 if (app->performance_points[index].has_performance != 0 &&
                     app->performance_points[index].load_mode == mode &&
+                    strcmp(app->performance_points[index].equipment_id,
+                        latest->equipment_id) == 0 &&
                     exercise_point_better(&app->performance_points[index], best))
                     best = &app->performance_points[index];
             exercise_format_performance(latest, latest_text, sizeof(latest_text));
             exercise_format_performance(best, best_text, sizeof(best_text));
-            trainlog_surface_printf(app->content, row++, 2, "%s",
+            trainlog_surface_printf(app->content, row++, 2, "Performance — %s",
                 app->exercise_detail.name);
+            if (latest != NULL) {
+                const char *equipment_label = "sans équipement";
+                if (latest->equipment_id[0] != '\0' &&
+                    trainlog_database_resolve_equipment(app->database,
+                        latest->equipment_id, &equipment) == TRAINLOG_STATUS_OK)
+                    equipment_label = equipment.display_name;
+                for (index = 0U; index < app->performance_count; ++index)
+                    if (app->performance_points[index].has_performance != 0 &&
+                        app->performance_points[index].load_mode == mode &&
+                        strcmp(app->performance_points[index].equipment_id,
+                            latest->equipment_id) == 0)
+                        ++context_points;
+                trainlog_surface_printf(app->content, row++, 2,
+                    "Contexte : %s · %s · %zu point%s",
+                    exercise_load_mode_label(mode), equipment_label, context_points,
+                    context_points == 1U ? "" : "s");
+            }
             trainlog_surface_printf(app->content, row++, 2, "Séances enregistrées : %zu",
                 app->performance_count);
             trainlog_surface_printf(app->content, row++, 2, "Dernier meilleur set : %s",
@@ -5720,20 +7081,26 @@ static void app_shell_render_content(TrainlogAppContext *app)
             if (latest != NULL) {
                 int graph_top = row + 1;
                 int graph_height = app_shell_graph_height(app, graph_top);
-                app_shell_draw_performance_graph(app, mode,
+                app_shell_draw_performance_graph(app, latest, mode,
                     app->exercise_detail.tracking_mode, graph_top,
                     graph_height, false);
                 if (graph_height >= 3) row = graph_top + graph_height + 2;
                 else row += 2;
             } else row += 2;
+            if (row < app->layout.content.height)
+                trainlog_surface_printf(app->content, row++, 2,
+                    "Points réels du contexte :");
             for (index = app->content_scroll; index < app->performance_count &&
                  row < app->layout.content.height; ++index) {
                 char date[11]; char summary[128];
+                if (app->performance_points[index].has_performance == 0 ||
+                    app->performance_points[index].load_mode != mode || latest == NULL ||
+                    strcmp(app->performance_points[index].equipment_id,
+                        latest->equipment_id) != 0) continue;
                 exercise_short_date(app->performance_points[index].started_at, date);
                 exercise_format_performance(&app->performance_points[index], summary,
                     sizeof(summary));
-                trainlog_surface_printf(app->content, row++, 2, "%s  %-13s  %s", date,
-                    exercise_load_mode_label(app->performance_points[index].load_mode), summary);
+                trainlog_surface_printf(app->content, row++, 2, "%s  %s", date, summary);
             }
         }
     } else if (route == TRAINLOG_ROUTE_EXERCISE_MAX) {
@@ -5776,11 +7143,14 @@ static void app_shell_render_content(TrainlogAppContext *app)
             {
                 int graph_top = row + 1;
                 int graph_height = app_shell_graph_height(app, graph_top);
-                app_shell_draw_performance_graph(app, summary->current.load_mode,
+                app_shell_draw_performance_graph(app, &summary->current,
+                    summary->current.load_mode,
                     app->exercise_detail.tracking_mode, graph_top,
                     graph_height, true);
             }
         }
+    } else if (route == TRAINLOG_ROUTE_BODY) {
+        app_shell_render_body_profile(app);
     } else if (route == TRAINLOG_ROUTE_BODY_DETAIL) {
         app_shell_render_body_detail(app);
     } else if (route == TRAINLOG_ROUTE_BODY_METRIC) {
@@ -6134,9 +7504,12 @@ static void app_shell_open_route(TrainlogAppContext *app, TrainlogAppRoute route
     } else if (route == TRAINLOG_ROUTE_SESSION_GENERATOR && session->generated_preview &&
                session->phase != TRAINLOG_SESSION_GENERATOR_WARNING)
         session->phase = TRAINLOG_SESSION_GENERATOR_PREVIEW;
-    if (route == TRAINLOG_ROUTE_BODY_METRIC)
+    if (route == TRAINLOG_ROUTE_STATS)
+        app_shell_load_dashboard(app);
+    else if (route == TRAINLOG_ROUTE_BODY_METRIC)
         app_shell_load_body_metric(app);
-    else if (route == TRAINLOG_ROUTE_BODY_TRENDS ||
+    else if (route == TRAINLOG_ROUTE_BODY ||
+             route == TRAINLOG_ROUTE_BODY_TRENDS ||
              route == TRAINLOG_ROUTE_BODY_GLOBAL)
         app_shell_load_body_global(app);
     else if (route == TRAINLOG_ROUTE_BODY_ANALYTICS)
@@ -6151,6 +7524,8 @@ static void app_shell_open_route(TrainlogAppContext *app, TrainlogAppRoute route
         app->search = app->saved_searches[route];
         app_shell_refresh_list(app);
     }
+    if (route == TRAINLOG_ROUTE_BODY)
+        app_shell_select_available_body_metric(app);
 }
 
 static bool app_shell_back(TrainlogAppContext *app)
@@ -6166,6 +7541,12 @@ static bool app_shell_back(TrainlogAppContext *app)
         app->list = app->saved_lists[app->navigation.current.route];
         app->search = app->saved_searches[app->navigation.current.route];
         app_shell_refresh_list(app);
+    }
+    if (app->navigation.current.route == TRAINLOG_ROUTE_STATS)
+        app_shell_load_dashboard(app);
+    else if (app->navigation.current.route == TRAINLOG_ROUTE_BODY) {
+        app_shell_load_body_global(app);
+        app_shell_select_available_body_metric(app);
     }
     return true;
 }
@@ -6214,8 +7595,9 @@ static void app_shell_primary(TrainlogAppContext *app)
         app_shell_open_route(app, targets[app->content_selected % 3U]);
     } else if (route == TRAINLOG_ROUTE_STATS) {
         static const TrainlogAppRoute targets[] = {TRAINLOG_ROUTE_STATS_EXERCISE,
-            TRAINLOG_ROUTE_BODY, TRAINLOG_ROUTE_MAX};
-        app_shell_open_route(app, targets[app->content_selected % 3U]);
+            TRAINLOG_ROUTE_BODY, TRAINLOG_ROUTE_SESSIONS_COMPLETED,
+            TRAINLOG_ROUTE_EXERCISES};
+        app_shell_open_route(app, targets[app->content_selected % 4U]);
     } else if (route == TRAINLOG_ROUTE_SESSION_MANUAL ||
                route == TRAINLOG_ROUTE_SESSION_CURRENT ||
                route == TRAINLOG_ROUTE_SESSION_GENERATOR) {
@@ -7385,6 +8767,18 @@ static void app_shell_dispatch(TrainlogAppContext *app, int key)
         app->focus = TRAINLOG_FOCUS_SEARCH;
         return;
     }
+    if (app->navigation.current.route == TRAINLOG_ROUTE_STATS &&
+        key >= '1' && key <= '5') {
+        static const TrainlogStatisticsPeriod periods[] = {
+            TRAINLOG_STATS_7_DAYS, TRAINLOG_STATS_30_DAYS,
+            TRAINLOG_STATS_90_DAYS, TRAINLOG_STATS_YEAR, TRAINLOG_STATS_ALL
+        };
+        /* Compact keyboard contract: changing period reloads only the
+         * controller-owned read snapshot; rendering remains SQL-free. */
+        app->dashboard.period = periods[(size_t)(key - '1')];
+        app_shell_load_dashboard(app);
+        return;
+    }
     if (app_shell_dispatch_exercise_controller(app, key)) return;
     if (app_shell_dispatch_equipment_controller(app, key)) return;
     if (app_shell_dispatch_body_controller(app, key)) return;
@@ -7394,7 +8788,7 @@ static void app_shell_dispatch(TrainlogAppContext *app, int key)
     if ((app->navigation.current.route == TRAINLOG_ROUTE_SESSIONS ||
          app->navigation.current.route == TRAINLOG_ROUTE_STATS) &&
         (key == TRAINLOG_KEY_UP || key == TRAINLOG_KEY_DOWN)) {
-        size_t count = 3U;
+        size_t count = app->navigation.current.route == TRAINLOG_ROUTE_STATS ? 4U : 3U;
         if (key == TRAINLOG_KEY_UP && app->content_selected > 0U) --app->content_selected;
         if (key == TRAINLOG_KEY_DOWN && app->content_selected + 1U < count) ++app->content_selected;
         return;
@@ -7459,6 +8853,12 @@ static void app_shell_dispatch(TrainlogAppContext *app, int key)
         }
         if (key == 'o' || key == 'O') {
             app_shell_open_route(app, TRAINLOG_ROUTE_BODY_GLOBAL); return;
+        }
+        if (key == TRAINLOG_KEY_LEFT) {
+            app_shell_move_available_body_metric(app, -1); return;
+        }
+        if (key == TRAINLOG_KEY_RIGHT) {
+            app_shell_move_available_body_metric(app, 1); return;
         }
     }
     if (app->navigation.current.route == TRAINLOG_ROUTE_BODY_DETAIL) {

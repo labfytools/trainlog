@@ -4,6 +4,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,21 @@
 #include <sqlite3.h>
 
 #include "trainlog/database.h"
+
+/* ABI CONTRACT: these offsets and total size are the published LP64 layout;
+ * performance read-model fixes must use existing fields or private storage. */
+_Static_assert(offsetof(TrainlogExercisePerformancePoint, actual_set_count) == 184U,
+    "performance point ABI: actual_set_count");
+_Static_assert(offsetof(TrainlogExercisePerformancePoint, has_performance) == 192U,
+    "performance point ABI: has_performance");
+_Static_assert(offsetof(TrainlogExercisePerformancePoint, has_explicit_max) == 196U,
+    "performance point ABI: has_explicit_max");
+_Static_assert(offsetof(TrainlogExercisePerformancePoint, weight_kg) == 208U,
+    "performance point ABI: weight_kg");
+_Static_assert(offsetof(TrainlogExercisePerformancePoint, equipment_id) == 216U,
+    "performance point ABI: equipment_id");
+_Static_assert(sizeof(TrainlogExercisePerformancePoint) == 352U,
+    "performance point ABI: size");
 
 #define CHECK(condition)                                                     \
     do {                                                                     \
@@ -207,10 +223,61 @@ static bool test_v8_migration_refuses_to_guess_multiple_attempts(void)
     return true;
 }
 
+static bool test_public_performance_retains_session_representative_contract(void)
+{
+    char path[] = "/tmp/trainlog-performance-max-XXXXXX";
+    int fd = mkstemp(path);
+    sqlite3 *raw = NULL;
+    TrainlogDatabase *database = NULL;
+    TrainlogSessionExerciseInput entry;
+    TrainlogSessionInput session;
+    TrainlogExercisePerformancePoint points[2];
+    size_t count = 0U;
+
+    CHECK(fd >= 0 && close(fd) == 0);
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(add_exercise(database, "ex_mixed_fact", "Mixed Fact"));
+    max_input(&entry, "sxe_mixed_fact", "ex_mixed_fact", 100.0);
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
+        "se_mixed_fact");
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s",
+        "2031-02-04T08:15:00+01:00");
+    session.session_type = TRAINLOG_SESSION_MAX_TEST;
+    session.exercises = &entry;
+    session.exercise_count = 1U;
+    CHECK(trainlog_database_insert_session(database, &session) ==
+        TRAINLOG_STATUS_OK);
+    trainlog_database_close(database);
+
+    /* The writer deliberately rejects mixed input. This controlled persisted
+     * fixture proves the read model independently preserves both compatible
+     * facts if an imported/historical occurrence owns them. */
+    CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw,
+        "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) "
+        "SELECT id,0,5,80.0 FROM session_exercises WHERE entry_id='sxe_mixed_fact';",
+        NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_close(raw) == SQLITE_OK);
+
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_list_exercise_performance(database, "ex_mixed_fact",
+        points, 2U, &count) == TRAINLOG_STATUS_OK);
+    /* PUBLIC CONTRACT: mixed persisted facts still produce one session point;
+     * STATS preserves both through its private fact projection. */
+    CHECK(count == 1U);
+    CHECK(points[0].actual_set_count == 0U);
+    CHECK(points[0].has_explicit_max != 0 && points[0].weight_kg == 100.0);
+    trainlog_database_close(database);
+    CHECK(unlink(path) == 0);
+    return true;
+}
+
 int main(void)
 {
     if (!test_explicit_max_round_trip_and_identity() ||
-        !test_v8_migration_refuses_to_guess_multiple_attempts()) {
+        !test_v8_migration_refuses_to_guess_multiple_attempts() ||
+        !test_public_performance_retains_session_representative_contract()) {
         return 1;
     }
     (void)printf("max results: PASS\n");

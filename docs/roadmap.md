@@ -445,5 +445,25 @@ cool-down, transition/setup time, and explicit candidate-scarcity handling.
 
 ## STATS_V1
 
-Prepared only: see `reviews/stats_v1_design.md`. Implementation remains a
-future derived-query tranche with no new summary schema in this checkpoint.
+Implemented as a derived-query tranche with no summary schema: the Android
+landing dashboard provides 7/30/90-day, year and all-history filters;
+the performance landing graph counts weekly improvements from every performed
+set under strict canonical exercise/nonempty resolved external-equipment/
+performed-dose comparison, with explicit MAX classified separately. Only a
+strictly later canonical instant can improve; equal-instant IDs order display
+only. Raw values remain drill-down data and are never globally aggregated
+as kilograms. Body charts show only actually recorded measures; weekly frequency
+uses MAX as a marker on the once-counted session. The Notcurses
+landing route gives the same visual dashboard hierarchy and routes to the
+existing detailed persisted views. Its controller-owned snapshot is loaded
+outside rendering; wide terminals show performance, body and frequency regions
+while 80x24 and 72x20 retain all three factual summaries. The selected-period
+summary reports sessions, performed sets, distinct actual exercises and explicit
+MAX records; body selects the latest actually observed metric, and weekly frequency counts each stable session
+ID exactly once when it owns at least one persisted performed set, continuous
+activity, or explicit MAX result. Planned targets and empty occurrences do not
+count; `ended_at` is presentation/lifecycle metadata, not the history gate.
+Exact parsed instants govern boundaries and ordering. Assistance, missing values
+and incomparable equipment contexts are never coerced into progress values.
+Malformed legacy timestamps are skipped by the projection with a visible warning
+while valid statistics remain available.

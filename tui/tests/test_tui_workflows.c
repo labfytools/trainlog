@@ -22,6 +22,30 @@ struct TrainlogTerminal {
     bool coordinate_overflow;
     bool text_overflow;
     size_t surface_draw_count;
+    size_t dashboard_dot_count;
+    size_t dashboard_block_count;
+    int maximum_draw_row;
+    int maximum_draw_column;
+    int stats_progression_row;
+    int stats_progression_column;
+    int stats_measurements_row;
+    int stats_measurements_column;
+    int stats_frequency_row;
+    int stats_frequency_column;
+    int stats_frequency_bottom_row;
+    int stats_distribution_row;
+    struct {
+        int row;
+        int column;
+        char text[32];
+    } printed[256];
+    size_t printed_count;
+    struct {
+        int row;
+        int column;
+        uint32_t codepoint;
+    } drawn[512];
+    size_t drawn_count;
 };
 
 struct TrainlogPanel { int unused; };
@@ -30,6 +54,48 @@ struct TrainlogSurface { TrainlogTerminal *terminal; };
 #define CHECK(condition) do { if (!(condition)) {                           \
     (void)fprintf(stderr, "CHECK failed at %s:%d: %s\n",                  \
         __FILE__, __LINE__, #condition); return false; } } while (0)
+
+static size_t text_occurrences(const char *text, const char *needle)
+{
+    size_t count = 0U;
+    size_t length = strlen(needle);
+    const char *cursor = text;
+    if (length == 0U) return 0U;
+    while ((cursor = strstr(cursor, needle)) != NULL) {
+        ++count;
+        cursor += length;
+    }
+    return count;
+}
+
+static int rendered_text_column(const TrainlogTerminal *terminal, const char *text)
+{
+    size_t index;
+    for (index = 0U; index < terminal->printed_count; ++index)
+        if (strcmp(terminal->printed[index].text, text) == 0)
+            return terminal->printed[index].column;
+    return -1;
+}
+
+static int rendered_draw_column(const TrainlogTerminal *terminal, uint32_t codepoint,
+                                size_t occurrence)
+{
+    size_t index;
+    for (index = 0U; index < terminal->drawn_count; ++index)
+        if (terminal->drawn[index].codepoint == codepoint && occurrence-- == 0U)
+            return terminal->drawn[index].column;
+    return -1;
+}
+
+static bool rendered_has_draw_column(const TrainlogTerminal *terminal,
+                                     uint32_t codepoint, int column)
+{
+    size_t index;
+    for (index = 0U; index < terminal->drawn_count; ++index)
+        if (terminal->drawn[index].codepoint == codepoint &&
+            terminal->drawn[index].column == column) return true;
+    return false;
+}
 
 TrainlogTerminal *trainlog_terminal_create(void) { return NULL; }
 void trainlog_terminal_destroy(TrainlogTerminal *terminal) { (void)terminal; }
@@ -133,20 +199,69 @@ void trainlog_surface_printf(TrainlogSurface *surface, int row, int column,
     if (surface == NULL || surface->terminal == NULL) return;
     va_start(arguments, format);
     if (surface->terminal->output_used < sizeof(surface->terminal->output)) {
+        char *start = surface->terminal->output + surface->terminal->output_used;
         int written = vsnprintf(surface->terminal->output + surface->terminal->output_used,
             sizeof(surface->terminal->output) - surface->terminal->output_used,
             format, arguments);
+        if (strstr(start, "Progression globale") != NULL) {
+            surface->terminal->stats_progression_row = row;
+            surface->terminal->stats_progression_column = column;
+        }
+        if (strstr(start, "Mensurations") != NULL) {
+            surface->terminal->stats_measurements_row = row;
+            surface->terminal->stats_measurements_column = column;
+        }
+        if (strstr(start, "Fréquence") != NULL) {
+            surface->terminal->stats_frequency_row = row;
+            surface->terminal->stats_frequency_column = column;
+        }
+        if (strstr(start, "Répartition du catalogue") != NULL)
+            surface->terminal->stats_distribution_row = row;
+        if ((strncmp(start, "J−", strlen("J−")) == 0 ||
+             strncmp(start, "P−", strlen("P−")) == 0 ||
+             strncmp(start, "M−", strlen("M−")) == 0 ||
+             strcmp(start, "actuel") == 0) &&
+            row > surface->terminal->stats_frequency_bottom_row)
+            surface->terminal->stats_frequency_bottom_row = row;
         if (written > 0 && (size_t)written < sizeof(surface->terminal->output) -
-            surface->terminal->output_used) surface->terminal->output_used += (size_t)written;
+            surface->terminal->output_used) {
+            size_t copy = (size_t)written < sizeof(surface->terminal->printed[0].text) - 1U
+                ? (size_t)written : sizeof(surface->terminal->printed[0].text) - 1U;
+            if (surface->terminal->printed_count <
+                sizeof(surface->terminal->printed) / sizeof(surface->terminal->printed[0])) {
+                size_t slot = surface->terminal->printed_count++;
+                surface->terminal->printed[slot].row = row;
+                surface->terminal->printed[slot].column = column;
+                (void)memcpy(surface->terminal->printed[slot].text, start, copy);
+                surface->terminal->printed[slot].text[copy] = '\0';
+            }
+            surface->terminal->output_used += (size_t)written;
+        }
     }
     va_end(arguments); (void)row; (void)column;
 }
 void trainlog_surface_draw(TrainlogSurface *surface, int row, int column,
     uint32_t codepoint)
 {
-    if (surface != NULL && surface->terminal != NULL)
+    if (surface != NULL && surface->terminal != NULL) {
+        if (surface->terminal->drawn_count <
+            sizeof(surface->terminal->drawn) / sizeof(surface->terminal->drawn[0])) {
+            size_t slot = surface->terminal->drawn_count++;
+            surface->terminal->drawn[slot].row = row;
+            surface->terminal->drawn[slot].column = column;
+            surface->terminal->drawn[slot].codepoint = codepoint;
+        }
         ++surface->terminal->surface_draw_count;
-    (void)row; (void)column; (void)codepoint;
+        if (codepoint == 0x00b7U) ++surface->terminal->dashboard_dot_count;
+        if (codepoint == 0x2588U) ++surface->terminal->dashboard_block_count;
+        if (row > surface->terminal->maximum_draw_row)
+            surface->terminal->maximum_draw_row = row;
+        if (column > surface->terminal->maximum_draw_column)
+            surface->terminal->maximum_draw_column = column;
+        if (row < 0 || row >= surface->terminal->rows || column < 0 ||
+            column >= surface->terminal->columns)
+            surface->terminal->coordinate_overflow = true;
+    }
 }
 void trainlog_surface_move_top(TrainlogSurface *surface) { (void)surface; }
 
@@ -1040,6 +1155,646 @@ static bool test_body_graphs_draw_inside_minimum_content_surface(void)
     return true;
 }
 
+static bool dashboard_insert_completed_set_dose(TrainlogDatabase *database,
+    const char *session_id, const char *started_at, const char *ended_at,
+    TrainlogLoadMode load_mode, const char *equipment_id, double weight, int dose)
+{
+    TrainlogSetInput set = {dose, 0, true, weight};
+    TrainlogSessionExerciseInput occurrence;
+    TrainlogSessionInput session;
+    (void)memset(&occurrence, 0, sizeof(occurrence));
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(occurrence.exercise_id, sizeof(occurrence.exercise_id), "%s",
+        "ex_33333333-3333-4333-8333-333333333333");
+    (void)snprintf(occurrence.equipment_id, sizeof(occurrence.equipment_id), "%s",
+        equipment_id);
+    occurrence.recording_mode = TRAINLOG_RECORDING_SETS;
+    occurrence.load_mode = load_mode;
+    occurrence.rest_seconds = 60;
+    occurrence.target_sets = 2;
+    occurrence.target_reps = 10;
+    occurrence.target_has_weight = true;
+    occurrence.target_weight_kg = 999.0;
+    occurrence.sets = &set;
+    occurrence.set_count = 1U;
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s", session_id);
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s", started_at);
+    (void)snprintf(session.ended_at, sizeof(session.ended_at), "%s", ended_at);
+    session.session_type = TRAINLOG_SESSION_TRAINING;
+    session.exercises = &occurrence;
+    session.exercise_count = 1U;
+    return trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK;
+}
+
+static bool dashboard_insert_completed_set(TrainlogDatabase *database,
+    const char *session_id, const char *started_at, const char *ended_at,
+    TrainlogLoadMode load_mode, const char *equipment_id, double weight)
+{
+    return dashboard_insert_completed_set_dose(database, session_id, started_at,
+        ended_at, load_mode, equipment_id, weight, 8);
+}
+
+static bool dashboard_insert_explicit_max_at(TrainlogDatabase *database,
+    const char *session_id, const char *started_at, const char *entry_id,
+    double weight)
+{
+    TrainlogSessionExerciseInput occurrence;
+    TrainlogSessionInput session;
+    (void)memset(&occurrence, 0, sizeof(occurrence));
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(occurrence.exercise_id, sizeof(occurrence.exercise_id), "%s",
+        "ex_33333333-3333-4333-8333-333333333333");
+    (void)snprintf(occurrence.equipment_id, sizeof(occurrence.equipment_id), "%s",
+        "leg_press");
+    (void)snprintf(occurrence.entry_id, sizeof(occurrence.entry_id), "%s", entry_id);
+    occurrence.recording_mode = TRAINLOG_RECORDING_SETS;
+    occurrence.load_mode = TRAINLOG_LOAD_NONE;
+    occurrence.has_max_weight = true;
+    occurrence.max_weight_kg = weight;
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s", session_id);
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s", started_at);
+    session.session_type = TRAINLOG_SESSION_MAX_TEST;
+    session.exercises = &occurrence;
+    session.exercise_count = 1U;
+    return trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK;
+}
+
+static bool dashboard_insert_explicit_max(TrainlogDatabase *database)
+{
+    return dashboard_insert_explicit_max_at(database,
+        "se_55555555-5555-4555-8555-555555555555", "2026-09-11T11:00:00Z",
+        "sxe_55555555-5555-4555-8555-555555555555", 120.0);
+}
+
+static bool dashboard_insert_continuous_actual(TrainlogDatabase *database)
+{
+    TrainlogSessionExerciseInput occurrence;
+    TrainlogSessionInput session;
+    (void)memset(&occurrence, 0, sizeof(occurrence));
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(occurrence.exercise_id, sizeof(occurrence.exercise_id), "%s",
+        "ex_77777777-7777-4777-8777-777777777777");
+    occurrence.recording_mode = TRAINLOG_RECORDING_CONTINUOUS;
+    occurrence.continuous_duration_seconds = 1800;
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
+        "se_77777777-7777-4777-8777-777777777777");
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s",
+        "2026-09-08T08:00:00Z");
+    session.session_type = TRAINLOG_SESSION_TRAINING;
+    session.exercises = &occurrence;
+    session.exercise_count = 1U;
+    return trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK;
+}
+
+static bool dashboard_insert_plan_only(TrainlogDatabase *database)
+{
+    TrainlogSessionExerciseInput occurrence;
+    TrainlogSessionInput session;
+    (void)memset(&occurrence, 0, sizeof(occurrence));
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(occurrence.exercise_id, sizeof(occurrence.exercise_id), "%s",
+        "ex_33333333-3333-4333-8333-333333333333");
+    (void)snprintf(occurrence.equipment_id, sizeof(occurrence.equipment_id), "%s",
+        "leg_press");
+    occurrence.recording_mode = TRAINLOG_RECORDING_SETS;
+    occurrence.load_mode = TRAINLOG_LOAD_EXTERNAL;
+    occurrence.target_sets = 3;
+    occurrence.target_reps = 10;
+    occurrence.target_has_weight = true;
+    occurrence.target_weight_kg = 999.0;
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s",
+        "se_88888888-8888-4888-8888-888888888888");
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s",
+        "2026-09-07T08:00:00Z");
+    session.session_type = TRAINLOG_SESSION_TRAINING;
+    session.exercises = &occurrence;
+    session.exercise_count = 1U;
+    return trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK;
+}
+
+static void dashboard_prepare_render(TrainlogAppContext *app,
+    TrainlogTerminal *terminal, TrainlogSurface *surface, int columns, int rows,
+    int content_width, int content_height)
+{
+    (void)memset(terminal, 0, sizeof(*terminal));
+    surface->terminal = terminal;
+    app->terminal = terminal;
+    app->content = surface;
+    terminal->columns = columns;
+    terminal->rows = rows;
+    app->layout.columns = columns;
+    app->layout.rows = rows;
+    app->layout.content.width = content_width;
+    app->layout.content.height = content_height;
+}
+
+static bool dashboard_utc_timestamp_at(time_t value, char output[TRAINLOG_TIMESTAMP_MAX + 1U])
+{
+    struct tm utc;
+    return gmtime_r(&value, &utc) != NULL && strftime(output,
+        TRAINLOG_TIMESTAMP_MAX + 1U, "%Y-%m-%dT%H:%M:%SZ", &utc) > 0U;
+}
+
+static bool test_stats_dashboard_sparse_series_names_frequency_and_footer(void)
+{
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    size_t index;
+    (void)memset(&app, 0, sizeof(app));
+    app.dashboard.has_body = true;
+    app.dashboard.body_metric = 0U;
+    app.dashboard.body_count = 1U;
+    app.dashboard.body[0].value = 83.70;
+    app.dashboard.completed_session_count = 4U;
+    app.dashboard.performed_set_count = 9U;
+    app.dashboard.distinct_exercise_count = 3U;
+    app.dashboard.explicit_max_count = 1U;
+    dashboard_prepare_period_buckets(&app.dashboard, 1000, 971);
+    app.dashboard.weeks[5].sessions = 4U;
+    app.dashboard.weeks[5].maxima = 1U;
+    app.dashboard.weeks[5].working_improvements = 2U;
+    app.dashboard.weeks[5].max_improvements = 1U;
+
+    /* CONTRACT: the selector changes the shared projection used by progress
+     * and frequency; it is not a label over an invariant six-week chart. */
+    {
+        static const TrainlogStatisticsPeriod periods[] = {
+            TRAINLOG_STATS_7_DAYS, TRAINLOG_STATS_30_DAYS,
+            TRAINLOG_STATS_90_DAYS, TRAINLOG_STATS_YEAR, TRAINLOG_STATS_ALL
+        };
+        static const size_t counts[] = {7U, 6U, 6U, 12U, 12U};
+        static const int64_t spans[] = {1, 5, 15, 31, 84};
+        size_t period_index;
+        for (period_index = 0U; period_index < 5U; ++period_index) {
+            app.dashboard.period = periods[period_index];
+            dashboard_prepare_period_buckets(&app.dashboard, 1000, 0);
+            CHECK(app.dashboard.week_count == counts[period_index]);
+            CHECK(app.dashboard.weeks[0].span_days == spans[period_index]);
+            CHECK(strcmp(app.dashboard.weeks[
+                app.dashboard.week_count - 1U].label, "actuel") == 0);
+        }
+        app.dashboard.period = TRAINLOG_STATS_30_DAYS;
+        dashboard_prepare_period_buckets(&app.dashboard, 1000, 971);
+        app.dashboard.weeks[5].sessions = 4U;
+        app.dashboard.weeks[5].maxima = 1U;
+        app.dashboard.weeks[5].working_improvements = 2U;
+        app.dashboard.weeks[5].max_improvements = 1U;
+    }
+
+    /* A lone measurement is text-only; event blocks are factual period-bucket
+     * counts and the accessible totals expose their meaning. */
+    dashboard_prepare_render(&app, &terminal, &surface, 120, 35, 96, 29);
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "Période  7j  [30j]  90j  1an  Tout") != NULL);
+    CHECK(strstr(terminal.output, "1:7j") == NULL);
+    CHECK(strstr(terminal.output,
+        "Séances 4   Séries 9   Exercices pratiqués 3   MAX 1") != NULL);
+    CHECK(terminal.stats_distribution_row > terminal.stats_frequency_bottom_row);
+    CHECK(strstr(terminal.output, "travail 2 · MAX 1") != NULL);
+    CHECK(strstr(terminal.output, "83,70 kg · 1 relevé") != NULL);
+    CHECK(terminal.dashboard_block_count > 0U);
+
+    /* Frequency geometry has one shared x coordinate per period bucket.
+     * The end buckets also prove a wide chart uses its useful span. */
+    (void)memset(&app.dashboard.weeks, 0, sizeof(app.dashboard.weeks));
+    dashboard_prepare_period_buckets(&app.dashboard, 1000, 971);
+    for (index = 0U; index < 6U; ++index) {
+        app.dashboard.weeks[index].sessions = 11U + index;
+        app.dashboard.weeks[index].maxima = 1U;
+    }
+    dashboard_prepare_render(&app, &terminal, &surface, 120, 35, 96, 29);
+    app_shell_dashboard_frequency_chart(&app, &app.dashboard, 11, 4, 88, 7);
+    for (index = 0U; index < 6U; ++index) {
+        char count[8];
+        const char *label = app.dashboard.weeks[index].label;
+        int label_column;
+        int x;
+        (void)snprintf(count, sizeof(count), "%zu", 11U + index);
+        label_column = rendered_text_column(&terminal, label);
+        x = label_column + (index + 1U == 6U ? 3 : 1);
+        CHECK(rendered_text_column(&terminal, count) == x);
+        CHECK(rendered_draw_column(&terminal, 0x25c6U, index) == x);
+        CHECK(rendered_has_draw_column(&terminal, 0x2588U, x));
+    }
+    CHECK(rendered_text_column(&terminal, "actuel") -
+        rendered_text_column(&terminal, "P−5") >= 75);
+
+    /* One actual measurement is a value, not a fabricated line. */
+    (void)memset(&terminal, 0, sizeof(terminal));
+    surface.terminal = &terminal;
+    app_shell_dashboard_sparkline(&app, &app.dashboard.body[0].value, 1U,
+        4, 4, 24, 2);
+    CHECK(terminal.surface_draw_count == 0U);
+
+    app.dashboard.body[1] = app.dashboard.body[0];
+    app.dashboard.body[1].value = 82.90;
+    app.dashboard.body_count = 2U;
+    {
+        static const int columns[] = {100, 80, 72};
+        static const int rows[] = {30, 24, 20};
+        static const int widths[] = {76, 80, 72};
+        static const int heights[] = {24, 20, 16};
+        size_t geometry;
+        for (geometry = 0U; geometry < 3U; ++geometry) {
+            dashboard_prepare_render(&app, &terminal, &surface,
+                columns[geometry], rows[geometry], widths[geometry],
+                heights[geometry]);
+            app_shell_render_dashboard(&app);
+            CHECK(strstr(terminal.output, "Progression globale") != NULL);
+            CHECK(strstr(terminal.output, "Mensurations") != NULL);
+            CHECK(strstr(terminal.output, "Fréquence") != NULL);
+            CHECK(strchr(terminal.output, '#') == NULL);
+            CHECK(strchr(terminal.output, '*') == NULL);
+            CHECK(terminal.dashboard_block_count > 0U);
+            CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+            CHECK(terminal.maximum_draw_row < heights[geometry]);
+            CHECK(terminal.stats_distribution_row >
+                terminal.stats_frequency_bottom_row);
+            if (columns[geometry] >= 100) {
+                CHECK(terminal.stats_progression_row ==
+                    terminal.stats_measurements_row);
+                CHECK(terminal.stats_measurements_column >
+                    terminal.stats_progression_column);
+                CHECK(terminal.stats_frequency_row >
+                    terminal.stats_progression_row);
+            } else {
+                CHECK(terminal.stats_progression_column ==
+                    terminal.stats_measurements_column);
+                CHECK(terminal.stats_measurements_row >
+                    terminal.stats_progression_row);
+            }
+        }
+    }
+
+    /* No classified performance events still occupies the selected-period
+     * timeline, with dots and an explicit explanation. */
+    (void)memset(&app.dashboard.weeks, 0, sizeof(app.dashboard.weeks));
+    dashboard_prepare_period_buckets(&app.dashboard, 1000, 971);
+    app.dashboard.body_count = 1U;
+    dashboard_prepare_render(&app, &terminal, &surface, 72, 20, 72, 16);
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "données insuffisantes") != NULL);
+    CHECK(terminal.dashboard_dot_count >= 6U);
+    CHECK(terminal.dashboard_block_count == 0U);
+    CHECK(!terminal.coordinate_overflow && terminal.maximum_draw_row < 16);
+
+    /* A non-zero frequency bucket alone must produce a bar, independently of
+     * performance and measurement marks. */
+    app.dashboard.weeks[5].sessions = 3U;
+    app.dashboard.weeks[5].maxima = 1U;
+    dashboard_prepare_render(&app, &terminal, &surface, 72, 20, 72, 16);
+    app_shell_dashboard_frequency_chart(&app, &app.dashboard, 3, 4, 64, 3);
+    CHECK(terminal.dashboard_block_count > 0U);
+    CHECK(terminal.maximum_draw_row < 16);
+
+    CHECK(strcmp(trainlog_exercise_name_catalog_lookup(
+        "ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef"),
+        "Adduction de hanche assise") == 0);
+
+    (void)memset(&app, 0, sizeof(app));
+    trainlog_navigation_init(&app.navigation);
+    app.navigation.current.route = TRAINLOG_ROUTE_STATS;
+    app_shell_actions(&app);
+    CHECK(trainlog_actions_find_key(&app.actions, TRAINLOG_KEY_F7) != NULL);
+    dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 80, 20);
+    app.footer = &surface;
+    app_shell_render_footer(&app);
+    CHECK(text_occurrences(terminal.output, "F6 Navigation") == 1U);
+    CHECK(text_occurrences(terminal.output, "F7 Actions") == 1U);
+    return true;
+}
+
+static bool test_stats_dashboard_uses_real_exact_time_snapshots_responsively(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    TrainlogBodyObservationInput body;
+    size_t sessions = 0U;
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_33333333-3333-4333-8333-333333333333", "Presse test",
+        "presse test", TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_77777777-7777-4777-8777-777777777777", "Marche test",
+        "marche test", TRAINLOG_TRACKING_DURATION, TRAINLOG_RECORDING_CONTINUOUS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    /* Raw text says 23:00 is later, but +15:00 makes it the older instant. */
+    CHECK(dashboard_insert_completed_set(database,
+        "se_11111111-1111-4111-8111-111111111111",
+        "2026-09-10T23:00:00+15:00", "2026-09-10T23:30:00+15:00",
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 10.0));
+    CHECK(dashboard_insert_completed_set(database,
+        "se_22222222-2222-4222-8222-222222222222",
+        "2026-09-10t09:00:00z", "2026-09-10t09:30:00z",
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 20.0));
+    CHECK(dashboard_insert_completed_set(database,
+        "se_44444444-4444-4444-8444-444444444444",
+        "2026-09-11T10:00:00+00:00", "2026-09-11T10:30:00+00:00",
+        TRAINLOG_LOAD_ASSISTANCE, "assisted_dip_chin_machine", 5.0));
+    /* A: ended_at is lifecycle metadata, not the gate for actual history. */
+    CHECK(dashboard_insert_completed_set(database,
+        "se_66666666-6666-4666-8666-666666666666",
+        "2026-09-09T10:00:00Z", "", TRAINLOG_LOAD_EXTERNAL,
+        "leg_press", 30.0));
+    /* B: the explicit MAX helper also persists ended_at NULL. */
+    CHECK(dashboard_insert_explicit_max(database));
+    /* C is actual continuous history; D has only targets and must disappear. */
+    CHECK(dashboard_insert_continuous_actual(database));
+    CHECK(dashboard_insert_plan_only(database));
+    (void)memset(&body, 0, sizeof(body));
+    (void)snprintf(body.observation_id, sizeof(body.observation_id), "%s",
+        "bo_11111111-1111-4111-8111-111111111111");
+    (void)snprintf(body.observed_at, sizeof(body.observed_at), "%s",
+        "2026-09-10T23:00:00+15:00");
+    body.has_body_weight = true;
+    body.body_weight_kg = 80.0;
+    CHECK(trainlog_database_insert_body_observation(database, &body) ==
+        TRAINLOG_STATUS_OK);
+    (void)memset(&body, 0, sizeof(body));
+    (void)snprintf(body.observation_id, sizeof(body.observation_id), "%s",
+        "bo_33333333-3333-4333-8333-333333333333");
+    (void)snprintf(body.observed_at, sizeof(body.observed_at), "%s",
+        "2026-09-11T12:00:00Z");
+    body.has_waist = true;
+    body.waist_cm = 85.0;
+    CHECK(trainlog_database_insert_body_observation(database, &body) ==
+        TRAINLOG_STATUS_OK);
+    (void)memset(&body, 0, sizeof(body));
+    (void)snprintf(body.observation_id, sizeof(body.observation_id), "%s",
+        "bo_22222222-2222-4222-8222-222222222222");
+    (void)snprintf(body.observed_at, sizeof(body.observed_at), "%s",
+        "2026-09-10t09:00:00z");
+    body.has_body_weight = true;
+    body.body_weight_kg = 81.0;
+    CHECK(trainlog_database_insert_body_observation(database, &body) ==
+        TRAINLOG_STATUS_OK);
+
+    (void)memset(&app, 0, sizeof(app));
+    app.database = database;
+    app_shell_load_dashboard(&app);
+    CHECK(!app.dashboard.error);
+    CHECK(app.dashboard.has_performance && app.dashboard.performance_count == 3U);
+    CHECK(app.dashboard.performance[2].weight_kg == 20.0);
+    CHECK(app.dashboard.has_explicit_max && app.dashboard.max_weight_kg == 120.0);
+    CHECK(app.dashboard.has_body && app.dashboard.body_count == 1U);
+    CHECK(app.dashboard.body_metric == 4U && app.dashboard.body[0].value == 85.0);
+    for (size_t index = 0U; index < app.dashboard.week_count; ++index)
+        sessions += app.dashboard.weeks[index].sessions;
+    CHECK(sessions == 6U);
+    CHECK(app.dashboard.completed_session_count == 6U);
+    CHECK(app.dashboard.performed_set_count == 4U);
+    CHECK(app.dashboard.distinct_exercise_count == 2U);
+    CHECK(app.dashboard.explicit_max_count == 1U);
+
+    (void)memset(&terminal, 0, sizeof(terminal));
+    surface.terminal = &terminal;
+    app.terminal = &terminal;
+    app.content = &surface;
+    terminal.columns = 120;
+    terminal.rows = 35;
+    app.layout.columns = 120;
+    app.layout.content.width = 90;
+    app.layout.content.height = 29;
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "Séances 6") != NULL);
+    CHECK(strstr(terminal.output, "Mensurations") != NULL);
+    CHECK(strstr(terminal.output, "Fréquence") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+
+    (void)memset(&terminal, 0, sizeof(terminal));
+    surface.terminal = &terminal;
+    terminal.columns = 100;
+    terminal.rows = 30;
+    app.layout.columns = 100;
+    app.layout.content.width = 76;
+    app.layout.content.height = 24;
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "Progression globale") != NULL);
+    CHECK(strstr(terminal.output, "Mensurations") != NULL);
+    CHECK(strstr(terminal.output, "Fréquence") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+
+    (void)memset(&terminal, 0, sizeof(terminal));
+    surface.terminal = &terminal;
+    terminal.columns = 80;
+    terminal.rows = 24;
+    app.layout.columns = 80;
+    app.layout.content.width = 80;
+    app.layout.content.height = 20;
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "Progression") != NULL);
+    CHECK(strstr(terminal.output, "Mensurations") != NULL);
+    CHECK(strstr(terminal.output, "Fréquence") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+
+    (void)memset(&terminal, 0, sizeof(terminal));
+    surface.terminal = &terminal;
+    terminal.columns = 72;
+    terminal.rows = 20;
+    app.layout.columns = 72;
+    app.layout.content.width = 72;
+    app.layout.content.height = 16;
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "Progression") != NULL);
+    CHECK(strstr(terminal.output, "Mensurations") != NULL);
+    CHECK(strstr(terminal.output, "Fréquence") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+    trainlog_navigation_init(&app.navigation);
+    app.navigation.current.route = TRAINLOG_ROUTE_STATS;
+    app.layout.usable = true;
+    app.focus = TRAINLOG_FOCUS_CONTENT;
+    app_shell_dispatch(&app, '1');
+    CHECK(app.dashboard.period == TRAINLOG_STATS_7_DAYS);
+    app.content_selected = 2U;
+    app_shell_primary(&app);
+    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_SESSIONS_COMPLETED);
+    trainlog_database_close(database);
+    return true;
+}
+
+static bool test_stats_dashboard_uses_represented_local_weeks(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogAppContext app;
+    TrainlogTimestampKey march;
+    TrainlogTimestampKey february;
+    CHECK(trainlog_timestamp_parse("2026-03-01T00:30:00+02:00", 25U, &march));
+    CHECK(trainlog_timestamp_parse("2026-02-28T22:30:00Z", 20U, &february));
+    CHECK(trainlog_timestamp_compare(&march, &february) == 0);
+    CHECK(march.local_day == february.local_day + 1);
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_33333333-3333-4333-8333-333333333333", "Presse test",
+        "presse test", TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    CHECK(dashboard_insert_completed_set(database,
+        "se_70000000-0000-4000-8000-000000000001",
+        "2025-12-29T00:30:00+02:00", "2025-12-29T01:00:00+02:00",
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 10.0));
+    CHECK(dashboard_insert_completed_set(database,
+        "se_70000000-0000-4000-8000-000000000002",
+        "2025-12-28T22:30:00Z", "2025-12-28T23:00:00Z",
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 20.0));
+    CHECK(dashboard_insert_completed_set(database,
+        "se_70000000-0000-4000-8000-000000000003",
+        "2026-01-01T00:30:00+14:00", "2026-01-01T01:00:00+14:00",
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 30.0));
+    CHECK(dashboard_insert_completed_set(database,
+        "se_70000000-0000-4000-8000-000000000004",
+        "2026-01-04T23:30:00-02:00", "2026-01-04T23:45:00-02:00",
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 40.0));
+
+    (void)memset(&app, 0, sizeof(app));
+    app.database = database;
+    app.dashboard.period = TRAINLOG_STATS_ALL;
+    app_shell_load_dashboard(&app);
+    CHECK(!app.dashboard.error);
+    CHECK(app.dashboard.week_count >= 1U &&
+        app.dashboard.week_count <= DASHBOARD_BUCKET_COUNT);
+    /* Tout projects the complete represented history instead of silently
+     * retaining the former six-week viewport. */
+    {
+        size_t projected = 0U;
+        for (size_t index = 0U; index < app.dashboard.week_count; ++index)
+            projected += app.dashboard.weeks[index].sessions;
+        CHECK(projected == 4U);
+    }
+    CHECK(app.dashboard.completed_session_count == 4U);
+    trainlog_database_close(database);
+    return true;
+}
+
+static bool test_stats_dashboard_current_week_remains_zero_after_past_activity(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    char started_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    char ended_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    time_t now = time(NULL);
+
+    CHECK(now != (time_t)-1);
+    CHECK(dashboard_utc_timestamp_at(now - 8 * 24 * 60 * 60, started_at));
+    CHECK(dashboard_utc_timestamp_at(now - 8 * 24 * 60 * 60 + 3600, ended_at));
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_33333333-3333-4333-8333-333333333333", "Presse test",
+        "presse test", TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    CHECK(dashboard_insert_completed_set(database,
+        "se_70000000-0000-4000-8000-000000000005", started_at, ended_at,
+        TRAINLOG_LOAD_EXTERNAL, "leg_press", 20.0));
+    (void)memset(&app, 0, sizeof(app));
+    app.database = database;
+    app.dashboard.period = TRAINLOG_STATS_ALL;
+    app_shell_load_dashboard(&app);
+    CHECK(!app.dashboard.error);
+    CHECK(app.dashboard.week_count >= 1U &&
+        app.dashboard.week_count <= DASHBOARD_BUCKET_COUNT);
+    CHECK(app.dashboard.weeks[app.dashboard.week_count - 1U].sessions == 0U);
+    dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 80, 20);
+    app_shell_dashboard_frequency_chart(&app, &app.dashboard, 3, 4, 64, 3);
+    CHECK(terminal.dashboard_block_count > 0U);
+    CHECK(strstr(terminal.output, "actuel 0 séances") != NULL);
+    CHECK(strstr(terminal.output, "P−") != NULL);
+    CHECK(strstr(terminal.output, "actuel") != NULL);
+    trainlog_database_close(database);
+    return true;
+}
+
+static bool test_stats_dashboard_exact_dose_strict_later_and_invalid_rows(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    size_t working = 0U;
+    size_t maxima = 0U;
+    size_t index;
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_33333333-3333-4333-8333-333333333333", "Presse parité",
+        "presse parite", TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    CHECK(dashboard_insert_completed_set_dose(database,
+        "se_90000000-0000-4000-8000-000000000001", "2026-09-08T08:00:00Z",
+        "", TRAINLOG_LOAD_EXTERNAL, "leg_press", 100.0, 5));
+    CHECK(sqlite3_exec(database->connection,
+        "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) "
+        "SELECT id,1,10,80.0 FROM session_exercises WHERE "
+        "session_row_id=(SELECT id FROM sessions WHERE "
+        "session_id='se_90000000-0000-4000-8000-000000000001');",
+        NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(dashboard_insert_completed_set_dose(database,
+        "se_90000000-0000-4000-8000-000000000002", "2026-09-09T08:00:00Z",
+        "", TRAINLOG_LOAD_EXTERNAL, "leg_press", 90.0, 10));
+    CHECK(dashboard_insert_completed_set_dose(database,
+        "se_90000000-0000-4000-8000-000000000003", "2026-09-10T08:00:00Z",
+        "", TRAINLOG_LOAD_EXTERNAL, "leg_press", 50.0, 12));
+    CHECK(dashboard_insert_completed_set_dose(database,
+        "se_90000000-0000-4000-8000-000000000004",
+        "2026-09-10T09:00:00+01:00", "", TRAINLOG_LOAD_EXTERNAL,
+        "leg_press", 60.0, 12));
+    CHECK(dashboard_insert_explicit_max_at(database,
+        "se_90000000-0000-4000-8000-000000000005", "2026-09-10T10:00:00Z",
+        "sxe_90000000-0000-4000-8000-000000000005", 100.0));
+    CHECK(dashboard_insert_explicit_max_at(database,
+        "se_90000000-0000-4000-8000-000000000006",
+        "2026-09-10T11:00:00+01:00",
+        "sxe_90000000-0000-4000-8000-000000000006", 110.0));
+    /* INVARIANT: one occurrence may own independent work and MAX facts. */
+    CHECK(sqlite3_exec(database->connection,
+        "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) "
+        "SELECT id,0,15,70.0 FROM session_exercises WHERE "
+        "entry_id='sxe_90000000-0000-4000-8000-000000000005';",
+        NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(dashboard_insert_completed_set_dose(database,
+        "se_90000000-0000-4000-8000-000000000007", "2026-09-11T08:00:00Z",
+        "", TRAINLOG_LOAD_EXTERNAL, "leg_press", 999.0, 10));
+    CHECK(sqlite3_exec(database->connection,
+        "UPDATE sessions SET started_at='legacy-invalid' WHERE "
+        "session_id='se_90000000-0000-4000-8000-000000000007';",
+        NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(dashboard_insert_completed_set_dose(database,
+        "se_90000000-0000-4000-8000-000000000008", "2026-09-11T09:00:00Z",
+        "", TRAINLOG_LOAD_EXTERNAL, "leg_press", 1.0, 20));
+    CHECK(sqlite3_exec(database->connection,
+        "UPDATE performed_sets SET weight_kg=NULL WHERE session_exercise_row_id="
+        "(SELECT se.id FROM session_exercises se JOIN sessions s ON "
+        "s.id=se.session_row_id WHERE "
+        "s.session_id='se_90000000-0000-4000-8000-000000000008');",
+        NULL, NULL, NULL) == SQLITE_OK);
+
+    (void)memset(&app, 0, sizeof(app));
+    app.database = database;
+    app.dashboard.period = TRAINLOG_STATS_ALL;
+    app_shell_load_dashboard(&app);
+    CHECK(!app.dashboard.error && app.dashboard.invalid_data);
+    CHECK(app.dashboard.completed_session_count == 7U);
+    CHECK(app.dashboard.performed_set_count == 7U);
+    CHECK(app.dashboard.explicit_max_count == 2U);
+    CHECK(app.dashboard.distinct_exercise_count == 1U);
+    for (index = 0U; index < app.dashboard.week_count; ++index) {
+        working += app.dashboard.weeks[index].working_improvements;
+        maxima += app.dashboard.weeks[index].max_improvements;
+    }
+    CHECK(working == 1U && maxima == 0U);
+    dashboard_prepare_render(&app, &terminal, &surface, 100, 30, 76, 24);
+    app_shell_render_dashboard(&app);
+    CHECK(strstr(terminal.output, "Données historiques invalides ignorées.") != NULL);
+    CHECK(strstr(terminal.output, "Progression globale") != NULL);
+    CHECK(strstr(terminal.output, "Mensurations") != NULL);
+    CHECK(strstr(terminal.output, "Fréquence") != NULL);
+    trainlog_database_close(database);
+    return true;
+}
+
 static bool test_exercise_merge_action_search_confirm_selects_target(void)
 {
     TrainlogDatabase *database = NULL;
@@ -1101,6 +1856,351 @@ static bool test_exercise_merge_action_search_confirm_selects_target(void)
     return true;
 }
 
+static bool test_stats_detail_charts_and_global_zone_projection(void)
+{
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    TrainlogBodyMetricPoint body[2];
+    TrainlogDatabase *database = NULL;
+    size_t index;
+    bool chest = false;
+    bool back = false;
+    bool unclassified = false;
+    const char *const chest_zone[] = {NULL};
+    const char *const back_zone[] = {NULL};
+    (void)memset(&app, 0, sizeof(app));
+    dashboard_prepare_render(&app, &terminal, &surface, 72, 20, 72, 16);
+
+    /* The sparse-state contract is deliberately exercised through the exact
+     * detail painters: empty and singleton series have prose only, while two
+     * real observations acquire Unicode points/segments rather than ASCII. */
+    app_shell_draw_performance_graph(&app, NULL, TRAINLOG_LOAD_EXTERNAL,
+        TRAINLOG_TRACKING_REPS, 5, 4, false);
+    CHECK(strstr(terminal.output, "Aucun point exploitable") != NULL);
+    CHECK(terminal.surface_draw_count == 0U);
+    (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
+    app.performance_count = 1U;
+    app.performance_points[0].has_performance = 1;
+    app.performance_points[0].load_mode = TRAINLOG_LOAD_EXTERNAL;
+    app.performance_points[0].weight_kg = 40.0;
+    app.performance_points[0].metric_value = 8;
+    (void)snprintf(app.performance_points[0].started_at,
+        sizeof(app.performance_points[0].started_at), "%s", "2026-09-01T08:00:00Z");
+    app_shell_draw_performance_graph(&app, NULL, TRAINLOG_LOAD_EXTERNAL,
+        TRAINLOG_TRACKING_REPS, 5, 4, false);
+    CHECK(strstr(terminal.output, "1 point") != NULL);
+    CHECK(strstr(terminal.output, "tendance indisponible") != NULL);
+    CHECK(terminal.surface_draw_count == 0U);
+    app.performance_count = 2U;
+    app.performance_points[1] = app.performance_points[0];
+    app.performance_points[1].weight_kg = 45.0;
+    (void)snprintf(app.performance_points[1].started_at,
+        sizeof(app.performance_points[1].started_at), "%s", "2026-09-02T08:00:00Z");
+    (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
+    app_shell_draw_performance_graph(&app, NULL, TRAINLOG_LOAD_EXTERNAL,
+        TRAINLOG_TRACKING_REPS, 5, 4, false);
+    CHECK(rendered_draw_column(&terminal, 0x25cfU, 0U) >= 0);
+    for (index = 0U; index < terminal.drawn_count; ++index)
+        CHECK(terminal.drawn[index].codepoint != (uint32_t)'*' &&
+            terminal.drawn[index].codepoint != (uint32_t)'.' &&
+            terminal.drawn[index].codepoint != (uint32_t)'O');
+
+    (void)memset(body, 0, sizeof(body));
+    (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
+    app_shell_draw_body_points(&app, body, 0U, 5, 4, "kg");
+    CHECK(strstr(terminal.output, "Aucune donnée") != NULL);
+    body[0].value = 80.0;
+    (void)snprintf(body[0].observed_at, sizeof(body[0].observed_at), "%s",
+        "2026-09-01T08:00:00Z");
+    (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
+    app_shell_draw_body_points(&app, body, 1U, 5, 4, "kg");
+    CHECK(strstr(terminal.output, "1 relevé") != NULL);
+    CHECK(terminal.surface_draw_count == 0U);
+    body[1] = body[0]; body[1].value = 79.0;
+    (void)snprintf(body[1].observed_at, sizeof(body[1].observed_at), "%s",
+        "2026-09-02T08:00:00Z");
+    (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
+    app_shell_draw_body_points(&app, body, 2U, 5, 4, "kg");
+    CHECK(rendered_draw_column(&terminal, 0x25cfU, 0U) >= 0);
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database,
+        "ex_10000000-0000-4000-8000-000000000001", "Source", "source",
+        TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database,
+        "ex_10000000-0000-4000-8000-000000000002", "Canonique", "canonique",
+        TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database,
+        "ex_10000000-0000-4000-8000-000000000003", "Dos test", "dos test",
+        TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database,
+        "ex_10000000-0000-4000-8000-000000000004", "Sans zone", "sans zone",
+        TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_replace_exercise_body_zones(database,
+        "ex_10000000-0000-4000-8000-000000000001", "chest", chest_zone, 0U) ==
+        TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_replace_exercise_body_zones(database,
+        "ex_10000000-0000-4000-8000-000000000002", "chest", chest_zone, 0U) ==
+        TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_replace_exercise_body_zones(database,
+        "ex_10000000-0000-4000-8000-000000000003", "back", back_zone, 0U) ==
+        TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_merge_exercises(database,
+        "ex_10000000-0000-4000-8000-000000000001",
+        "ex_10000000-0000-4000-8000-000000000002") == TRAINLOG_STATUS_OK);
+    (void)memset(&app, 0, sizeof(app)); app.database = database;
+    app.dashboard.period = TRAINLOG_STATS_ALL;
+    app_shell_load_dashboard(&app);
+    CHECK(!app.dashboard.error && app.dashboard.zone_count == 3U);
+    for (index = 0U; index < app.dashboard.zone_count; ++index) {
+        chest = chest || (strcmp(app.dashboard.zones[index].label, "Pectoraux") == 0 &&
+            app.dashboard.zones[index].count == 1U);
+        back = back || (strcmp(app.dashboard.zones[index].label, "Dos") == 0 &&
+            app.dashboard.zones[index].count == 1U);
+        unclassified = unclassified ||
+            (strcmp(app.dashboard.zones[index].label, "Non classés") == 0 &&
+             app.dashboard.zones[index].count == 1U);
+    }
+    CHECK(chest && back && unclassified);
+
+    /* Regression: uneven adjacent bars used to appear as one solid staircase.
+     * Exercise the real dashboard allocation with the reported distribution,
+     * and inspect cells rather than accepting matching label text. */
+    {
+        static const size_t counts[] = {8U, 6U, 5U, 2U, 2U, 2U, 1U, 1U};
+        static const int columns[] = {120, 100, 80, 72};
+        static const int rows[] = {35, 30, 24, 20};
+        static const int widths[] = {96, 76, 80, 72};
+        static const int heights[] = {29, 24, 20, 16};
+        static const int chart_tops[] = {19, 17, 15, 15};
+        static const int chart_rows[] = {8, 5, 5, 1};
+        static const size_t visible[] = {8U, 4U, 4U, 1U};
+        size_t geometry;
+        app.dashboard.zone_count = sizeof(counts) / sizeof(counts[0]);
+        for (index = 0U; index < app.dashboard.zone_count; ++index) {
+            (void)snprintf(app.dashboard.zones[index].label,
+                sizeof(app.dashboard.zones[index].label), "Zone %zu", index + 1U);
+            app.dashboard.zones[index].count = counts[index];
+        }
+        for (geometry = 0U; geometry < 4U; ++geometry) {
+            int chart_width = widths[geometry] - 8;
+            int label_width = chart_width >= 64 ? 20 :
+                chart_width >= 48 ? 16 : 12;
+            int bar_width = chart_width - label_width - 6;
+            int bar_left = 4 + label_width + 1;
+            int count_column = 4 + label_width + 2 + bar_width;
+            int stride = columns[geometry] >= 100 &&
+                sizeof(counts) / sizeof(counts[0]) <=
+                    (size_t)((chart_rows[geometry] + 1) / 2) ? 2 : 1;
+            size_t bucket;
+            dashboard_prepare_render(&app, &terminal, &surface,
+                columns[geometry], rows[geometry], widths[geometry],
+                heights[geometry]);
+            app_shell_render_dashboard(&app);
+            CHECK(strstr(terminal.output, "Répartition du catalogue") != NULL);
+            CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+            CHECK(terminal.stats_distribution_row >
+                terminal.stats_frequency_bottom_row);
+            for (bucket = 0U; bucket < visible[geometry]; ++bucket) {
+                int expected_row = chart_tops[geometry] + (int)bucket * stride;
+                int expected_blocks = (int)((counts[bucket] *
+                    (size_t)bar_width + counts[0] - 1U) / counts[0]);
+                size_t drawn;
+                size_t printed;
+                size_t blocks = 0U;
+                bool found_count = false;
+                char count_text[8];
+                (void)snprintf(count_text, sizeof(count_text), "%zu", counts[bucket]);
+                for (printed = 0U; printed < terminal.printed_count; ++printed)
+                    if (terminal.printed[printed].row == expected_row &&
+                        terminal.printed[printed].column == count_column &&
+                        strcmp(terminal.printed[printed].text, count_text) == 0)
+                        found_count = true;
+                for (drawn = 0U; drawn < terminal.drawn_count; ++drawn) {
+                    const int drawn_row = terminal.drawn[drawn].row;
+                    const int drawn_column = terminal.drawn[drawn].column;
+                    const uint32_t glyph = terminal.drawn[drawn].codepoint;
+                    if (drawn_row < chart_tops[geometry] ||
+                        drawn_row >= chart_tops[geometry] + chart_rows[geometry])
+                        continue;
+                    CHECK(glyph != (uint32_t)'#' && glyph != (uint32_t)'*' &&
+                        glyph != (uint32_t)'+' && glyph != 0x2588U);
+                    if (drawn_row == expected_row && glyph == 0x2586U) {
+                        CHECK(drawn_column >= bar_left &&
+                            drawn_column < bar_left + expected_blocks);
+                        ++blocks;
+                    }
+                }
+                CHECK(found_count && blocks == (size_t)expected_blocks);
+            }
+            {
+                size_t drawn;
+                for (drawn = 0U; drawn < terminal.drawn_count; ++drawn) {
+                    int relative_row = terminal.drawn[drawn].row -
+                        chart_tops[geometry];
+                    if (relative_row < 0 || relative_row >= chart_rows[geometry] ||
+                        terminal.drawn[drawn].codepoint != 0x2586U) continue;
+                    CHECK(relative_row % stride == 0);
+                    CHECK((size_t)(relative_row / stride) < visible[geometry]);
+                }
+            }
+            if (stride == 2) {
+                size_t gap;
+                for (gap = 0U; gap + 1U < visible[geometry]; ++gap) {
+                    size_t drawn;
+                    int gap_row = chart_tops[geometry] + (int)gap * 2 + 1;
+                    for (drawn = 0U; drawn < terminal.drawn_count; ++drawn)
+                        CHECK(terminal.drawn[drawn].row != gap_row ||
+                            terminal.drawn[drawn].codepoint != 0x2586U);
+                }
+            }
+        }
+        /* A tall wide chart has room for all eight categories plus seven
+         * gaps. Verify that the enhancement really leaves those gap cells
+         * empty instead of reconnecting the old staircase. */
+        dashboard_prepare_render(&app, &terminal, &surface, 120, 35, 96, 29);
+        app_shell_dashboard_zone_chart(&app, &app.dashboard, 0, 4, 88, 15);
+        for (index = 0U; index < 8U; ++index) {
+            size_t drawn;
+            for (drawn = 0U; drawn < terminal.drawn_count; ++drawn)
+                if (terminal.drawn[drawn].row == (int)index * 2)
+                    CHECK(terminal.drawn[drawn].codepoint == 0x2586U);
+            if (index + 1U < 8U)
+                for (drawn = 0U; drawn < terminal.drawn_count; ++drawn)
+                    CHECK(terminal.drawn[drawn].row != (int)index * 2 + 1 ||
+                        terminal.drawn[drawn].codepoint != 0x2586U);
+        }
+    }
+    for (index = 0U; index < 4U; ++index) {
+        static const int columns[] = {120, 100, 80, 72};
+        static const int rows[] = {35, 30, 24, 20};
+        static const int widths[] = {96, 76, 80, 72};
+        static const int heights[] = {29, 24, 20, 16};
+        dashboard_prepare_render(&app, &terminal, &surface, columns[index], rows[index],
+            widths[index], heights[index]);
+        app_shell_render_dashboard(&app);
+        CHECK(strstr(terminal.output, "Répartition du catalogue") != NULL);
+        CHECK(rendered_draw_column(&terminal, 0x2586U, 0U) >= 0);
+        CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+        CHECK(terminal.stats_distribution_row >
+            terminal.stats_frequency_bottom_row);
+    }
+    trainlog_navigation_init(&app.navigation);
+    app.navigation.current.route = TRAINLOG_ROUTE_STATS;
+    app.content_selected = 3U;
+    app_shell_primary(&app);
+    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_EXERCISES);
+    trainlog_database_close(database);
+    return true;
+}
+
+static bool test_body_profile_snapshot_and_evolution_are_separate(void)
+{
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    const char *ids[2];
+    size_t geometry;
+    size_t drawn;
+    static const int columns[] = {120, 100, 80, 72};
+    static const int rows[] = {35, 30, 24, 20};
+    static const int widths[] = {96, 76, 80, 72};
+    static const int heights[] = {29, 24, 20, 16};
+    (void)memset(&app, 0, sizeof(app));
+    app.navigation.current.route = TRAINLOG_ROUTE_BODY;
+    app.focus = TRAINLOG_FOCUS_CONTENT;
+    app.layout.usable = true;
+    app.loaded_count = 2U;
+    (void)snprintf(app.body_records[0].observation_id,
+        sizeof(app.body_records[0].observation_id), "%s", "bo_latest");
+    (void)snprintf(app.body_records[0].observed_at,
+        sizeof(app.body_records[0].observed_at), "%s", "2026-09-10T08:00:00Z");
+    app.body_records[0].has_body_weight = true;
+    app.body_records[0].body_weight_kg = 80.0;
+    app.body_records[0].has_chest = true;
+    app.body_records[0].chest_cm = 100.0;
+    app.body_records[0].has_waist = true;
+    app.body_records[0].waist_cm = 85.0;
+    app.body_records[1] = app.body_records[0];
+    (void)snprintf(app.body_records[1].observation_id,
+        sizeof(app.body_records[1].observation_id), "%s", "bo_older");
+    (void)snprintf(app.body_records[1].observed_at,
+        sizeof(app.body_records[1].observed_at), "%s", "2026-08-10T08:00:00Z");
+    app.body_records[1].body_weight_kg = 78.0;
+    app.body_records[1].chest_cm = 90.0;
+    app.body_records[1].waist_cm = 75.0;
+    ids[0] = app.body_records[0].observation_id;
+    ids[1] = app.body_records[1].observation_id;
+    trainlog_list_init(&app.list);
+    trainlog_list_set_items(&app.list, ids, 2U, 8U, true, false);
+
+    app.body_metric_selected = 0U;
+    app.body_global_series[0].count = 1U;
+    app.body_global_series[0].points[0].value = 80.0;
+    (void)snprintf(app.body_global_series[0].points[0].observed_at,
+        sizeof(app.body_global_series[0].points[0].observed_at), "%s",
+        "2026-09-10T08:00:00Z");
+    app.body_global_series[4].count = 1U;
+    app.body_global_series[4].points[0].value = 85.0;
+    (void)snprintf(app.body_global_series[4].points[0].observed_at,
+        sizeof(app.body_global_series[4].points[0].observed_at), "%s",
+        "2026-09-10T08:00:00Z");
+
+    dashboard_prepare_render(&app, &terminal, &surface, 72, 20, 72, 16);
+    app_shell_render_body_profile(&app);
+    CHECK(strstr(terminal.output, "Poids : 80.00 kg") != NULL);
+    CHECK(strstr(terminal.output, "Poitrine") != NULL);
+    CHECK(strstr(terminal.output, "100.0 cm") != NULL);
+    CHECK(strstr(terminal.output, "Tour de taille") != NULL);
+    CHECK(strstr(terminal.output, "85.0 cm") != NULL);
+    CHECK(strstr(terminal.output, "Épaules") == NULL);
+    CHECK(strstr(terminal.output, "1 relevé · tendance indisponible") != NULL);
+    CHECK(rendered_draw_column(&terminal, 0x2586U, 0U) >= 0);
+    for (drawn = 0U; drawn < terminal.drawn_count; ++drawn) {
+        CHECK(terminal.drawn[drawn].row != 4);
+        CHECK(terminal.drawn[drawn].codepoint != (uint32_t)'*' &&
+            terminal.drawn[drawn].codepoint != (uint32_t)'.' &&
+            terminal.drawn[drawn].codepoint != (uint32_t)'O');
+    }
+
+    app.body_global_series[0].count = 2U;
+    app.body_global_series[0].points[1].value = 80.0;
+    (void)snprintf(app.body_global_series[0].points[1].observed_at,
+        sizeof(app.body_global_series[0].points[1].observed_at), "%s",
+        "2026-09-10T08:00:00Z");
+    app.body_global_series[0].points[0].value = 78.0;
+    (void)snprintf(app.body_global_series[0].points[0].observed_at,
+        sizeof(app.body_global_series[0].points[0].observed_at), "%s",
+        "2026-08-10T08:00:00Z");
+    dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 80, 20);
+    app_shell_render_body_profile(&app);
+    CHECK(strstr(terminal.output, "2026-08-10") != NULL);
+    CHECK(strstr(terminal.output, "2026-09-10") != NULL);
+    CHECK(rendered_draw_column(&terminal, 0x25cfU, 0U) >= 0);
+
+    app_shell_dispatch(&app, TRAINLOG_KEY_DOWN);
+    CHECK(app.list.selected_index == 1U);
+    dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 80, 20);
+    app_shell_render_body_profile(&app);
+    CHECK(strstr(terminal.output, "Poids : 78.00 kg") != NULL);
+    CHECK(strstr(terminal.output, "90.0 cm") != NULL);
+    CHECK(strstr(terminal.output, "100.0 cm") == NULL);
+
+    app.body_metric_selected = 0U;
+    app_shell_move_available_body_metric(&app, 1);
+    CHECK(app.body_metric_selected == 4U);
+    for (geometry = 0U; geometry < 4U; ++geometry) {
+        dashboard_prepare_render(&app, &terminal, &surface, columns[geometry],
+            rows[geometry], widths[geometry], heights[geometry]);
+        app_shell_render_body_profile(&app);
+        CHECK(strstr(terminal.output, "PROFIL ACTUEL") != NULL);
+        CHECK(strstr(terminal.output, "ÉVOLUTION DANS LE TEMPS") != NULL);
+        CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+    }
+    return true;
+}
+
 int main(void)
 {
     if (!test_knowledge_scrolls_long_lists_at_minimum_terminal() ||
@@ -1121,7 +2221,14 @@ int main(void)
         !test_shell_sync_history_neutralizes_legacy_directions() ||
         !test_equipment_collector_finds_match_after_first_pages() ||
         !test_exercise_merge_action_search_confirm_selects_target() ||
-        !test_body_graphs_draw_inside_minimum_content_surface()) return 1;
+        !test_stats_dashboard_sparse_series_names_frequency_and_footer() ||
+        !test_stats_dashboard_uses_real_exact_time_snapshots_responsively() ||
+        !test_stats_dashboard_uses_represented_local_weeks() ||
+        !test_stats_dashboard_current_week_remains_zero_after_past_activity() ||
+        !test_stats_dashboard_exact_dose_strict_later_and_invalid_rows() ||
+        !test_body_graphs_draw_inside_minimum_content_surface() ||
+        !test_body_profile_snapshot_and_evolution_are_separate() ||
+        !test_stats_detail_charts_and_global_zone_projection()) return 1;
     (void)printf("PASS tui_workflows\n");
     return 0;
 }

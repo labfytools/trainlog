@@ -494,4 +494,19 @@ as if it were a real measurement.
 V2. Manual `%MAX` remains available. `exercise-names-v1.json` supplies
 movement-oriented canonical metadata for mapped stable IDs; stale peer labels
 cannot overwrite those names, while custom exercise naming remains editable.
-STATS_V1 is prepared only in `reviews/stats_v1_design.md`.
+`STATS_V1=IMPLEMENTED`: Android exposes a Material 3 Catppuccin Mocha/Lavender
+statistics landing dashboard with selected-period fact counts, weekly
+conservative working/MAX improvement-event counts, bounded measurements, weekly
+session frequency, and context-owned drill-down series. The Notcurses Statistics
+route loads a bounded, transactionally consistent controller snapshot outside
+rendering and presents the same global facts at wide and compact widths. Working
+events compare every set only within exact exercise, resolved external equipment
+and performed-dose context; equal canonical instants never create an event. A
+session contributes once when it owns a
+performed set, continuous activity, or explicit MAX; `ended_at` does not gate
+persisted history, and plans/empty occurrences contribute nothing. Exact parsed
+instants, rather than SQLite text ordering, choose and order points. Its >=100-column multi-region and 72x20
+compact layouts retain the same three detail actions.
+Malformed legacy timestamps are skipped before sorting with a nonfatal dashboard
+warning on both platforms.
+No statistics schema or exchange-format field was added.

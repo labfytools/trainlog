@@ -112,6 +112,19 @@ TrainlogStatus trainlog_measured_max_summarize(
         const TrainlogExercisePerformancePoint *point =
             &points[index];
 
+        /* INVARIANT: the database read model emits work immediately before
+         * the MAX fact when one occurrence owns both. Summarization consumes
+         * that ABI-safe pair as one test whose measured result is the MAX. */
+        if (point->has_explicit_max == 0 && index + 1U < count &&
+            points[index + 1U].has_explicit_max != 0 &&
+            strcmp(point->session_id, points[index + 1U].session_id) == 0 &&
+            strcmp(point->started_at, points[index + 1U].started_at) == 0 &&
+            strcmp(point->equipment_id, points[index + 1U].equipment_id) == 0 &&
+            point->tracking_mode == points[index + 1U].tracking_mode &&
+            point->load_mode == points[index + 1U].load_mode) {
+            continue;
+        }
+
         if (
             point->session_type !=
             TRAINLOG_SESSION_MAX_TEST
@@ -121,7 +134,7 @@ TrainlogStatus trainlog_measured_max_summarize(
 
         ++output->test_count;
 
-        if (point->has_performance == 0) {
+        if (point->has_performance == 0 && point->has_explicit_max == 0) {
             continue;
         }
 

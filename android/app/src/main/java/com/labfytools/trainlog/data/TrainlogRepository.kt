@@ -32,9 +32,27 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
 import java.io.StringReader
+import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.temporal.WeekFields
 import java.util.Locale
 import java.util.UUID
+
+/* WHY: ended_at is absent on valid imported/history rows and present lifecycle
+ * metadata cannot prove actual work. CONTRACT: observable history requires at
+ * least one occurrence-owned performed set, continuous activity, or explicit
+ * MAX. INVARIANT: plans and targets alone never satisfy this predicate. */
+private const val ACTUAL_SESSION_PREDICATE = """
+    EXISTS (SELECT 1 FROM session_exercises AS actual_se
+            JOIN performed_sets AS ps ON ps.session_exercise_row_id=actual_se.id
+            WHERE actual_se.session_row_id=s.id)
+    OR EXISTS (SELECT 1 FROM session_exercises AS actual_se
+               JOIN continuous_activity AS ca ON ca.session_exercise_row_id=actual_se.id
+               WHERE actual_se.session_row_id=s.id)
+    OR EXISTS (SELECT 1 FROM session_exercises AS actual_se
+               JOIN max_results AS mr ON mr.session_exercise_row_id=actual_se.id
+               WHERE actual_se.session_row_id=s.id)
+"""
 
 sealed interface CreateExerciseResult {
     data class Created(
@@ -289,6 +307,166 @@ class TrainlogRepository(
 
     fun close() {
         database.close()
+    }
+
+    /**
+     * WHY: dashboard comparisons must remain conservative. CONTRACT: rows are
+     * actual observable-history facts only; external working loads are grouped
+     * by canonical exercise and equipment, assistance is deliberately omitted
+     * from kg trends, and missing metrics create gaps rather than zeroes.
+     * Merges repoint occurrences transactionally, so the stored exercise row
+     * is already the canonical identity at this read boundary.
+     */
+    fun loadStatistics(period: StatisticsPeriod): StatisticsOverview =
+        loadStatistics(period, checkNotNull(TrainlogTimestamp.parse(OffsetDateTime.now().toString())))
+
+    /** Visible to repository tests so exact inclusive boundaries do not depend on wall time. */
+    internal fun loadStatistics(period: StatisticsPeriod, now: TrainlogTimestampKey): StatisticsOverview {
+        val db = database.readableDatabase
+        val cutoff = period.days?.let { TrainlogTimestampKey(now.utcSecond - it * 86400L, now.fraction) }
+        var hasInvalidData = false
+        fun timestamp(value: String): TrainlogTimestampKey? =
+            TrainlogTimestamp.parse(value).also { if (it == null) hasInvalidData = true }
+        fun included(key: TrainlogTimestampKey): Boolean = key <= now && (cutoff == null || key >= cutoff)
+        fun query(sql: String, block: (android.database.Cursor) -> Unit) =
+            db.rawQuery(sql, null).use { cursor -> while (cursor.moveToNext()) block(cursor) }
+        fun week(key: TrainlogTimestampKey): String {
+            val date = LocalDate.of(key.localYear, key.localMonth, key.localDay)
+            val fields = WeekFields.ISO
+            return "%04d-W%02d".format(
+                Locale.ROOT, date.get(fields.weekBasedYear()), date.get(fields.weekOfWeekBasedYear()),
+            )
+        }
+        data class PointRow(
+            val key: TrainlogTimestampKey,
+            val stableId: String,
+            val order: Int,
+            val point: StatisticsPoint,
+            val dose: String,
+        )
+        val performanceRows = linkedMapOf<String, MutableList<PointRow>>()
+        val names = linkedMapOf<String, String>()
+        query("""SELECT s.started_at,e.exercise_id,e.name,eq.equipment_id,eq.display_name,ps.weight_kg,se.entry_id,ps.position,ps.reps,ps.duration_seconds
+                 FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id JOIN exercises e ON e.id=se.exercise_row_id
+                 JOIN performed_sets ps ON ps.session_exercise_row_id=se.id JOIN equipment eq ON eq.id=se.equipment_row_id
+                 WHERE se.load_mode='external' AND eq.load_semantics='external' AND eq.equipment_id <> '' AND ps.weight_kg IS NOT NULL
+                   AND (ps.reps>0 OR ps.duration_seconds>0)""".trimIndent()) { c ->
+            val time = timestamp(c.getString(0)) ?: return@query
+            val value = c.getDouble(5)
+            if (value.isFinite() && value >= 0.0) {
+                val dose = if (!c.isNull(8)) "reps:${c.getInt(8)}" else "duration:${c.getInt(9)}"
+                val key = "work:${c.getString(1)}:${c.getString(3)}:$dose"
+                val exerciseName = canonicalExerciseNames[c.getString(1)] ?: c.getString(2)
+                names[key] = "$exerciseName · ${c.getString(4)} · ${dose.substringAfter(':')} ${dose.substringBefore(':')} — charges réalisées"
+                performanceRows.getOrPut(key) { mutableListOf() } +=
+                    PointRow(time, c.getString(6), c.getInt(7), StatisticsPoint(c.getString(0), value), dose)
+            }
+        }
+        query("""SELECT s.started_at,e.exercise_id,e.name,eq.equipment_id,eq.display_name,mr.max_weight_kg,se.entry_id
+                 FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id JOIN exercises e ON e.id=se.exercise_row_id
+                 JOIN max_results mr ON mr.session_exercise_row_id=se.id JOIN equipment eq ON eq.id=se.equipment_row_id
+                 WHERE se.load_mode!='assistance' AND eq.load_semantics='external' AND eq.equipment_id <> ''""".trimIndent()) { c ->
+            val time = timestamp(c.getString(0)) ?: return@query
+            val value = c.getDouble(5)
+            if (value.isFinite() && value > 0.0) {
+                val key = "max:${c.getString(1)}:${c.getString(3)}"
+                val exerciseName = canonicalExerciseNames[c.getString(1)] ?: c.getString(2)
+                names[key] = "$exerciseName · ${c.getString(4)} — MAX explicite"
+                performanceRows.getOrPut(key) { mutableListOf() } +=
+                    PointRow(time, c.getString(6), 0, StatisticsPoint(c.getString(0), value), "max")
+            }
+        }
+        val performance = mutableListOf<StatisticsSeries>()
+        data class EventCount(var working: Int = 0, var maxima: Int = 0)
+        val eventCounts = sortedMapOf<String, EventCount>()
+        performanceRows.forEach { (context, unsorted) ->
+            val rows = unsorted.sortedWith(
+                compareBy<PointRow> { it.key }.thenBy { it.stableId }.thenBy { it.order },
+            )
+            val visible = rows.filter { included(it.key) }
+            if (visible.isNotEmpty()) performance += StatisticsSeries(
+                context, names.getValue(context), "kg", visible.map { it.point },
+            )
+            /* CONTRACT: an improvement is a strictly later record above the
+             * prior best in one exact context. Stable IDs only order display;
+             * equal canonical instants never establish or create an event. */
+            rows.groupBy { it.dose }.values.forEach { comparable ->
+                comparable.forEachIndexed { index, row ->
+                    val priorBest = comparable.asSequence().take(index)
+                        .filter { it.key < row.key }.maxOfOrNull { it.point.value }
+                    if (priorBest != null && row.point.value > priorBest && included(row.key)) {
+                        eventCounts.getOrPut(week(row.key)) { EventCount() }.also {
+                            if (context.startsWith("max:")) it.maxima++ else it.working++
+                        }
+                    }
+                }
+            }
+        }
+        val body = mutableListOf<StatisticsSeries>()
+        val bodyMetrics = listOf("body_weight_kg" to "Poids" to "kg", "neck_cm" to "Cou" to "cm", "shoulders_cm" to "Épaules" to "cm", "chest_cm" to "Poitrine" to "cm", "waist_cm" to "Tour de taille" to "cm", "hips_cm" to "Hanches" to "cm", "left_arm_cm" to "Bras gauche" to "cm", "right_arm_cm" to "Bras droit" to "cm", "left_forearm_cm" to "Avant-bras gauche" to "cm", "right_forearm_cm" to "Avant-bras droit" to "cm", "left_thigh_cm" to "Cuisse gauche" to "cm", "right_thigh_cm" to "Cuisse droite" to "cm", "left_calf_cm" to "Mollet gauche" to "cm", "right_calf_cm" to "Mollet droit" to "cm")
+        bodyMetrics.forEach { triple ->
+            val column = triple.first.first; val label = triple.first.second; val unit = triple.second
+            val points = mutableListOf<Triple<TrainlogTimestampKey, String, StatisticsPoint>>()
+            db.rawQuery("SELECT observed_at,observation_id,$column FROM body_observations WHERE $column IS NOT NULL", null).use { c -> while (c.moveToNext()) {
+                val time = timestamp(c.getString(0)) ?: continue
+                if (included(time)) points += Triple(time, c.getString(1), StatisticsPoint(c.getString(0), c.getDouble(2)))
+            } }
+            points.sortWith(compareBy<Triple<TrainlogTimestampKey, String, StatisticsPoint>> { it.first }.thenBy { it.second })
+            if (points.isNotEmpty()) body += StatisticsSeries(
+                column, label, unit, points.takeLast(64).map { it.third },
+            )
+        }
+        data class FrequencyCount(var all: Int = 0, var maxima: Int = 0)
+        val frequency = sortedMapOf<String, FrequencyCount>()
+        val sessionTimes = mutableListOf<Pair<TrainlogTimestampKey, String>>()
+        query("SELECT started_at,session_type FROM sessions AS s WHERE $ACTUAL_SESSION_PREDICATE") { c ->
+            val time = timestamp(c.getString(0)) ?: return@query
+            sessionTimes += time to c.getString(1)
+            if (included(time)) {
+                /* Calendar grouping follows the timestamp's represented local
+                 * date. Rolling windows and ordering continue to use its exact
+                 * canonical instant key above. */
+                frequency.getOrPut(week(time)) { FrequencyCount() }.also { it.all++; if (c.getString(1) == "max_test") it.maxima++ }
+            }
+        }
+        val freq = frequency.map { StatisticsFrequency(it.key, it.value.all, it.value.maxima) }
+        fun count(days: Long): Int {
+            val boundary = TrainlogTimestampKey(now.utcSecond - days * 86400L, now.fraction)
+            return sessionTimes.count { it.first in boundary..now }
+        }
+        var performedSetCount = 0
+        var explicitMaxCount = 0
+        val actualExercises = mutableSetOf<String>()
+        query("""SELECT s.started_at,e.exercise_id,
+                        (SELECT COUNT(*) FROM performed_sets ps WHERE ps.session_exercise_row_id=se.id),
+                        (SELECT COUNT(*) FROM max_results mr WHERE mr.session_exercise_row_id=se.id),
+                        EXISTS(SELECT 1 FROM continuous_activity ca WHERE ca.session_exercise_row_id=se.id)
+                 FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id
+                 JOIN exercises e ON e.id=se.exercise_row_id
+                 WHERE EXISTS(SELECT 1 FROM performed_sets ps WHERE ps.session_exercise_row_id=se.id)
+                    OR EXISTS(SELECT 1 FROM max_results mr WHERE mr.session_exercise_row_id=se.id)
+                    OR EXISTS(SELECT 1 FROM continuous_activity ca WHERE ca.session_exercise_row_id=se.id)""".trimIndent()) { c ->
+            val time = timestamp(c.getString(0)) ?: return@query
+            if (included(time)) {
+                actualExercises += c.getString(1)
+                performedSetCount += c.getInt(2)
+                explicitMaxCount += c.getInt(3)
+            }
+        }
+        val selectedSessions = sessionTimes.count { included(it.first) }
+        return StatisticsOverview(
+            period = period,
+            hasInvalidData = hasInvalidData,
+            summary = StatisticsSummary(selectedSessions, performedSetCount, actualExercises.size, explicitMaxCount),
+            performanceEvents = eventCounts.map { StatisticsPerformanceWeek(it.key, it.value.working, it.value.maxima) },
+            performance = performance,
+            body = body.sortedWith(compareByDescending<StatisticsSeries> {
+                checkNotNull(TrainlogTimestamp.parse(it.points.last().timestamp))
+            }.thenBy { if (it.id == "body_weight_kg") 0 else 1 }.thenBy { it.id }).take(6),
+            frequency = freq,
+            sessionsLast7Days = count(7),
+            sessionsLast30Days = count(30),
+        )
     }
 
     fun getExerciseKnowledge(exerciseId: String): ExerciseKnowledge? =
@@ -1379,6 +1557,7 @@ class TrainlogRepository(
             FROM sessions AS s
             LEFT JOIN session_exercises AS se
                 ON se.session_row_id = s.id
+            WHERE $ACTUAL_SESSION_PREDICATE
             GROUP BY s.id
             ORDER BY s.started_at DESC, s.id DESC;
             """.trimIndent(),
