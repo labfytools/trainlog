@@ -76,7 +76,15 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             AppRoute.Home -> HomeScreen(
                 activeDraft, draftMessage ?: (draftLoad as? ActiveDraftLoadResult.Error)?.message ?: (draftLoad as? ActiveDraftLoadResult.Loaded)?.warning,
                 repository.listSessions().firstOrNull(), repository.listLatestExerciseMaxima().firstOrNull(),
+                repository.getBodyZoneHomeOverview(),
                 ::openManualSession,
+                { zoneId ->
+                    exerciseState.filterZoneId.value = zoneId
+                    exerciseState.unclassifiedFilter.value = false
+                    exerciseState.searchQuery.value = ""
+                    open(AppRoute.Exercises)
+                },
+                { open(AppRoute.Statistics) },
                 { open(AppRoute.BodyMeasurements) }, { open(AppRoute.SessionDetail(it)) }, { open(AppRoute.Sync) },
             )
             AppRoute.Sessions -> SessionsHub(activeDraft, { open(AppRoute.SessionEditor) }, ::openManualSession, { open(AppRoute.CompletedSessions) })

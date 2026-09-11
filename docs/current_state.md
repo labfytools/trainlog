@@ -130,6 +130,8 @@ Implemented:
 - native Kotlin/Compose application;
 - local SQLite database v11, with non-destructive v3 -> v11 migration;
 - one durable active-session draft, Home resume and raw-form restoration;
+- `BODY_FOCUS_HOME_V1`: a compact accessible Home front/back BODY ZONES map,
+  textual top-three exposure ranking and Catalogue/Statistics drill-through;
 - explicit confirmed discard and atomic completed-save/draft-clear;
 - exercise creation;
 - stable-ID exercise rename/editing with referenced-profile protection;
@@ -148,6 +150,18 @@ Implemented:
 - PC catalog application through a persistent SAF folder grant;
 - Android-triggered synchronization request;
 - synchronization receipt handling.
+
+The Home BODY ZONES overview is exposure-only and read-only. It uses only
+actual performed sets, continuous activities and explicit MAX results from
+completed history, with canonical parsed-instant 7/30-day windows. Plans,
+targets and drafts never qualify. Exactly the eight child anatomical zones are
+processed; grouping zones cannot double count. Primary exposure dominates the
+stable ranking, while secondary exposure is a weaker tie modifier. Alias
+history resolves once to the canonical exercise. Unsupported zones are shown
+as **Aucun exercice résolu disponible** and excluded from suggestions; empty
+history is stated explicitly and suggests supported zones only. The existing
+session generator remains hidden from normal UI, and the overview makes no
+recovery, readiness, fatigue or prescription claim.
 
 The Android catalog exposes **Modifier** for every existing exercise. A rename
 updates `name` and `normalized_name` in the original row, never creates an ID,

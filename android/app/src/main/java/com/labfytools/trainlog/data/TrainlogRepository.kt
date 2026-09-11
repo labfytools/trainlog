@@ -469,6 +469,181 @@ class TrainlogRepository(
         )
     }
 
+    fun getBodyZoneHomeOverview(): BodyZoneHomeOverview = getBodyZoneHomeOverview(
+        checkNotNull(TrainlogTimestamp.parse(OffsetDateTime.now().toString())),
+    )
+
+    /**
+     * WHY: Home guidance must describe recorded exposure, never infer recovery,
+     * fatigue, readiness, or a session prescription.
+     * CONTRACT: only completed occurrence-owned performed sets, continuous
+     * activity, and explicit MAX results qualify. Windows are inclusive rolling
+     * instants parsed by [TrainlogTimestamp]; SQL date and lexical comparisons
+     * are deliberately forbidden. Parent BODY ZONES and draft/target data never
+     * enter this read model.
+     */
+    internal fun getBodyZoneHomeOverview(now: TrainlogTimestampKey): BodyZoneHomeOverview {
+        val db = database.readableDatabase
+        val focusZoneIds = setOf("chest", "back", "shoulders", "arms", "core", "glutes", "thighs", "calves")
+        val childZones = bodyZones.zones.filter { it.zoneId in focusZoneIds }
+        check(childZones.size == focusZoneIds.size && childZones.none { it.kind == BodyZoneKind.GROUP }) {
+            "BODY_FOCUS_HOME_V1 doit référencer exactement huit zones anatomiques enfant"
+        }
+        val childIds = childZones.mapTo(mutableSetOf()) { it.zoneId }
+        val canonicalByAlias = mutableMapOf<String, String>()
+        db.rawQuery(
+            "SELECT source_exercise_id,canonical_exercise_id FROM exercise_aliases", null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) canonicalByAlias[cursor.getString(0)] = cursor.getString(1)
+        }
+        fun canonical(id: String): String {
+            var current = id
+            val seen = mutableSetOf<String>()
+            while (seen.add(current)) current = canonicalByAlias[current] ?: return current
+            return current
+        }
+
+        val relations = mutableMapOf<String, Pair<String?, List<String>>>()
+        db.rawQuery(
+            """SELECT e.exercise_id,ebz.zone_id,ebz.role
+               FROM exercises e JOIN exercise_body_zones ebz ON ebz.exercise_row_id=e.id
+               ORDER BY e.exercise_id,ebz.role,ebz.zone_id""".trimIndent(), null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = canonical(cursor.getString(0))
+                val zone = cursor.getString(1).takeIf { it in childIds } ?: continue
+                val old = relations[id] ?: (null to emptyList())
+                relations[id] = if (cursor.getString(2) == "primary") zone to old.second
+                else old.first to (old.second + zone).distinct()
+            }
+        }
+
+        /* There is no soft-active flag in schema v12: a present exercise row
+         * which is not a retired alias source is the active canonical row. A
+         * direct child-zone relation is the minimum resolved classification
+         * needed by the existing Catalogue filter. */
+        val availability = childIds.associateWith { mutableSetOf<String>() }
+        db.rawQuery("SELECT exercise_id FROM exercises ORDER BY exercise_id", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val stored = cursor.getString(0)
+                val id = canonical(stored)
+                if (stored != id) continue
+                val zones = relations[id] ?: continue
+                zones.first?.let { availability.getValue(it).add(id) }
+                zones.second.forEach { availability.getValue(it).add(id) }
+            }
+        }
+
+        data class MutableExposure(
+            var lastPrimary: Pair<TrainlogTimestampKey, String>? = null,
+            var lastSecondary: Pair<TrainlogTimestampKey, String>? = null,
+            var primary7: Int = 0,
+            var secondary7: Int = 0,
+            var primary30: Int = 0,
+            var secondary30: Int = 0,
+            val sessions30: MutableSet<String> = mutableSetOf(),
+        )
+        val exposure = childIds.associateWith { MutableExposure() }
+        val cutoff7 = TrainlogTimestampKey(now.utcSecond - 7L * 86400L, now.fraction)
+        val cutoff30 = TrainlogTimestampKey(now.utcSecond - 30L * 86400L, now.fraction)
+        var hasActualHistory = false
+        var invalidTimestamp = false
+        db.rawQuery(
+            """SELECT s.session_id,s.started_at,e.exercise_id,
+                      (SELECT COUNT(*) FROM performed_sets ps WHERE ps.session_exercise_row_id=se.id),
+                      EXISTS(SELECT 1 FROM continuous_activity ca WHERE ca.session_exercise_row_id=se.id),
+                      EXISTS(SELECT 1 FROM max_results mr WHERE mr.session_exercise_row_id=se.id)
+               FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id
+               JOIN exercises e ON e.id=se.exercise_row_id
+               WHERE EXISTS(SELECT 1 FROM performed_sets ps WHERE ps.session_exercise_row_id=se.id)
+                  OR EXISTS(SELECT 1 FROM continuous_activity ca WHERE ca.session_exercise_row_id=se.id)
+                  OR EXISTS(SELECT 1 FROM max_results mr WHERE mr.session_exercise_row_id=se.id)
+               ORDER BY s.session_id,se.entry_id""".trimIndent(), null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                hasActualHistory = true
+                val timestampText = cursor.getString(1)
+                val time = TrainlogTimestamp.parse(timestampText)
+                if (time == null) { invalidTimestamp = true; continue }
+                if (time > now) continue
+                val zones = relations[canonical(cursor.getString(2))] ?: continue
+                val work = cursor.getInt(3) + cursor.getInt(4) + cursor.getInt(5)
+                fun add(zoneId: String, primary: Boolean) {
+                    val item = exposure.getValue(zoneId)
+                    if (primary) {
+                        if (item.lastPrimary == null || time > item.lastPrimary!!.first) item.lastPrimary = time to timestampText
+                        if (time >= cutoff7) item.primary7 += work
+                        if (time >= cutoff30) item.primary30 += work
+                    } else {
+                        if (item.lastSecondary == null || time > item.lastSecondary!!.first) item.lastSecondary = time to timestampText
+                        if (time >= cutoff7) item.secondary7 += work
+                        if (time >= cutoff30) item.secondary30 += work
+                    }
+                    if (time >= cutoff30) item.sessions30 += cursor.getString(0)
+                }
+                zones.first?.let { add(it, true) }
+                zones.second.forEach { add(it, false) }
+            }
+        }
+
+        val supported = childZones.filter { availability.getValue(it.zoneId).isNotEmpty() }
+        /* FROZEN V1 rank: absent primary first; then longest elapsed primary
+         * exposure; then lower primary work at 7d and 30d; then weaker
+         * secondary modifiers (7d, 30d, longest elapsed); finally stable ID. */
+        val ranked = supported.sortedWith { left, right ->
+            val a = exposure.getValue(left.zoneId)
+            val b = exposure.getValue(right.zoneId)
+            compareValues(a.lastPrimary != null, b.lastPrimary != null).takeIf { it != 0 }
+                ?: compareValues(a.lastPrimary?.first, b.lastPrimary?.first).takeIf { it != 0 }
+                ?: compareValues(a.primary7, b.primary7).takeIf { it != 0 }
+                ?: compareValues(a.primary30, b.primary30).takeIf { it != 0 }
+                ?: compareValues(a.secondary7, b.secondary7).takeIf { it != 0 }
+                ?: compareValues(a.secondary30, b.secondary30).takeIf { it != 0 }
+                ?: compareValues(a.lastSecondary?.first, b.lastSecondary?.first).takeIf { it != 0 }
+                ?: left.zoneId.compareTo(right.zoneId)
+        }.take(3).map { it.zoneId }.toSet()
+
+        val statuses = childZones.map { zone ->
+            val item = exposure.getValue(zone.zoneId)
+            val available = availability.getValue(zone.zoneId).size
+            val state = when {
+                available == 0 -> BodyZoneHomeState.UNSUPPORTED
+                invalidTimestamp -> BodyZoneHomeState.INSUFFICIENT_DATA
+                zone.zoneId in ranked -> BodyZoneHomeState.PRIORITIZE
+                item.primary7 >= 4 -> BodyZoneHomeState.HIGH_RECENT_EXPOSURE
+                item.primary7 > 0 -> BodyZoneHomeState.RECENT_WORK
+                else -> BodyZoneHomeState.LITTLE_RECENT_WORK
+            }
+            val reasons = when (state) {
+                BodyZoneHomeState.UNSUPPORTED -> listOf(BodyZoneHomeState.UNSUPPORTED.label)
+                BodyZoneHomeState.INSUFFICIENT_DATA -> listOf("Au moins un horodatage historique est invalide.")
+                BodyZoneHomeState.PRIORITIZE -> listOf(
+                    if (item.lastPrimary == null) "Aucune exposition primaire enregistrée."
+                    else "Exposition primaire moins récente ou moins représentée.",
+                    "Exposition secondaire comptée comme modificateur plus faible.",
+                )
+                BodyZoneHomeState.LITTLE_RECENT_WORK -> listOf("Aucun travail primaire enregistré sur les 7 derniers jours.")
+                BodyZoneHomeState.RECENT_WORK -> listOf("Travail primaire enregistré sur les 7 derniers jours.")
+                BodyZoneHomeState.HIGH_RECENT_EXPOSURE -> listOf("Plusieurs faits de travail primaire récents sont enregistrés.")
+            }
+            BodyZoneHomeStatus(
+                zone.zoneId, zone.displayName,
+                item.lastPrimary?.second, item.lastSecondary?.second,
+                item.lastPrimary?.first?.let { now.utcSecond - it.utcSecond },
+                item.lastSecondary?.first?.let { now.utcSecond - it.utcSecond },
+                item.primary7, item.secondary7, item.primary30, item.secondary30,
+                item.sessions30.size, available, state, reasons,
+            )
+        }
+        val byId = statuses.associateBy { it.zoneId }
+        return BodyZoneHomeOverview(
+            zones = statuses,
+            recommendations = ranked.mapNotNull(byId::get),
+            hasTrainingHistory = hasActualHistory,
+            hasInvalidHistoryTimestamp = invalidTimestamp,
+        )
+    }
+
     fun getExerciseKnowledge(exerciseId: String): ExerciseKnowledge? =
         trainingKnowledge.getExerciseKnowledge(exerciseId)
 

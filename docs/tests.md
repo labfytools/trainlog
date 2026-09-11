@@ -300,6 +300,36 @@ Android repository host tests additionally cover exercise editing:
   search+filter, unclassified rows, companion replay/update/conflict and
   zone-safe exercise-identity merging.
 
+`BodyZoneHomeOverviewRepositoryTest` exercises the production
+`getBodyZoneHomeOverview(now)` query with a caller-supplied deterministic
+instant. It covers the settled chest/back/shoulders/thighs example,
+secondary-only exposure remaining weaker than primary, stable ranking,
+unsupported calves exclusion, parent-zone non-participation, retired alias A
+to canonical B counted once, active/resolved availability, honest empty
+history, inclusive exact 7/30-day instant boundaries, and target-only exclusion.
+`BodyZoneHomePresentationTest` covers concise evidence and last-primary age
+wording without recovery/fatigue/prescription language.
+`BodyZoneHomeSemanticsTest` renders the production section at 288 dp content
+width (the constrained 320 dp-screen case) with 1.6x font scale and at a
+practical 380 dp content width. It verifies every view-specific Face/Dos zone
+and textual state, Button actions, selected/not-selected transitions, leaf
+canvases with no anatomical text children, exact normalized-path containment,
+a real Canvas tap selecting core, and both existing-route callbacks. The Home
+implementation keeps side-by-side maps with separate region-aligned, at-least
+48 dp semantic controls; 320/360/393/412 dp and TalkBack visual checks remain
+explicit device/emulator validation.
+
+Focused host command:
+
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
+./gradlew :app:testDebugUnitTest \
+  --tests com.labfytools.trainlog.data.BodyZoneHomeOverviewRepositoryTest \
+  --tests com.labfytools.trainlog.ui.BodyZoneHomePresentationTest \
+  --tests com.labfytools.trainlog.ui.BodyZoneHomeSemanticsTest
+```
+
 ## 7. Hardware MTP validation
 
 Hardware probes and real synchronization are separate from the normal automated

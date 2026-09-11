@@ -46,6 +46,7 @@ The current product baseline includes:
 - native Android capture client;
 - exercise catalog;
 - canonical hierarchical body zones, primary/secondary relations and filters;
+- Android `BODY_FOCUS_HOME_V1` recent-exposure map and deterministic supported-zone ranking;
 - profile-aware set and continuous activity;
 - heterogeneous repetition sets;
 - session history and editing;
@@ -83,6 +84,17 @@ stable-ID renames, protects referenced profiles, and reconciles same-ID display
 metadata without duplicates. `ANDROID_BANNER_PARITY_V1` is a presentation-only
 completed checkpoint: all Android screens share the Notcurses-derived compact
 header; it does not reorder the roadmap below.
+
+`BODY_FOCUS_HOME_V1` is a completed Android Home presentation/query tranche.
+It adds no schema, sync or catalog semantics. The overview uses completed
+actual work only, canonical exact-instant windows and exactly eight anatomical
+child zones. Its stable order is: absent primary, oldest primary, lower primary
+7d then 30d, weaker lower secondary 7d then 30d, oldest secondary, then stable
+zone ID. Only zones backed by a current canonical exercise with a resolved
+direct relation are eligible; unsupported zones stay visible but cannot be
+recommended. It is descriptive exposure guidance, not medical recovery,
+fatigue/readiness analysis or a session prescription. Session Generator V1
+remains hidden.
 
 ## Product boundary
 

@@ -75,7 +75,7 @@ the dashboard remains available and reports that invalid history was ignored.
 The section roots are:
 
 ```text
-Accueil          durable-draft resume, generation/manual capture, concise local links
+Accueil          durable-draft resume, manual capture, recent BODY ZONES exposure, concise local links
 Séances          current session, programme a session, manual entry, completed sessions
 Exercices        catalogue, detail, create, and contextual edit
 Équipements      catalogue, detail, and custom-equipment creation
@@ -144,7 +144,8 @@ targets.
 
 ## Session generator V1
 
-Home exposes **Générer une séance**. The generator uses the shared frozen
+The V1 generator remains implemented but hidden from normal UI; Home exposes no
+generator action. The generator uses the shared frozen
 policy for all 11 selectable BODY ZONES, four goals, policy duration presets
 and custom bounds. A generated preview is read-only until acceptance and
 explains target dose, rest, equipment, observed-load source or absence,
@@ -156,6 +157,52 @@ draft, with target plans and zero actual rows. An existing draft yields the
 non-mutating `existing_active_draft` conflict. Empty results cannot be accepted;
 nonempty partial results may be accepted and edited normally. Final completion
 continues to require actual captured work.
+
+## Body focus Home V1
+
+Home displays **Zones à travailler** immediately after the active-session or
+manual-session action. This is a read-only description of recent recorded
+training exposure. It does not estimate recovery, readiness or fatigue and it
+does not prescribe or generate a session.
+
+The production `getBodyZoneHomeOverview(now)` read model processes exactly the
+eight meaningful child zones `chest`, `back`, `shoulders`, `arms`, `core`,
+`glutes`, `thighs` and `calves`. Grouping zones `upper_body`, `lower_body` and
+`full_body` are never overlays and never contribute duplicate exposure. Only
+completed occurrence-owned `performed_sets`, `continuous_activity` and
+`max_results` are evidence; targets, empty occurrences and active drafts are
+excluded. Timestamps use the canonical parser and inclusive rolling instant
+boundaries, never SQLite date functions or lexical ordering. Alias history is
+resolved to the canonical exercise identity and counted once.
+
+Each zone reports the last primary and secondary exposure, primary/secondary
+actual-work counts for 7 and 30 days, distinct exposed-session count for 30
+days, active canonical exercise availability, a textual state and reasons.
+Primary exposure is the dominant signal. Secondary exposure is only a weaker
+modifier and can never stand in for missing primary exposure.
+
+Eligible zones have at least one present canonical exercise with a direct
+resolved child-zone relation. Unsupported zones remain visible with **Aucun
+exercice résolu disponible** but are never recommended. The top three (or
+fewer) use this exact stable ordering: no primary exposure first; oldest last
+primary exposure; lower primary work over 7 days; lower primary work over 30
+days; lower secondary work over 7 days; lower secondary work over 30 days;
+oldest last secondary exposure; stable `zone_id`. Empty history says **Pas
+encore d’historique d’entraînement.** and ranks only supported zones.
+
+The compact side-by-side Compose **Face**/**Dos** maps use independent filled,
+anatomically contoured cubic `Path` regions for shoulders, chest/back, arms,
+core/glutes, thighs and calves. The canvas contains no zone-name text and is
+only a stylized BODY ZONES selector, never medical anatomy or a recovery model.
+Direct taps are resolved against the same normalized paths used to draw each
+region. Selection changes both fill and a high-contrast outline. Separate
+transparent accessibility controls follow the region bounds, provide at least
+48 dp targets, use the Button role, and announce view, zone, textual exposure
+state and selected state; color is never the sole signal. Zone details remain
+below the maps and show last-primary age, 7-day primary/secondary work and
+available exercise count. **Voir les exercices** opens the existing Catalogue
+with its body-zone filter, while **Voir les statistiques** opens the existing
+Statistics landing route.
 
 Load editing offers compact choices for automatic V1 qualification, a
 user-selected `%MAX`, or no numeric target; direct manual kg remains available.
