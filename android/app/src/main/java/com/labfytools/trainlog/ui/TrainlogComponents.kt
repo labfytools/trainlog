@@ -2,15 +2,17 @@ package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -21,6 +23,9 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,14 +37,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
 
 @Composable
 fun TrainlogScreen(
     subtitle: String,
+    scrollKey: String = subtitle,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors =
@@ -49,8 +55,6 @@ fun TrainlogScreen(
         modifier =
             Modifier
                 .background(colors.background)
-                .statusBarsPadding()
-                .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(
                     rememberScrollState()
@@ -62,48 +66,13 @@ fun TrainlogScreen(
                     )
                 ),
     ) {
-        TrainlogBanner(
-            subtitle = subtitle
+        BasicText(
+            text = subtitle.lowercase().replaceFirstChar { it.titlecase() },
+            modifier = Modifier.padding(bottom = 18.dp),
+            style = TrainlogTypography.title.copy(color = colors.text),
         )
 
         content()
-    }
-}
-
-@Composable
-private fun TrainlogBanner(
-    subtitle: String
-) {
-    val colors =
-        LocalTrainlogColors.current
-
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(bottom = 18.dp)
-    ) {
-        /* WHY: TUI and Android share this compact plaque rather than separate
-         * brand treatments. The terminal box becomes flat spacing on touch. */
-        BasicText(
-            text = "◆ TRAINLOG ◆",
-            style =
-                TrainlogTypography.banner.copy(
-                    color = colors.accent,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 21.sp,
-                ),
-        )
-
-        BasicText(
-            text = subtitle,
-            modifier = Modifier.padding(top = 5.dp),
-            style =
-                TrainlogTypography.small.copy(
-                    color = colors.muted,
-                    fontWeight = FontWeight.Bold,
-                ),
-        )
     }
 }
 
@@ -119,7 +88,7 @@ fun TrainlogFrame(
 
     val accent =
         if (active) {
-            colors.warning
+            colors.accent
         } else {
             colors.muted
         }
@@ -131,7 +100,7 @@ fun TrainlogFrame(
                 .padding(bottom = 16.dp)
     ) {
         BasicText(
-            text = title.uppercase(),
+            text = title,
             style =
                 TrainlogTypography.small.copy(
                     color = accent,
@@ -149,7 +118,7 @@ fun TrainlogFrame(
                         bottom = 8.dp,
                     )
                     .height(1.dp)
-                    .background(accent)
+                    .background(colors.surfaceAlt)
         )
 
         content()
@@ -175,18 +144,11 @@ fun TrainlogAction(
             modifier
                 .fillMaxWidth()
                 .padding(vertical = 3.dp)
+                .heightIn(min = 48.dp)
                 .height(IntrinsicSize.Min)
-                .background(colors.surface)
+                .background(Color.Transparent)
                 .clickable(onClick = onClick)
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(actualAccent)
-        )
-
         Column(
             modifier =
                 Modifier.padding(
@@ -215,6 +177,45 @@ fun TrainlogAction(
                         ),
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun TrainlogPrimaryAction(label: String, description: String, onClick: () -> Unit) {
+    val colors = LocalTrainlogColors.current
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Button(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text(label)
+        }
+        if (description.isNotBlank()) {
+            BasicText(
+                description,
+                Modifier.padding(top = 4.dp),
+                TrainlogTypography.small.copy(color = colors.muted),
+            )
+        }
+    }
+}
+
+/** Compact horizontally scrollable choices; selection is textual and colored. */
+@Composable
+fun TrainlogChoiceChips(
+    choices: List<Pair<String, String>>,
+    selectedId: String,
+    onSelected: (String) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        choices.forEach { (id, label) ->
+            FilterChip(
+                selected = id == selectedId,
+                onClick = { onSelected(id) },
+                label = { Text(if (id == selectedId) "✓ $label" else label) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            )
         }
     }
 }
@@ -269,12 +270,18 @@ fun TrainlogInputField(
             cursorBrush =
                 SolidColor(colors.accent),
             textStyle =
-                TrainlogTypography.normal.copy(
+                (if (keyboardOptions.keyboardType == KeyboardType.Number ||
+                    keyboardOptions.keyboardType == KeyboardType.Decimal) {
+                    TrainlogTypography.numeric
+                } else {
+                    TrainlogTypography.normal
+                }).copy(
                     color = colors.text,
                 ),
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .onFocusChanged {
                         focused = it.isFocused
                     }

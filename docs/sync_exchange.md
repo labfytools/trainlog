@@ -49,15 +49,26 @@ Framework folder grant.
 | Android -> PC | `trainlog-mobile-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | Android -> PC | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | Android -> PC | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
+| Android -> PC | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
 | PC -> Android | `trainlog-pc-catalog-v1.json` | `trainlog-pc-catalog` v1 |
 | PC -> Android | `trainlog-pc-equipment-definitions-v1.json` | `trainlog-equipment-definitions` v1 |
 | PC -> Android | `trainlog-pc-mobile-export-v3.json` | `trainlog-mobile-export` v3 (active) |
 | PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | PC -> Android | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
+| PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
 No SQLite file is transferred.
+
+`trainlog-exercise-aliases` v1 is the separate EXERCISE_MERGE_V1 identity
+companion. Its root contains exactly `format`, `version`, and `aliases`; every
+entry contains exactly `source_exercise_id` and `canonical_exercise_id` using
+lowercase UUIDv4 creator IDs. Entries are bytewise source-sorted, sources are
+unique, mappings are collapsed (no target may also be a source), and the
+artifact is bounded to 4096 entries and 1 MiB. It changes no mobile-export V3
+field semantics. Import occurs before snapshot reconciliation; exports contain
+only live canonical exercise IDs.
 
 Android scoped storage can preserve a prior MTP-created object and create a
 new artifact with the provider collision suffix, for example

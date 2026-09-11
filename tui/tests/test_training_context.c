@@ -91,6 +91,15 @@ int main(void)
     max_occurrence.load_mode=TRAINLOG_LOAD_NONE;
     CHECK(insert_session(database,"session_max","2026-09-09T10:00:00+02:00",TRAINLOG_SESSION_MAX_TEST,&max_occurrence,1U));
 
+    CHECK(trainlog_database_latest_explicit_max_equipment_context(database,
+        exercise_id, "leg_press", &context.latest_max) == TRAINLOG_STATUS_OK);
+    CHECK(context.latest_max.found && context.latest_max.max_weight_kg == 120.0);
+    CHECK(trainlog_database_latest_explicit_max_equipment_context(database,
+        exercise_id, "plate_loaded_leg_press", &context.latest_max) == TRAINLOG_STATUS_OK);
+    CHECK(!context.latest_max.found);
+    CHECK(trainlog_database_latest_explicit_max_equipment_context(database,
+        exercise_id, "", &context.latest_max) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+
     CHECK(trainlog_training_exercise_context_load(database,exercise_id,4U,1U,&context)==TRAINLOG_STATUS_OK);
     CHECK(strcmp(context.exercise.name,"Leg press renamed")==0);
     CHECK(context.knowledge!=NULL && context.knowledge->interpretation!=NULL);

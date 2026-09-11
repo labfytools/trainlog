@@ -14,6 +14,7 @@
 
 typedef struct TrainlogTerminal TrainlogTerminal;
 typedef struct TrainlogPanel TrainlogPanel;
+typedef struct TrainlogSurface TrainlogSurface;
 
 typedef enum TrainlogKey {
     TRAINLOG_KEY_NONE = -1,
@@ -36,6 +37,8 @@ typedef enum TrainlogKey {
     TRAINLOG_KEY_F3,
     TRAINLOG_KEY_F4,
     TRAINLOG_KEY_F5,
+    TRAINLOG_KEY_F6,
+    TRAINLOG_KEY_F7,
     TRAINLOG_KEY_SHIFT_TAB
 } TrainlogKey;
 
@@ -77,6 +80,32 @@ int trainlog_terminal_get_key(TrainlogTerminal *terminal);
 bool trainlog_terminal_read_unicode(TrainlogTerminal *terminal, int *codepoint,
                                     char utf8[5]);
 bool trainlog_terminal_push_key(TrainlogTerminal *terminal, int key);
+/* Refreshes Notcurses geometry after a resize event. */
+bool trainlog_terminal_refresh_geometry(TrainlogTerminal *terminal);
+
+/* WHY: shell chrome and overlays have independent Notcurses ownership. The
+ * rectangle is validated against the standard plane at create/resize time,
+ * and every write is clipped by this adapter rather than parent inheritance. */
+TrainlogSurface *trainlog_surface_create(TrainlogTerminal *terminal,
+                                         const char *name,
+                                         int top, int left,
+                                         int height, int width);
+bool trainlog_surface_set_rect(TrainlogSurface *surface,
+                               int top, int left,
+                               int height, int width);
+void trainlog_surface_destroy(TrainlogSurface *surface);
+void trainlog_surface_erase(TrainlogSurface *surface);
+void trainlog_surface_set_role(TrainlogSurface *surface,
+                               TrainlogColorRole foreground,
+                               unsigned background_rgb,
+                               TrainlogTextStyle style);
+void trainlog_surface_printf(TrainlogSurface *surface,
+                             int row, int column,
+                             const char *format, ...)
+    __attribute__((format(printf, 4, 5)));
+void trainlog_surface_draw(TrainlogSurface *surface,
+                           int row, int column, uint32_t codepoint);
+void trainlog_surface_move_top(TrainlogSurface *surface);
 
 /* Private screen-port helpers. Panels are lightweight coordinate views over
  * the one standard plane, not independently owned terminal surfaces. */

@@ -33,7 +33,7 @@ BODY_ZONES_V1=PASS
 BODY_ZONE_SYNC_V1=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=45/45 PASS (latest validated checkpoint)
+DESKTOP_TESTS=47/47 PASS (latest validated checkpoint)
 TUI_NOTCURSES_V1=PASS
 NCURSESW_REMOVED_FROM_ACTIVE_TUI=PASS
 NOTCURSES_TRUECOLOR_THEME=PASS
@@ -211,6 +211,11 @@ proposals to normal draft/editor flows where actual work is captured separately.
 It does not create reusable templates, a planned-session sync product surface,
 or a multi-session program. The one deep final audit found repairable gaps;
 its bounded repairs, review, and final validation matrix passed.
+
+`PERCENT_MAX_INPUT_V1` is an explicit calculator layered on editable V1 targets;
+it does not change automatic selection policy. Any broader multi-session,
+periodized, or program-producing work is deferred to a future
+`SESSION_GENERATOR_V2` and is not present today.
 
 ## Session templates v1
 
@@ -404,6 +409,17 @@ BACKUP_EXPORT_V1
 ```
 
 This order is canonical until explicitly revised.
+
+## APP_SHELL_V1 visual-review boundary
+
+`APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`. The implemented shell does
+not open STATS_V1, EXERCISE_NAMING_V1, a schema migration, or a new
+synchronization feature. The remaining checkpoint is a human visual and
+accessibility review of the existing seven-root shell: TUI at 72x20, 80x24,
+100x25, 100x30, 120x31 and 120x35; Android at 320, 360, 393 and 412 dp, with
+large system font, IME form interaction, durable-draft leave guards and
+TalkBack. The `_2` suffix records the completed automated repair review only;
+its human-review outcome is not recorded here in advance.
 
 ## Permanent constraints
 

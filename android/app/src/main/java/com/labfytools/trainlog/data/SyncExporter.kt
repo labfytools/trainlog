@@ -47,6 +47,7 @@ class SyncExporter(
         val mobileJson: String
         val associationsJson: String
         val bodyZonesJson: String
+        val aliasesJson: String
         try {
             definitionsJson = repository.buildEquipmentDefinitionsJson()
             /* V3 is the authoritative mobile session exchange. V1/V2 remain
@@ -54,6 +55,7 @@ class SyncExporter(
             mobileJson = repository.buildMobileExportV3Json()
             associationsJson = repository.buildEquipmentAssociationsJson()
             bodyZonesJson = repository.buildExerciseBodyZonesJson()
+            aliasesJson = repository.buildExerciseAliasesJson()
         } catch (error: Exception) {
             return SyncExportResult.Error(
                 error.message ?: "Préparation de l'export impossible.",
@@ -192,6 +194,12 @@ class SyncExporter(
 
             val bodyZonesError = writeBodyZones(bodyZonesJson)
             if (bodyZonesError != null) return SyncExportResult.Error(bodyZonesError)
+            val aliasesError = writeJsonCompanion(
+                "trainlog-exercise-aliases-v1.json",
+                aliasesJson,
+                "alias exercice",
+            )
+            if (aliasesError != null) return SyncExportResult.Error(aliasesError)
             /* CONTRACT: publication, not JSON construction, establishes the
              * common sync ancestor. Applying the exact local snapshot can only
              * record equal baselines; the strict reconciler never unions zones. */
@@ -291,6 +299,32 @@ class SyncExporter(
         } catch (error: Exception) {
             if (created) resolver.delete(uri, null, null)
             error.message ?: "Export définitions équipement impossible."
+        }
+    }
+
+    private fun writeJsonCompanion(name: String, json: String, label: String): String? {
+        val resolver = appContext.contentResolver
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val relativePath = Environment.DIRECTORY_DOWNLOADS + "/Trainlog/"
+        val existing = findExisting(collection, name, relativePath)
+        val created = existing == null
+        val uri = existing ?: resolver.insert(collection, ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }) ?: return "Création du compagnon $label impossible."
+        return try {
+            resolver.openOutputStream(uri, "wt")?.use {
+                it.write(json.toByteArray(Charsets.UTF_8)); it.flush()
+            } ?: return "Écriture du compagnon $label impossible."
+            if (created) resolver.update(uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }, null, null)
+            null
+        } catch (error: Exception) {
+            if (created) resolver.delete(uri, null, null)
+            error.message ?: "Export du compagnon $label impossible."
         }
     }
 

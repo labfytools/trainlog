@@ -91,6 +91,28 @@ def load_mobile_occurrences(path):
     return occurrences
 
 
+def canonical_exercise_id(connection, exercise_id):
+    """Resolve one flattened durable alias without inventing identity."""
+    aliases_available = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='exercise_aliases';"
+    ).fetchone() is not None
+    if not aliases_available:
+        return exercise_id
+    alias = connection.execute(
+        "SELECT canonical_exercise_id FROM exercise_aliases "
+        "WHERE source_exercise_id=?;",
+        (exercise_id,),
+    ).fetchone()
+    if alias is None:
+        return exercise_id
+    target_exists = connection.execute(
+        "SELECT 1 FROM exercises WHERE exercise_id=?;", (alias[0],)
+    ).fetchone() is not None
+    if not target_exists:
+        fail(f"alias exercice sans cible canonique: {exercise_id}")
+    return alias[0]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("artifact", type=Path)
@@ -113,8 +135,8 @@ def main():
         fail("clés extension équipement invalides")
     connection = sqlite3.connect(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11):
-            fail("schema desktop v8 à v11 requis")
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12):
+            fail("schema desktop v8 à v12 requis")
         known = load_catalog(args.catalog)
         known.update(row[0] for row in connection.execute(
             "SELECT equipment_id FROM custom_equipment"))
@@ -137,7 +159,12 @@ def main():
                 (session_id, entry_id)).fetchone()
             if exists is None:
                 fail(f"entrée séance inconnue: {session_id}/{entry_id}")
-            if exists[0] != exercise_id:
+            # WHY: the association companion can outlive the creator ID used
+            # by its source occurrence. The durable flattened alias is the
+            # synchronization identity evidence and is stronger than raw text.
+            stored_canonical = canonical_exercise_id(connection, exists[0])
+            incoming_canonical = canonical_exercise_id(connection, exercise_id)
+            if stored_canonical != incoming_canonical:
                 proof = mobile_occurrences.get((session_id, entry_id))
                 incoming_still_exists = connection.execute(
                     "SELECT 1 FROM exercises WHERE exercise_id=?;",
@@ -145,10 +172,13 @@ def main():
                 ).fetchone() is not None
                 if proof != exercise_id or incoming_still_exists:
                     fail(f"conflit exercice association: {session_id}/{entry_id}")
-                # WHY: import_mobile_export may have replaced a safe duplicate
-                # creator ID with the canonical desktop ID.  entry_id is the V2
-                # occurrence identity; the just-validated source snapshot proves
-                # that this stale exercise_id belongs to that same occurrence.
+                # CONTRACT: this fallback is only for schemas/runs without a
+                # persistent alias. import_mobile_export may have removed a
+                # profile-compatible duplicate; the selected V2 snapshot then
+                # proves the stale source identity for this stable occurrence.
+            # INVARIANT: identity reconciliation never changes session_id,
+            # entry_id, equipment_id, or any persisted occurrence. A distinct
+            # live canonical exercise therefore remains a hard conflict.
             if exists[1] != equipment_id:
                 fail(f"conflit association équipement: {session_id}/{entry_id}")
         print("EQUIPMENT_ASSOCIATIONS_IMPORT=PASS")

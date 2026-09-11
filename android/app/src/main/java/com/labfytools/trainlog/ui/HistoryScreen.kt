@@ -25,18 +25,10 @@ fun HistoryScreen(
         }
 
     TrainlogScreen(
-        subtitle = "H I S T O R I Q U E"
+        subtitle = "Séances effectuées"
     ) {
-        TrainlogAction(
-            label = "< Retour",
-            description =
-                "Revenir à l'accueil.",
-            onClick = onBack,
-            accent = colors.muted,
-        )
-
         TrainlogFrame(
-            title = "SEANCES",
+            title = "Séances",
             active =
                 sessions.isNotEmpty(),
         ) {
@@ -79,7 +71,7 @@ fun HistoryScreen(
         }
 
         TrainlogFrame(
-            title = "DERNIERS MAX",
+            title = "Derniers MAX",
             active = latestMaxima.isNotEmpty(),
         ) {
             if (latestMaxima.isEmpty()) {

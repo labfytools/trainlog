@@ -1,0 +1,180 @@
+APP_SHELL_V1 — MAQUETTES TUI (DESIGN UNIQUEMENT)
+Données fictives. Les coordonnées sont en cellules, pas en octets.
+Chaque bloc contient exactement H lignes ; les espaces de fin sont omis.
+La limite du terminal est implicite ; aucun grand cadre extérieur.
+Lavender : focus (>). Surface 0 : sélection. Mantle : shell.
+Les barres verticales en mode large représentent un séparateur discret.
+
+=== 120x35 — Séances effectuées ===
+```text
+  TRAINLOG                                                                               Séance en cours : 3 exercices
+  Séances / Séances effectuées
+                      │
+  Accueil             │  Séances effectuées
+                      │  / Rechercher par date ou type
+  [Séances]           │  Toutes les séances · plus récentes en premier
+    Séance en cours   │
+    Programmer        │    Date           Type                   Exercices
+    Nouvelle manuelle │    09/09/2026     Entraînement           6
+    · Effectuées      │    07/09/2026     Entraînement           6
+                      │  > 05/09/2026     Test max               4
+  Exercices           │    03/09/2026     Entraînement           6
+  Équipements         │    01/09/2026     Entraînement           6
+  Statistiques        │    29/08/2026     Entraînement           6
+  Synchronisation     │    27/08/2026     Entraînement           6
+  Paramètres          │    25/08/2026     Entraînement           6
+                      │    22/08/2026     Entraînement           6
+                      │    20/08/2026     Entraînement           6
+                      │    18/08/2026     Entraînement           6
+                      │    15/08/2026     Entraînement           6
+                      │  ↓ Autres séances                                     3 / 24
+                      │
+                      │  ─────────────────────────────────────────────────────────────────────────────────────────────
+                      │  Sélection : 5 septembre · Test max
+                      │  Exercice : Pec Fly
+                      │  Équipement : Rear Delt / Pec Fly
+                      │  MAX explicite : 80 kg      Entrée : ouvrir le détail complet
+                      │
+                      │
+                      │
+                      │
+                      │
+                      │
+  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier
+  F6 Navigation  F7 Actions  ? Aide  Échap Retour
+```
+
+=== 100x30 — Séances effectuées ===
+```text
+  TRAINLOG                                                           Séance en cours : 3 exercices
+  Séances / Séances effectuées
+                      │
+  Accueil             │  Séances effectuées
+                      │  / Rechercher par date ou type
+  [Séances]           │  Toutes les séances · plus récentes en premier
+                      │
+  Exercices           │    Date           Type                   Exercices
+  Équipements         │    09/09/2026     Entraînement           6
+  Statistiques        │    07/09/2026     Entraînement           6
+  Synchronisation     │  > 05/09/2026     Test max               4
+  Paramètres          │    03/09/2026     Entraînement           6
+                      │    01/09/2026     Entraînement           6
+                      │    29/08/2026     Entraînement           6
+                      │    27/08/2026     Entraînement           6
+                      │    25/08/2026     Entraînement           6
+                      │    22/08/2026     Entraînement           6
+                      │    20/08/2026     Entraînement           6
+                      │    18/08/2026     Entraînement           6
+                      │    15/08/2026     Entraînement           6
+                      │  ↓ Autres séances                                     3 / 24
+                      │
+                      │  ─────────────────────────────────────────────────────────────────────────
+                      │  Sélection : 5 septembre · Test max
+                      │  Exercice : Pec Fly
+                      │  Équipement : Rear Delt / Pec Fly
+                      │  MAX explicite : 80 kg      Entrée : ouvrir le détail complet
+                      │
+  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier
+  F6 Navigation  F7 Actions  ? Aide  Échap Retour
+```
+
+=== 80x24 — Séances effectuées ===
+```text
+  TRAINLOG                                       Séance en cours : 3 exercices
+  Séances / Séances effectuées                                   F6 Navigation
+
+  Séances effectuées
+  / Rechercher par date ou type
+  Toutes les séances · plus récentes en premier
+
+    Date           Type                   Exercices
+    09/09/2026     Entraînement           6
+    07/09/2026     Entraînement           6
+  > 05/09/2026     Test max               4
+    03/09/2026     Entraînement           6
+    01/09/2026     Entraînement           6
+    29/08/2026     Entraînement           6
+    27/08/2026     Entraînement           6
+    25/08/2026     Entraînement           6
+    22/08/2026     Entraînement           6
+    20/08/2026     Entraînement           6
+  ↓ Autres séances                                     3 / 24
+
+  Sélection : 5 septembre · Test max · 4 exercices
+
+  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier
+  F6 Navigation  F7 Actions  ? Aide  Échap Retour
+```
+
+=== 72x20 — Séances effectuées ===
+```text
+  TRAINLOG                               Séance en cours : 3 exercices
+  Séances / Séances effectuées                           F6 Navigation
+
+  Séances effectuées
+  / Rechercher par date ou type
+  Toutes les séances · plus récentes en premier
+
+    Date           Type                   Exercices
+    09/09/2026     Entraînement           6
+    07/09/2026     Entraînement           6
+  > 05/09/2026     Test max               4
+    03/09/2026     Entraînement           6
+    01/09/2026     Entraînement           6
+    29/08/2026     Entraînement           6
+  ↓ Autres séances                                     3 / 24
+
+  Sélection : 5 septembre · Test max
+  Entrée : détail et résultats par exercice
+  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier
+  F6 Navigation  F7 Actions  ? Aide  Échap Retour
+```
+
+=== 72x20 — Navigation ouverte, contenu conservé dessous ===
+```text
+  TRAINLOG                               Séance en cours : 3 exercices
+  Séances / Séances effectuées                           F6 Navigation
+
+  Navigation
+  Rubrique active : Séances / Effectuées
+
+      Accueil
+    > Séances
+      Exercices
+      Équipements
+      Statistiques
+      Synchronisation
+      Paramètres
+
+
+  Entrée ouvre la page de section. Toutes les rubriques sont nommées.
+
+
+  ↑↓ Choisir  Entrée Ouvrir  Échap Fermer
+  Navigation · retour à la liste conservé
+```
+
+=== 72x20 — Exemple de confirmation, footer réservé ===
+```text
+  TRAINLOG                               Séance en cours : 3 exercices
+  Séances / Séance en cours
+
+  Séance en cours · 3 exercices
+    1. Leg Press     > 2. Pec Fly      3. Abdominal crunch
+     ┌─ Retirer cet exercice ? ───────────────────────────────────┐
+     │                                                            │
+     │  Pec Fly · occurrence 2                                    │
+     │                                                            │
+     │  Les séries de cette occurrence seront retirées.           │
+     │  Le catalogue et les autres occurrences sont conservés.    │
+     │                                                            │
+     │  > [ Annuler ]              [ Retirer ]                    │
+     │                                                            │
+     └────────────────────────────────────────────────────────────┘
+
+
+
+  Tab Choisir  Entrée Confirmer  Échap Annuler
+  Confirmation active · navigation suspendue
+```
+

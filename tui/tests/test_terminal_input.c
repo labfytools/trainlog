@@ -65,6 +65,18 @@ static bool test_key_translation(void)
     CHECK(key == TRAINLOG_KEY_SHIFT_TAB);
 
     CHECK(trainlog_terminal_translate_input(
+        NCKEY_F06, TRAINLOG_INPUT_PRESS, false, &key));
+    CHECK(key == TRAINLOG_KEY_F6);
+
+    CHECK(trainlog_terminal_translate_input(
+        NCKEY_F07, TRAINLOG_INPUT_REPEAT, false, &key));
+    CHECK(key == TRAINLOG_KEY_F7);
+
+    CHECK(trainlog_terminal_translate_input(
+        27U, TRAINLOG_INPUT_PRESS, false, &key));
+    CHECK(key == TRAINLOG_KEY_ESCAPE);
+
+    CHECK(trainlog_terminal_translate_input(
         0x00e9U, TRAINLOG_INPUT_REPEAT, false, &key));
     CHECK(key == 0x00e9);
 

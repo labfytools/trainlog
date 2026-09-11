@@ -129,6 +129,7 @@ trainlog_core_dep = declare_dependency(
 
 trainlog_tui_sources = files(
   'src/main.c',
+  'src/app_shell.c',
   'src/sync_screen_action.c',
   'src/terminal.c',
   'src/theme.c',
@@ -542,6 +543,12 @@ test(
   args: [meson.project_source_root() / 'tests/test_body_zone_catalog.py'],
 )
 
+test(
+  'exercise_alias_import_validation',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_exercise_alias_import.py'],
+)
+
 test_sync_direction = executable(
   'test_sync_direction',
   'tests/test_sync_direction.c',
@@ -550,6 +557,15 @@ test_sync_direction = executable(
 )
 
 test('sync_direction', test_sync_direction)
+
+test_sync_body_zone_wiring = executable(
+  'test_sync_body_zone_wiring',
+  'tests/test_sync_body_zone_wiring.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('sync_body_zone_wiring', test_sync_body_zone_wiring)
 
 test_sync_history = executable(
   'test_sync_history',
@@ -606,7 +622,7 @@ test_terminal_input = executable(
   'tests/test_terminal_input.c',
   'src/terminal.c',
   include_directories: trainlog_include,
-  dependencies: notcurses_dep,
+  dependencies: [notcurses_dep, utf8proc_dep],
   c_args: strict_c_args,
 )
 
@@ -618,6 +634,7 @@ test(
 test_tui_workflows = executable(
   'test_tui_workflows',
   'tests/test_tui_workflows.c',
+  'src/app_shell.c',
   'src/theme.c',
   'src/sync_screen_action.c',
   dependencies: trainlog_core_dep,
@@ -625,3 +642,13 @@ test_tui_workflows = executable(
 )
 
 test('tui_workflows', test_tui_workflows)
+
+test_app_shell = executable(
+  'test_app_shell',
+  'tests/test_app_shell.c',
+  'src/app_shell.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('app_shell', test_app_shell)

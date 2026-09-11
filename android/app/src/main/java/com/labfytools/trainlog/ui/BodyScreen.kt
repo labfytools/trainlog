@@ -21,9 +21,16 @@ import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 
+class BodyScreenState {
+    val values = List(14) { mutableStateOf("") }
+    val dirty: Boolean get() = values.any { it.value.isNotEmpty() }
+    fun abandonEdits() { values.forEach { it.value = "" } }
+}
+
 @Composable
 fun BodyScreen(
     repository: TrainlogRepository,
+    state: BodyScreenState,
     onBodySaved: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -36,75 +43,13 @@ fun BodyScreen(
     val keyboardController =
         LocalSoftwareKeyboardController.current
 
-    var bodyWeight by
-        remember {
-            mutableStateOf("")
-        }
-
-    var neck by
-        remember {
-            mutableStateOf("")
-        }
-
-    var shoulders by
-        remember {
-            mutableStateOf("")
-        }
-
-    var chest by
-        remember {
-            mutableStateOf("")
-        }
-
-    var waist by
-        remember {
-            mutableStateOf("")
-        }
-
-    var hips by
-        remember {
-            mutableStateOf("")
-        }
-
-    var leftArm by
-        remember {
-            mutableStateOf("")
-        }
-
-    var rightArm by
-        remember {
-            mutableStateOf("")
-        }
-
-    var leftForearm by
-        remember {
-            mutableStateOf("")
-        }
-
-    var rightForearm by
-        remember {
-            mutableStateOf("")
-        }
-
-    var leftThigh by
-        remember {
-            mutableStateOf("")
-        }
-
-    var rightThigh by
-        remember {
-            mutableStateOf("")
-        }
-
-    var leftCalf by
-        remember {
-            mutableStateOf("")
-        }
-
-    var rightCalf by
-        remember {
-            mutableStateOf("")
-        }
+    var bodyWeight by state.values[0]; var neck by state.values[1]
+    var shoulders by state.values[2]; var chest by state.values[3]
+    var waist by state.values[4]; var hips by state.values[5]
+    var leftArm by state.values[6]; var rightArm by state.values[7]
+    var leftForearm by state.values[8]; var rightForearm by state.values[9]
+    var leftThigh by state.values[10]; var rightThigh by state.values[11]
+    var leftCalf by state.values[12]; var rightCalf by state.values[13]
 
     var message by
         remember {
@@ -127,35 +72,14 @@ fun BodyScreen(
         }
 
     fun clearForm() {
-        bodyWeight = ""
-        neck = ""
-        shoulders = ""
-        chest = ""
-        waist = ""
-        hips = ""
-        leftArm = ""
-        rightArm = ""
-        leftForearm = ""
-        rightForearm = ""
-        leftThigh = ""
-        rightThigh = ""
-        leftCalf = ""
-        rightCalf = ""
+        state.abandonEdits()
     }
 
     TrainlogScreen(
-        subtitle = "M E N S U R A T I O N S"
+        subtitle = "Mensurations"
     ) {
-        TrainlogAction(
-            label = "< Retour",
-            description =
-                "Revenir à l'accueil.",
-            onClick = onBack,
-            accent = colors.muted,
-        )
-
         TrainlogFrame(
-            title = "GENERAL"
+            title = "Général"
         ) {
             BodyMetricField(
                 label = "Poids",
@@ -219,7 +143,7 @@ fun BodyScreen(
         }
 
         TrainlogFrame(
-            title = "MEMBRES"
+            title = "Membres"
         ) {
             BodyMetricField(
                 label = "Bras gauche",
@@ -303,7 +227,7 @@ fun BodyScreen(
         }
 
         TrainlogFrame(
-            title = "ENREGISTREMENT"
+            title = "Enregistrement"
         ) {
             TrainlogAction(
                 label =
@@ -447,7 +371,7 @@ fun BodyScreen(
         }
 
         TrainlogFrame(
-            title = "DERNIERS RELEVES",
+            title = "Derniers relevés",
             active =
                 recent.isNotEmpty(),
         ) {

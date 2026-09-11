@@ -70,6 +70,10 @@ database
 catalog
 equipment_catalog
 body_zones
+training_knowledge
+session_generation
+session_generation_policy_validation
+training_context
 custom_equipment
 session_detail
 duration
@@ -89,8 +93,10 @@ variable_sets
 schema_v5_migration
 schema_v9_migration
 schema_v7_migration
+timestamp_validation
 mobile_import_variable_sets
 mobile_import_multi_occurrence
+session_exchange_v3
 equipment_associations_exchange
 equipment_definitions_exchange
 exercise_reconciliation
@@ -105,9 +111,12 @@ max_sync
 body_analytics
 terminal_input_event_type_policy
 tui_workflows
+app_shell
 ```
 
-Validated current suite:
+The current desktop suite, including APP_SHELL_V1 production-transition
+coverage, is 47/47. The following generator-specific checkpoint counts remain
+historical evidence:
 
 ```text
 45/45 Meson tests PASS
@@ -226,6 +235,34 @@ meson test -C build --print-errorlogs
 ```
 
 Strict warning flags remain active. Do not weaken warnings to make a change pass.
+
+## APP_SHELL_V1 production-transition coverage
+
+The active desktop suite has 46 tests. `app_shell` verifies layout thresholds,
+route/history bounds, overlays and focus restoration, bounded UTF-8 search and
+form input, stable-ID list selection, shared action ordering, and leave guards.
+`tui_workflows` covers the production single event-loop routes and controller
+handoffs: sessions/generator, exercises, equipment, statistics/body/MAX,
+settings, and confirmed synchronization. `custom_equipment` covers the
+bounded deterministic read-only equipment page reader, including pagination,
+invalid arguments, offsets and corrupt values. This coverage replaces former
+nested-screen-loop workflow claims.
+
+The APP_SHELL PTY validation exercises six TUI sizes—72x20, 80x24, 100x25,
+100x30, 120x31 and 120x35—plus help, search clear/close, F6/F7, compact focus,
+resize/overlay restoration, clean exit, and navigation with no temporary
+database write. Normal and ASan/UBSan Meson suites each passed 47/47; the
+current normal and sanitizer real-PTY runs each passed 100/100 checks. The
+sanitizer run used the upstream-prescribed Notcurses compatibility setting
+`ASAN_OPTIONS=use_sigaltstack=0:detect_leaks=1:halt_on_error=1` and reported
+no ASan/UBSan diagnostics.
+
+Android unit/assembly evidence records 84 tests, 0 failures, 0 errors and one
+external `TRAINLOG_ANDROID_V9_FIXTURE` skip. Required human checks remain:
+the six TUI sizes above; Android widths 320, 360, 393 and 412 dp; large system
+font; IME forms; durable-draft leave guards; and TalkBack. No emulator was
+available; the daily installed application was not installed over or exercised
+by instrumentation, so these are not marked visually passed.
 
 ## 6. Android build
 
@@ -370,8 +407,16 @@ Coverage proves:
 - no-load max tests compare actual reps/duration;
 - external working loads round to the configured increment;
 - working-load percentages reject assistance.
+- `%MAX` target calculators use the exact unrounded formula, enforce 1..100,
+  exact equipment identity and external resistance, and reject assistance;
+- Android manual target-plan tests prove that calculation is read-only, actual
+  set weights remain unchanged, existing target dose/rest survive direct-kg
+  edits, and none removes the plan target;
+- the real TUI `/` path resolves through the registered action, focuses search,
+  filters live, then follows clear-before-close Escape semantics;
+- action stable identifiers are unique, preventing footer/F7 duplication.
 
-Validated current normal suite:
+Historical validation checkpoint (the current desktop suite is 47/47):
 
 ```text
 39/39 Meson tests PASS
@@ -396,7 +441,7 @@ Coverage includes:
 - missing required circumference handling;
 - invalid estimation-profile rejection.
 
-Validated current normal suite:
+Historical validation checkpoint (the current desktop suite is 47/47):
 
 ```text
 39/39 Meson tests PASS
@@ -405,10 +450,14 @@ Validated current normal suite:
 ## 13. Android session draft v1
 
 Android schema v4 introduced one durable active draft; the current additive
-chain reaches schema v10 without clearing completed history or the draft. The
-current `testDebugUnitTest` suite and `assembleDebug` pass. Host coverage
-includes exercise
-shapes and raw partial text, fresh repository restore, remove/discard, atomic
+chain reaches schema v12 without clearing completed history or the draft. The
+explicit v10 -> v11 migration adds optional planning metadata while preserving
+existing rows with `load_mode=none`, zero rest and NULL targets. The
+v11 -> v12 migration adds the durable flattened exercise-alias table. Its exact
+physical-v11 fixture compares every pre-existing table cell before and after
+migration, requires the new alias table to be empty, and checks foreign keys.
+Host coverage includes exercise shapes and raw partial text, fresh repository
+restore, remove/discard, atomic
 finalization and repeated-finalize rejection, rollback, catalog reconciliation,
 missing-selection recovery, explicit DB-open failure, historical migration,
 equipment selection and occurrence identity.
@@ -448,7 +497,7 @@ Sanitizers:              clang ASan/UBSan Meson build and test invocation
 
 Executed Body Zones V1 evidence is recorded after each closeout run: Android
 `testDebugUnitTest` 44/44 with the retained real v9 fixture enabled and
-`assembleDebug`, 39/39 Meson tests, valid and invalid JSON checks,
+`assembleDebug`, a historical 39/39 Meson checkpoint, valid and invalid JSON checks,
 import-contract checks, and the ASan/UBSan Meson suite. Device installation and
 installed Android-store migration remain explicit hardware steps and are never
 inferred from host tests.

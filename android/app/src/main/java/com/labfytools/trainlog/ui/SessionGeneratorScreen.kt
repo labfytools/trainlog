@@ -8,6 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.AcceptGeneratedSessionResult
 import com.labfytools.trainlog.data.GenerationWarningLevel
+import com.labfytools.trainlog.data.GeneratorLoadChoice
 import com.labfytools.trainlog.data.SessionGenerationPreview
 import com.labfytools.trainlog.data.SessionGenerationRequest
 import com.labfytools.trainlog.data.SessionGenerationResult
@@ -55,9 +56,53 @@ internal object SessionGeneratorFormController {
     }
 }
 
+/**
+ * INVARIANT: a generated proposal is transient application state. Keeping this
+ * holder above the route preserves edits across drawer navigation without ever
+ * representing the proposal as the repository-owned active draft.
+ */
+class SessionGeneratorUiState {
+    val zoneId = mutableStateOf("full_body")
+    val goalId = mutableStateOf("general")
+    val durationText = mutableStateOf("30")
+    val preview = mutableStateOf<SessionGenerationPreview?>(null)
+    val message = mutableStateOf<String?>(null)
+    val warningAcknowledged = mutableStateOf(false)
+    val editingIndex = mutableStateOf<Int?>(null)
+    val setsText = mutableStateOf("")
+    val repsText = mutableStateOf("")
+    val restText = mutableStateOf("")
+    val loadText = mutableStateOf("")
+    val loadChoice = mutableStateOf(GeneratorLoadChoice.AUTOMATIC)
+    val maxPercentText = mutableStateOf("70")
+    val busy = mutableStateOf(false)
+    var requestIdentity: Long = 0
+
+    val hasUnacceptedWork: Boolean
+        get() = preview.value != null || zoneId.value != "full_body" ||
+            goalId.value != "general" || durationText.value != "30"
+
+    fun abandon() {
+        zoneId.value = "full_body"
+        goalId.value = "general"
+        durationText.value = "30"
+        preview.value = null
+        message.value = null
+        warningAcknowledged.value = false
+        editingIndex.value = null
+        setsText.value = ""
+        repsText.value = ""
+        restText.value = ""
+        loadText.value = ""
+        loadChoice.value = GeneratorLoadChoice.AUTOMATIC
+        maxPercentText.value = "70"
+    }
+}
+
 @Composable
 fun SessionGeneratorScreen(
     repository: TrainlogRepository,
+    state: SessionGeneratorUiState,
     onBack: () -> Unit,
     onAccepted: () -> Unit,
     onExistingDraft: () -> Unit,
@@ -66,32 +111,38 @@ fun SessionGeneratorScreen(
     val scope = rememberCoroutineScope()
     val options = remember { repository.sessionGenerationFormOptions() }
     val zones = remember { repository.listBodyZones().filter { it.zoneId in options.zoneIds } }
-    var zoneId by remember { mutableStateOf("full_body") }
-    var goalId by remember { mutableStateOf("general") }
-    var durationText by remember { mutableStateOf("30") }
-    var preview by remember { mutableStateOf<SessionGenerationPreview?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var warningAcknowledged by remember { mutableStateOf(false) }
-    var editingIndex by remember { mutableStateOf<Int?>(null) }
-    var setsText by remember { mutableStateOf("") }
-    var repsText by remember { mutableStateOf("") }
-    var restText by remember { mutableStateOf("") }
-    var loadText by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
+    var zoneId by state.zoneId
+    var goalId by state.goalId
+    var durationText by state.durationText
+    var preview by state.preview
+    var message by state.message
+    var warningAcknowledged by state.warningAcknowledged
+    var editingIndex by state.editingIndex
+    var setsText by state.setsText
+    var repsText by state.repsText
+    var restText by state.restText
+    var loadText by state.loadText
+    var loadChoice by state.loadChoice
+    var maxPercentText by state.maxPercentText
+    var busy by state.busy
 
     fun generate(request: SessionGenerationRequest) {
         if (busy) return
+        val requestIdentity = ++state.requestIdentity
         scope.launch {
             busy = true
             try {
                 when (val result = withContext(Dispatchers.IO) { repository.generateSessionPreview(request) }) {
                     is SessionGenerationResult.Generated -> {
+                        /* INVARIANT: an obsolete async generation request may
+                         * not replace a newer proposal after navigation. */
+                        if (requestIdentity != state.requestIdentity) return@launch
                         preview = result.preview
                         warningAcknowledged = result.preview.exposure.warningLevel == GenerationWarningLevel.NONE
                         message = null
                     }
-                    is SessionGenerationResult.Invalid -> message = result.message
-                    is SessionGenerationResult.DatabaseError -> message = result.message
+                    is SessionGenerationResult.Invalid -> if (requestIdentity == state.requestIdentity) message = result.message
+                    is SessionGenerationResult.DatabaseError -> if (requestIdentity == state.requestIdentity) message = result.message
                 }
             } finally {
                 busy = false
@@ -99,30 +150,17 @@ fun SessionGeneratorScreen(
         }
     }
 
-    TrainlogScreen(subtitle = "G E N E R E R   U N E   S E A N C E") {
-        TrainlogAction("< Retour", "Annuler sans créer de brouillon ni modifier l'historique.", onClick = {
-            if (!busy) onBack()
-        }, accent = colors.muted)
+    TrainlogScreen(subtitle = "Programmer une séance") {
         val current = preview
         if (current == null) {
-            TrainlogFrame("ZONE CORPORELLE") {
-                zones.forEach { zone ->
-                    TrainlogAction(zone.displayName, zone.zoneId,
-                        onClick = { zoneId = zone.zoneId },
-                        accent = if (zone.zoneId == zoneId) colors.success else colors.muted)
-                }
+            TrainlogFrame("Zone corporelle") {
+                TrainlogChoiceChips(zones.map { it.zoneId to it.displayName }, zoneId) { zoneId = it }
             }
-            TrainlogFrame("OBJECTIF") {
-                SessionGeneratorFormController.goals.filter { it.first in options.goalIds }.forEach { (id, label) ->
-                    TrainlogAction(label, id, onClick = { goalId = id },
-                        accent = if (goalId == id) colors.success else colors.muted)
-                }
+            TrainlogFrame("Objectif") {
+                TrainlogChoiceChips(SessionGeneratorFormController.goals.filter { it.first in options.goalIds }, goalId) { goalId = it }
             }
-            TrainlogFrame("DURÉE") {
-                options.durationPresets.forEach { minutes ->
-                    TrainlogAction("$minutes min", "Durée disponible.", onClick = { durationText = minutes.toString() },
-                        accent = if (durationText == minutes.toString()) colors.success else colors.muted)
-                }
+            TrainlogFrame("Durée") {
+                TrainlogChoiceChips(options.durationPresets.map { it.toString() to "$it min" }, durationText) { durationText = it }
                 TrainlogInputField(
                     "Durée personnalisée (${options.customMinutes.first} à ${options.customMinutes.last} min)",
                     durationText,
@@ -135,8 +173,11 @@ fun SessionGeneratorScreen(
                 else generate(SessionGenerationRequest(zoneId, goalId, minutes, OffsetDateTime.now().toString()))
             })
         } else {
-            TrainlogFrame("PROPOSITION") {
-                TrainlogInfo("Durée estimée : ${current.estimatedDurationSeconds / 60} min")
+            TrainlogFrame("Proposition") {
+                TrainlogInfo("Durée cible : ${current.request.durationMinutes} min · estimation : ${current.estimatedDurationSeconds / 60} min")
+                if (current.request.durationMinutes * 60 - current.estimatedDurationSeconds >= 300)
+                    TrainlogInfo("La proposition est nettement plus courte que la cible ; aucun exercice n'est ajouté pour remplir artificiellement le temps.", colors.warning)
+                TrainlogInfo("Échauffement et retour au calme ne sont pas générés en V1.", colors.muted)
                 if (current.insufficientResolvedCandidates) TrainlogInfo(
                     "La couverture est incomplète faute de contextes résolus disponibles" +
                         current.shortageCodes.takeIf { it.isNotEmpty() }
@@ -166,8 +207,7 @@ fun SessionGeneratorScreen(
                         TrainlogInfo("Historique récent similaire détecté ; information uniquement.", colors.warning)
                     item.loadSourceStartedAt?.let {
                         TrainlogInfo(
-                            "Charge issue d'une dose réellement observée le $it " +
-                                "(séance ${item.loadSourceSessionId}, passage ${item.loadSourceOccurrenceId}) ; " +
+                            "Charge issue d'une dose réellement observée le $it ; " +
                                 "son applicabilité aujourd'hui reste incertaine.",
                             colors.muted,
                         )
@@ -180,13 +220,27 @@ fun SessionGeneratorScreen(
                         TrainlogInputField("Séries", setsText, onValueChange = { setsText = it })
                         TrainlogInputField("Répétitions", repsText, onValueChange = { repsText = it })
                         TrainlogInputField("Repos (secondes)", restText, onValueChange = { restText = it })
-                        TrainlogInputField(
-                            "Charge cible manuelle (vide = réévaluer)",
-                            loadText,
-                            onValueChange = { loadText = it },
-                        )
+                        TrainlogInfo("Charge : choix utilisateur, jamais une recommandation.", colors.muted)
+                        TrainlogChoiceChips(
+                            listOf("AUTOMATIC" to "Automatique", "PERCENT_MAX" to "% MAX", "NONE" to "Aucune"),
+                            loadChoice.name,
+                        ) { selected ->
+                            loadChoice = GeneratorLoadChoice.valueOf(selected)
+                            if (loadChoice != GeneratorLoadChoice.AUTOMATIC) loadText = ""
+                        }
+                        if (loadChoice == GeneratorLoadChoice.PERCENT_MAX)
+                            TrainlogInputField("Pourcentage du MAX (1 à 100)", maxPercentText,
+                                onValueChange = { maxPercentText = it })
+                        if (loadChoice == GeneratorLoadChoice.AUTOMATIC)
+                            TrainlogInputField(
+                                "Charge cible manuelle (vide = automatique)",
+                                loadText,
+                                onValueChange = { loadText = it },
+                            )
                         TrainlogAction("Appliquer", "Réestimer la durée et requalifier la charge observée.", accent = colors.success, onClick = {
-                            val parsedWeight = SessionGeneratorFormController.manualWeight(loadText)
+                            val parsedWeight = if (loadChoice == GeneratorLoadChoice.AUTOMATIC)
+                                SessionGeneratorFormController.manualWeight(loadText)
+                            else Result.success(null)
                             if (parsedWeight.isFailure) {
                                 message = parsedWeight.exceptionOrNull()?.message
                             } else {
@@ -197,7 +251,8 @@ fun SessionGeneratorScreen(
                                         when (val result = withContext(Dispatchers.IO) {
                                             repository.editGeneratedDose(current, index,
                                                 setsText.toIntOrNull() ?: -1, repsText.toIntOrNull() ?: -1,
-                                                restText.toIntOrNull() ?: -1, weight)
+                                                restText.toIntOrNull() ?: -1, weight, loadChoice,
+                                                maxPercentText.toIntOrNull())
                                         }) {
                                             is SessionGenerationResult.Generated -> { preview = result.preview; editingIndex = null; message = null }
                                             is SessionGenerationResult.Invalid -> message = result.message
@@ -216,6 +271,12 @@ fun SessionGeneratorScreen(
                             // Preserve an explicit user value across later edits. An
                             // automatic observed value stays display-only: empty asks
                             // the engine to qualify it again for the changed dose.
+                            loadChoice = when {
+                                "user_selected_max_percentage" in item.rationaleCodes ||
+                                    "compatible_max_unavailable" in item.rationaleCodes -> GeneratorLoadChoice.PERCENT_MAX
+                                "numeric_load_absent" in item.rationaleCodes -> GeneratorLoadChoice.NONE
+                                else -> GeneratorLoadChoice.AUTOMATIC
+                            }
                             loadText = if ("manual_target_load" in item.rationaleCodes)
                                 item.plan.weightKg?.toString().orEmpty() else ""
                         }
@@ -252,14 +313,16 @@ fun SessionGeneratorScreen(
                 if (!busy) onBack()
             }, accent = colors.muted)
         }
-        if (busy) TrainlogFrame("TRAITEMENT") { TrainlogInfo("Analyse en cours…", colors.muted) }
-        message?.let { TrainlogFrame("MESSAGE") { TrainlogInfo(it, colors.error) } }
+        if (busy) TrainlogFrame("Traitement") { TrainlogInfo("Analyse en cours…", colors.muted) }
+        message?.let { TrainlogFrame("Message") { TrainlogInfo(it, colors.error) } }
     }
 }
 
 private fun generationReasonLabel(code: String): String = when (code) {
     "observed_repeated_dose_anchor" -> "dose répétée observée"
     "explicit_max_present_no_numeric_prescription" -> "maximum observé sans prescription numérique"
+    "user_selected_max_percentage" -> "pourcentage de MAX choisi par l'utilisateur"
+    "compatible_max_unavailable" -> "MAX compatible indisponible"
     "assistance_numeric_load_omitted" -> "charge d'assistance omise"
     "numeric_load_absent" -> "charge numérique absente"
     "manual_target_load" -> "charge saisie manuellement"

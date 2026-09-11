@@ -1,0 +1,172 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>APP_SHELL_V1 — Maquettes TUI</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:28px;background:#11111b;color:#cdd6f4;font:16px/1.5 system-ui,sans-serif}h1{font-size:24px;margin:0 0 8px}p{color:#bac2de;max-width:1000px}button{padding:10px 16px;background:#313244;color:#cdd6f4;border:1px solid #45475a;border-radius:6px;cursor:pointer}button[aria-pressed=true]{background:#b4befe;color:#11111b}nav{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0}article{display:none}article.active{display:block}.frame{max-width:100%;overflow:auto;background:#11111b;padding:10px;border:1px solid #45475a;border-radius:8px;width:max-content}.terminal{font:14px/20px monospace;background:#1e1e2e;width:max-content}.line{height:20px;white-space:pre}.chrome{background:#181825}.side{display:inline-block;background:#181825;height:20px}.focus{color:#b4befe;background:#313244}.current{color:#b4befe}.muted{color:#bac2de}a{color:#b4befe}.small{font-size:14px}h2{font-size:18px}
+</style><h1>Trainlog — shell Notcurses proposé</h1><p>Données fictives. Grilles exactes en cellules. Le cadre extérieur représente le terminal, pas un cadre à ajouter à l'application. La couleur distingue le focus de la rubrique active ; chaque état garde aussi un marqueur textuel.</p><nav>
+<button data-target="s0" aria-pressed="true">120x35</button>
+<button data-target="s1" aria-pressed="false">100x30</button>
+<button data-target="s2" aria-pressed="false">80x24</button>
+<button data-target="s3" aria-pressed="false">72x20</button>
+<button data-target="s4" aria-pressed="false">72x20 — Navigation ouverte, contenu conservé dessous</button>
+<button data-target="s5" aria-pressed="false">72x20 — Exemple de confirmation, footer réservé</button>
+</nav>
+<article id="s0" class="active"><h2>120x35 — Séances effectuées</h2><div class="frame"><div class="terminal">
+<div class="line chrome"><span class="">  TRAINLOG                                                                               Séance en cours : 3 exercices  </span></div>
+<div class="line chrome"><span class="">  Séances / Séances effectuées                                                                                          </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">  Accueil             │</span><span class="">  Séances effectuées                                                                             </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  / Rechercher par date ou type                                                                  </span></div>
+<div class="line "><span class="side current">  [Séances]           │</span><span class="">  Toutes les séances · plus récentes en premier                                                  </span></div>
+<div class="line "><span class="side">    Séance en cours   │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">    Programmer        │</span><span class="">    Date           Type                   Exercices                                              </span></div>
+<div class="line "><span class="side">    Nouvelle manuelle │</span><span class="">    09/09/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side current">    · Effectuées      │</span><span class="">    07/09/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="focus">  &gt; 05/09/2026     Test max               4                                                      </span></div>
+<div class="line "><span class="side">  Exercices           │</span><span class="">    03/09/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">  Équipements         │</span><span class="">    01/09/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">  Statistiques        │</span><span class="">    29/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">  Synchronisation     │</span><span class="">    27/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">  Paramètres          │</span><span class="">    25/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    22/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    20/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    18/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    15/08/2026     Entraînement           6                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  ↓ Autres séances                                     3 / 24                                    </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  ─────────────────────────────────────────────────────────────────────────────────────────────  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  Sélection : 5 septembre · Test max                                                             </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  Exercice : Pec Fly                                                                             </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  Équipement : Rear Delt / Pec Fly                                                               </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  MAX explicite : 80 kg      Entrée : ouvrir le détail complet                                   </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                                                 </span></div>
+<div class="line chrome"><span class="">  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier                                                                   </span></div>
+<div class="line chrome"><span class="">  F6 Navigation  F7 Actions  ? Aide  Échap Retour                                                                       </span></div>
+</div></div></article>
+<article id="s1" class=""><h2>100x30 — Séances effectuées</h2><div class="frame"><div class="terminal">
+<div class="line chrome"><span class="">  TRAINLOG                                                           Séance en cours : 3 exercices  </span></div>
+<div class="line chrome"><span class="">  Séances / Séances effectuées                                                                      </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                             </span></div>
+<div class="line "><span class="side">  Accueil             │</span><span class="">  Séances effectuées                                                         </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  / Rechercher par date ou type                                              </span></div>
+<div class="line "><span class="side current">  [Séances]           │</span><span class="">  Toutes les séances · plus récentes en premier                              </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                             </span></div>
+<div class="line "><span class="side">  Exercices           │</span><span class="">    Date           Type                   Exercices                          </span></div>
+<div class="line "><span class="side">  Équipements         │</span><span class="">    09/09/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">  Statistiques        │</span><span class="">    07/09/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">  Synchronisation     │</span><span class="focus">  &gt; 05/09/2026     Test max               4                                  </span></div>
+<div class="line "><span class="side">  Paramètres          │</span><span class="">    03/09/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    01/09/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    29/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    27/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    25/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    22/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    20/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    18/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">    15/08/2026     Entraînement           6                                  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  ↓ Autres séances                                     3 / 24                </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                             </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  ─────────────────────────────────────────────────────────────────────────  </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  Sélection : 5 septembre · Test max                                         </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  Exercice : Pec Fly                                                         </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  Équipement : Rear Delt / Pec Fly                                           </span></div>
+<div class="line "><span class="side">                      │</span><span class="">  MAX explicite : 80 kg      Entrée : ouvrir le détail complet               </span></div>
+<div class="line "><span class="side">                      │</span><span class="">                                                                             </span></div>
+<div class="line chrome"><span class="">  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier                                               </span></div>
+<div class="line chrome"><span class="">  F6 Navigation  F7 Actions  ? Aide  Échap Retour                                                   </span></div>
+</div></div></article>
+<article id="s2" class=""><h2>80x24 — Séances effectuées</h2><div class="frame"><div class="terminal">
+<div class="line chrome"><span class="">  TRAINLOG                                       Séance en cours : 3 exercices  </span></div>
+<div class="line chrome"><span class="">  Séances / Séances effectuées                                   F6 Navigation  </span></div>
+<div class="line "><span class="">                                                                                </span></div>
+<div class="line "><span class="">  Séances effectuées                                                            </span></div>
+<div class="line "><span class="">  / Rechercher par date ou type                                                 </span></div>
+<div class="line "><span class="">  Toutes les séances · plus récentes en premier                                 </span></div>
+<div class="line "><span class="">                                                                                </span></div>
+<div class="line "><span class="">    Date           Type                   Exercices                             </span></div>
+<div class="line "><span class="">    09/09/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    07/09/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="focus">  &gt; 05/09/2026     Test max               4                                     </span></div>
+<div class="line "><span class="">    03/09/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    01/09/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    29/08/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    27/08/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    25/08/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    22/08/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">    20/08/2026     Entraînement           6                                     </span></div>
+<div class="line "><span class="">  ↓ Autres séances                                     3 / 24                   </span></div>
+<div class="line "><span class="">                                                                                </span></div>
+<div class="line "><span class="">  Sélection : 5 septembre · Test max · 4 exercices                              </span></div>
+<div class="line "><span class="">                                                                                </span></div>
+<div class="line chrome"><span class="">  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier                           </span></div>
+<div class="line chrome"><span class="">  F6 Navigation  F7 Actions  ? Aide  Échap Retour                               </span></div>
+</div></div></article>
+<article id="s3" class=""><h2>72x20 — Séances effectuées</h2><div class="frame"><div class="terminal">
+<div class="line chrome"><span class="">  TRAINLOG                               Séance en cours : 3 exercices  </span></div>
+<div class="line chrome"><span class="">  Séances / Séances effectuées                           F6 Navigation  </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">  Séances effectuées                                                    </span></div>
+<div class="line "><span class="">  / Rechercher par date ou type                                         </span></div>
+<div class="line "><span class="">  Toutes les séances · plus récentes en premier                         </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">    Date           Type                   Exercices                     </span></div>
+<div class="line "><span class="">    09/09/2026     Entraînement           6                             </span></div>
+<div class="line "><span class="">    07/09/2026     Entraînement           6                             </span></div>
+<div class="line "><span class="focus">  &gt; 05/09/2026     Test max               4                             </span></div>
+<div class="line "><span class="">    03/09/2026     Entraînement           6                             </span></div>
+<div class="line "><span class="">    01/09/2026     Entraînement           6                             </span></div>
+<div class="line "><span class="">    29/08/2026     Entraînement           6                             </span></div>
+<div class="line "><span class="">  ↓ Autres séances                                     3 / 24           </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">  Sélection : 5 septembre · Test max                                    </span></div>
+<div class="line "><span class="">  Entrée : détail et résultats par exercice                             </span></div>
+<div class="line chrome"><span class="">  ↑↓ Choisir  Entrée Détail  / Rechercher  e Modifier                   </span></div>
+<div class="line chrome"><span class="">  F6 Navigation  F7 Actions  ? Aide  Échap Retour                       </span></div>
+</div></div></article>
+<article id="s4" class=""><h2>72x20 — Navigation ouverte, contenu conservé dessous</h2><div class="frame"><div class="terminal">
+<div class="line chrome"><span class="">  TRAINLOG                               Séance en cours : 3 exercices  </span></div>
+<div class="line chrome"><span class="">  Séances / Séances effectuées                           F6 Navigation  </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">  Navigation                                                            </span></div>
+<div class="line "><span class="">  Rubrique active : Séances / Effectuées                                </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">      Accueil                                                           </span></div>
+<div class="line "><span class="focus">    &gt; Séances                                                           </span></div>
+<div class="line "><span class="">      Exercices                                                         </span></div>
+<div class="line "><span class="">      Équipements                                                       </span></div>
+<div class="line "><span class="">      Statistiques                                                      </span></div>
+<div class="line "><span class="">      Synchronisation                                                   </span></div>
+<div class="line "><span class="">      Paramètres                                                        </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">  Entrée ouvre la page de section. Toutes les rubriques sont nommées.   </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line chrome"><span class="">  ↑↓ Choisir  Entrée Ouvrir  Échap Fermer                               </span></div>
+<div class="line chrome"><span class="">  Navigation · retour à la liste conservé                               </span></div>
+</div></div></article>
+<article id="s5" class=""><h2>72x20 — Exemple de confirmation, footer réservé</h2><div class="frame"><div class="terminal">
+<div class="line chrome"><span class="">  TRAINLOG                               Séance en cours : 3 exercices  </span></div>
+<div class="line chrome"><span class="">  Séances / Séance en cours                                             </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">  Séance en cours · 3 exercices                                         </span></div>
+<div class="line "><span class="">    1. Leg Press     &gt; 2. Pec Fly      3. Abdominal crunch              </span></div>
+<div class="line "><span class="">     ┌─ Retirer cet exercice ? ───────────────────────────────────┐     </span></div>
+<div class="line "><span class="">     │                                                            │     </span></div>
+<div class="line "><span class="">     │  Pec Fly · occurrence 2                                    │     </span></div>
+<div class="line "><span class="">     │                                                            │     </span></div>
+<div class="line "><span class="">     │  Les séries de cette occurrence seront retirées.           │     </span></div>
+<div class="line "><span class="">     │  Le catalogue et les autres occurrences sont conservés.    │     </span></div>
+<div class="line "><span class="">     │                                                            │     </span></div>
+<div class="line "><span class="">     │  &gt; [ Annuler ]              [ Retirer ]                    │     </span></div>
+<div class="line "><span class="">     │                                                            │     </span></div>
+<div class="line "><span class="">     └────────────────────────────────────────────────────────────┘     </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line "><span class="">                                                                        </span></div>
+<div class="line chrome"><span class="">  Tab Choisir  Entrée Confirmer  Échap Annuler                          </span></div>
+<div class="line chrome"><span class="">  Confirmation active · navigation suspendue                            </span></div>
+</div></div></article>
+<p class="small">Header : 2 lignes. Footer : 2 lignes. À 100 colonnes, sidebar de 22 cellules ; en compact, contenu sur toute la largeur. Les boutons ci-dessus changent seulement de maquette. <a href="tui_mockups.txt">Version texte</a> · <a href="proposal.md">Proposition complète</a></p><script>document.querySelectorAll('nav button').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));document.querySelectorAll('article').forEach(a=>a.classList.toggle('active',a.id===button.dataset.target));}));</script></html>

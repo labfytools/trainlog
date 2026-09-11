@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #include <notcurses/notcurses.h>
+#include <utf8proc.h>
 
 struct TrainlogTerminal {
     struct notcurses *notcurses;
@@ -27,11 +28,40 @@ struct TrainlogPanel {
     int left;
 };
 
+struct TrainlogSurface {
+    TrainlogTerminal *terminal;
+    struct ncplane *plane;
+    int height;
+    int width;
+};
+
+static unsigned role_rgb(TrainlogColorRole role)
+{
+    switch (role) {
+    case TRAINLOG_COLOR_ACCENT: return TRAINLOG_RGB_LAVENDER;
+    case TRAINLOG_COLOR_SUCCESS: return TRAINLOG_RGB_SUCCESS;
+    case TRAINLOG_COLOR_WARNING: return TRAINLOG_RGB_WARNING;
+    case TRAINLOG_COLOR_ERROR: return TRAINLOG_RGB_ERROR;
+    case TRAINLOG_COLOR_MUTED: return TRAINLOG_RGB_SUBTEXT;
+    case TRAINLOG_COLOR_GRAPH: return 0xf5c2e7U;
+    case TRAINLOG_COLOR_INFO: return TRAINLOG_RGB_INFO;
+    case TRAINLOG_COLOR_NOTICE: return TRAINLOG_RGB_NOTICE;
+    case TRAINLOG_COLOR_DEFAULT:
+    default: return TRAINLOG_RGB_TEXT;
+    }
+}
+
+static void plane_set_rgb(struct ncplane *plane, bool foreground, unsigned rgb)
+{
+    unsigned red = (rgb >> 16U) & 0xffU;
+    unsigned green = (rgb >> 8U) & 0xffU;
+    unsigned blue = rgb & 0xffU;
+    if (foreground) (void)ncplane_set_fg_rgb8(plane, red, green, blue);
+    else (void)ncplane_set_bg_rgb8(plane, red, green, blue);
+}
+
 static void terminal_apply_style(TrainlogTerminal *terminal)
 {
-    unsigned red = 205U;
-    unsigned green = 214U;
-    unsigned blue = 244U;
     TrainlogColorRole role;
 
     if (terminal == NULL || terminal->plane == NULL) {
@@ -39,24 +69,14 @@ static void terminal_apply_style(TrainlogTerminal *terminal)
     }
 
     role = (TrainlogColorRole)((terminal->style >> 8U) & 0xffU);
-    switch (role) {
-    case TRAINLOG_COLOR_ACCENT: red = 148U; green = 226U; blue = 213U; break;
-    case TRAINLOG_COLOR_SUCCESS: red = 166U; green = 227U; blue = 161U; break;
-    case TRAINLOG_COLOR_WARNING: red = 249U; green = 226U; blue = 175U; break;
-    case TRAINLOG_COLOR_ERROR: red = 243U; green = 139U; blue = 168U; break;
-    case TRAINLOG_COLOR_MUTED: red = 137U; green = 180U; blue = 250U; break;
-    case TRAINLOG_COLOR_GRAPH: red = 245U; green = 194U; blue = 231U; break;
-    case TRAINLOG_COLOR_DEFAULT:
-    default: break;
-    }
-    (void)ncplane_set_fg_rgb8(terminal->plane, red, green, blue);
+    plane_set_rgb(terminal->plane, true, role_rgb(role));
     /* CONTRACT: selection remains visible without relying only on foreground
      * color.  A role-aware surface fill survives terminals with weak color
      * contrast while ordinary drawing uses the canonical dark background. */
     if ((terminal->style & TRAINLOG_TEXT_REVERSE) != 0U) {
-        (void)ncplane_set_bg_rgb8(terminal->plane, 49U, 50U, 68U);
+        plane_set_rgb(terminal->plane, false, TRAINLOG_RGB_SURFACE0);
     } else {
-        (void)ncplane_set_bg_rgb8(terminal->plane, 30U, 30U, 46U);
+        plane_set_rgb(terminal->plane, false, TRAINLOG_RGB_BASE);
     }
     ncplane_set_styles(terminal->plane,
                        (terminal->style & TRAINLOG_TEXT_BOLD) != 0U ? NCSTYLE_BOLD : 0U);
@@ -82,7 +102,7 @@ TrainlogTerminal *trainlog_terminal_create(void)
         free(terminal);
         return NULL;
     }
-    (void)ncplane_set_bg_rgb8(terminal->plane, 30U, 30U, 46U);
+    plane_set_rgb(terminal->plane, false, TRAINLOG_RGB_BASE);
     terminal->pushed_key = TRAINLOG_KEY_NONE;
     terminal_apply_style(terminal);
     return terminal;
@@ -261,6 +281,10 @@ static int terminal_key(uint32_t id, bool shifted)
     }
 
     switch (id) {
+    /* WHY: Notcurses reports the physical Escape key as the Unicode control
+     * byte on common terminals.  Normalize it here so overlays, forms and
+     * route guards consume one Trainlog-owned semantic key. */
+    case 27U: return TRAINLOG_KEY_ESCAPE;
     case NCKEY_UP: return TRAINLOG_KEY_UP; case NCKEY_DOWN: return TRAINLOG_KEY_DOWN;
     case NCKEY_LEFT: return TRAINLOG_KEY_LEFT; case NCKEY_RIGHT: return TRAINLOG_KEY_RIGHT;
     case NCKEY_ENTER: return TRAINLOG_KEY_ENTER; case NCKEY_TAB: return TRAINLOG_KEY_TAB;
@@ -270,7 +294,8 @@ static int terminal_key(uint32_t id, bool shifted)
     case NCKEY_PGDOWN: return TRAINLOG_KEY_PAGE_DOWN; case NCKEY_RESIZE: return TRAINLOG_KEY_RESIZE;
     case NCKEY_F01: return TRAINLOG_KEY_F1; case NCKEY_F02: return TRAINLOG_KEY_F2;
     case NCKEY_F03: return TRAINLOG_KEY_F3; case NCKEY_F04: return TRAINLOG_KEY_F4;
-    case NCKEY_F05: return TRAINLOG_KEY_F5; default: return (int)id;
+    case NCKEY_F05: return TRAINLOG_KEY_F5; case NCKEY_F06: return TRAINLOG_KEY_F6;
+    case NCKEY_F07: return TRAINLOG_KEY_F7; default: return (int)id;
     }
 }
 
@@ -360,6 +385,139 @@ bool trainlog_terminal_push_key(TrainlogTerminal *terminal, int key)
     }
     terminal->pushed_key = key;
     return true;
+}
+
+bool trainlog_terminal_refresh_geometry(TrainlogTerminal *terminal)
+{
+    /* CONTRACT: NCKEY_RESIZE only reports that geometry changed. Notcurses
+     * must refresh its standard plane before shell rectangles are recomputed;
+     * otherwise a keyless resize can leave chrome at the former dimensions. */
+    return terminal != NULL && terminal->notcurses != NULL &&
+        notcurses_refresh(terminal->notcurses, NULL, NULL) == 0;
+}
+
+static bool surface_rect_valid(const TrainlogTerminal *terminal,
+                               int top, int left, int height, int width)
+{
+    return terminal != NULL && top >= 0 && left >= 0 && height > 0 && width > 0 &&
+        top <= trainlog_terminal_rows(terminal) - height &&
+        left <= trainlog_terminal_columns(terminal) - width;
+}
+
+TrainlogSurface *trainlog_surface_create(TrainlogTerminal *terminal,
+                                         const char *name,
+                                         int top, int left,
+                                         int height, int width)
+{
+    ncplane_options options = {0};
+    TrainlogSurface *surface;
+    if (!surface_rect_valid(terminal, top, left, height, width)) return NULL;
+    surface = calloc(1U, sizeof(*surface));
+    if (surface == NULL) return NULL;
+    options.y = top; options.x = left;
+    options.rows = (unsigned)height; options.cols = (unsigned)width;
+    options.name = name;
+    surface->plane = ncplane_create(terminal->plane, &options);
+    if (surface->plane == NULL) { free(surface); return NULL; }
+    surface->terminal = terminal; surface->height = height; surface->width = width;
+    trainlog_surface_set_role(surface, TRAINLOG_COLOR_DEFAULT,
+                              TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+    return surface;
+}
+
+bool trainlog_surface_set_rect(TrainlogSurface *surface,
+                               int top, int left, int height, int width)
+{
+    if (surface == NULL || surface->plane == NULL ||
+        !surface_rect_valid(surface->terminal, top, left, height, width)) return false;
+    if (ncplane_resize_simple(surface->plane, (unsigned)height,
+                              (unsigned)width) != 0 ||
+        ncplane_move_yx(surface->plane, top, left) != 0) return false;
+    surface->height = height; surface->width = width;
+    return true;
+}
+
+void trainlog_surface_destroy(TrainlogSurface *surface)
+{
+    if (surface == NULL) return;
+    if (surface->plane != NULL) (void)ncplane_destroy(surface->plane);
+    free(surface);
+}
+
+void trainlog_surface_erase(TrainlogSurface *surface)
+{
+    if (surface != NULL && surface->plane != NULL) ncplane_erase(surface->plane);
+}
+
+void trainlog_surface_set_role(TrainlogSurface *surface,
+                               TrainlogColorRole foreground,
+                               unsigned background_rgb,
+                               TrainlogTextStyle style)
+{
+    if (surface == NULL || surface->plane == NULL) return;
+    plane_set_rgb(surface->plane, true, role_rgb(foreground));
+    plane_set_rgb(surface->plane, false, background_rgb);
+    ncplane_set_styles(surface->plane,
+        (style & TRAINLOG_TEXT_BOLD) != 0U ? NCSTYLE_BOLD : 0U);
+    (void)ncplane_set_base(surface->plane, " ", 0U, ncplane_channels(surface->plane));
+}
+
+void trainlog_surface_printf(TrainlogSurface *surface,
+                             int row, int column,
+                             const char *format, ...)
+{
+    va_list arguments;
+    va_list copy;
+    char *value;
+    int count;
+    if (surface == NULL || surface->plane == NULL || format == NULL || row < 0 ||
+        column < 0 || row >= surface->height || column >= surface->width) return;
+    va_start(arguments, format); va_copy(copy, arguments);
+    count = vsnprintf(NULL, 0U, format, copy); va_end(copy);
+    if (count < 0) { va_end(arguments); return; }
+    value = malloc((size_t)count + 1U);
+    if (value != NULL) {
+        size_t bytes = 0U;
+        int cells = 0;
+        int available = surface->width - column;
+        (void)vsnprintf(value, (size_t)count + 1U, format, arguments);
+        /* INVARIANT: child-plane clipping is not inherited. Bound all output
+         * to complete UTF-8 code points and cell width so content cannot paint
+         * the footer or leave an invalid trailing byte sequence. */
+        while (value[bytes] != '\0') {
+            utf8proc_int32_t codepoint;
+            utf8proc_ssize_t parsed = utf8proc_iterate(
+                (const utf8proc_uint8_t *)value + bytes, -1, &codepoint);
+            int width;
+            if (parsed <= 0) break;
+            width = utf8proc_charwidth(codepoint);
+            if (width < 0) width = 1;
+            if (cells + width > available) break;
+            cells += width; bytes += (size_t)parsed;
+        }
+        (void)ncplane_putnstr_yx(surface->plane, row, column,
+            bytes, value);
+        free(value);
+    }
+    va_end(arguments);
+}
+
+void trainlog_surface_draw(TrainlogSurface *surface,
+                           int row, int column, uint32_t codepoint)
+{
+    nccell cell = NCCELL_TRIVIAL_INITIALIZER;
+    if (surface == NULL || surface->plane == NULL || row < 0 || column < 0 ||
+        row >= surface->height || column >= surface->width) return;
+    if (nccell_load_ucs32(surface->plane, &cell, codepoint) >= 0) {
+        (void)ncplane_putc_yx(surface->plane, row, column, &cell);
+        nccell_release(surface->plane, &cell);
+    }
+}
+
+void trainlog_surface_move_top(TrainlogSurface *surface)
+{
+    if (surface != NULL && surface->plane != NULL)
+        (void)ncplane_move_family_top(surface->plane);
 }
 
 TrainlogPanel *tui_panel_create(TrainlogTerminal *terminal, int height, int width,

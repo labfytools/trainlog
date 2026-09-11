@@ -107,6 +107,18 @@ def resolve_exercise_row(connection, exercise_id, mobile_proof):
     ).fetchone()
     if row is not None:
         return row[0]
+    aliases_available = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='exercise_aliases'",
+    ).fetchone() is not None
+    if aliases_available:
+        row = connection.execute(
+            "SELECT e.id FROM exercise_aliases a "
+            "JOIN exercises e ON e.exercise_id=a.canonical_exercise_id "
+            "WHERE a.source_exercise_id=?",
+            (exercise_id,),
+        ).fetchone()
+        if row is not None:
+            return row[0]
     proof = mobile_proof.get(exercise_id)
     if proof is None:
         raise ImportFailure(f"exercice inconnu: {exercise_id}")
@@ -183,26 +195,41 @@ def main():
         seen.add(exercise_id)
         parsed.append((exercise_id, primary, sorted(secondary)))
 
-    proof_path = args.mobile_export
-    if proof_path is None:
-        candidate = args.input.with_name("trainlog-mobile-export-v2.json")
-        if candidate.exists():
-            proof_path = candidate
-    mobile_proof = load_mobile_exercise_proof(proof_path) if proof_path is not None else {}
+    # A V2 snapshot is reconciliation evidence only when the caller selected
+    # and supplied that exact snapshot.  Never discover a sibling implicitly:
+    # a stale V2 file must not prove IDs for a separately selected V3/V1 run.
+    mobile_proof = (load_mobile_exercise_proof(args.mobile_export)
+                    if args.mobile_export is not None else {})
 
     connection = sqlite3.connect(args.database)
     updated = skipped = kept_local = 0
-    resolved_rows = set()
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 11:
-            raise ImportFailure("schema desktop v11 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12):
+            raise ImportFailure("schema desktop v11/v12 requis")
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("BEGIN IMMEDIATE")
+        grouped = {}
         for exercise_id, primary, secondary in parsed:
             row_id = resolve_exercise_row(connection, exercise_id, mobile_proof)
-            if row_id in resolved_rows:
-                raise ImportFailure(f"deux identités entrantes résolvent le même exercice: {exercise_id}")
-            resolved_rows.add(row_id)
+            incoming = (primary, secondary)
+            group = grouped.get(row_id)
+            if group is None:
+                grouped[row_id] = (exercise_id, incoming)
+            elif group[1] != incoming:
+                # CONTRACT: secondary zones are direct ordered-set metadata, so
+                # alias coalescing may accept equality but must never union two
+                # companion claims or choose between primary/secondary roles.
+                raise ImportFailure(
+                    f"données de zones incompatibles après résolution d'alias: "
+                    f"{group[0]} / {exercise_id}"
+                )
+
+        # INVARIANT: resolve and compare the complete alias groups before the
+        # first write. This makes one reconciliation decision per canonical
+        # exercise and prevents input order from changing the chosen payload.
+        planned = []
+        for row_id, (exercise_id, incoming) in grouped.items():
+            primary, secondary = incoming
             local_primary, local_secondary = current(connection, row_id)
             local_state = state(local_primary, local_secondary)
             incoming_state = state(primary, secondary)
@@ -211,20 +238,32 @@ def main():
             ).fetchone()
             baseline = None if baseline_row is None else baseline_row[0]
             if local_state == incoming_state:
-                connection.execute("INSERT OR REPLACE INTO exercise_body_zone_sync VALUES(?,?)", (row_id, incoming_state))
-                skipped += 1
+                planned.append(("skip", row_id, primary, secondary, incoming_state))
             elif baseline is not None and local_state == baseline:
-                replace(connection, row_id, primary, secondary)
-                connection.execute("INSERT OR REPLACE INTO exercise_body_zone_sync VALUES(?,?)", (row_id, incoming_state))
-                updated += 1
+                planned.append(("update", row_id, primary, secondary, incoming_state))
             elif baseline is not None and incoming_state == baseline:
-                kept_local += 1
+                planned.append(("keep", row_id, primary, secondary, incoming_state))
             elif baseline is None and local_state == "|":
-                replace(connection, row_id, primary, secondary)
-                connection.execute("INSERT OR REPLACE INTO exercise_body_zone_sync VALUES(?,?)", (row_id, incoming_state))
-                updated += 1
+                planned.append(("update", row_id, primary, secondary, incoming_state))
             else:
                 raise ImportFailure(f"conflit zones simultané: {exercise_id}")
+
+        # WHY: aliases are compatibility identities, not additional exercises.
+        # Applying the plan once per resolved row avoids duplicate mutations and
+        # cannot recreate a retired source ID.
+        for action, row_id, primary, secondary, incoming_state in planned:
+            if action == "keep":
+                kept_local += 1
+                continue
+            if action == "update":
+                replace(connection, row_id, primary, secondary)
+                updated += 1
+            else:
+                skipped += 1
+            connection.execute(
+                "INSERT OR REPLACE INTO exercise_body_zone_sync VALUES(?,?)",
+                (row_id, incoming_state),
+            )
         connection.commit()
         print("EXERCISE_BODY_ZONES_IMPORT=PASS")
         print(f"zones_updated={updated}")

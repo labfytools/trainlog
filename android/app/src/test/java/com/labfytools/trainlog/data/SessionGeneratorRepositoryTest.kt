@@ -91,6 +91,45 @@ class SessionGeneratorRepositoryTest {
     }
 
     @Test
+    fun manualPercentMaxCalculationIsExactContextAndReadOnly() {
+        val repo = openRepository()
+        val exercise = exactExercise(repo)
+        assertTrue(repo.saveSession(SessionDraft(
+            exercises = listOf(SessionExerciseDraft(
+                exercise = exercise,
+                equipmentId = EQUIPMENT_ID,
+                maxWeightKg = 137.5,
+            )),
+            sessionType = com.labfytools.trainlog.model.SessionType.MAX_TEST,
+        )) is SaveSessionResult.Saved)
+        val before = mutableTableCounts()
+        val draftBefore = repo.loadActiveSessionDraft()
+
+        val result = repo.calculateManualPercentMaxTarget(
+            exercise.exerciseId, EQUIPMENT_ID, 73)
+
+        assertTrue(result is ManualPercentMaxResult.Available)
+        result as ManualPercentMaxResult.Available
+        assertEquals(137.5, result.maxWeightKg, 0.0)
+        assertEquals(100.375, result.targetWeightKg, 0.0000001)
+        assertEquals(before, mutableTableCounts())
+        assertEquals(draftBefore, repo.loadActiveSessionDraft())
+        assertTrue(repo.calculateManualPercentMaxTarget(
+            exercise.exerciseId, "plate_loaded_leg_press", 73,
+        ) is ManualPercentMaxResult.Unavailable)
+        val assistance = repo.calculateManualPercentMaxTarget(
+            exercise.exerciseId, "assisted_dip_chin_machine", 73,
+        ) as ManualPercentMaxResult.Unavailable
+        assertTrue(assistance.message.contains("assistance"))
+        val unknown = repo.calculateManualPercentMaxTarget(
+            exercise.exerciseId, "unknown_equipment", 73,
+        ) as ManualPercentMaxResult.Unavailable
+        assertFalse(unknown.message.contains("assistance"))
+        assertTrue(unknown.message.contains("résistance externe"))
+        assertEquals(before, mutableTableCounts())
+    }
+
+    @Test
     fun generationStreamsHistoryBeyondLegacyOccurrenceAndSetPreviewLimits() {
         val repo = openRepository()
         val exercise = exactExercise(repo)

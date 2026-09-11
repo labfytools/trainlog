@@ -55,6 +55,109 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
+    fun exerciseAliasCompanionMergesAndPreventsCatalogResurrection() {
+        val repo = openRepository()
+        val source = createExercise(repo, "Curl source", RecordingMode.SETS, TrackingMode.REPS)
+        val target = createExercise(repo, "Curl canonique", RecordingMode.SETS, TrackingMode.REPS)
+        val artifact = JSONObject()
+            .put("format", "trainlog-exercise-aliases")
+            .put("version", 1)
+            .put("aliases", org.json.JSONArray().put(JSONObject()
+                .put("source_exercise_id", source.exerciseId)
+                .put("canonical_exercise_id", target.exerciseId)))
+            .toString()
+
+        assertEquals(ExerciseAliasImportResult.Applied(1, 0),
+            repo.applyExerciseAliasesJson(artifact))
+        assertEquals(ExerciseAliasImportResult.Applied(0, 1),
+            repo.applyExerciseAliasesJson(artifact))
+        assertEquals(listOf(target.exerciseId), repo.listExercises().map { it.exerciseId })
+        val published = JSONObject(repo.buildExerciseAliasesJson())
+        assertEquals(source.exerciseId,
+            published.getJSONArray("aliases").getJSONObject(0).getString("source_exercise_id"))
+
+        val staleCatalog = JSONObject()
+            .put("format", "trainlog-pc-catalog")
+            .put("version", 1)
+            .put("exercises", org.json.JSONArray().put(JSONObject()
+                .put("exercise_id", source.exerciseId)
+                .put("name", "Retired stale label")
+                .put("recording_mode", "sets")
+                .put("tracking_mode", "reps")
+                .put("data_fields", 0)))
+            .toString()
+        assertTrue(repo.applyPcCatalogJson(staleCatalog) is PcCatalogImportResult.Applied)
+        assertEquals(listOf(target.exerciseId), repo.listExercises().map { it.exerciseId })
+        assertEquals("Curl canonique", repo.listExercises().single().name)
+
+        val canonicalCatalog = JSONObject(staleCatalog.toString())
+        canonicalCatalog.getJSONArray("exercises").getJSONObject(0)
+            .put("exercise_id", target.exerciseId)
+            .put("name", "Curl canonique renommé")
+        assertTrue(repo.applyPcCatalogJson(canonicalCatalog.toString()) is PcCatalogImportResult.Applied)
+        assertEquals("Curl canonique renommé", repo.listExercises().single().name)
+
+        val zones = JSONObject()
+            .put("format", "trainlog-exercise-body-zones")
+            .put("version", 1)
+            .put("generated_at", "2032-01-01T00:00:00+00:00")
+            .put("exercises", org.json.JSONArray().put(JSONObject()
+                .put("exercise_id", source.exerciseId)
+                .put("primary_zone_id", "arms")
+                .put("secondary_zone_ids", org.json.JSONArray().put("shoulders"))))
+        assertEquals(ExerciseBodyZoneImportResult.Applied(1, 0, 0),
+            repo.applyExerciseBodyZonesJson(zones.toString()))
+        assertEquals(ExerciseBodyZoneImportResult.Applied(0, 1, 0),
+            repo.applyExerciseBodyZonesJson(zones.toString()))
+        val canonicalWithZones = repo.listExercises().single()
+        assertEquals("arms", canonicalWithZones.primaryZoneId)
+        assertEquals(listOf("shoulders"), canonicalWithZones.secondaryZoneIds)
+
+        assertTrue(repo.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+            entryId = "sxe_00000000-0000-4000-8000-000000000001", exercise = canonicalWithZones,
+            equipmentId = "leg_press", sets = listOf(SessionSetDraft(reps = 8, weightKg = 42.5)),
+        )))) is SaveSessionResult.Saved)
+        listOf(2, 3).forEach { version ->
+            val snapshot = JSONObject(if (version == 2) repo.buildMobileExportV2Json()
+                else repo.buildMobileExportV3Json())
+            val cloned = JSONObject(snapshot.getJSONArray("sessions").getJSONObject(0).toString())
+            val importedSessionId = "se_00000000-0000-4000-8000-00000000000$version"
+            val importedEntryId = "sxe_00000000-0000-4000-8000-00000000000$version"
+            cloned.put("session_id", importedSessionId)
+            cloned.getJSONArray("exercises").getJSONObject(0)
+                .put("entry_id", importedEntryId)
+                .put("exercise_id", source.exerciseId)
+            snapshot.getJSONArray("exercises").getJSONObject(0)
+                .put("exercise_id", source.exerciseId)
+            snapshot.put("sessions", org.json.JSONArray().put(cloned))
+            snapshot.put("body_observations", org.json.JSONArray())
+            val result = if (version == 2) repo.applyPcMobileExportV2Json(snapshot.toString())
+                else repo.applyPcMobileExportV3Json(snapshot.toString())
+            assertEquals(MobileSessionImportResult.Applied(1, 0, 0, 0), result)
+            val replay = if (version == 2) repo.applyPcMobileExportV2Json(snapshot.toString())
+                else repo.applyPcMobileExportV3Json(snapshot.toString())
+            assertEquals(MobileSessionImportResult.Applied(0, 1, 0, 0), replay)
+            val imported = repo.getSessionDetail(importedSessionId)!!.exercises.single()
+            assertEquals(target.exerciseId, imported.exerciseId)
+            assertEquals(listOf(8), imported.sets.map { it.reps })
+            assertEquals(listOf(42.5), imported.sets.map { it.weightKg })
+            assertEquals("leg_press", imported.equipmentId)
+
+            val associations = JSONObject(repo.buildEquipmentAssociationsJson())
+            val matching = (0 until associations.getJSONArray("associations").length())
+                .map { associations.getJSONArray("associations").getJSONObject(it) }
+                .single { it.getString("entry_id") == importedEntryId }
+            matching.put("exercise_id", source.exerciseId)
+            associations.put("associations", org.json.JSONArray().put(matching))
+            assertEquals(EquipmentAssociationImportResult.Applied(0),
+                repo.applyPcEquipmentAssociationsJson(associations.toString()))
+        }
+
+        val duplicated = artifact.replaceFirst("\"format\":", "\"format\":\"bad\",\"format\":")
+        assertTrue(repo.applyExerciseAliasesJson(duplicated) is ExerciseAliasImportResult.Invalid)
+    }
+
+    @Test
     fun durableDraftRestoresEveryExerciseShapeAndRawForm() {
         val first = openRepository()
         val reps = createExercise(first, "Tractions", RecordingMode.SETS, TrackingMode.REPS)
@@ -1505,7 +1608,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(11, cursor.getInt(0))
+                assertEquals(12, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1632,7 +1735,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(11, cursor.getInt(0))
+                assertEquals(12, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -1786,6 +1889,54 @@ class TrainlogRepositoryDraftTest {
             reopened.getSessionDetail(sessionId)!!.exercises.map { it.entryId },
         )
         assertEquals(sessionId, loadDraft(reopened).sourceSessionId)
+    }
+
+    @Test
+    fun aggregateLatestMaxUsesExactInstantAndStableIdsWithoutDuplicates() {
+        val repo = openRepository()
+        val exercise = createExercise(repo, "Maximum ordering", RecordingMode.SETS, TrackingMode.REPS)
+        listOf(
+            Triple("sxe_offset", 100.0, "2026-09-23T10:00:00+15:00"),
+            Triple("sxe_tie_a", 110.0, "2026-09-22T20:00:00Z"),
+            Triple("sxe_tie_b", 120.0, "2026-09-22T21:00:00+01:00"),
+        ).forEach { (entryId, weight, _) ->
+            assertTrue(repo.saveSession(SessionDraft(
+                exercises = listOf(SessionExerciseDraft(
+                    entryId = entryId, exercise = exercise, maxWeightKg = weight,
+                )),
+                sessionType = SessionType.MAX_TEST,
+            )) is SaveSessionResult.Saved)
+        }
+        val byWeight = repo.listSessions().associate { summary ->
+            repo.getSessionDetail(summary.sessionId)!!.exercises.single().maxWeightKg!! to summary.sessionId
+        }
+        val stableIds = mapOf(
+            100.0 to "se_10000000-0000-4000-8000-000000000000",
+            110.0 to "se_20000000-0000-4000-8000-000000000000",
+            120.0 to "se_30000000-0000-4000-8000-000000000000",
+        )
+        val timestamps = mapOf(
+            100.0 to "2026-09-23T10:00:00+15:00",
+            110.0 to "2026-09-22T20:00:00Z",
+            120.0 to "2026-09-22T21:00:00+01:00",
+        )
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(databaseName).absolutePath, null, SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            byWeight.forEach { (weight, generatedId) ->
+                db.execSQL(
+                    "UPDATE sessions SET session_id=?,started_at=? WHERE session_id=?",
+                    arrayOf(stableIds.getValue(weight), timestamps.getValue(weight), generatedId),
+                )
+            }
+        }
+
+        val maxima = repo.listLatestExerciseMaxima()
+
+        assertEquals(1, maxima.size)
+        assertEquals(exercise.exerciseId, maxima.single().exerciseId)
+        assertEquals(120.0, maxima.single().maxWeightKg, 0.0)
+        assertEquals("2026-09-22T21:00:00+01:00", maxima.single().startedAt)
     }
 
     @Test
@@ -2108,6 +2259,41 @@ class TrainlogRepositoryDraftTest {
             .getJSONObject(0).getJSONArray("exercises").getJSONObject(0)
         assertEquals(9, exported.getJSONObject("target").getInt("reps"))
         assertEquals(3, exported.getJSONArray("sets").length())
+    }
+
+    @Test
+    fun exerciseAliasCompanionRekeysHistoryAndDraftAndReplaysIdempotently() {
+        val repo = openRepository()
+        val source = createExercise(repo, "Alias source", RecordingMode.SETS, TrackingMode.REPS)
+        val target = createExercise(repo, "Alias target", RecordingMode.SETS, TrackingMode.REPS)
+        assertTrue(repo.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+            entryId = "sxe_alias_history", exercise = source,
+            sets = listOf(SessionSetDraft(reps = 8)),
+        )))) is SaveSessionResult.Saved)
+        assertEquals(ActiveDraftMutationResult.Saved, repo.saveActiveSessionDraft(
+            ActiveSessionDraft(exercises = listOf(SessionExerciseDraft(
+                entryId = "sxe_alias_draft", exercise = source,
+                sets = listOf(SessionSetDraft(reps = 6)),
+            ))),
+        ))
+        val artifact = JSONObject().put("format", "trainlog-exercise-aliases")
+            .put("version", 1).put("aliases", org.json.JSONArray().put(JSONObject()
+                .put("source_exercise_id", source.exerciseId)
+                .put("canonical_exercise_id", target.exerciseId))).toString()
+        assertEquals(ExerciseAliasImportResult.Applied(1, 0),
+            repo.applyExerciseAliasesJson(artifact))
+        assertEquals(target.exerciseId,
+            repo.getSessionDetail(repo.listSessions().single().sessionId)!!
+                .exercises.single().exerciseId)
+        assertEquals(target.exerciseId,
+            (repo.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded)
+                .draft.exercises.single().exercise.exerciseId)
+        val exported = JSONObject(repo.buildExerciseAliasesJson())
+            .getJSONArray("aliases").getJSONObject(0)
+        assertEquals(source.exerciseId, exported.getString("source_exercise_id"))
+        assertEquals(target.exerciseId, exported.getString("canonical_exercise_id"))
+        assertEquals(ExerciseAliasImportResult.Applied(0, 1),
+            repo.applyExerciseAliasesJson(artifact))
     }
 
     private fun openRepository(): TrainlogRepository {

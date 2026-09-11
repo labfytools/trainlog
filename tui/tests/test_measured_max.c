@@ -362,6 +362,31 @@ static bool test_measured_max_semantics(void)
         working < 85.01
     );
 
+    {
+        TrainlogLatestExplicitMax latest = {0};
+        latest.found = true;
+        latest.load_mode = TRAINLOG_LOAD_EXTERNAL;
+        latest.max_weight_kg = 105.0;
+        (void)snprintf(latest.equipment_id, sizeof(latest.equipment_id),
+            "%s", "barbell");
+        CHECK(trainlog_measured_max_target_load(&latest, "barbell",
+            TRAINLOG_LOAD_EXTERNAL, 73,
+            &working) == TRAINLOG_STATUS_OK);
+        CHECK(working > 76.649 && working < 76.651);
+        CHECK(trainlog_measured_max_target_load(&latest, "other",
+            TRAINLOG_LOAD_EXTERNAL, 73,
+            &working) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+        CHECK(trainlog_measured_max_target_load(&latest, "barbell",
+            TRAINLOG_LOAD_ASSISTANCE, 73,
+            &working) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+        CHECK(trainlog_measured_max_target_load(&latest, "barbell",
+            TRAINLOG_LOAD_EXTERNAL, 0,
+            &working) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+        CHECK(trainlog_measured_max_target_load(&latest, "barbell",
+            TRAINLOG_LOAD_EXTERNAL, 101,
+            &working) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+    }
+
     CHECK(
         insert_reps_session(
             database,

@@ -111,6 +111,13 @@ sealed interface ExerciseBodyZoneImportResult {
     data object DatabaseError : ExerciseBodyZoneImportResult
 }
 
+sealed interface ExerciseAliasImportResult {
+    data class Applied(val added: Int, val skipped: Int) : ExerciseAliasImportResult
+    data class Invalid(val message: String) : ExerciseAliasImportResult
+    data class Conflict(val sourceExerciseId: String) : ExerciseAliasImportResult
+    data object DatabaseError : ExerciseAliasImportResult
+}
+
 sealed interface MobileSessionImportResult {
     /** CONTRACT: counters describe persistent mutations, not artifact size. */
     data class Applied(
@@ -251,6 +258,15 @@ data class TrainingExerciseContext(
     val latestExplicitMax: ExplicitMaxContext?,
     val recentPerformance: ExerciseOccurrencePage,
 )
+
+sealed interface ManualPercentMaxResult {
+    data class Available(
+        val maxWeightKg: Double,
+        val maxStartedAt: String,
+        val targetWeightKg: Double,
+    ) : ManualPercentMaxResult
+    data class Unavailable(val message: String) : ManualPercentMaxResult
+}
 
 class TrainlogRepository(
     context: Context,
@@ -737,11 +753,12 @@ class TrainlogRepository(
         return try {
             db.beginTransaction()
             incoming.forEach { item ->
-                val rowId = lookupExerciseRowIdOrNull(db, item.exerciseId)
+                val canonicalExerciseId = resolveExerciseId(db, item.exerciseId)
+                val rowId = lookupExerciseRowIdOrNull(db, canonicalExerciseId)
                     ?: return ExerciseBodyZoneImportResult.Invalid(
                         "Exercice de relation inconnu : ${item.exerciseId}",
                     )
-                val local = readExerciseBodyZones(db, item.exerciseId)
+                val local = readExerciseBodyZones(db, canonicalExerciseId)
                 val localState = bodyZoneSyncState(local.first, local.second)
                 val incomingState = bodyZoneSyncState(item.primary, item.secondary)
                 val baseline = db.rawQuery(
@@ -754,13 +771,13 @@ class TrainlogRepository(
                         skipped += 1
                     }
                     baseline != null && localState == baseline -> {
-                        replaceExerciseBodyZones(db, item.exerciseId, item.primary, item.secondary)
+                        replaceExerciseBodyZones(db, canonicalExerciseId, item.primary, item.secondary)
                         writeBodyZoneSyncBaseline(db, rowId, incomingState)
                         updated += 1
                     }
                     baseline != null && incomingState == baseline -> keptLocal += 1
                     baseline == null && localState == "|" -> {
-                        replaceExerciseBodyZones(db, item.exerciseId, item.primary, item.secondary)
+                        replaceExerciseBodyZones(db, canonicalExerciseId, item.primary, item.secondary)
                         writeBodyZoneSyncBaseline(db, rowId, incomingState)
                         updated += 1
                     }
@@ -771,6 +788,126 @@ class TrainlogRepository(
             ExerciseBodyZoneImportResult.Applied(updated, skipped, keptLocal)
         } catch (_: Exception) {
             ExerciseBodyZoneImportResult.DatabaseError
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    /**
+     * CONTRACT: this companion is the only publication of retired exercise
+     * identities. Mappings are sorted, flattened, one hop, and never alter a
+     * mobile session exchange version.
+     */
+    fun buildExerciseAliasesJson(): String {
+        val aliases = JSONArray()
+        database.readableDatabase.rawQuery(
+            "SELECT source_exercise_id,canonical_exercise_id FROM exercise_aliases " +
+                "ORDER BY source_exercise_id COLLATE BINARY;",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                aliases.put(JSONObject()
+                    .put("source_exercise_id", cursor.getString(0))
+                    .put("canonical_exercise_id", cursor.getString(1)))
+            }
+        }
+        check(aliases.length() <= MAX_EXERCISE_ALIASES) { "Trop d'alias exercice." }
+        return JSONObject()
+            .put("format", "trainlog-exercise-aliases")
+            .put("version", 1)
+            .put("aliases", aliases)
+            .toString()
+    }
+
+    fun applyExerciseAliasesJson(json: String): ExerciseAliasImportResult {
+        if (json.toByteArray(Charsets.UTF_8).size > MAX_EXERCISE_ALIAS_BYTES ||
+            !jsonHasUniqueObjectKeys(json)) {
+            return ExerciseAliasImportResult.Invalid("Artifact alias JSON invalide ou trop volumineux.")
+        }
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return ExerciseAliasImportResult.Invalid("Artifact alias JSON invalide.")
+        }
+        if (!root.hasExactKeys(setOf("format", "version", "aliases")) ||
+            root.value("format") != "trainlog-exercise-aliases" ||
+            !root.value("version").isJsonInt(1, 1) || root.value("aliases") !is JSONArray) {
+            return ExerciseAliasImportResult.Invalid("Artifact alias v1 non supporté.")
+        }
+        val incoming = mutableListOf<Pair<String, String>>()
+        val sources = mutableSetOf<String>()
+        val array = root.getJSONArray("aliases")
+        if (array.length() > MAX_EXERCISE_ALIASES)
+            return ExerciseAliasImportResult.Invalid("Trop d'alias exercice.")
+        for (index in 0 until array.length()) {
+            val item = array.opt(index) as? JSONObject
+                ?: return ExerciseAliasImportResult.Invalid("Alias[$index] invalide.")
+            if (!item.hasExactKeys(setOf("source_exercise_id", "canonical_exercise_id")))
+                return ExerciseAliasImportResult.Invalid("Forme d'alias[$index] invalide.")
+            val source = item.optString("source_exercise_id")
+            val canonical = item.optString("canonical_exercise_id")
+            if (!source.matches(EXERCISE_ID_V4_PATTERN) ||
+                !canonical.matches(EXERCISE_ID_V4_PATTERN) || source == canonical ||
+                !sources.add(source)) {
+                return ExerciseAliasImportResult.Invalid("Identité d'alias[$index] invalide.")
+            }
+            incoming += source to canonical
+        }
+        if (incoming != incoming.sortedWith(compareBy<Pair<String, String>> { it.first }.thenBy { it.second }) ||
+            incoming.any { it.second in sources }) {
+            return ExerciseAliasImportResult.Invalid("Les alias doivent être triés et aplatis.")
+        }
+
+        val db = database.writableDatabase
+        var added = 0
+        var skipped = 0
+        return try {
+            db.beginTransaction()
+            incoming.forEach { (sourceId, canonicalId) ->
+                val canonical = findExerciseRow(db, "exercise_id=?", arrayOf(canonicalId))
+                    ?: return ExerciseAliasImportResult.Invalid(
+                        "Cible canonique absente : $canonicalId",
+                    )
+                val existing = db.rawQuery(
+                    "SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?;",
+                    arrayOf(sourceId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                if (existing != null) {
+                    if (existing != canonicalId) return ExerciseAliasImportResult.Conflict(sourceId)
+                    skipped += 1
+                    return@forEach
+                }
+                val retired = findExerciseRow(db, "exercise_id=?", arrayOf(sourceId))
+                if (retired != null) {
+                    if (retired.recordingMode != canonical.recordingMode ||
+                        retired.trackingMode != canonical.trackingMode ||
+                        retired.dataFields != canonical.dataFields ||
+                        !aliasBodyZonesAreCompatible(db, canonical, retired) ||
+                        !catalogEquipmentProfilesAreCompatible(db, sourceId, canonicalId)) {
+                        return ExerciseAliasImportResult.Conflict(sourceId)
+                    }
+                    /* INVARIANT: flatten incoming edges before deleting the
+                     * intermediate catalogue row protected by the alias FK. */
+                    db.execSQL(
+                        "UPDATE exercise_aliases SET canonical_exercise_id=? WHERE canonical_exercise_id=?;",
+                        arrayOf(canonicalId, sourceId),
+                    )
+                    mergeAliasedExerciseRows(db, canonical, retired)
+                }
+                /* INVARIANT: aliases which previously targeted the retired ID
+                 * remain one hop from a live catalogue row. */
+                db.execSQL(
+                    "UPDATE exercise_aliases SET canonical_exercise_id=? WHERE canonical_exercise_id=?;",
+                    arrayOf(canonicalId, sourceId),
+                )
+                db.execSQL(
+                    "INSERT INTO exercise_aliases(source_exercise_id,canonical_exercise_id) VALUES(?,?);",
+                    arrayOf(sourceId, canonicalId),
+                )
+                added += 1
+            }
+            db.setTransactionSuccessful()
+            ExerciseAliasImportResult.Applied(added, skipped)
+        } catch (_: Exception) {
+            ExerciseAliasImportResult.DatabaseError
         } finally {
             if (db.inTransaction()) db.endTransaction()
         }
@@ -1390,10 +1527,12 @@ class TrainlogRepository(
                             index
                         )
 
-                val exerciseId =
-                    item.getString(
-                        "exercise_id"
-                    )
+                val suppliedExerciseId = item.getString("exercise_id")
+                /* CONTRACT: a peer which has not yet consumed the companion
+                 * may resend a retired catalogue ID; resolve it before lookup
+                 * so the old row can never be resurrected. */
+                val exerciseId = resolveExerciseId(db, suppliedExerciseId)
+                val suppliedRetiredAlias = suppliedExerciseId != exerciseId
 
                 val name =
                     item.getString(
@@ -1499,6 +1638,34 @@ class TrainlogRepository(
                         return PcCatalogImportResult.Invalid(
                             "Conflit de profil catalogue PC pour $name."
                         )
+                    }
+
+                    /* Retired identity is routing information only. Its stale
+                     * name must not overwrite canonical presentation metadata
+                     * or trigger a normalized-name merge. */
+                    if (suppliedRetiredAlias) {
+                        val richerFields = byId.dataFields or dataFields
+                        if (richerFields == byId.dataFields) {
+                            skipped += 1
+                            traceDecision(
+                                "exercise_alias:$suppliedExerciseId;exercise_id:${byId.exerciseId}",
+                                "existing-identical",
+                            )
+                        } else {
+                            if (db.update(
+                                    "exercises",
+                                    ContentValues().apply { put("data_fields", richerFields) },
+                                    "id = ?",
+                                    arrayOf(byId.rowId.toString()),
+                                ) != 1
+                            ) return PcCatalogImportResult.DatabaseError
+                            reconciled += 1
+                            traceDecision(
+                                "exercise_alias:$suppliedExerciseId;exercise_id:${byId.exerciseId}",
+                                "existing-reconciled",
+                            )
+                        }
+                        continue
                     }
 
                     /* CONTRACT: a catalog name is mutable metadata.  Identity
@@ -1817,10 +1984,67 @@ class TrainlogRepository(
             retired.exerciseId,
             canonical.exerciseId,
         )
+        if (sqliteTableExists(db, "exercise_aliases")) {
+            db.execSQL(
+                "UPDATE exercise_aliases SET canonical_exercise_id=? WHERE canonical_exercise_id=?;",
+                arrayOf(canonical.exerciseId, retired.exerciseId),
+            )
+            db.execSQL(
+                "INSERT INTO exercise_aliases(source_exercise_id,canonical_exercise_id) VALUES(?,?);",
+                arrayOf(retired.exerciseId, canonical.exerciseId),
+            )
+        }
         db.execSQL(
             "DELETE FROM exercises WHERE id=?;",
             arrayOf(retired.rowId),
         )
+    }
+
+    private fun aliasBodyZonesAreCompatible(
+        db: SQLiteDatabase,
+        canonical: ExerciseRow,
+        retired: ExerciseRow,
+    ): Boolean {
+        val canonicalPrimary = readExerciseBodyZones(db, canonical.exerciseId).first
+        val retiredPrimary = readExerciseBodyZones(db, retired.exerciseId).first
+        return canonicalPrimary == null || retiredPrimary == null ||
+            canonicalPrimary == retiredPrimary
+    }
+
+    private fun mergeAliasedExerciseRows(
+        db: SQLiteDatabase,
+        canonical: ExerciseRow,
+        retired: ExerciseRow,
+    ) {
+        val canonicalZones = readExerciseBodyZones(db, canonical.exerciseId)
+        val retiredZones = readExerciseBodyZones(db, retired.exerciseId)
+        val primary = canonicalZones.first ?: retiredZones.first
+        val secondaries = (canonicalZones.second + retiredZones.second)
+            .filter { it != primary }.distinct()
+        replaceExerciseBodyZones(db, canonical.exerciseId, primary, secondaries)
+        db.execSQL("DELETE FROM exercise_body_zones WHERE exercise_row_id=?;", arrayOf(retired.rowId))
+        if (sqliteTableExists(db, "exercise_body_zone_sync")) {
+            db.execSQL(
+                "DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?);",
+                arrayOf(canonical.rowId, retired.rowId),
+            )
+        }
+        /* CONTRACT: row-owned occurrence and draft children keep their stable
+         * IDs and actual/planning values; only the catalogue FK is repointed. */
+        db.execSQL("UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?;",
+            arrayOf(canonical.rowId, retired.rowId))
+        db.execSQL("UPDATE draft_session_exercises SET exercise_row_id=? WHERE exercise_row_id=?;",
+            arrayOf(canonical.rowId, retired.rowId))
+        db.execSQL("UPDATE active_session_draft SET selected_exercise_row_id=? WHERE selected_exercise_row_id=?;",
+            arrayOf(canonical.rowId, retired.rowId))
+        db.execSQL(
+            "INSERT OR IGNORE INTO exercise_equipment(exercise_row_id,equipment_row_id) " +
+                "SELECT ?,equipment_row_id FROM exercise_equipment WHERE exercise_row_id=?;",
+            arrayOf(canonical.rowId, retired.rowId),
+        )
+        db.execSQL("DELETE FROM exercise_equipment WHERE exercise_row_id=?;", arrayOf(retired.rowId))
+        mergeCatalogEquipmentIdentity(db, retired.exerciseId, canonical.exerciseId)
+        db.execSQL("DELETE FROM exercises WHERE id=?;", arrayOf(retired.rowId))
     }
 
     private fun sqliteTableExists(db: SQLiteDatabase, table: String): Boolean =
@@ -1839,7 +2063,7 @@ class TrainlogRepository(
         val retired = readExerciseBodyZones(db, retiredExerciseId)
         val canonicalEmpty = canonical.first == null && canonical.second.isEmpty()
         val retiredEmpty = retired.first == null && retired.second.isEmpty()
-        return canonicalEmpty || retiredEmpty || canonical == retired
+        return canonical.first == null || retired.first == null || canonical.first == retired.first
     }
 
     private fun mergeExerciseBodyZoneRows(
@@ -1852,7 +2076,8 @@ class TrainlogRepository(
         val retiredState = readExerciseBodyZones(db, retired.exerciseId)
         val canonicalEmpty = canonicalState.first == null && canonicalState.second.isEmpty()
         val retiredEmpty = retiredState.first == null && retiredState.second.isEmpty()
-        check(canonicalEmpty || retiredEmpty || canonicalState == retiredState) {
+        check(canonicalState.first == null || retiredState.first == null ||
+            canonicalState.first == retiredState.first) {
             "Relations de zones incompatibles pendant la réconciliation d'identité."
         }
 
@@ -1862,17 +2087,21 @@ class TrainlogRepository(
          * INVARIANT: baselines are cleared because an identity merge is not a
          * synchronization acknowledgement; the next companion must establish
          * a fresh common ancestor before accepting a one-sided change. */
-        if (canonicalEmpty && !retiredEmpty) {
-            db.execSQL(
-                "UPDATE exercise_body_zones SET exercise_row_id=? WHERE exercise_row_id=?;",
-                arrayOf(canonical.rowId, retired.rowId),
-            )
-        } else {
-            db.execSQL(
-                "DELETE FROM exercise_body_zones WHERE exercise_row_id=?;",
-                arrayOf(retired.rowId),
-            )
+        val primary = canonicalState.first ?: retiredState.first
+        if (primary != null) {
+            db.execSQL("DELETE FROM exercise_body_zones WHERE exercise_row_id=? AND zone_id=?;",
+                arrayOf<Any>(canonical.rowId, primary))
+            db.execSQL("INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) VALUES(?,?,'primary');",
+                arrayOf<Any>(canonical.rowId, primary))
         }
+        db.execSQL(
+            "INSERT OR IGNORE INTO exercise_body_zones(exercise_row_id,zone_id,role) " +
+                "SELECT ?,zone_id,'secondary' FROM exercise_body_zones " +
+                "WHERE exercise_row_id=? AND role='secondary' AND zone_id<>COALESCE(?, '');",
+            arrayOf<Any?>(canonical.rowId, retired.rowId, primary),
+        )
+        db.execSQL("DELETE FROM exercise_body_zones WHERE exercise_row_id=?;",
+            arrayOf(retired.rowId))
         if (sqliteTableExists(db, "exercise_body_zone_sync")) {
             db.execSQL(
                 "DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?);",
@@ -1943,8 +2172,8 @@ class TrainlogRepository(
     private fun lookupExerciseRowIdOrNull(
         db: SQLiteDatabase,
         exerciseId: String,
-    ): Long? =
-        db.query(
+    ): Long? {
+        val direct = db.query(
             "exercises",
             arrayOf("id"),
             "exercise_id = ?",
@@ -1955,6 +2184,19 @@ class TrainlogRepository(
         ).use { cursor ->
             if (cursor.moveToFirst()) cursor.getLong(0) else null
         }
+        if (direct != null) return direct
+        return db.rawQuery(
+            "SELECT e.id FROM exercise_aliases a JOIN exercises e " +
+                "ON e.exercise_id=a.canonical_exercise_id WHERE a.source_exercise_id=?;",
+            arrayOf(exerciseId),
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+    }
+
+    private fun resolveExerciseId(db: SQLiteDatabase, exerciseId: String): String =
+        db.rawQuery(
+            "SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?;",
+            arrayOf(exerciseId),
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else exerciseId }
 
     private fun lookupEquipmentRowIdOrNull(
         db: SQLiteDatabase,
@@ -2245,7 +2487,11 @@ class TrainlogRepository(
                 for (index in 0 until entries.length()) {
                     val entry = entries.getJSONObject(index)
                     val exerciseId = entry.optString("exercise_id")
-                    val exerciseRow = findExerciseRow(db, "exercise_id = ?", arrayOf(exerciseId))
+                    val exerciseRow = findExerciseRow(
+                        db,
+                        "exercise_id = ?",
+                        arrayOf(resolveExerciseId(db, exerciseId)),
+                    )
                         ?: return MobileSessionImportResult.Invalid("Exercice V2 inconnu : $exerciseId")
                     if (
                         entry.optString("recording_mode") != exerciseRow.recordingMode.wireValue ||
@@ -2289,7 +2535,11 @@ class TrainlogRepository(
                     if (entryId.isBlank() || !seen.add(entryId) || exerciseId.isBlank() || position < 0) {
                         return MobileSessionImportResult.Invalid("Identité d'entrée V2 invalide.")
                     }
-                    val exerciseRow = findExerciseRow(db, "exercise_id = ?", arrayOf(exerciseId))
+                    val exerciseRow = findExerciseRow(
+                        db,
+                        "exercise_id = ?",
+                        arrayOf(resolveExerciseId(db, exerciseId)),
+                    )
                         ?: return MobileSessionImportResult.Invalid("Exercice V2 inconnu : $exerciseId")
                     val recording = entry.optString("recording_mode")
                     val tracking = entry.optString("tracking_mode")
@@ -2658,7 +2908,8 @@ class TrainlogRepository(
         if (rows.size != incoming.length()) return false
         for (index in rows.indices) {
             val item = incoming.getJSONObject(index)
-            val expected = mutableListOf<Any?>(item.optString("entry_id"), item.optInt("position", -1), item.optString("exercise_id"),
+            val expected = mutableListOf<Any?>(item.optString("entry_id"), item.optInt("position", -1),
+                resolveExerciseId(db, item.optString("exercise_id")),
                 item.optString("recording_mode"), item.optString("tracking_mode"), item.optInt("data_fields", -1),
                 if (item.isNull("equipment_id")) null else item.optString("equipment_id"))
             if (version == 3) {
@@ -2730,7 +2981,7 @@ class TrainlogRepository(
             current[index] == Triple(
                 item.optString("entry_id"),
                 item.optInt("position", -1),
-                item.optString("exercise_id"),
+                resolveExerciseId(db, item.optString("exercise_id")),
             )
         }
     }
@@ -2932,6 +3183,7 @@ class TrainlogRepository(
                 val item = items.getJSONObject(index)
                 val sessionId = item.optString("session_id")
                 val exerciseId = item.optString("exercise_id")
+                val canonicalExerciseId = resolveExerciseId(db, exerciseId)
                 val entryId = if (version == 2) item.optString("entry_id") else null
                 val state = item.optString("state")
                 val identity = "$sessionId\u0000${entryId ?: exerciseId}"
@@ -2948,19 +3200,19 @@ class TrainlogRepository(
                     } else {
                         "SELECT se.id,eq.equipment_id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN equipment eq ON eq.id=se.equipment_row_id WHERE s.session_id=? AND e.exercise_id=?;"
                     },
-                    if (version == 2) arrayOf(sessionId, entryId) else arrayOf(sessionId, exerciseId),
+                    if (version == 2) arrayOf(sessionId, entryId) else arrayOf(sessionId, canonicalExerciseId),
                 ).use { cursor ->
                     val first = if (cursor.moveToFirst()) {
                         if (version == 2) {
                             Triple(cursor.getLong(0), cursor.getString(1), if (cursor.isNull(2)) null else cursor.getString(2))
                         } else {
-                            Triple(cursor.getLong(0), exerciseId, if (cursor.isNull(1)) null else cursor.getString(1))
+                            Triple(cursor.getLong(0), canonicalExerciseId, if (cursor.isNull(1)) null else cursor.getString(1))
                         }
                     } else null
                     if (version == 1 && first != null && cursor.moveToNext()) null else first
                 }
                     ?: return EquipmentAssociationImportResult.Invalid("Entrée de séance inconnue : $sessionId/$exerciseId")
-                if (row.second != exerciseId) {
+                if (row.second != canonicalExerciseId) {
                     return EquipmentAssociationImportResult.Invalid("Conflit exercice association : $sessionId/${entryId ?: exerciseId}")
                 }
                 if (row.third != equipmentId) {
@@ -3587,12 +3839,16 @@ class TrainlogRepository(
         targetRepetitions: Int,
         restSeconds: Int,
         manualWeightKg: Double?,
+        loadChoice: GeneratorLoadChoice = GeneratorLoadChoice.AUTOMATIC,
+        maxPercent: Int? = null,
     ): SessionGenerationResult {
         val current = preview.exercises.getOrNull(index)
             ?: return SessionGenerationResult.Invalid("Exercice de proposition introuvable.")
         if (targetSets !in 1..MAX_PLAN_SETS || targetRepetitions !in 1..MAX_PLAN_REPS ||
             restSeconds !in 0..MAX_PLAN_REST_SECONDS ||
-            (manualWeightKg != null && (!manualWeightKg.isFinite() || manualWeightKg <= 0.0)))
+            (manualWeightKg != null && (!manualWeightKg.isFinite() || manualWeightKg <= 0.0)) ||
+            (loadChoice == GeneratorLoadChoice.PERCENT_MAX &&
+                (maxPercent == null || maxPercent !in 1..100)))
             return SessionGenerationResult.Invalid("Dose cible invalide.")
         val db = database.readableDatabase
         val ownsTransaction = !db.inTransaction()
@@ -3604,7 +3860,20 @@ class TrainlogRepository(
                 candidate, preview.request.referenceTime, targetSets, targetRepetitions, restSeconds,
             ) { visitor -> streamGenerationHistory(db, visitor) }
             val semantics = candidate.equipmentLoadSemantics
-            val plan = if (manualWeightKg == null) {
+            val percentageTarget = if (loadChoice == GeneratorLoadChoice.PERCENT_MAX) {
+                readLatestExplicitMax(db, current.exerciseId, current.equipmentId)?.let { maximum ->
+                    PercentMaxCalculator.calculate(maximum, current.equipmentId, checkNotNull(maxPercent))
+                }
+            } else null
+            val plan = if (loadChoice == GeneratorLoadChoice.NONE) {
+                SessionExercisePlan(targetSets, reps = targetRepetitions,
+                    weightKg = null, loadMode = SessionLoadMode.NONE, restSeconds = restSeconds)
+            } else if (loadChoice == GeneratorLoadChoice.PERCENT_MAX) {
+                SessionExercisePlan(targetSets, reps = targetRepetitions,
+                    weightKg = percentageTarget,
+                    loadMode = if (percentageTarget == null) SessionLoadMode.NONE else SessionLoadMode.EXTERNAL,
+                    restSeconds = restSeconds)
+            } else if (manualWeightKg == null) {
                 SessionExercisePlan(qualified.targetSets, reps = qualified.targetRepetitions,
                     weightKg = qualified.targetWeightKg, loadMode = qualified.plannedLoadMode,
                     restSeconds = qualified.restSeconds)
@@ -3621,11 +3890,16 @@ class TrainlogRepository(
                 plan = plan,
                 estimatedSeconds = sessionGenerationEngine.estimateExerciseSeconds(
                     targetSets, targetRepetitions, restSeconds),
-                rationaleCodes = if (manualWeightKg == null) listOf(qualified.rationaleCode)
-                    else listOf("manual_target_load"),
-                loadSourceSessionId = if (manualWeightKg == null) qualified.sourceSessionId else null,
-                loadSourceOccurrenceId = if (manualWeightKg == null) qualified.sourceOccurrenceId else null,
-                loadSourceStartedAt = if (manualWeightKg == null) qualified.sourceStartedAt else null,
+                rationaleCodes = when (loadChoice) {
+                    GeneratorLoadChoice.PERCENT_MAX -> listOf(if (percentageTarget != null)
+                        "user_selected_max_percentage" else "compatible_max_unavailable")
+                    GeneratorLoadChoice.NONE -> listOf("numeric_load_absent")
+                    GeneratorLoadChoice.AUTOMATIC -> if (manualWeightKg == null)
+                        listOf(qualified.rationaleCode) else listOf("manual_target_load")
+                },
+                loadSourceSessionId = if (loadChoice == GeneratorLoadChoice.AUTOMATIC && manualWeightKg == null) qualified.sourceSessionId else null,
+                loadSourceOccurrenceId = if (loadChoice == GeneratorLoadChoice.AUTOMATIC && manualWeightKg == null) qualified.sourceOccurrenceId else null,
+                loadSourceStartedAt = if (loadChoice == GeneratorLoadChoice.AUTOMATIC && manualWeightKg == null) qualified.sourceStartedAt else null,
             )
             val exercises = preview.exercises.toMutableList().also { it[index] = changed }
             val total = Math.addExact(sessionGenerationPolicy.preparationSeconds,
@@ -3771,6 +4045,52 @@ class TrainlogRepository(
         }
     }
 
+    /**
+     * Read-only manual target calculation; it never creates or updates a draft.
+     * WHY: assistance and similar names cannot establish external resistance.
+     * CONTRACT: exact stable exercise/equipment IDs and the latest chronological
+     * explicit MAX in that context are required.
+     */
+    fun calculateManualPercentMaxTarget(
+        exerciseId: String,
+        equipmentId: String?,
+        percent: Int,
+    ): ManualPercentMaxResult {
+        if (percent !in 1..100)
+            return ManualPercentMaxResult.Unavailable("Le pourcentage doit être compris entre 1 et 100.")
+        if (equipmentId.isNullOrBlank())
+            return ManualPercentMaxResult.Unavailable(
+                "MAX compatible indisponible : choisissez un équipement à résistance externe.")
+        val db = database.readableDatabase
+        val ownsTransaction = !db.inTransaction()
+        return try {
+            if (ownsTransaction) db.beginTransactionNonExclusive()
+            if (readExerciseProfileExact(db, exerciseId) == null)
+                return ManualPercentMaxResult.Unavailable("Exercice introuvable.")
+            val runtimeEquipment = readRuntimeEquipment(db, equipmentId)
+            if (runtimeEquipment?.second == EquipmentLoadSemantics.ASSISTANCE)
+                return ManualPercentMaxResult.Unavailable(
+                    "Le %MAX est indisponible pour une assistance ; choisissez une résistance externe.")
+            if (runtimeEquipment?.second != EquipmentLoadSemantics.EXTERNAL)
+                return ManualPercentMaxResult.Unavailable(
+                    "Le %MAX est indisponible sans équipement connu à résistance externe.")
+            val maximum = readLatestExplicitMax(db, exerciseId, equipmentId)
+                ?: return ManualPercentMaxResult.Unavailable(
+                    "MAX compatible indisponible pour cet exercice et cet équipement exacts.")
+            val target = PercentMaxCalculator.calculate(maximum, equipmentId, percent)
+                ?: return ManualPercentMaxResult.Unavailable(
+                    "MAX compatible indisponible pour cet exercice et cet équipement exacts.")
+            if (ownsTransaction) db.setTransactionSuccessful()
+            /* INVARIANT: the repository returns arithmetic context only. The UI
+             * persists targetWeightKg solely when the user confirms its form. */
+            ManualPercentMaxResult.Available(maximum.maxWeightKg, maximum.startedAt, target)
+        } catch (error: Exception) {
+            ManualPercentMaxResult.Unavailable(error.message ?: "Lecture du MAX impossible.")
+        } finally {
+            if (ownsTransaction && db.inTransaction()) db.endTransaction()
+        }
+    }
+
     /** Deterministic keyset page over current data; pages do not hold a cross-call snapshot. */
     fun listExerciseOccurrences(
         exerciseId: String,
@@ -3902,6 +4222,41 @@ class TrainlogRepository(
         }
     }
 
+    /** Latest chronological explicit MAX for one exact external-load context. */
+    private fun readLatestExplicitMax(
+        db: SQLiteDatabase,
+        exerciseId: String,
+        equipmentId: String,
+    ): ExplicitMaxContext? {
+        val selected = mutableListOf<TemporalCandidate>()
+        db.rawQuery(
+            """SELECT se.id,s.session_id,se.entry_id,s.started_at FROM max_results mr
+               JOIN session_exercises se ON se.id=mr.session_exercise_row_id
+               JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id
+               JOIN equipment eq ON eq.id=se.equipment_row_id
+               WHERE e.exercise_id=? AND eq.equipment_id=? AND eq.load_semantics='external';""",
+            arrayOf(exerciseId, equipmentId),
+        ).use { cursor -> while (cursor.moveToNext()) retainCandidate(selected, candidate(cursor), 1) }
+        val winner = selected.singleOrNull() ?: return null
+        return db.rawQuery(
+            """SELECT s.session_id,se.entry_id,s.started_at,mr.max_weight_kg,
+                      eq.equipment_id,eq.display_name,eq.load_semantics
+               FROM max_results mr JOIN session_exercises se ON se.id=mr.session_exercise_row_id
+               JOIN sessions s ON s.id=se.session_row_id JOIN equipment eq ON eq.id=se.equipment_row_id
+               WHERE se.id=?;""",
+            arrayOf(winner.rowId.toString()),
+        ).use { cursor ->
+            check(cursor.moveToFirst()) { "résultat MAX compatible sélectionné absent" }
+            ExplicitMaxContext(
+                cursor.requiredText(0, "session_id"), cursor.requiredText(1, "entry_id"),
+                cursor.requiredText(2, "started_at"),
+                cursor.finiteNonNegativeDouble(3, "max_weight_kg", strictlyPositive = true),
+                cursor.requiredText(4, "equipment_id"), cursor.requiredText(5, "display_name"),
+                parseLoadSemantics(cursor.requiredText(6, "load_semantics")),
+            )
+        }
+    }
+
     private fun readExerciseOccurrencePage(
         db: SQLiteDatabase, exerciseId: String, limit: Int, after: ExerciseOccurrenceCursor?, setPreviewLimit: Int,
     ): ExerciseOccurrencePage {
@@ -4016,44 +4371,45 @@ class TrainlogRepository(
      * presentation context only and never participates in max identity.
      */
     fun listLatestExerciseMaxima(): List<LatestExerciseMax> {
-        val output = mutableListOf<LatestExerciseMax>()
+        data class AggregateCandidate(
+            val temporal: TemporalCandidate,
+            val result: LatestExerciseMax,
+        )
+
+        val selected = linkedMapOf<String, AggregateCandidate>()
         database.readableDatabase.rawQuery(
             """
-            SELECT e.exercise_id, e.name, mr.max_weight_kg, s.started_at,
-                   eq.display_name
+            SELECT se.id, s.session_id, se.entry_id, s.started_at,
+                   e.exercise_id, e.name, mr.max_weight_kg, eq.display_name
             FROM max_results AS mr
             JOIN session_exercises AS se ON se.id = mr.session_exercise_row_id
             JOIN sessions AS s ON s.id = se.session_row_id
             JOIN exercises AS e ON e.id = se.exercise_row_id
             LEFT JOIN equipment AS eq ON eq.id = se.equipment_row_id
             WHERE s.session_type = 'max_test'
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM max_results AS newer_mr
-                  JOIN session_exercises AS newer_se
-                    ON newer_se.id = newer_mr.session_exercise_row_id
-                  JOIN sessions AS newer_s ON newer_s.id = newer_se.session_row_id
-                  WHERE newer_se.exercise_row_id = se.exercise_row_id
-                    AND newer_s.session_type = 'max_test'
-                    AND (newer_s.started_at > s.started_at OR
-                         (newer_s.started_at = s.started_at AND
-                          newer_se.position > se.position))
-              )
             ORDER BY e.name COLLATE NOCASE, e.exercise_id;
             """.trimIndent(),
             null,
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                output += LatestExerciseMax(
-                    exerciseId = cursor.getString(0),
-                    exerciseName = cursor.getString(1),
-                    maxWeightKg = cursor.getDouble(2),
-                    startedAt = cursor.getString(3),
-                    equipmentDisplayName = if (cursor.isNull(4)) null else cursor.getString(4),
+                val temporal = candidate(cursor)
+                val exerciseId = cursor.requiredText(4, "exercise_id")
+                val value = AggregateCandidate(
+                    temporal = temporal,
+                    result = LatestExerciseMax(
+                        exerciseId = exerciseId,
+                        exerciseName = cursor.requiredText(5, "exercise_name"),
+                        maxWeightKg = cursor.finiteNonNegativeDouble(6, "max_weight_kg", true),
+                        startedAt = temporal.startedAt,
+                        equipmentDisplayName = cursor.optionalText(7),
+                    ),
                 )
+                val current = selected[exerciseId]
+                if (current == null || compareTemporal(temporal, current.temporal) > 0)
+                    selected[exerciseId] = value
             }
         }
-        return output
+        return selected.values.map { it.result }
     }
 
     fun setCompletedSessionEquipment(
@@ -5005,6 +5361,38 @@ private fun JSONObject.optDoubleOrNull(key: String): Double? =
 private fun JSONObject.optIntOrNull(key: String): Int? =
     if (has(key) && !isNull(key)) getInt(key) else null
 
+private fun jsonHasUniqueObjectKeys(json: String): Boolean = try {
+    JsonReader(StringReader(json)).use { reader ->
+        fun consumeValue() {
+            when (reader.peek()) {
+                JsonToken.BEGIN_OBJECT -> {
+                    reader.beginObject()
+                    val names = mutableSetOf<String>()
+                    while (reader.hasNext()) {
+                        check(names.add(reader.nextName())) { "champ JSON dupliqué" }
+                        consumeValue()
+                    }
+                    reader.endObject()
+                }
+                JsonToken.BEGIN_ARRAY -> {
+                    reader.beginArray()
+                    while (reader.hasNext()) consumeValue()
+                    reader.endArray()
+                }
+                JsonToken.STRING, JsonToken.NUMBER -> reader.nextString()
+                JsonToken.BOOLEAN -> reader.nextBoolean()
+                JsonToken.NULL -> reader.nextNull()
+                else -> error("JSON incomplet")
+            }
+        }
+        consumeValue()
+        check(reader.peek() == JsonToken.END_DOCUMENT) { "JSON supplémentaire" }
+    }
+    true
+} catch (_: Exception) {
+    false
+}
+
 private fun equipmentAliasNormalize(value: String): String =
     Normalizer.normalize(value, Normalizer.Form.NFD)
         .replace("\\p{M}+".toRegex(), "")
@@ -5019,6 +5407,8 @@ private const val MAX_PLAN_SETS = 64
 private const val MAX_PLAN_REPS = 10000
 private const val MAX_PLAN_DURATION_SECONDS = 86400
 private const val MAX_PLAN_REST_SECONDS = 86400
+private const val MAX_EXERCISE_ALIAS_BYTES = 1024 * 1024
+private const val MAX_EXERCISE_ALIASES = 4096
 private const val ANDROID_LEG_PRESS_LEGACY_ID =
     "ex_d68a1af1-7247-4fb3-a48b-da8516906a29"
 private const val DESKTOP_LEG_PRESS_CANONICAL_ID =
@@ -5034,7 +5424,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    11,
+    12,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -5062,6 +5452,7 @@ private class TrainlogDatabaseHelper(
         createActiveDraftTables(db)
         createEquipmentTables(db)
         createBodyZoneTables(db)
+        createExerciseAliasTable(db)
         seedEquipment(db)
     }
 
@@ -5156,6 +5547,11 @@ private class TrainlogDatabaseHelper(
             version = 11
         }
 
+        if (version < 12 && newVersion >= 12) {
+            createExerciseAliasTable(db)
+            version = 12
+        }
+
         if (version != newVersion) {
             error(
                 "Unsupported Android DB upgrade " +
@@ -5183,6 +5579,16 @@ private class TrainlogDatabaseHelper(
                 "exercise_row_id INTEGER PRIMARY KEY REFERENCES exercises(id) ON DELETE CASCADE," +
                 "synced_state TEXT NOT NULL);",
         )
+    }
+
+    private fun createExerciseAliasTable(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS exercise_aliases(" +
+                "source_exercise_id TEXT PRIMARY KEY," +
+                "canonical_exercise_id TEXT NOT NULL REFERENCES exercises(exercise_id) ON DELETE RESTRICT," +
+                "CHECK(source_exercise_id<>canonical_exercise_id));",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS exercise_aliases_canonical ON exercise_aliases(canonical_exercise_id);")
     }
 
     private fun seedInitialBodyZones(db: SQLiteDatabase) {

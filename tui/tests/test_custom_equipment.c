@@ -4,6 +4,8 @@
  */
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,9 +116,148 @@ static bool test_custom_equipment_round_trip(void)
     return true;
 }
 
+static bool insert_paged_equipment(
+    TrainlogDatabase *database, const char *equipment_id, const char *display_name)
+{
+    TrainlogCustomEquipment equipment;
+    (void)memset(&equipment, 0, sizeof(equipment));
+    (void)snprintf(equipment.equipment_id, sizeof(equipment.equipment_id), "%s", equipment_id);
+    (void)snprintf(equipment.display_name, sizeof(equipment.display_name), "%s", display_name);
+    (void)snprintf(equipment.label_name, sizeof(equipment.label_name), "%s", display_name);
+    (void)snprintf(equipment.equipment_type, sizeof(equipment.equipment_type), "%s", "machine");
+    (void)snprintf(equipment.load_semantics, sizeof(equipment.load_semantics), "%s", "external");
+    return trainlog_database_create_custom_equipment(database, &equipment) == TRAINLOG_STATUS_OK;
+}
+
+static bool test_custom_equipment_page_corruption(void)
+{
+    char path[] = "/tmp/trainlog-custom-equipment-page-XXXXXX";
+    TrainlogDatabase *database = NULL;
+    TrainlogCustomEquipment page[2];
+    sqlite3 *raw = NULL;
+    sqlite3_stmt *statement = NULL;
+    const unsigned char blob[] = { 'x', 'y' };
+    const char embedded_nul[] = { 'x', '\0', 'y' };
+    char oversized[TRAINLOG_NAME_MAX + 2U];
+    const void *invalid_values[] = { oversized, blob, embedded_nul };
+    const int invalid_lengths[] = { (int)sizeof(oversized), (int)sizeof(blob), (int)sizeof(embedded_nul) };
+    size_t count;
+    bool more;
+    size_t index;
+    int fd = mkstemp(path);
+
+    CHECK(fd >= 0);
+    CHECK(close(fd) == 0);
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(insert_paged_equipment(database, "eq_page_valid", "Alpha"));
+    CHECK(insert_paged_equipment(database, "eq_page_invalid", "Bravo"));
+    CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
+    CHECK(sqlite3_prepare_v2(raw, "UPDATE custom_equipment SET label_name=?1 WHERE equipment_id='eq_page_invalid';",
+        -1, &statement, NULL) == SQLITE_OK);
+    (void)memset(oversized, 'x', sizeof(oversized));
+    /* label_name is NOT NULL, so NULL cannot reach the reader's defensive branch. */
+    for (index = 0U; index < 3U; ++index) {
+        if (index == 1U) {
+            CHECK(sqlite3_bind_blob(statement, 1, invalid_values[index], invalid_lengths[index], SQLITE_TRANSIENT) == SQLITE_OK);
+        } else {
+            CHECK(sqlite3_bind_text(statement, 1, (const char *)invalid_values[index],
+                invalid_lengths[index], SQLITE_TRANSIENT) == SQLITE_OK);
+        }
+        CHECK(sqlite3_step(statement) == SQLITE_DONE);
+        CHECK(sqlite3_reset(statement) == SQLITE_OK);
+        count = 9U;
+        more = true;
+        CHECK(trainlog_database_list_custom_equipment_page(database, 0U, page, 1U, &count, &more) == TRAINLOG_STATUS_DATABASE_ERROR);
+        CHECK(count == 0U && !more);
+        count = 9U;
+        more = true;
+        CHECK(trainlog_database_list_custom_equipment_page(database, 0U, page, 2U, &count, &more) == TRAINLOG_STATUS_DATABASE_ERROR);
+        CHECK(count == 0U && !more);
+        CHECK(sqlite3_bind_text(statement, 1, "Bravo", -1, SQLITE_STATIC) == SQLITE_OK);
+        CHECK(sqlite3_step(statement) == SQLITE_DONE);
+        CHECK(sqlite3_reset(statement) == SQLITE_OK);
+        CHECK(trainlog_database_list_custom_equipment_page(database, 0U, page, 2U, &count, &more) == TRAINLOG_STATUS_OK);
+        CHECK(count == 2U && !more && strcmp(page[0].equipment_id, "eq_page_valid") == 0);
+    }
+    CHECK(sqlite3_finalize(statement) == SQLITE_OK);
+    CHECK(sqlite3_close(raw) == SQLITE_OK);
+    trainlog_database_close(database);
+    CHECK(unlink(path) == 0);
+    return true;
+}
+
+static bool test_custom_equipment_page_reader(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogCustomEquipment page[TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX];
+    char equipment_id[32];
+    char display_name[32];
+    size_t count = 99U;
+    bool more = true;
+    size_t index;
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(insert_paged_equipment(database, "eq_tie_b", "alpha"));
+    CHECK(insert_paged_equipment(database, "eq_tie_a", "ALPHA"));
+    for (index = 0U; index < 130U; ++index) {
+        (void)snprintf(equipment_id, sizeof(equipment_id), "eq_page_%03zu", index);
+        (void)snprintf(display_name, sizeof(display_name), "Page %03zu", index);
+        CHECK(insert_paged_equipment(database, equipment_id, display_name));
+    }
+
+    CHECK(trainlog_database_list_custom_equipment_page(database, 0U, page,
+        TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX, &count, &more) == TRAINLOG_STATUS_OK);
+    CHECK(count == TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX);
+    CHECK(more);
+    CHECK(strcmp(page[0].equipment_id, "eq_tie_a") == 0);
+    CHECK(strcmp(page[1].equipment_id, "eq_tie_b") == 0);
+    CHECK(strcmp(page[2].equipment_id, "eq_page_000") == 0);
+    CHECK(strcmp(page[127].equipment_id, "eq_page_125") == 0);
+
+    CHECK(trainlog_database_list_custom_equipment_page(database, 128U, page,
+        TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX, &count, &more) == TRAINLOG_STATUS_OK);
+    CHECK(count == 4U);
+    CHECK(!more);
+    CHECK(strcmp(page[0].equipment_id, "eq_page_126") == 0);
+    CHECK(strcmp(page[3].equipment_id, "eq_page_129") == 0);
+
+    CHECK(trainlog_database_list_custom_equipment_page(database, 131U, page, 1U,
+        &count, &more) == TRAINLOG_STATUS_OK);
+    CHECK(count == 1U);
+    CHECK(!more);
+    CHECK(strcmp(page[0].equipment_id, "eq_page_129") == 0);
+    CHECK(trainlog_database_list_custom_equipment_page(database, 132U, page, 1U,
+        &count, &more) == TRAINLOG_STATUS_OK);
+    CHECK(count == 0U);
+    CHECK(!more);
+
+    count = 7U;
+    more = true;
+    CHECK(trainlog_database_list_custom_equipment_page(database, 0U, page, 0U,
+        &count, &more) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+    CHECK(count == 7U);
+    CHECK(more);
+    CHECK(trainlog_database_list_custom_equipment_page(database, 0U, NULL, 1U,
+        &count, &more) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+    CHECK(trainlog_database_list_custom_equipment_page(database, 0U, page,
+        TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX + 1U, &count, &more) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+    if ((uintmax_t)SIZE_MAX > (uintmax_t)INT64_MAX) {
+        count = 7U;
+        more = true;
+        CHECK(trainlog_database_list_custom_equipment_page(database, SIZE_MAX, page, 1U,
+            &count, &more) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+        CHECK(count == 0U);
+        CHECK(!more);
+    }
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void)
 {
     if (!test_custom_equipment_round_trip()) return 1;
+    if (!test_custom_equipment_page_corruption()) return 1;
+    if (!test_custom_equipment_page_reader()) return 1;
     (void)printf("PASS custom_equipment\n");
     return 0;
 }

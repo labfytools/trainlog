@@ -71,7 +71,7 @@ class RealAndroidV9BodyZonesMigrationTest {
         SQLiteDatabase.openDatabase(
             migratedPath.path, null, SQLiteDatabase.OPEN_READWRITE,
         ).use { migrated ->
-            assertEquals(11, scalarInt(migrated, "PRAGMA user_version;"))
+            assertEquals(12, scalarInt(migrated, "PRAGMA user_version;"))
             assertEquals("ok", scalarString(migrated, "PRAGMA integrity_check;"))
             migrated.rawQuery("PRAGMA foreign_key_check;", null).use {
                 assertFalse(it.moveToFirst())

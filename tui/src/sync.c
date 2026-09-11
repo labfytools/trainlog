@@ -55,6 +55,9 @@ static const char *const PC_EQUIPMENT_DEFINITIONS_NAME =
 static const char *const EXERCISE_BODY_ZONES_NAME =
     "trainlog-exercise-body-zones-v1.json";
 
+static const char *const EXERCISE_ALIASES_NAME =
+    "trainlog-exercise-aliases-v1.json";
+
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
 
@@ -85,8 +88,14 @@ static const char *const EQUIPMENT_DEFINITIONS_RESULT =
 static const char *const EXERCISE_BODY_ZONES_LOCAL =
     "/tmp/trainlog-exercise-body-zones-v1.json";
 
+static const char *const EXERCISE_ALIASES_LOCAL =
+    "/tmp/trainlog-exercise-aliases-v1.json";
+
 static const char *const EXERCISE_BODY_ZONES_RESULT =
     "/tmp/trainlog-exercise-body-zones-result.txt";
+
+static const char *const EXERCISE_ALIASES_RESULT =
+    "/tmp/trainlog-exercise-aliases-result.txt";
 
 static const char *const SYNC_REQUEST_LOCAL =
     "/tmp/trainlog-sync-request-v1.json";
@@ -1222,6 +1231,7 @@ static TrainlogStatus sync_run_python_tool(
     const char *tool_name,
     const char *argument,
     const char *database_path,
+    const char *mobile_export_path,
     const char *result_path,
     char *output,
     size_t output_size
@@ -1240,7 +1250,8 @@ static TrainlogStatus sync_run_python_tool(
         argument == NULL ||
         result_path == NULL ||
         output == NULL ||
-        output_size < 2U
+        output_size < 2U ||
+        (mobile_export_path != NULL && database_path == NULL)
     ) {
         return
             TRAINLOG_STATUS_INVALID_ARGUMENT;
@@ -1303,7 +1314,22 @@ static TrainlogStatus sync_run_python_tool(
             result_fd
         );
 
-        if (database_path != NULL) {
+        if (database_path != NULL && mobile_export_path != NULL) {
+            /* CONTRACT: the body-zone importer may consume the exact retained
+             * V2 snapshot as identity-reconciliation proof. argv stays
+             * bounded and shell-free; all other helpers omit this pair. */
+            execlp(
+                "python3",
+                "python3",
+                tool,
+                argument,
+                "--database",
+                database_path,
+                "--mobile-export",
+                mobile_export_path,
+                (char *)NULL
+            );
+        } else if (database_path != NULL) {
             /* CONTRACT: helpers which mutate the desktop store receive its
              * explicit XDG-resolved path. They must never infer a different
              * user's database from Python's process environment. */
@@ -2618,6 +2644,7 @@ TrainlogStatus trainlog_sync_run(
     bool run_started = false;
     bool receipt_published = false;
     bool mobile_export_has_companions = false;
+    bool retained_mobile_export_is_v2 = false;
 
     if (output == NULL || direction < TRAINLOG_SYNC_ANDROID_TO_PC ||
         direction > TRAINLOG_SYNC_BIDIRECTIONAL ||
@@ -2843,6 +2870,31 @@ TrainlogStatus trainlog_sync_run(
         goto outbound;
     }
 
+    /* WHY: aliases must exist before the frozen session/catalog snapshot is
+     * interpreted, so a retired source ID resolves without changing V3. */
+    status = sync_receive_current_android_artifact(&device, folder_id,
+        EXERCISE_ALIASES_NAME, EXERCISE_ALIASES_LOCAL, &ignored_size);
+    if (status == TRAINLOG_STATUS_OK) {
+        status = sync_run_python_tool("import_exercise_aliases.py",
+            EXERCISE_ALIASES_LOCAL, database_path, NULL, EXERCISE_ALIASES_RESULT,
+            tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK ||
+            strstr(tool_output, "EXERCISE_ALIAS_IMPORT=PASS") == NULL) {
+            char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            sync_compose_diagnostic(output->error, sizeof(output->error),
+                "Android→PC : alias exercices : ",
+                useful[0] != '\0' ? useful : "import échoué");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "Android→PC : lecture alias exercices échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     /* Definitions must reconcile before either V3/V2 reference artifact. A
      * missing file is accepted only for historic snapshots with no custom ID. */
     status = sync_receive_current_android_artifact(
@@ -2856,6 +2908,7 @@ TrainlogStatus trainlog_sync_run(
         status = sync_run_python_tool("import_equipment_definitions.py",
                                       MOBILE_EQUIPMENT_DEFINITIONS_LOCAL,
                                       database_path,
+                                      NULL,
                                       EQUIPMENT_DEFINITIONS_RESULT,
                                       tool_output, sizeof(tool_output));
         if (status != TRAINLOG_STATUS_OK ||
@@ -2895,6 +2948,7 @@ TrainlogStatus trainlog_sync_run(
         status = sync_receive_current_android_artifact(
             &device, folder_id, MOBILE_EXPORT_V2_NAME,
             MOBILE_EXPORT_LOCAL, &ignored_size);
+        retained_mobile_export_is_v2 = status == TRAINLOG_STATUS_OK;
     }
     mobile_export_has_companions = status == TRAINLOG_STATUS_OK;
 
@@ -2919,6 +2973,7 @@ TrainlogStatus trainlog_sync_run(
             "import_mobile_export.py",
             MOBILE_EXPORT_LOCAL,
             database_path,
+            NULL,
             MOBILE_IMPORT_RESULT,
             tool_output,
             sizeof(tool_output)
@@ -2972,7 +3027,9 @@ TrainlogStatus trainlog_sync_run(
         : TRAINLOG_STATUS_NOT_FOUND;
     if (status == TRAINLOG_STATUS_OK) {
         status = sync_run_python_tool("import_exercise_body_zones.py",
-            EXERCISE_BODY_ZONES_LOCAL, database_path, EXERCISE_BODY_ZONES_RESULT,
+            EXERCISE_BODY_ZONES_LOCAL, database_path,
+            retained_mobile_export_is_v2 ? MOBILE_EXPORT_LOCAL : NULL,
+            EXERCISE_BODY_ZONES_RESULT,
             tool_output, sizeof(tool_output));
         if (status != TRAINLOG_STATUS_OK ||
             strstr(tool_output, "EXERCISE_BODY_ZONES_IMPORT=PASS") == NULL) {
@@ -3013,6 +3070,7 @@ TrainlogStatus trainlog_sync_run(
         status = sync_run_python_tool("import_equipment_associations.py",
                                       EQUIPMENT_ASSOCIATIONS_LOCAL,
                                       database_path,
+                                      NULL,
                                       EQUIPMENT_ASSOCIATIONS_RESULT,
                                       tool_output, sizeof(tool_output));
         if (status != TRAINLOG_STATUS_OK ||
@@ -3043,9 +3101,29 @@ TrainlogStatus trainlog_sync_run(
     }
 
 outbound:
+    status = sync_run_python_tool("export_exercise_aliases.py",
+        EXERCISE_ALIASES_LOCAL, database_path, NULL, EXERCISE_ALIASES_RESULT,
+        tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "EXERCISE_ALIAS_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : export alias exercices échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id, EXERCISE_ALIASES_LOCAL,
+        EXERCISE_ALIASES_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : publication alias exercices échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     status = sync_run_python_tool("export_equipment_definitions.py",
                                   PC_EQUIPMENT_DEFINITIONS_LOCAL,
                                   database_path,
+                                  NULL,
                                   EQUIPMENT_DEFINITIONS_RESULT,
                                   tool_output, sizeof(tool_output));
     if (status != TRAINLOG_STATUS_OK ||
@@ -3070,6 +3148,7 @@ outbound:
             "export_pc_catalog.py",
             PC_CATALOG_LOCAL,
             database_path,
+            NULL,
             PC_CATALOG_RESULT,
             tool_output,
             sizeof(tool_output)
@@ -3122,7 +3201,8 @@ outbound:
     }
 
     status = sync_run_python_tool("export_exercise_body_zones.py",
-        EXERCISE_BODY_ZONES_LOCAL, database_path, EXERCISE_BODY_ZONES_RESULT,
+        EXERCISE_BODY_ZONES_LOCAL, database_path, NULL,
+        EXERCISE_BODY_ZONES_RESULT,
         tool_output, sizeof(tool_output));
     if (status != TRAINLOG_STATUS_OK ||
         strstr(tool_output, "EXERCISE_BODY_ZONES_EXPORT=PASS") == NULL) {
@@ -3144,7 +3224,8 @@ outbound:
      * acknowledge that snapshot as its baseline. Reusing the strict importer
      * records equal state and can never union secondary zones. */
     status = sync_run_python_tool("import_exercise_body_zones.py",
-        EXERCISE_BODY_ZONES_LOCAL, database_path, EXERCISE_BODY_ZONES_RESULT,
+        EXERCISE_BODY_ZONES_LOCAL, database_path, NULL,
+        EXERCISE_BODY_ZONES_RESULT,
         tool_output, sizeof(tool_output));
     if (status != TRAINLOG_STATUS_OK ||
         strstr(tool_output, "EXERCISE_BODY_ZONES_IMPORT=PASS") == NULL) {
@@ -3159,6 +3240,7 @@ outbound:
 
     status = sync_run_python_tool("export_pc_mobile.py", PC_MOBILE_EXPORT_LOCAL,
                                   database_path,
+                                  NULL,
                                   PC_CATALOG_RESULT, tool_output, sizeof(tool_output));
     if (status != TRAINLOG_STATUS_OK || strstr(tool_output, "PC_MOBILE_EXPORT=PASS") == NULL) {
         (void)snprintf(output->error, sizeof(output->error), "PC→Android : export séances V3 échoué.");
@@ -3175,6 +3257,7 @@ outbound:
     status = sync_run_python_tool("export_equipment_associations.py",
                                   EQUIPMENT_ASSOCIATIONS_LOCAL,
                                   database_path,
+                                  NULL,
                                   EQUIPMENT_ASSOCIATIONS_RESULT,
                                   tool_output, sizeof(tool_output));
     if (status != TRAINLOG_STATUS_OK ||

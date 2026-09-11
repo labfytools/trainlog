@@ -8,32 +8,65 @@ synchronization.
 
 Desktop SQLite is the canonical long-term history.
 
-## 2. Navigation
+## 2. APP_SHELL_V1 navigation
 
-Large-layout primary navigation:
+The persistent shell has seven root sections:
 
 ```text
-0 Accueil
-1 Séance
-2 Historique
-3 Exercices
-4 Équipements
-5 Corps
-6 Sync
+Accueil | Séances | Exercices | Équipements | Statistiques | Synchronisation | Paramètres
 ```
 
-Direct shortcuts include the matching function keys where implemented.
+`Séances` contains **Séance en cours**, **Programmer une séance**, **Nouvelle
+séance manuelle**, and **Séances effectuées**. The latter replaces the former
+top-level Historique entry. Existing mensurations, body graphs/analysis,
+exercise performance and explicit MAX views are reached through
+`Statistiques`; this relocation adds no statistic or analytical interpretation.
+
+The geometry policy is exact:
+
+```text
+under 72x20       small-terminal fallback
+72x20 or larger   usable compact shell with temporary Navigation control
+100x26 or larger  visible sidebar
+120x32 or larger  expanded sidebar
+```
+
+The terminal owns a run-scoped application context with persistent header,
+content, sidebar when present, and two-line footer planes. It has a single
+event loop; planes are rendering resources, not application state. Resize
+recomputes the layout and preserves the route, stable list selection and a
+visible equivalent focus target. A sidebar focus becomes the compact
+Navigation control when the sidebar disappears.
 
 Common controls:
 
 ```text
-↑ ↓            list navigation
-Enter          open/activate
-Tab            change focus on multi-zone pages
-Esc / b        return or cancel
-0 / Home       dashboard
-q              quit from the application shell
+↑ ↓                 list navigation
+Enter               open/activate
+Tab / Shift+Tab     cycle rendered focus targets
+F6                  open Navigation
+F7                  open the route's action registry
+Esc / b             return, cancel, or close/restore an overlay
+0 / Home            Accueil
+1/F1 … 5/F5         manual session, completed sessions, exercises, equipment, mensurations
+6                   Synchronisation
+q                   quit from the application shell
 ```
+
+The root aliases and contextual actions are built from one action registry:
+the footer and F7 therefore advertise the same enabled actions that dispatch.
+The intentional APP_SHELL_V1 shortcut changes are the replacement of the old
+top-level Historique/Corps aliases by `2/F2 Séances effectuées` and
+`5/F5 Mensurations`, F6 Navigation and F7 Actions, as approved in design
+§13. A route alias is ignored while an overlay is active; a local editor owns
+its keys before shell aliases.
+
+On an exercise detail, `F7 Actions` exposes `Fusionner avec…`. The current
+exercise is the source; a bounded UTF-8 search overlay selects the canonical
+target. A second overlay previews the explicit source → canonical direction
+and the occurrence-owned data preserved by the transaction. Profile or
+primary-zone conflicts leave both exercises untouched and show a specific
+result. After success, the canonical target remains selected.
 
 Minimum terminal size:
 
@@ -52,10 +85,13 @@ Notcurses provides a true-color Catppuccin-derived dark palette: background
 warning, error, muted, and graph roles. Unicode frames and visible selection
 markers enhance presentation without becoming application semantics.
 
-The backend owns one standard plane for a run, translates terminal input into
-Trainlog-owned keys, accepts complete UTF-8 code points in prompts, and
-re-queries dimensions while rendering so the 72x20 minimum/fallback recovers
-after a resize.
+The backend owns run-scoped planes, translates terminal input into
+Trainlog-owned keys, and accepts complete UTF-8 code points in bounded shell
+editors without a runtime parser or `ncreader`. Search/form storage is capped
+at 200 UTF-8 bytes plus NUL, rejects invalid or partial code points without
+partial mutation, and keeps grapheme boundaries while moving or deleting.
+Escape clears a non-empty search before closing an empty search. Filtered lists
+retain selection by stable ID and report bounded page availability.
 
 Input lifecycle is handled at that boundary: legacy/unknown terminal events,
 Notcurses PRESS events, and deliberate auto-REPEAT events become one logical
@@ -76,8 +112,9 @@ muted
 graph series
 ```
 
-Focused frames use the warning role for border/title without recoloring all
-content.
+Focused frames use the focus semantic role without recoloring all content.
+The palette uses synchronized semantic RGB role tokens; an optional Nerd Font
+may improve symbols, while text fallbacks are mandatory.
 
 ## 4. Exercise catalog
 
@@ -174,6 +211,23 @@ warnings visible. Accepting a preview builds the ordinary normal session draft
 with zero actual rows and enters the existing editor. The existing completion
 guard still requires actual rows for every SETS exercise.
 
+The preview and ordinary plan editor preserve direct kg and no-target entry and
+also expose a `%MAX` calculator. It accepts only integers 1..100 and only the
+chronologically latest explicit MAX for the exact exercise/equipment external-
+resistance context. Assistance is unavailable. The formula is
+`MAX × percentage / 100`; it is not a recommendation, and only the resulting
+`target_weight_kg` is retained when the draft is accepted. In the generator,
+`u` restores automatic V1 load qualification, `%` selects the calculator and
+`x` selects no numeric target.
+The preview labels these outcomes `user_selected_max_percentage` or
+`compatible_max_unavailable` and clears a calculated target if its equipment
+context changes.
+
+Generator duration is labelled as a target alongside the estimate. A
+meaningful shortfall is reported without padding, and V1 states explicitly that
+it generates neither warm-up nor cool-down. Multi-session/program work remains
+future `SESSION_GENERATOR_V2`; it is not implemented by these controls.
+
 ## 6. Session history and editing
 
 History is keyboard navigable.
@@ -201,8 +255,8 @@ catalog.
 
 ## 7. Equipment
 
-`4 Équipements / F4` provides supplied-equipment browsing, search, detail, and
-custom-equipment creation and selection. Supplied definitions are generated
+`Équipements` (direct alias `4/F4`) provides supplied-equipment browsing,
+search, detail, and custom-equipment creation and selection. Supplied definitions are generated
 from `catalog/equipment-v1.json`; user-created definitions persist in desktop
 SQLite and synchronize separately through definitions V1.
 
@@ -216,7 +270,7 @@ visibly distinct; `i` opens the resolved equipment detail.
 
 ## 8. Body tracking
 
-`5 Corps / F5` provides:
+`Statistiques → Mensurations` (direct alias `5/F5`) provides:
 
 - newest-first body observations;
 - detail and correction;
@@ -227,9 +281,10 @@ visibly distinct; `i` opens the resolved equipment detail.
 
 Editing preserves observation identity, timestamp, and optional session link.
 
-## 9. Dashboard
+## 9. Statistics and dashboard
 
-The dashboard includes a rolling 12-month normalized body graph.
+The rolling 12-month normalized body graph has moved from the dashboard to
+`Statistiques → Mensurations`; its data rules are unchanged.
 
 Rules include:
 
@@ -238,9 +293,9 @@ Rules include:
 - no zero fill;
 - no interpolation;
 - when multiple observations exist in one month, the last visible monthly value
-  is used for the compact dashboard graph.
+  is used for the compact twelve-month graph.
 
-Detailed raw observations remain in `Corps`.
+Detailed raw observations remain in `Statistiques → Mensurations`.
 
 ## 10. Exercise performance
 
@@ -443,7 +498,7 @@ performance.
 
 ## 17. Body analytics
 
-`5 Corps` adds:
+`Statistiques → Mensurations` adds:
 
 ```text
 v   analyse corporelle

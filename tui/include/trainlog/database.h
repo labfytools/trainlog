@@ -11,7 +11,7 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 11
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 12
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
@@ -29,6 +29,8 @@ typedef struct TrainlogCustomEquipment {
     char equipment_type[TRAINLOG_NAME_MAX + 1U];
     char load_semantics[32];
 } TrainlogCustomEquipment;
+
+#define TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX 128U
 
 typedef enum TrainlogEquipmentOrigin {
     TRAINLOG_EQUIPMENT_SUPPLIED = 0,
@@ -54,6 +56,25 @@ TrainlogStatus trainlog_database_list_custom_equipment(
     TrainlogCustomEquipment *output,
     size_t capacity,
     size_t *output_count
+);
+/* CONTRACT: reads at most capacity + 1 ordered definitions, so callers can
+ * filter pages before imposing a presentation cap. database and output are
+ * borrowed for the call; the caller owns copied strings. This read-only API
+ * retains no resources and writes no persistence. capacity is 1..128 and all
+ * pointer arguments are required. output_count is at most capacity; output_more
+ * is true exactly when one additional ordered row exists. CONTRACT: output,
+ * output_count, and output_more are valid only when this returns
+ * TRAINLOG_STATUS_OK; on every other status callers must disregard all output,
+ * including any storage copied before the failure. offset is valid only while
+ * data is unchanged; refresh after writes. It is neither a durable cursor nor
+ * an idempotency mechanism. */
+TrainlogStatus trainlog_database_list_custom_equipment_page(
+    TrainlogDatabase *database,
+    size_t offset,
+    TrainlogCustomEquipment *output,
+    size_t capacity,
+    size_t *output_count,
+    bool *output_more
 );
 /* CONTRACT: an occurrence ID always resolves to a visible value. Unknown IDs
  * are returned verbatim with TRAINLOG_EQUIPMENT_UNKNOWN, never hidden. */
@@ -141,6 +162,53 @@ TrainlogStatus trainlog_database_list_exercises(
     TrainlogExercise *output,
     size_t capacity,
     size_t *output_count
+);
+
+/**
+ * @brief Resolve a current or merged exercise identity to its canonical ID.
+ *
+ * CONTRACT: current catalogue IDs resolve to themselves; durable legacy IDs
+ * resolve through exercise_aliases. Unknown IDs return NOT_FOUND. The output
+ * buffer is caller-owned and must hold TRAINLOG_ID_MAX + 1 bytes.
+ */
+TrainlogStatus trainlog_database_resolve_exercise_id(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    char *output_canonical_id,
+    size_t output_capacity
+);
+
+/**
+ * @brief Atomically merge one current catalogue exercise into another.
+ *
+ * CONTRACT: source and canonical must be distinct current catalogue IDs.
+ * Tracking/recording/data-field or conflicting non-empty primary-zone
+ * profiles reject with CONFLICT and leave the database untouched. Compatible
+ * direct zones are unioned; every occurrence is repointed without rewriting
+ * its stable entry ID or any owned actual/planning data. Existing aliases to
+ * source collapse directly to canonical and source becomes a durable alias.
+ */
+TrainlogStatus trainlog_database_merge_exercises(
+    TrainlogDatabase *database,
+    const char *source_exercise_id,
+    const char *canonical_exercise_id
+);
+
+typedef struct TrainlogExerciseMergePreview {
+    size_t occurrences;
+    size_t performed_sets;
+    size_t continuous_activities;
+    size_t max_results;
+    size_t associated_equipment;
+    size_t body_zones;
+} TrainlogExerciseMergePreview;
+
+/* CONTRACT: counts describe source-owned records which the atomic merge will
+ * repoint or union. Unknown IDs return NOT_FOUND and output is never partial. */
+TrainlogStatus trainlog_database_preview_exercise_merge(
+    TrainlogDatabase *database,
+    const char *source_exercise_id,
+    TrainlogExerciseMergePreview *output
 );
 
 /**
@@ -497,6 +565,15 @@ TrainlogStatus trainlog_database_list_occurrence_sets_page(
 TrainlogStatus trainlog_database_latest_explicit_max_context(
     TrainlogDatabase *database,
     const char *exercise_id,
+    TrainlogLatestExplicitMax *output
+);
+
+/* Same chronological contract, additionally restricted to one exact nonempty
+ * equipment ID. This is the compatibility reader for user-directed %MAX. */
+TrainlogStatus trainlog_database_latest_explicit_max_equipment_context(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    const char *equipment_id,
     TrainlogLatestExplicitMax *output
 );
 

@@ -499,6 +499,23 @@ static const char *const CREATE_BODY_ZONE_RELATIONS_SQL =
     "synced_state TEXT NOT NULL"
     ");";
 
+/* WHY: deleted duplicate catalogue rows still arrive from offline peers.
+ * CONTRACT: aliases are a separate identity artifact, never an overload of a
+ * frozen mobile-export field. INVARIANT: canonical IDs always name a live
+ * exercise row and mappings are stored collapsed, so cycles/chains cannot be
+ * represented by valid database writes. */
+static const char *const MIGRATE_V11_TO_V12_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE exercise_aliases("
+    "source_exercise_id TEXT PRIMARY KEY,"
+    "canonical_exercise_id TEXT NOT NULL "
+    "REFERENCES exercises(exercise_id) ON DELETE RESTRICT,"
+    "CHECK(source_exercise_id<>canonical_exercise_id)"
+    ");"
+    "CREATE INDEX exercise_aliases_canonical "
+    "ON exercise_aliases(canonical_exercise_id);"
+    "PRAGMA user_version = 12;COMMIT;";
+
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
     "ALTER TABLE sessions "
@@ -1015,6 +1032,8 @@ static TrainlogStatus initialize_or_validate_schema(
         status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
     } else if (version == 10) {
         status = TRAINLOG_STATUS_OK;
+    } else if (version == 11) {
+        status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
             status =
@@ -1148,7 +1167,10 @@ static TrainlogStatus initialize_or_validate_schema(
     }
 
     if (status == TRAINLOG_STATUS_OK) {
-        status = migrate_v10_to_v11(database);
+        if (version < 11) status = migrate_v10_to_v11(database);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = execute_sql(database, MIGRATE_V11_TO_V12_SQL);
     }
 
     if (
@@ -1158,7 +1180,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v11" : "migrate database to schema v11",
+            version == 0 ? "create schema v12" : "migrate database to schema v12",
             database->connection,
             SQLITE_ERROR
         );
@@ -1391,6 +1413,84 @@ TrainlogStatus trainlog_database_list_custom_equipment(
     (void)sqlite3_finalize(statement);
     *output_count = count;
     return rc == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+static bool copy_custom_equipment_page_column(
+    sqlite3_stmt *statement, int column, char *output, size_t capacity)
+{
+    const unsigned char *source;
+    int byte_count;
+    size_t length;
+
+    if (sqlite3_column_type(statement, column) != SQLITE_TEXT ||
+        output == NULL || capacity == 0U) return false;
+    source = sqlite3_column_text(statement, column);
+    byte_count = sqlite3_column_bytes(statement, column);
+    if (source == NULL || byte_count < 0) return false;
+    length = (size_t)byte_count;
+    /* SQLite TEXT may contain embedded NUL bytes; never silently truncate it. */
+    if (length >= capacity || memchr(source, '\0', length) != NULL) return false;
+    (void)memcpy(output, source, length);
+    output[length] = '\0';
+    return true;
+}
+
+TrainlogStatus trainlog_database_list_custom_equipment_page(
+    TrainlogDatabase *database, size_t offset, TrainlogCustomEquipment *output,
+    size_t capacity, size_t *output_count, bool *output_more)
+{
+    static const char *const SQL =
+        "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics "
+        "FROM custom_equipment ORDER BY display_name COLLATE NOCASE,equipment_id "
+        "LIMIT ?1 OFFSET ?2;";
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    int rc;
+
+    if (output != NULL && output_count != NULL && output_more != NULL &&
+        capacity >= 1U && capacity <= TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX) {
+        *output_count = 0U;
+        *output_more = false;
+    }
+    if (database == NULL || output == NULL || output_count == NULL ||
+        output_more == NULL || capacity == 0U ||
+        capacity > TRAINLOG_CUSTOM_EQUIPMENT_PAGE_MAX ||
+        (uintmax_t)offset > (uintmax_t)INT64_MAX) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    rc = sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    if (sqlite3_bind_int64(statement, 1, (sqlite3_int64)(capacity + 1U)) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 2, (sqlite3_int64)offset) != SQLITE_OK) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        TrainlogCustomEquipment item;
+        (void)memset(&item, 0, sizeof(item));
+        if (!copy_custom_equipment_page_column(statement, 0, item.equipment_id,
+                sizeof(item.equipment_id)) ||
+            !copy_custom_equipment_page_column(statement, 1, item.display_name,
+                sizeof(item.display_name)) ||
+            !copy_custom_equipment_page_column(statement, 2, item.label_name,
+                sizeof(item.label_name)) ||
+            !copy_custom_equipment_page_column(statement, 3, item.equipment_type,
+                sizeof(item.equipment_type)) ||
+            !copy_custom_equipment_page_column(statement, 4, item.load_semantics,
+                sizeof(item.load_semantics))) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        if (count == capacity) {
+            *output_more = true;
+            break;
+        }
+        output[count++] = item;
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) return TRAINLOG_STATUS_DATABASE_ERROR;
+    *output_count = count;
+    return TRAINLOG_STATUS_OK;
 }
 
 TrainlogStatus trainlog_database_resolve_equipment(
@@ -1993,6 +2093,249 @@ TrainlogStatus trainlog_database_list_exercises(
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
+    return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_database_resolve_exercise_id(
+    TrainlogDatabase *database,
+    const char *exercise_id,
+    char *output_canonical_id,
+    size_t output_capacity
+)
+{
+    static const char *const SQL =
+        "SELECT exercise_id FROM exercises WHERE exercise_id=?1 "
+        "UNION ALL SELECT canonical_exercise_id FROM exercise_aliases "
+        "WHERE source_exercise_id=?1 LIMIT 1;";
+    sqlite3_stmt *statement = NULL;
+    const unsigned char *canonical;
+    int rc;
+    if (database == NULL || database->connection == NULL || exercise_id == NULL ||
+        exercise_id[0] == '\0' || output_canonical_id == NULL ||
+        output_capacity < TRAINLOG_ID_MAX + 1U)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    rc = sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_bind_text(statement, 1, exercise_id, -1,
+            SQLITE_TRANSIENT) != SQLITE_OK) {
+        if (statement != NULL) (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+    canonical = rc == SQLITE_ROW ? sqlite3_column_text(statement, 0) : NULL;
+    if (canonical == NULL || strlen((const char *)canonical) > TRAINLOG_ID_MAX) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    (void)snprintf(output_canonical_id, output_capacity, "%s", canonical);
+    return sqlite3_finalize(statement) == SQLITE_OK ? TRAINLOG_STATUS_OK :
+        TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+static TrainlogStatus merge_bind_ids(
+    TrainlogDatabase *database,
+    const char *sql,
+    sqlite3_int64 source_row_id,
+    sqlite3_int64 canonical_row_id
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_bind_parameter_count(statement) < 1 ||
+        sqlite3_bind_int64(statement, 1, source_row_id) != SQLITE_OK ||
+        (sqlite3_bind_parameter_count(statement) >= 2 &&
+         sqlite3_bind_int64(statement, 2, canonical_row_id) != SQLITE_OK)) {
+        if (statement != NULL) (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_step(statement);
+    if (rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return rc == SQLITE_CONSTRAINT ? TRAINLOG_STATUS_CONFLICT :
+            TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return sqlite3_finalize(statement) == SQLITE_OK ? TRAINLOG_STATUS_OK :
+        TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_database_merge_exercises(
+    TrainlogDatabase *database,
+    const char *source_exercise_id,
+    const char *canonical_exercise_id
+)
+{
+    static const char *const PROFILE_SQL =
+        "SELECT s.id,c.id,s.tracking_mode,c.tracking_mode,"
+        "s.recording_mode,c.recording_mode,s.data_fields,c.data_fields,"
+        "(SELECT zone_id FROM exercise_body_zones WHERE exercise_row_id=s.id "
+        "AND role='primary'),(SELECT zone_id FROM exercise_body_zones "
+        "WHERE exercise_row_id=c.id AND role='primary') "
+        "FROM exercises s JOIN exercises c ON s.exercise_id=?1 "
+        "AND c.exercise_id=?2;";
+    sqlite3_stmt *statement = NULL;
+    sqlite3_int64 source_row_id, canonical_row_id;
+    const char *source_primary = NULL, *canonical_primary = NULL;
+    char primary[TRAINLOG_ZONE_ID_MAX + 1U] = "";
+    TrainlogStatus status = TRAINLOG_STATUS_DATABASE_ERROR;
+    int rc;
+    if (database == NULL || database->connection == NULL ||
+        source_exercise_id == NULL || canonical_exercise_id == NULL ||
+        source_exercise_id[0] == '\0' || canonical_exercise_id[0] == '\0' ||
+        strcmp(source_exercise_id, canonical_exercise_id) == 0)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    if (execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    rc = sqlite3_prepare_v2(database->connection, PROFILE_SQL, -1, &statement, NULL);
+    if (rc != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, source_exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, canonical_exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK) goto rollback;
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_DONE) { status = TRAINLOG_STATUS_NOT_FOUND; goto rollback; }
+    if (rc != SQLITE_ROW) goto rollback;
+    source_row_id = sqlite3_column_int64(statement, 0);
+    canonical_row_id = sqlite3_column_int64(statement, 1);
+    if (strcmp((const char *)sqlite3_column_text(statement, 2),
+               (const char *)sqlite3_column_text(statement, 3)) != 0 ||
+        strcmp((const char *)sqlite3_column_text(statement, 4),
+               (const char *)sqlite3_column_text(statement, 5)) != 0 ||
+        sqlite3_column_int64(statement, 6) != sqlite3_column_int64(statement, 7)) {
+        status = TRAINLOG_STATUS_CONFLICT; goto rollback;
+    }
+    if (sqlite3_column_type(statement, 8) != SQLITE_NULL)
+        source_primary = (const char *)sqlite3_column_text(statement, 8);
+    if (sqlite3_column_type(statement, 9) != SQLITE_NULL)
+        canonical_primary = (const char *)sqlite3_column_text(statement, 9);
+    if (source_primary != NULL && canonical_primary != NULL &&
+        strcmp(source_primary, canonical_primary) != 0) {
+        status = TRAINLOG_STATUS_CONFLICT; goto rollback;
+    }
+    if (canonical_primary != NULL || source_primary != NULL)
+        (void)snprintf(primary, sizeof(primary), "%s",
+            canonical_primary != NULL ? canonical_primary : source_primary);
+    if (sqlite3_finalize(statement) != SQLITE_OK) { statement = NULL; goto rollback; }
+    statement = NULL;
+
+    /* INVARIANT: promote the chosen primary before unioning secondaries, so a
+     * former secondary cannot mask it through the (exercise,zone) key. */
+    if (primary[0] != '\0') {
+        status = merge_bind_ids(database,
+            "DELETE FROM exercise_body_zones WHERE exercise_row_id=?2 "
+            "AND zone_id=(SELECT zone_id FROM exercise_body_zones "
+            "WHERE exercise_row_id=?1 AND role='primary');",
+            source_row_id, canonical_row_id);
+        if (status != TRAINLOG_STATUS_OK) goto rollback;
+        rc = sqlite3_prepare_v2(database->connection,
+            "INSERT OR REPLACE INTO exercise_body_zones(exercise_row_id,zone_id,role) "
+            "VALUES(?1,?2,'primary');", -1, &statement, NULL);
+        if (rc != SQLITE_OK || sqlite3_bind_int64(statement, 1, canonical_row_id) != SQLITE_OK ||
+            sqlite3_bind_text(statement, 2, primary, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+            statement = NULL; goto rollback;
+        }
+        statement = NULL;
+    }
+    status = merge_bind_ids(database,
+        "INSERT OR IGNORE INTO exercise_body_zones(exercise_row_id,zone_id,role) "
+        "SELECT ?2,zone_id,'secondary' FROM exercise_body_zones "
+        "WHERE exercise_row_id=?1 AND role='secondary' "
+        "AND zone_id<>(SELECT COALESCE((SELECT zone_id FROM exercise_body_zones "
+        "WHERE exercise_row_id=?2 AND role='primary'),''));",
+        source_row_id, canonical_row_id);
+    if (status != TRAINLOG_STATUS_OK) goto rollback;
+    status = merge_bind_ids(database,
+        "UPDATE session_exercises SET exercise_row_id=?2 WHERE exercise_row_id=?1;",
+        source_row_id, canonical_row_id);
+    if (status != TRAINLOG_STATUS_OK) goto rollback;
+
+    rc = sqlite3_prepare_v2(database->connection,
+        "UPDATE exercise_aliases SET canonical_exercise_id=?2 "
+        "WHERE canonical_exercise_id=?1;", -1, &statement, NULL);
+    if (rc != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, source_exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, canonical_exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL; goto rollback;
+    }
+    statement = NULL;
+    rc = sqlite3_prepare_v2(database->connection,
+        "INSERT INTO exercise_aliases(source_exercise_id,canonical_exercise_id) "
+        "VALUES(?1,?2);", -1, &statement, NULL);
+    if (rc != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, source_exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, canonical_exercise_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL; goto rollback;
+    }
+    statement = NULL;
+    status = merge_bind_ids(database,
+        "DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?1,?2);",
+        source_row_id, canonical_row_id);
+    if (status != TRAINLOG_STATUS_OK) goto rollback;
+    status = merge_bind_ids(database, "DELETE FROM exercises WHERE id=?1;",
+        source_row_id, canonical_row_id);
+    if (status != TRAINLOG_STATUS_OK) goto rollback;
+    if (execute_sql(database, "COMMIT;") != TRAINLOG_STATUS_OK) goto rollback;
+    return TRAINLOG_STATUS_OK;
+
+rollback:
+    if (statement != NULL) (void)sqlite3_finalize(statement);
+    (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+    return status;
+}
+
+TrainlogStatus trainlog_database_preview_exercise_merge(
+    TrainlogDatabase *database,
+    const char *source_exercise_id,
+    TrainlogExerciseMergePreview *output
+)
+{
+    static const char *const SQL =
+        "SELECT "
+        "(SELECT COUNT(*) FROM session_exercises se WHERE se.exercise_row_id=e.id),"
+        "(SELECT COUNT(*) FROM performed_sets ps JOIN session_exercises se "
+        "ON se.id=ps.session_exercise_row_id WHERE se.exercise_row_id=e.id),"
+        "(SELECT COUNT(*) FROM continuous_activity ca JOIN session_exercises se "
+        "ON se.id=ca.session_exercise_row_id WHERE se.exercise_row_id=e.id),"
+        "(SELECT COUNT(*) FROM max_results mr JOIN session_exercises se "
+        "ON se.id=mr.session_exercise_row_id WHERE se.exercise_row_id=e.id),"
+        "(SELECT COUNT(DISTINCT se.equipment_id) FROM session_exercises se "
+        "WHERE se.exercise_row_id=e.id AND se.equipment_id IS NOT NULL "
+        "AND se.equipment_id<>''),"
+        "(SELECT COUNT(*) FROM exercise_body_zones z WHERE z.exercise_row_id=e.id) "
+        "FROM exercises e WHERE e.exercise_id=?1;";
+    sqlite3_stmt *statement = NULL;
+    TrainlogExerciseMergePreview preview = {0};
+    int rc;
+    if (database == NULL || database->connection == NULL ||
+        source_exercise_id == NULL || source_exercise_id[0] == '\0' ||
+        output == NULL) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    rc = sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_bind_text(statement, 1, source_exercise_id,
+            -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+        if (statement != NULL) (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_step(statement);
+    if (rc == SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+    if (rc != SQLITE_ROW) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    preview.occurrences = (size_t)sqlite3_column_int64(statement, 0);
+    preview.performed_sets = (size_t)sqlite3_column_int64(statement, 1);
+    preview.continuous_activities = (size_t)sqlite3_column_int64(statement, 2);
+    preview.max_results = (size_t)sqlite3_column_int64(statement, 3);
+    preview.associated_equipment = (size_t)sqlite3_column_int64(statement, 4);
+    preview.body_zones = (size_t)sqlite3_column_int64(statement, 5);
+    if (sqlite3_finalize(statement) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    *output = preview;
     return TRAINLOG_STATUS_OK;
 }
 
@@ -6664,14 +7007,16 @@ TrainlogStatus trainlog_database_list_occurrence_sets_page(
     *output_count=count; return TRAINLOG_STATUS_OK;
 }
 
-TrainlogStatus trainlog_database_latest_explicit_max_context(
-    TrainlogDatabase *database, const char *exercise_id, TrainlogLatestExplicitMax *output)
+static TrainlogStatus database_latest_explicit_max_context(
+    TrainlogDatabase *database, const char *exercise_id, const char *equipment_id,
+    TrainlogLatestExplicitMax *output)
 {
     static const char *const SCAN_SQL =
         "SELECT se.id,s.session_id,se.entry_id,s.started_at FROM max_results mr "
         "JOIN session_exercises se ON se.id=mr.session_exercise_row_id "
         "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id "
-        "WHERE e.exercise_id=?1 AND s.session_type='max_test';";
+        "WHERE e.exercise_id=?1 AND s.session_type='max_test' "
+        "AND (?2 IS NULL OR se.equipment_id=?2);";
     static const char *const HYDRATE_SQL =
         "SELECT s.session_id,se.entry_id,s.started_at,COALESCE(se.equipment_id,''),se.load_mode,mr.max_weight_kg "
         "FROM max_results mr JOIN session_exercises se ON se.id=mr.session_exercise_row_id "
@@ -6693,6 +7038,8 @@ TrainlogStatus trainlog_database_latest_explicit_max_context(
     if(status!=TRAINLOG_STATUS_OK)goto done;
     rc=sqlite3_prepare_v2(database->connection,SCAN_SQL,-1,&statement,NULL);
     if(rc==SQLITE_OK)rc=sqlite3_bind_text(statement,1,exercise_id,-1,SQLITE_TRANSIENT);
+    if(rc==SQLITE_OK)rc=equipment_id==NULL ? sqlite3_bind_null(statement,2)
+        : sqlite3_bind_text(statement,2,equipment_id,-1,SQLITE_TRANSIENT);
     if(rc!=SQLITE_OK){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
     while((rc=sqlite3_step(statement))==SQLITE_ROW){
         KnowledgeTemporalCandidate candidate;
@@ -6732,4 +7079,19 @@ done:
         if(status==TRAINLOG_STATUS_OK)status=end_status;
     }
     return status;
+}
+
+TrainlogStatus trainlog_database_latest_explicit_max_context(
+    TrainlogDatabase *database, const char *exercise_id, TrainlogLatestExplicitMax *output)
+{
+    return database_latest_explicit_max_context(database, exercise_id, NULL, output);
+}
+
+TrainlogStatus trainlog_database_latest_explicit_max_equipment_context(
+    TrainlogDatabase *database, const char *exercise_id, const char *equipment_id,
+    TrainlogLatestExplicitMax *output)
+{
+    if (equipment_id == NULL || equipment_id[0] == '\0')
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    return database_latest_explicit_max_context(database, exercise_id, equipment_id, output);
 }

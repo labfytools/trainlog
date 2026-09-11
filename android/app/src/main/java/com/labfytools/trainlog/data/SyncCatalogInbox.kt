@@ -131,6 +131,8 @@ class SyncCatalogInbox(
 
             val definitionsError = importPcEquipmentDefinitions(directory)
             if (definitionsError != null) return CatalogInboxResult.Error(definitionsError)
+            val aliasesError = importExerciseAliases(directory)
+            if (aliasesError != null) return CatalogInboxResult.Error(aliasesError)
 
             when (
                 val result =
@@ -214,6 +216,25 @@ class SyncCatalogInbox(
             }
         } catch (error: Exception) {
             error.message ?: "Import zones corporelles impossible."
+        }
+    }
+
+    private fun importExerciseAliases(directory: DocumentFile): String? {
+        val file = directory.findFile("trainlog-exercise-aliases-v1.json") ?: return null
+        return try {
+            val json = appContext.contentResolver.openInputStream(file.uri)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: return "Lecture des alias exercice impossible."
+            when (val result = repository.applyExerciseAliasesJson(json)) {
+                is ExerciseAliasImportResult.Applied -> null
+                is ExerciseAliasImportResult.Invalid -> result.message
+                is ExerciseAliasImportResult.Conflict ->
+                    "Conflit d'alias exercice : ${result.sourceExerciseId}"
+                ExerciseAliasImportResult.DatabaseError ->
+                    "Erreur base locale alias exercice."
+            }
+        } catch (error: Exception) {
+            error.message ?: "Import des alias exercice impossible."
         }
     }
 

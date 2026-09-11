@@ -43,12 +43,22 @@ BODY_ZONE_SYNC_V1=PASS
 BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
 BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
-DESKTOP_TESTS=45/45 PASS (latest validated checkpoint)
+DESKTOP_TESTS=47/47 PASS (latest validated checkpoint)
 ANDROID_BUILD=PASS
 
 TRAINING_KNOWLEDGE_V1=PASS
 SESSION_GENERATOR_V1=PASS
+APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2
 ```
+
+`APP_SHELL_V1` provides the shared seven-section application shell on both
+platforms: **Accueil**, **Séances**, **Exercices**, **Équipements**,
+**Statistiques**, **Synchronisation**, and **Paramètres**. Completed history
+and the existing generator now live under **Séances**; existing body and MAX
+views live under **Statistiques**. It records no new statistics, schema, or
+synchronization protocol. Automated review repairs are recorded, but the
+status remains awaiting human visual/accessibility review; see
+[the APP_SHELL_V1 review record](docs/reviews/app_shell_v1.md).
 
 `TRAINING_KNOWLEDGE_V1` has passed its bounded scientific review, independent
 temporal delta review, final engineering audit, repair verification, and final
@@ -195,11 +205,13 @@ export or desktop synchronization as completed sessions.
 Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v11. Its additive v4 -> v10 chain adds the shared
+The current Android schema is v12. Its additive v4 -> v12 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
 identities, custom-equipment definition support, explicit MAX results and
 stable-source Test max resumption, then direct primary/secondary body-zone
-relations, without recreating completed history or discarding the active draft.
+relations and occurrence planning, without recreating completed history or
+discarding the active draft. The additive v11 -> v12 migration stores flattened
+exercise aliases used to resolve retired IDs during synchronization.
 
 Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
 unchanged; completed history, an active draft, and synchronization therefore
@@ -222,14 +234,14 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
 
 ## Android-triggered synchronization
 
-Launch the desktop TUI from a built checkout with:
+Launch the desktop TUI from this built checkout with:
 
 ```bash
-trainlog
+cd /home/fy59/Documents/trainlog
+./build/tui/trainlog
 ```
 
-The usual user command resolves to `build/tui/trainlog` in this checkout. The
-desktop database is `$XDG_DATA_HOME/trainlog/trainlog.db`, or
+The desktop database is `$XDG_DATA_HOME/trainlog/trainlog.db`, or
 `~/.local/share/trainlog/trainlog.db` when `XDG_DATA_HOME` is unset.
 
 Build the desktop first, then install the user service:

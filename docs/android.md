@@ -24,13 +24,55 @@ never silently rewritten as V3.
 
 ```text
 Accueil
-├── Reprendre la séance en cours (si un brouillon existe)
-├── Enregistrer une séance
-├── Enregistrer un exercice
-├── Enregistrer des mensurations
-├── Historique des séances
-└── Synchroniser avec le PC
+Séances
+Exercices
+Équipements
+Statistiques
+Synchronisation
+Paramètres
 ```
+
+The fixed Android application shell uses a Material 3 modal drawer, a
+`Scaffold`, system sans-serif typography, and local small VectorDrawable
+icons. Each of the seven destinations is a complete drawer item with a
+minimum 48 dp touch target. The active drawer section is derived from the
+canonical route and exposes selected semantics; it is not maintained as a
+second navigation state. The drawer itself scrolls when vertical space is
+limited.
+
+The section roots are:
+
+```text
+Accueil          durable-draft resume, generation/manual capture, concise local links
+Séances          current session, programme a session, manual entry, completed sessions
+Exercices        catalogue, detail, create, and contextual edit
+Équipements      catalogue, detail, and custom-equipment creation
+Statistiques     measurements and local latest explicit MAX
+Synchronisation  existing request, result, and diagnostic workflow
+Paramètres       exchange-folder authorization and explicit PC-catalog refresh
+```
+
+`AppRoute` is typed and carries stable IDs and an explicit caller where a
+detail or creation workflow needs one. `AppNavigationController` is the sole
+owner of route transactions in the Compose root. Its bounded history returns
+inline exercise/equipment creation to the caller exactly once. Back first
+resolves visible input/overlays and the drawer; it then follows the caller or
+route history, falls back to the section root, then Home.
+
+Leaving an unaccepted generator proposal or a dirty exercise, equipment, or
+measurement form installs an explicit keep/discard guard. Keeping retains the
+transient editor state and its current route; discard clears only the
+transient state that raised the guard. Route changes do not save, synchronize,
+finalize, or otherwise write repository data. A successful generator
+acceptance clears its transient proposal before routing; an
+`existing_active_draft` result remains guarded and retains the proposal until
+the user resolves it.
+
+Route content uses a `SaveableStateHolder`, keyed by stable route identity,
+with a 16-entry bound for modest list/scroll state. The root `ViewModel`
+retains navigation and transient forms across Activity recreation. It does not
+serialize a session or generated proposal into a Bundle: after process death,
+only the repository-owned durable active draft is restored through Home.
 
 ## 3. Local persistence
 
@@ -57,13 +99,16 @@ This database is Android-local. It is not copied to the PC.
 
 Schema v4 introduced `active_session_draft`, `draft_session_exercises`,
 `draft_performed_sets` and `draft_continuous_activity`. The implemented
-additive v4 -> v10 chain preserves catalog, completed sessions/actuals, body
+additive v4 -> v11 chain preserves catalog, completed sessions/actuals, body
 observations and the draft while adding the shared equipment catalogue,
 occurrence-level equipment links and stable completed/draft `entry_id` values.
 Exactly one active draft is supported; it is separate from completed history.
 Schema v9 adds explicit completed/draft MAX results. Schema v10 additively
 stores direct primary/secondary body-zone relations and their private sync
-baseline; the taxonomy itself remains the shared manifest asset.
+baseline; the taxonomy itself remains the shared manifest asset. Schema v11
+additively stores optional occurrence/draft planning metadata after the explicit
+v10 -> v11 migration; existing rows retain `load_mode=none`, zero rest and NULL
+targets.
 
 ## Session generator V1
 
@@ -79,6 +124,31 @@ draft, with target plans and zero actual rows. An existing draft yields the
 non-mutating `existing_active_draft` conflict. Empty results cannot be accepted;
 nonempty partial results may be accepted and edited normally. Final completion
 continues to require actual captured work.
+
+Load editing offers compact choices for automatic V1 qualification, a
+user-selected `%MAX`, or no numeric target; direct manual kg remains available.
+`%MAX` accepts an integer 1..100 and uses exactly
+`MAX × percentage / 100` only for the chronologically latest explicit MAX of
+the same exercise ID and same external-resistance equipment ID. Assistance and
+incompatible/missing contexts produce an empty target labelled
+`compatible_max_unavailable`; this is unavailable rather than a fallback or a
+recommendation. Only the resulting plan `target_weight_kg` is persisted on
+acceptance; the percentage and MAX provenance are transient. Zone, objective,
+duration and load choices use compact localized chips and do not expose
+internal IDs.
+
+The ordinary set-based manual exercise form exposes the same separation from
+actuals with **Valeur en kg / % de mon MAX / Aucune**. It composes the confirmed
+choice into the existing `SessionExerciseDraft.plan`; performed-set weights are
+never used as target storage. Editing an existing generated/manual occurrence
+preserves its target dose and rest while allowing the numeric target to change.
+The read-only `%MAX` lookup shows the compatible MAX date/value and calculated
+target before confirmation, recomputes for exercise/equipment/percentage
+changes, and performs no draft mutation by itself.
+
+The preview shows requested and estimated duration, warns on a meaningful
+shortfall without padding, and states that warm-up and cool-down are absent in
+V1. `SESSION_GENERATOR_V2` remains future-only.
 
 ## 4. Exercise catalog
 
@@ -131,10 +201,9 @@ referenced, Android displays the lock and returns an explicit incompatible
 profile result rather than silently reinterpreting work or creating another
 exercise. Renaming remains available independently.
 
-The shared Compose `TrainlogScreen` header is used by Accueil, Séance,
-Exercice, Mensurations, Historique, Détail séance and Sync. Its compact
-`◆ TRAINLOG ◆` accent plaque and muted subtitle intentionally mirror the
-Notcurses TUI identity in a flat mobile layout.
+The shared Compose shell supplies navigation context and the page header. Its
+content host provides one scrollable destination area; screens do not redraw a
+global banner or own a competing navigation control.
 
 ## 5. Session recording
 
@@ -364,8 +433,14 @@ result.
 
 Before applying the PC catalog or its V2 artifacts, Android applies
 `trainlog-pc-equipment-definitions-v1.json`. Thus custom definitions are known
-before a received V2 association references them. Android schema v10 provides
+before a received V2 association references them. Android schema v12 retains
 the non-destructive v7 -> v8 migration required for `load_semantics = none`.
+It also applies `trainlog-exercise-aliases-v1.json` before catalog and session
+reconciliation. The additive v11 → v12 alias table lets legacy exercise IDs
+resolve to one live canonical row; a live-source rekey preserves completed
+occurrences, the durable draft, selected form exercise, equipment relations,
+actuals, MAX and targets. Android republishes the same deterministic companion
+with no exercise-merge UI.
 After catalog/session/equipment reconciliation, Android applies the same
 body-zone companion so custom exercises receive their classifications.
 
@@ -406,17 +481,24 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 `local.properties` is local machine configuration and must not be committed.
 
-The current JVM host regression suite has 44 passing tests when the retained
-real v9 fixture is enabled. The prior device
-instrumentation suite had 5 tests (2 repository, 3 production-screen UI tests
-using an isolated database and no shared export). That device matrix exercised
-production `MainActivity`,
-including verified process exit with `am kill`, force-stop, configuration
-relaunch, raw-form recovery, removal, discard and unchanged user data. Final-save
-UI checks used isolated data so fictitious workouts did not enter user history.
-The schema-v8 definition change is recorded as targeted JVM validation, not a
-blanket device-validation claim. See [tests](tests.md) for commands and the
-precise validation boundary.
+The APP_SHELL_V1 Android validation ran the JVM command above successfully:
+84 tests ran, with 83 passing and one skipped historical-fixture test. The skip
+is `RealAndroidV9BodyZonesMigrationTest.realVersionNineCopyMigratesWithoutChangingExistingTables`,
+whose external `TRAINLOG_ANDROID_V9_FIXTURE` was unavailable. The build
+produced `app/build/outputs/apk/debug/app-debug.apk` (12,649,975 bytes;
+SHA-256 `ddb1221d25db5be60eb2261d4b1dcf0fb7446e2a780c67aae862f37c15b7396d`).
+
+The host regressions include the production Compose callback for an existing
+active draft: it verifies that the generator's route, preview and raw input
+remain intact until the explicit keep/discard decision, and that keeping does
+not write the initialized SQLite database. The expected nine shell icons and
+ten referenced catalogue assets were checked byte-for-byte in the APK.
+
+No emulator is installed, and this checkpoint did not install or run on the
+connected daily phone. Human visual/accessibility review remains pending for
+320/360/393/412 dp widths, 100/130/200% font scale, IME behavior, drawer and
+form reachability, long translated/source text, scroll restoration feel, and
+TalkBack. See [tests](tests.md) for the broader validation boundary.
 
 ## 14. Non-goals
 
@@ -507,7 +589,7 @@ frozen desktop/Python normalization contract uses NFC, Unicode whitespace
 collapse and case folding without accent removal. Existing Marche/Leg press
 data is unaffected, but changing this safely requires an explicit Android
 schema migration that recomputes every normalized key and handles newly exposed
-collisions. It is not silently changed inside schema v10.
+collisions. It is not silently changed inside schema v12.
 
 The bundled exercise/equipment relationship metadata is seeded and preserved,
 including during exercise-identity reconciliation, but the current equipment
@@ -543,10 +625,11 @@ follow-up pages. Occurrence and set limits are 1–32 and 1–64 respectively.
 Cursors order current data chronologically by original timestamp, session ID
 and occurrence ID, and do not preserve a snapshot across calls.
 
-This read-only feature makes no Android schema change (the runtime schema
-remains v10), does not seed rows, and does not export/synchronize new data. It
-does not implement recommendations, planned weights, set counts or fatigue
-scores. Its occurrence and latest-MAX readers use the same explicit temporal
+This read-only feature makes no further Android schema change (the runtime
+schema remains v11), does not seed rows, and does not export/synchronize new
+training-knowledge data. It does not implement recommendations or fatigue
+scores; planning metadata belongs to the separate schema-v11/session-generator
+contract. Its occurrence and latest-MAX readers use the same explicit temporal
 grammar, exact fractional comparison and bytewise ID tie breakers as C.
 The Android writer's omitted-seconds form is admitted, and emitted cursors
 retain the original source text. Production pagination/MAX parity tests pass.

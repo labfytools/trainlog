@@ -3,14 +3,17 @@ package com.labfytools.trainlog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.SyncExporter
 import com.labfytools.trainlog.data.SyncCatalogInbox
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.ui.TrainlogApp
+import com.labfytools.trainlog.ui.TrainlogAppState
 import com.labfytools.trainlog.ui.theme.TrainlogTheme
 
 class MainActivity : ComponentActivity() {
+    private val appState by viewModels<TrainlogAppState>()
     override fun onCreate(
         savedInstanceState: Bundle?
     ) {
@@ -46,6 +49,7 @@ class MainActivity : ComponentActivity() {
                     inbox = inbox,
                     requestOutbox =
                         requestOutbox,
+                    appState = appState,
                 )
             }
         }

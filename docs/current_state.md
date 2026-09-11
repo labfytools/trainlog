@@ -65,8 +65,9 @@ BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
 
 TRAINING_KNOWLEDGE_V1=PASS
 SESSION_GENERATOR_V1=PASS
+APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2
 
-DESKTOP_TESTS=45/45 PASS (latest validated checkpoint)
+DESKTOP_TESTS=47/47 PASS (normal and ASan/UBSan Meson suites)
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 ```
@@ -75,10 +76,12 @@ HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 
 Implemented:
 
-- C17/Notcurses true-color TUI (72x20 minimum, UTF-8 prompts, resize fallback);
+- C17/Notcurses true-color TUI with the APP_SHELL_V1 persistent seven-section
+  shell (72x20 minimum, UTF-8 bounded editors, resize fallback, F6 navigation,
+  F7 actions, and restored focus after overlays/routes);
 - UTF-8 cell-aware scrolling training-knowledge screen, tested at the 72x20
   minimum terminal;
-- SQLite schema v11, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v12, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
   definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
   rebuilds only `performed_sets` to permit explicit zero actual loads while
@@ -105,17 +108,20 @@ Implemented:
 - manual Android -> PC, PC -> Android, and bidirectional synchronization;
 - structured synchronization history and detail.
 
-Primary navigation:
+Primary navigation is now shared with Android:
 
 ```text
-0 Accueil
-1 Séance
-2 Historique
-3 Exercices
-4 Équipements
-5 Corps
-6 Sync
+Accueil | Séances | Exercices | Équipements | Statistiques | Synchronisation | Paramètres
 ```
+
+`Séances` contains the current draft, the existing generator, manual entry,
+and **Séances effectuées**. `Statistiques` exposes existing mensurations,
+body views and explicit MAX/performance views only. Navigation neither writes
+data nor launches synchronization. The second automated repair review covered
+the TUI root search/action paths, selection/focus restoration and section hubs,
+plus Android compact controls, hidden internal IDs and latest-MAX display
+semantics. Human visual/accessibility review is still required before this
+status can advance.
 
 ## Android
 
@@ -154,9 +160,10 @@ tracking modes match, other known invariants are compatible, and one
 the existing desktop identity is canonical on desktop. The richer bit-mask
 union is retained without rewriting historical occurrence snapshots.
 
-All Android screens use the shared compact `◆ TRAINLOG ◆` header: the
-Notcurses accent, muted context line, and flat touch layout reproduce the TUI
-plaque without literal terminal box drawing.
+All Android screens are hosted by the fixed `AndroidAppShell` Material 3
+`Scaffold` and `TopAppBar`: root routes show `TRAINLOG`, non-root routes show
+their route title, and page content is rendered beneath that shell. The drawer,
+top bar and content host keep navigation separate from page ownership.
 
 ## Training knowledge V1
 
@@ -164,7 +171,7 @@ The implemented read-only training-knowledge layer loads six versioned JSON
 catalogs as the sole authored scientific source, generates the immutable C
 catalog representation, and loads the same assets on Android. It has no
 database migration, no auto-seeding, and no synchronization artifact. The
-desktop database remains schema v11 and Android remains schema v11.
+desktop database remains schema v12 and Android remains schema v12.
 
 Desktop `training_knowledge.h` and Android `TrainingKnowledgeCatalog` expose
 source-linked science lookups and resolved-candidate filters. Desktop
@@ -193,7 +200,7 @@ errors and one known missing-real-v9-fixture skip; Java 17 `assembleDebug` also
 passed. Generated C is byte-identical with SHA-256
 `e8c099f67eb111d61621b5d76592c049823af5508d43e73ec646f22e4c377fca`; all six
 Android assets are byte-identical. Preservation before and after repair confirms
-schema v11/v10, unchanged catalog/science/temporal bytes, and unchanged real
+historical desktop/Android schemas v11/v10, unchanged catalog/science/temporal bytes, and unchanged real
 database logical SHA-256 `26139cafeffbde3ec08f6ef23c5069e75afb9cd69ffffb40be5c099006fedc4d`,
 counts, integrity, and foreign keys. `TRAINING_KNOWLEDGE_V1=PASS`. The
 [temporal contract](reviews/training_knowledge_v1_temporal_contract.md)
@@ -327,10 +334,10 @@ upgrade/install or hardware MTP exercise is claimed.
 Desktop:
 
 ```text
-39/39 Meson tests PASS for the current desktop schema v11 baseline
+Historical checkpoint: 39/39 Meson tests PASS for desktop schema v11
 JSON valid/invalid checks PASS
 import-contract validator 6/6 PASS
-ASan/UBSan 39/39 Meson tests PASS with leak detection
+Historical checkpoint: ASan/UBSan 39/39 Meson tests PASS with leak detection
 standalone public-header C17 syntax PASS
 real Notcurses binary zone workflows PASS in Kitty
 git diff --check PASS
@@ -430,7 +437,7 @@ ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 MAX_TEST_RESUME_STABLE_ID=PASS
-DESKTOP_TESTS=39/39 PASS
+DESKTOP_TESTS=47/47 PASS
 ```
 
 A measured maximum belongs to an exercise occurrence in an explicit `max_test`
@@ -451,6 +458,15 @@ record compares max tests using the same load mode.
 External-load working percentages are pure calculations from the current
 measured load; they are not persisted and no estimated 1RM is introduced.
 
+`PERCENT_MAX_INPUT_V1` additionally provides a user-directed 1..100 integer
+calculator in desktop planning, Android ordinary set-based manual planning, and
+both generator previews. It requires the exact exercise and
+external-resistance equipment identity; assistance is unavailable. It uses
+`MAX × percentage / 100`, makes no recommendation, and persists only the
+resulting `target_weight_kg`. Automatic generation retains the frozen V1
+observed-load policy. Latest MAX means the chronologically latest explicit
+result, not an aggregate record.
+
 ## Body analytics v1
 
 ```text
@@ -460,7 +476,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=39/39 PASS
+DESKTOP_TESTS=47/47 PASS
 ```
 
 Android remains capture-only for this feature.

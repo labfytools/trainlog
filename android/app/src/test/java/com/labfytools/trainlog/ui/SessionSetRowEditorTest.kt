@@ -4,7 +4,11 @@ import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraftForm
 import com.labfytools.trainlog.model.SessionExerciseDraft
+import com.labfytools.trainlog.model.SessionExercisePlan
+import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
+import com.labfytools.trainlog.data.EquipmentLoadSemantics
+import com.labfytools.trainlog.data.ManualPercentMaxResult
 import com.labfytools.trainlog.model.TrackingMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -123,6 +127,44 @@ class SessionSetRowEditorTest {
         )
         assertEquals(2, form.editingExerciseIndex)
         assertEquals("sxe_test", form.editingEntryId)
+    }
+
+    @Test
+    fun manualTargetPlanNeverChangesPerformedWeights() {
+        val actuals = listOf(
+            SessionSetDraft(reps = 10, weightKg = 40.0),
+            SessionSetDraft(reps = 8, weightKg = 42.5),
+        )
+        val draft = SessionExerciseDraft(exercise = repsExercise, equipmentId = "leg_press", sets = actuals)
+        val result = buildManualTargetPlan(
+            draft, null, ManualTargetChoice.PERCENT_MAX, "",
+            ManualPercentMaxResult.Available(100.0, "2026-09-10T08:00:00Z", 73.0),
+            EquipmentLoadSemantics.EXTERNAL,
+        ).getOrThrow()!!
+        assertEquals(SessionExercisePlan(2, reps = 10, weightKg = 73.0,
+            loadMode = SessionLoadMode.EXTERNAL), result)
+        assertEquals(actuals, draft.sets)
+        assertNull(buildManualTargetPlan(draft, result, ManualTargetChoice.NONE,
+            "", null, EquipmentLoadSemantics.EXTERNAL).getOrThrow())
+    }
+
+    @Test
+    fun directKgPreservesExistingDoseAndPercentRejectsAssistance() {
+        val draft = SessionExerciseDraft(exercise = repsExercise,
+            equipmentId = "leg_press", sets = listOf(SessionSetDraft(reps = 6)))
+        val existing = SessionExercisePlan(3, reps = 8, weightKg = 50.0,
+            loadMode = SessionLoadMode.EXTERNAL, restSeconds = 120)
+        val direct = buildManualTargetPlan(draft, existing, ManualTargetChoice.KG,
+            "62,5", null, EquipmentLoadSemantics.EXTERNAL).getOrThrow()!!
+        assertEquals(existing.copy(weightKg = 62.5), direct)
+        val assistance = buildManualTargetPlan(draft, existing,
+            ManualTargetChoice.PERCENT_MAX, "",
+            ManualPercentMaxResult.Available(100.0, "2026-09-10T08:00:00Z", 70.0),
+            EquipmentLoadSemantics.ASSISTANCE)
+        assertEquals(
+            "Le %MAX est indisponible pour une assistance ; choisissez une résistance externe.",
+            assistance.exceptionOrNull()?.message,
+        )
     }
 
     private val repsExercise =

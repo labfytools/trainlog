@@ -47,11 +47,10 @@ TrainlogSyncScreenAction trainlog_sync_screen_dispatch(
 
     direction = state->direction;
 
-    if (key == 'a' || key == 'A') {
-        direction = TRAINLOG_SYNC_ANDROID_TO_PC;
-    } else if (key == 'p' || key == 'P') {
-        direction = TRAINLOG_SYNC_PC_TO_ANDROID;
-    } else if (key == 'b' || key == 'B') {
+    /* CONTRACT: the desktop product exposes one sync operation.  Directional
+     * engine modes remain an internal compatibility capability for receipts
+     * and existing callers, but the TUI always requests the complete exchange. */
+    if (key == 's' || key == 'S') {
         direction = TRAINLOG_SYNC_BIDIRECTIONAL;
     } else if (state->confirming) {
         if (key == '\n' || key == TRAINLOG_KEY_ENTER) {
@@ -87,7 +86,6 @@ TrainlogSyncScreenAction trainlog_sync_screen_dispatch(
             state->direction
         );
     } else {
-        /* The former s shortcut is deliberately not an action. */
         return sync_screen_action(
             TRAINLOG_SYNC_SCREEN_NONE,
             state->direction
@@ -160,8 +158,8 @@ const char *trainlog_sync_screen_footer(
 )
 {
     if (terminal_columns >= 100) {
-        return "a Android→PC  p PC→Android  b PC↔Android  r actualiser  Échap retour";
+        return "s Synchroniser maintenant (PC↔Android)  r Actualiser appareil  Échap retour";
     }
 
-    return "a A→PC  p PC→A  b A↔PC  r act.  Échap retour";
+    return "s Synchroniser PC↔Android  r Actualiser  Échap retour";
 }

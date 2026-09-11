@@ -44,20 +44,11 @@ fun SessionDetailScreen(
         }
 
     TrainlogScreen(
-        subtitle = "D E T A I L   S E A N C E"
+        subtitle = "Détail de la séance"
     ) {
-        TrainlogAction(
-            label =
-                "< Retour à l'historique",
-            description =
-                "Revenir à la liste des séances.",
-            onClick = onBack,
-            accent = colors.muted,
-        )
-
         if (detail == null) {
             TrainlogFrame(
-                title = "ERREUR"
+                title = "Erreur"
             ) {
                 TrainlogInfo(
                     text =
@@ -71,7 +62,7 @@ fun SessionDetailScreen(
         }
 
         TrainlogFrame(
-            title = "SEANCE"
+            title = "Séance"
         ) {
             TrainlogInfo(
                 formatStartedAt(

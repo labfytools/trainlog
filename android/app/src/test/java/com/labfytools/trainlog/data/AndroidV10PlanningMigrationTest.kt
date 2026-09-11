@@ -61,7 +61,7 @@ class AndroidV10PlanningMigrationTest {
 
         TrainlogRepository(context, name).useForTest { it.listSessions() }
         SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(11, scalar(db, "PRAGMA user_version"))
+            assertEquals(12, scalar(db, "PRAGMA user_version"))
             for (table in listOf("session_exercises", "draft_session_exercises")) {
                 assertEquals(6, scalar(db, "SELECT COUNT(*) FROM pragma_table_info('$table') WHERE name IN ('load_mode','rest_seconds','target_sets','target_reps','target_duration_seconds','target_weight_kg')"))
                 assertEquals(0, scalar(db, "SELECT COUNT(*) FROM $table WHERE load_mode<>'none' OR rest_seconds<>0 OR target_sets IS NOT NULL OR target_reps IS NOT NULL OR target_duration_seconds IS NOT NULL OR target_weight_kg IS NOT NULL"))

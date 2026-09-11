@@ -77,6 +77,8 @@ class DraftUiTestActivity : ComponentActivity() {
                                 ?: (loaded as?
                                     ActiveDraftLoadResult.Loaded)
                                     ?.warning,
+                        latestSession = null,
+                        latestMaximum = null,
                         onSession = {
                             when (
                                 val result =
@@ -93,25 +95,8 @@ class DraftUiTestActivity : ComponentActivity() {
                                 }
                             }
                         },
-                        onDiscardDraft = {
-                            when (
-                                val result =
-                                    repository
-                                        .discardActiveSessionDraft()
-                            ) {
-                                ActiveDraftMutationResult.Saved -> {
-                                    error = null
-                                    revision += 1
-                                }
-
-                                is ActiveDraftMutationResult.Error -> {
-                                    error = result.message
-                                }
-                            }
-                        },
-                        onExercise = {},
                         onBody = {},
-                        onHistory = {},
+                        onOpenLatestSession = {},
                         onSync = {},
                         onGenerateSession = {},
                     )

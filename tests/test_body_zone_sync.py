@@ -71,6 +71,51 @@ def mapping(db):
     return rows, baseline
 
 
+def write_companion(path, entries):
+    path.write_text(json.dumps({
+        "format": "trainlog-exercise-body-zones", "version": 1,
+        "generated_at": "2032-01-01T00:00:00+00:00",
+        "exercises": entries,
+    }), encoding="utf-8")
+
+
+def entry(exercise_id, primary="back", secondary=None):
+    return {
+        "exercise_id": exercise_id,
+        "primary_zone_id": primary,
+        "secondary_zone_ids": ["arms"] if secondary is None else secondary,
+    }
+
+
+def add_alias(db, source_id, canonical_id):
+    connection = sqlite3.connect(db)
+    connection.execute(
+        "CREATE TABLE exercise_aliases(source_exercise_id TEXT PRIMARY KEY, "
+        "canonical_exercise_id TEXT NOT NULL)"
+    )
+    connection.execute(
+        "INSERT INTO exercise_aliases VALUES(?,?)", (source_id, canonical_id)
+    )
+    connection.execute("PRAGMA user_version=12")
+    connection.commit()
+    connection.close()
+
+
+def assert_alias_identity(db, source_id, canonical_id):
+    connection = sqlite3.connect(db)
+    assert connection.execute(
+        "SELECT COUNT(*) FROM exercises WHERE exercise_id=?", (source_id,)
+    ).fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?",
+        (source_id,),
+    ).fetchone() == (canonical_id,)
+    assert connection.execute(
+        "SELECT COUNT(*) FROM exercise_body_zones"
+    ).fetchone()[0] == 2
+    connection.close()
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="trainlog-body-zone-sync-") as temporary:
         root = Path(temporary)
@@ -164,13 +209,7 @@ def main():
         remote_id = "ex_33333333-3333-4333-8333-333333333333"
         database(alias_db, local_id, with_mapping=False)
         alias_artifact = root / "alias-zones.json"
-        alias_artifact.write_text(json.dumps({
-            "format": "trainlog-exercise-body-zones", "version": 1,
-            "generated_at": "2032-01-01T00:00:00+00:00", "exercises": [{
-                "exercise_id": remote_id, "primary_zone_id": "back",
-                "secondary_zone_ids": ["arms"],
-            }],
-        }), encoding="utf-8")
+        write_companion(alias_artifact, [entry(remote_id)])
         proof = root / "proof.json"
         proof.write_text(json.dumps({
             "format": "trainlog-mobile-export", "version": 2,
@@ -179,11 +218,73 @@ def main():
                 "recording_mode": "sets", "tracking_mode": "reps", "data_fields": 0,
             }], "sessions": [], "body_observations": [],
         }), encoding="utf-8")
+        # Explicitly retained V2 evidence coalesces source+canonical claims by
+        # the same exact-payload rule as a durable alias.
+        write_companion(alias_artifact, [entry(remote_id), entry(local_id)])
         alias_import = run(
             IMPORT, alias_artifact, alias_db, "--mobile-export", proof,
         )
-        assert alias_import.returncode == 0, alias_import.stdout + alias_import.stderr
+        assert alias_import.returncode == 0 and "zones_updated=1" in alias_import.stdout, (
+            alias_import.stdout + alias_import.stderr
+        )
         assert mapping(alias_db) == ([('back', 'primary'), ('arms', 'secondary')], "back|arms")
+
+        # Once EXERCISE_MERGE_V1 has persisted the retired creator identity,
+        # the companion resolves it without requiring a mobile snapshot/name
+        # proof. This is the normal post-merge transit order.
+        persistent_alias_db = root / "persistent-alias.db"
+        database(persistent_alias_db, local_id, with_mapping=False)
+        add_alias(persistent_alias_db, remote_id, local_id)
+        write_companion(alias_artifact, [entry(remote_id), entry(local_id)])
+        persistent_alias_import = run(IMPORT, alias_artifact, persistent_alias_db)
+        assert persistent_alias_import.returncode == 0 and \
+                "zones_updated=1" in persistent_alias_import.stdout, (
+            persistent_alias_import.stdout + persistent_alias_import.stderr
+        )
+        assert mapping(persistent_alias_db) == (
+            [('back', 'primary'), ('arms', 'secondary')], "back|arms"
+        )
+        assert_alias_identity(persistent_alias_db, remote_id, local_id)
+        persistent_replay = run(IMPORT, alias_artifact, persistent_alias_db)
+        assert persistent_replay.returncode == 0 and \
+            "zones_skipped=1" in persistent_replay.stdout, persistent_replay.stdout
+        assert_alias_identity(persistent_alias_db, remote_id, local_id)
+
+        # Full canonical groups must agree exactly. In particular, secondary
+        # claims are never unioned because that would invent direct relations.
+        conflict_cases = [
+            ("complementary-secondary", entry(remote_id, "back", ["arms"]),
+             entry(local_id, "back", ["shoulders"])),
+            ("primary-conflict", entry(remote_id, "back", []),
+             entry(local_id, "chest", [])),
+            ("role-conflict", entry(remote_id, "back", ["arms"]),
+             entry(local_id, "arms", ["back"])),
+            ("classified-unclassified", entry(remote_id, "back", []),
+             entry(local_id, None, [])),
+        ]
+        for label, source_entry, canonical_entry in conflict_cases:
+            conflict_db = root / f"{label}.db"
+            database(conflict_db, local_id)
+            add_alias(conflict_db, remote_id, local_id)
+            before = mapping(conflict_db)
+            write_companion(alias_artifact, [source_entry, canonical_entry])
+            result = run(IMPORT, alias_artifact, conflict_db)
+            assert result.returncode == 1 and \
+                "incompatibles après résolution d'alias" in result.stdout, result.stdout
+            assert mapping(conflict_db) == before
+            assert_alias_identity(conflict_db, remote_id, local_id)
+
+        # An unresolved source cannot borrow the known canonical entry as
+        # identity proof, and the earlier canonical claim remains unmodified.
+        unknown_db = root / "unknown-group.db"
+        database(unknown_db, local_id)
+        before = mapping(unknown_db)
+        write_companion(alias_artifact, [
+            entry(local_id, "back", ["shoulders"]), entry(remote_id),
+        ])
+        unknown = run(IMPORT, alias_artifact, unknown_db)
+        assert unknown.returncode == 1 and "exercice inconnu" in unknown.stdout
+        assert mapping(unknown_db) == before
 
         # A custom exercise starts with no baseline on its creator. Publishing
         # the exact snapshot acknowledges it locally; a later peer-only edit

@@ -82,6 +82,34 @@ It consumes core services for:
 - manual synchronization;
 - synchronization log/detail display.
 
+APP_SHELL_V1 places these existing capabilities below seven platform-neutral
+sections: Accueil, Séances, Exercices, Équipements, Statistiques,
+Synchronisation and Paramètres. The controller owns route history, focus,
+overlays and transient leave guards; rendering owns no persistence, SQLite,
+transport, or synchronization decisions. Navigation and redraw alone never
+write a database or run synchronization. Session drafts, generator previews,
+and transient forms use explicit keep/discard guards; discard of transient TUI
+state performs no database write. Sync operations retain their existing
+direction confirmation and diagnostic ownership.
+
+The desktop controller has one event loop and consumes Trainlog input semantics
+before screen code. Overlay input precedes route aliases, local editors precede
+global aliases, and overlay close restores saved focus/stable selection. Its
+layout is compact from 72x20, has a sidebar from 100x26, and expands it from
+120x32. Its bounded UTF-8 adapter, stable-ID list state, shared action registry
+and run-scoped terminal planes keep Notcurses infrastructure separate from
+product semantics.
+
+Android's `AppNavigationController` is the corresponding route owner. Its
+Material 3 drawer exposes the same seven roots and derives drawer selection
+from the route. It uses local vector resources, a sans-serif hierarchy and
+minimum 48 dp actions; it has no runtime icon/parser dependency and accepts a
+text fallback where an optional icon font is unavailable. Route transitions
+preserve durable drafts and require keep/discard resolution for non-durable
+forms or generator previews. The Android shell maps the same semantic color
+roles to Material 3 tokens; neither platform treats color as the only state
+carrier.
+
 ### `trainlog-syncd`
 
 `trainlog-syncd` is a small user-session agent.
@@ -140,7 +168,7 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v11 is canonical long-term history. Its v9 -> v10
+Desktop SQLite schema v12 is canonical long-term history. Its v9 -> v10
 migration losslessly rebuilds only `performed_sets` so actual `weight_kg` may
 be finite `>= 0`; the column already existed and targets/max results retain
 their strictly-positive contracts. `session_exercises`
@@ -151,6 +179,12 @@ The additive v10 -> v11 migration creates direct exercise/body-zone relations
 and a private synchronization baseline, then seeds only stable-ID mappings
 whose decision evidence is recorded in the manifest. It never rewrites an
 exercise, occurrence or history row.
+
+The additive v11 -> v12 migration adds only persistent exercise aliases. An
+explicit source-to-canonical merge validates the complete recording profile and
+primary BODY ZONE, unions compatible secondary zones, repoints occurrence
+foreign keys, and then retires the source catalogue row. Entry IDs, sessions,
+sets, continuous activity, MAX, equipment and targets remain unchanged.
 
 Main tables:
 
@@ -169,7 +203,7 @@ exercise_body_zone_sync
 
 ### Android
 
-Android has an independent local SQLite schema, currently v11. Completed and
+Android has an independent local SQLite schema, currently v12. Completed and
 draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
 resuming a completed Test max records its stable source session in the one
 durable draft.
@@ -206,9 +240,10 @@ equal recording/tracking modes, compatible represented invariants, and
 sides; the richer mask is retained and every occurrence/draft reference moves
 transactionally. Otherwise synchronization reports a conflict.
 
-Compose presentation has one `TrainlogScreen` header component for every page.
-It uses the TUI's compact accent `◆ TRAINLOG ◆` plaque and muted context line;
-screen navigation and data ownership remain independent from the header.
+Compose presentation has one fixed `AndroidAppShell` Material 3 `Scaffold`
+with a `TopAppBar` above its page-content host. Root routes show `TRAINLOG`;
+non-root routes show their route title. Screen navigation and data ownership
+remain independent from this shell.
 
 ## 5. Compatibility boundaries
 

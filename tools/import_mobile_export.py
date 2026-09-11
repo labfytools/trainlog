@@ -819,9 +819,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10, 11):
+    if version not in (5, 6, 7, 8, 9, 10, 11, 12):
         raise ImportFailure(
-            f"base desktop schema v5 à v11 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v12 attendue, version trouvée: {version}"
         )
 
 
@@ -1016,6 +1016,29 @@ def import_exercises(
             connection,
             exercise_id,
         )
+
+        # CONTRACT: a retired creator ID is identity input only. It resolves
+        # before normalized-name reconciliation and cannot rewrite canonical
+        # catalogue presentation metadata unless that canonical ID itself was
+        # present in the incoming catalogue.
+        if by_id is None and connection.execute(
+            "PRAGMA user_version;"
+        ).fetchone()[0] >= 12:
+            alias = connection.execute(
+                "SELECT canonical_exercise_id FROM exercise_aliases "
+                "WHERE source_exercise_id=?;", (exercise_id,),
+            ).fetchone()
+            if alias is not None:
+                canonical = lookup_exercise_by_id(connection, alias[0])
+                if canonical is None:
+                    raise ImportFailure("alias exercice sans cible canonique")
+                if not profiles_are_reconcilable(canonical, exercise):
+                    raise ImportFailure(profile_conflict(canonical, exercise))
+                mapping[exercise_id] = canonical["exercise_id"]
+                report["exercises_skipped"] += 1
+                trace_exercise_decision(trace_exercises, exercise,
+                    f"alias:{canonical['exercise_id']}", "existing-identical")
+                continue
 
         if by_id is not None:
             if not profiles_are_reconcilable(

@@ -54,37 +54,6 @@ fun SyncScreen(
             )
         }
 
-    LaunchedEffect(Unit) {
-        when (
-            val result =
-                inbox.importPcCatalog()
-        ) {
-            is CatalogInboxResult.Imported -> {
-                if (
-                    result.imported > 0 ||
-                    result.reconciled > 0
-                ) {
-                    success = true
-
-                    status =
-                        (
-                            "Catalogue PC appliqué automatiquement : " +
-                            "${result.imported} nouveau(x), " +
-                            "${result.reconciled} réconcilié(s)."
-                        )
-
-                    onCatalogChanged()
-                }
-            }
-
-            CatalogInboxResult.FolderNotAuthorized,
-            CatalogInboxResult.FileNotFound,
-            is CatalogInboxResult.Error -> {
-                /* Nothing to import yet. */
-            }
-        }
-    }
-
     LaunchedEffect(
         pendingRequestId
     ) {
@@ -265,18 +234,10 @@ fun SyncScreen(
 
     TrainlogScreen(
         subtitle =
-            "S Y N C H R O N I S A T I O N"
+            "Synchronisation"
     ) {
-        TrainlogAction(
-            label = "< Retour",
-            description =
-                "Revenir à l'accueil.",
-            onClick = onBack,
-            accent = colors.muted,
-        )
-
         TrainlogFrame(
-            title = "SYNCHRONISER"
+            title = "Synchroniser"
         ) {
             TrainlogInfo(
                 text =
@@ -430,7 +391,7 @@ fun SyncScreen(
 
         if (status != null) {
             TrainlogFrame(
-                title = "ETAT",
+                title = "État",
                 active = false,
             ) {
                 TrainlogInfo(

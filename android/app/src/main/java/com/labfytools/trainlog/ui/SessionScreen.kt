@@ -30,6 +30,7 @@ import com.labfytools.trainlog.data.ActiveDraftMutationResult
 import com.labfytools.trainlog.data.CreateEquipmentResult
 import com.labfytools.trainlog.data.EquipmentLoadSemantics
 import com.labfytools.trainlog.data.FinalizeActiveDraftResult
+import com.labfytools.trainlog.data.ManualPercentMaxResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
@@ -37,6 +38,8 @@ import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraftForm
 import com.labfytools.trainlog.model.SessionExerciseDraft
+import com.labfytools.trainlog.model.SessionExercisePlan
+import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
@@ -124,20 +127,11 @@ fun SessionScreen(
         }
 
     TrainlogScreen(
-        subtitle = "S E A N C E"
+        subtitle = "Séance en cours"
     ) {
-        TrainlogAction(
-            label = "< Retour",
-            description =
-                "Revenir à l'accueil sans supprimer la séance en cours.",
-            /* CONTRACT: ordinary navigation never owns draft deletion. */
-            onClick = onBack,
-            accent = colors.muted,
-        )
-
         if (activeDraft == null) {
             TrainlogFrame(
-                title = "ERREUR"
+                title = "Erreur"
             ) {
                 TrainlogInfo(
                     text = message.orEmpty(),
@@ -169,7 +163,7 @@ fun SessionScreen(
         )
 
         TrainlogFrame(
-            title = "TYPE DE SEANCE"
+            title = "Type de séance"
         ) {
             TrainlogAction(
                 label =
@@ -252,7 +246,7 @@ fun SessionScreen(
         )
 
         TrainlogFrame(
-            title = "SEANCE EN COURS"
+            title = "Séance en cours"
         ) {
             TrainlogInfo(
                 text =
@@ -367,6 +361,9 @@ fun SessionScreen(
                 sessionType = currentDraft.sessionType,
                 initialForm =
                     currentDraft.form,
+                initialPlan = currentDraft.form.editingExerciseIndex?.let {
+                    currentDraft.exercises.getOrNull(it)?.plan
+                },
                 onFormChanged = {
                     form ->
                         persistDraft(
@@ -397,9 +394,7 @@ fun SessionScreen(
                                     currentDraft.exercises.mapIndexed { index, existing ->
                                         /* INVARIANT: normal performed-value edits
                                          * preserve generator planning metadata. */
-                                        if (index == replacingIndex) {
-                                            draft.copy(plan = existing.plan)
-                                        } else existing
+                                        if (index == replacingIndex) draft else existing
                                     }
                                 } ?: (currentDraft.exercises + draft),
                                 form =
@@ -412,7 +407,7 @@ fun SessionScreen(
         }
 
         TrainlogFrame(
-            title = "EXERCICES"
+            title = "Exercices"
         ) {
             TrainlogAction(
                 label =
@@ -427,7 +422,7 @@ fun SessionScreen(
         }
 
         TrainlogFrame(
-            title = "ENREGISTREMENT",
+            title = "Enregistrement",
             active =
                 currentDraft.exercises.isNotEmpty(),
         ) {
@@ -554,6 +549,7 @@ private fun CatalogChoice(
                 .then(modifier)
                 .fillMaxWidth()
                 .padding(vertical = 2.dp)
+                .heightIn(min = 48.dp)
                 .background(
                     if (selected) {
                         colors.surfaceAlt
@@ -621,7 +617,7 @@ private fun ExercisePicker(
     var query by remember(selectedExercise?.exerciseId) { mutableStateOf("") }
     val results = remember(exercises, query) { exercisePrefixMatches(exercises, query) }
 
-    TrainlogFrame(title = "EXERCICE", active = exercises.isNotEmpty()) {
+    TrainlogFrame(title = "Exercice", active = exercises.isNotEmpty()) {
         if (exercises.isEmpty()) {
             TrainlogInfo("Aucun exercice.")
             return@TrainlogFrame
@@ -704,6 +700,65 @@ private fun normalizeExerciseSearchText(value: String): String =
         .trim()
         .replace("\\s+".toRegex(), " ")
 
+internal enum class ManualTargetChoice { KG, PERCENT_MAX, NONE }
+
+/**
+ * Build occurrence planning metadata separately from performed rows.
+ * CONTRACT: an existing generated/manual dose keeps its sets/reps/duration/rest;
+ * only the user-selected load target changes. A new manual occurrence derives
+ * its initial dose shape from the confirmed performed-row form without copying
+ * target weight into any performed set.
+ */
+internal fun buildManualTargetPlan(
+    draft: SessionExerciseDraft,
+    existing: SessionExercisePlan?,
+    choice: ManualTargetChoice,
+    directKgText: String,
+    percentResult: ManualPercentMaxResult?,
+    equipmentSemantics: EquipmentLoadSemantics?,
+): Result<SessionExercisePlan?> {
+    if (choice == ManualTargetChoice.NONE) return Result.success(null)
+    val weight = when (choice) {
+        ManualTargetChoice.KG -> directKgText.trim().replace(',', '.').toDoubleOrNull()
+            ?.takeIf { it.isFinite() && it > 0.0 }
+            ?: return Result.failure(IllegalArgumentException(
+                "Saisissez une charge cible strictement positive."))
+        ManualTargetChoice.PERCENT_MAX ->
+            (percentResult as? ManualPercentMaxResult.Available)?.targetWeightKg
+                ?: return Result.failure(IllegalArgumentException(
+                    (percentResult as? ManualPercentMaxResult.Unavailable)?.message
+                        ?: "MAX compatible indisponible."))
+        ManualTargetChoice.NONE -> error("handled above")
+    }
+    val mode = when (equipmentSemantics) {
+        EquipmentLoadSemantics.EXTERNAL -> SessionLoadMode.EXTERNAL
+        EquipmentLoadSemantics.ASSISTANCE -> if (choice == ManualTargetChoice.PERCENT_MAX)
+            return Result.failure(IllegalArgumentException(
+                "Le %MAX est indisponible pour une assistance ; choisissez une résistance externe."))
+        else SessionLoadMode.ASSISTANCE
+        else -> return Result.failure(IllegalArgumentException(
+            "Choisissez un équipement compatible avec une charge cible."))
+    }
+    val dose = existing ?: when (draft.exercise.trackingMode) {
+        TrackingMode.REPS -> SessionExercisePlan(
+            sets = draft.sets.size,
+            reps = draft.sets.firstOrNull()?.reps,
+        )
+        TrackingMode.DURATION -> SessionExercisePlan(
+            sets = draft.sets.size,
+            durationSeconds = draft.sets.firstOrNull()?.durationSeconds,
+        )
+    }
+    if (dose.sets !in 1..MAX_SESSION_SETS ||
+        (draft.exercise.trackingMode == TrackingMode.REPS &&
+            (dose.reps == null || dose.reps !in 1..MAX_REPS_PER_SET)) ||
+        (draft.exercise.trackingMode == TrackingMode.DURATION &&
+            (dose.durationSeconds == null || dose.durationSeconds <= 0)))
+        return Result.failure(IllegalArgumentException(
+            "Définissez une dose cible positive avant la charge cible."))
+    return Result.success(dose.copy(weightKg = weight, loadMode = mode))
+}
+
 @Composable
 private fun SessionExerciseForm(
     key: String,
@@ -711,6 +766,7 @@ private fun SessionExerciseForm(
     exercise: ExerciseProfile,
     sessionType: SessionType,
     initialForm: SessionDraftForm,
+    initialPlan: SessionExercisePlan?,
     onFormChanged: (SessionDraftForm) -> Unit,
     onCancel: () -> Unit,
     onAdd:
@@ -790,6 +846,14 @@ private fun SessionExerciseForm(
     var selectedEquipmentId by remember(key) {
         mutableStateOf(initialForm.selectedEquipmentId)
     }
+    var targetChoice by remember(key) {
+        mutableStateOf(if (initialPlan?.weightKg != null) ManualTargetChoice.KG
+            else ManualTargetChoice.NONE)
+    }
+    var targetKgText by remember(key) {
+        mutableStateOf(initialPlan?.weightKg?.let(::formatMaxWeight).orEmpty())
+    }
+    var targetPercentText by remember(key) { mutableStateOf("70") }
 
     var error by
         remember(key) {
@@ -836,6 +900,17 @@ private fun SessionExerciseForm(
             },
         )
         val selectedEquipment = equipmentEntries.firstOrNull { it.equipmentId == selectedEquipmentId }
+        val percentResult = remember(
+            exercise.exerciseId, selectedEquipmentId, targetPercentText,
+            targetChoice, equipmentRevision,
+        ) {
+            if (targetChoice == ManualTargetChoice.PERCENT_MAX)
+                repository.calculateManualPercentMaxTarget(
+                    exercise.exerciseId, selectedEquipmentId,
+                    targetPercentText.toIntOrNull() ?: 0,
+                )
+            else null
+        }
         if (selectedEquipment != null) {
             TrainlogAction(
                 label = "✓ ${selectedEquipment.displayName}",
@@ -883,6 +958,45 @@ private fun SessionExerciseForm(
             exercise.recordingMode ==
             RecordingMode.SETS
         ) {
+            TrainlogInfo("Charge cible prévue — séparée des charges réellement effectuées.", colors.muted)
+            TrainlogChoiceChips(
+                listOf(
+                    ManualTargetChoice.KG.name to "Valeur en kg",
+                    ManualTargetChoice.PERCENT_MAX.name to "% de mon MAX",
+                    ManualTargetChoice.NONE.name to "Aucune",
+                ),
+                targetChoice.name,
+            ) { selected -> targetChoice = ManualTargetChoice.valueOf(selected) }
+            when (targetChoice) {
+                ManualTargetChoice.KG -> SessionNumberField(
+                    label = "Charge cible (kg)", value = targetKgText,
+                    onValueChange = { targetKgText = it; error = null },
+                )
+                ManualTargetChoice.PERCENT_MAX -> {
+                    SessionNumberField(
+                        label = "Pourcentage de mon MAX (1 à 100)",
+                        value = targetPercentText,
+                        onValueChange = { targetPercentText = it; error = null },
+                    )
+                    when (val result = percentResult) {
+                        is ManualPercentMaxResult.Available -> {
+                            TrainlogInfo(
+                                "MAX compatible : ${formatMaxWeight(result.maxWeightKg)} kg · ${result.maxStartedAt}",
+                                colors.muted,
+                            )
+                            TrainlogInfo(
+                                "Cible calculée : ${formatMaxWeight(result.targetWeightKg)} kg",
+                                colors.success,
+                            )
+                        }
+                        is ManualPercentMaxResult.Unavailable ->
+                            TrainlogInfo(result.message, colors.error)
+                        null -> Unit
+                    }
+                }
+                ManualTargetChoice.NONE ->
+                    TrainlogInfo("Aucune charge cible ne sera enregistrée.", colors.muted)
+            }
             if (
                 exercise.trackingMode ==
                 TrackingMode.REPS
@@ -1153,8 +1267,18 @@ private fun SessionExerciseForm(
                         } else {
                             "Valeurs invalides."
                         }
+                } else if (sessionType == SessionType.TRAINING &&
+                    exercise.recordingMode == RecordingMode.SETS) {
+                    val plan = buildManualTargetPlan(
+                        draft, initialPlan, targetChoice, targetKgText,
+                        percentResult, selectedEquipment?.loadSemantics,
+                    )
+                    plan.fold(
+                        onSuccess = { onAdd(draft.copy(plan = it)) },
+                        onFailure = { error = it.message ?: "Charge cible invalide." },
+                    )
                 } else {
-                    onAdd(draft)
+                    onAdd(draft.copy(plan = null))
                 }
             },
         )

@@ -57,4 +57,20 @@ TrainlogStatus trainlog_measured_max_working_load(
     double *output_kg
 );
 
+/**
+ * @brief Calculate a user-directed target from one compatible explicit MAX.
+ *
+ * Compatibility is exact exercise ownership (established by the caller's
+ * exercise-scoped latest-max query), exact nonempty equipment ID, and external
+ * resistance. percent must be the integer range 1..100. No rounding,
+ * recommendation, or percentage metadata is persisted by this function.
+ */
+TrainlogStatus trainlog_measured_max_target_load(
+    const TrainlogLatestExplicitMax *latest,
+    const char *equipment_id,
+    TrainlogLoadMode equipment_load_semantics,
+    int percent,
+    double *output_kg
+);
+
 #endif

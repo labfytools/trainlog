@@ -203,3 +203,32 @@ TrainlogStatus trainlog_measured_max_working_load(
 
     return TRAINLOG_STATUS_OK;
 }
+
+TrainlogStatus trainlog_measured_max_target_load(
+    const TrainlogLatestExplicitMax *latest,
+    const char *equipment_id,
+    TrainlogLoadMode equipment_load_semantics,
+    int percent,
+    double *output_kg
+)
+{
+    double result;
+    /* WHY: %MAX is an arithmetic shortcut explicitly chosen by the user, not
+     * a training recommendation. CONTRACT: only the newest explicit MAX for
+     * this exercise and exact equipment context may cross into the calculator;
+     * assistance and missing/unknown contexts are rejected. */
+    if (latest == NULL || equipment_id == NULL || output_kg == NULL ||
+        !latest->found || equipment_id[0] == '\0' ||
+        strcmp(latest->equipment_id, equipment_id) != 0 ||
+        equipment_load_semantics != TRAINLOG_LOAD_EXTERNAL ||
+        !isfinite(latest->max_weight_kg) || latest->max_weight_kg <= 0.0 ||
+        percent < 1 || percent > 100)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    result = latest->max_weight_kg * (double)percent / 100.0;
+    if (!isfinite(result) || result <= 0.0)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    /* INVARIANT: callers persist only this resulting target weight. The MAX
+     * identity and selected percentage remain transient UI state. */
+    *output_kg = result;
+    return TRAINLOG_STATUS_OK;
+}

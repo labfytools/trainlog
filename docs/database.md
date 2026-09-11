@@ -3,8 +3,8 @@
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=11
-DATABASE_SCHEMA_V11=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=12
+DATABASE_SCHEMA_V12=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -23,7 +23,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-11
+12
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -68,6 +68,12 @@ There is no exercise-ID, occurrence-ID, session, performed-set, MAX, equipment
 or body-observation rewrite. The migration is one transaction and uncertain
 historical exercises remain valid with no relation.
 
+Version 12 is additive. It creates `exercise_aliases`, whose unique source ID
+points to one live canonical `exercises.exercise_id`. Valid writes keep this
+mapping collapsed: a merge repoints occurrence ownership transactionally,
+preserves all stable occurrence and child-row identities, unions compatible
+direct zones, and rejects profile or primary-zone conflicts before mutation.
+
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
 
@@ -102,6 +108,17 @@ Rules include:
 - continuous implies duration tracking;
 - unknown supplemental field bits are rejected;
 - normalized names remain unique.
+
+### `exercise_aliases`
+
+```text
+source_exercise_id       PRIMARY KEY retired creator identity
+canonical_exercise_id    foreign key -> exercises(exercise_id), restrict delete
+```
+
+Sources and targets differ. Targets are always live catalog identities, and a
+target is never another alias source; this makes resolution bounded and rejects
+chains/cycles in imported companion artifacts.
 
 ### `exercise_body_zones`
 
@@ -431,7 +448,7 @@ Do not synchronize SQLite database files.
 
 ## 10. Session-generation planning metadata
 
-Desktop schema remains v11. Android schema v11 adds, through its additive
+Desktop schema v11 and Android schema v11 add, through their additive
 v10 -> v11 migration, `load_mode`, `rest_seconds`, `target_sets`,
 `target_reps`, `target_duration_seconds`, and `target_weight_kg` to both normal
 completed and durable-draft occurrences. Existing rows receive mode `none`,
@@ -465,7 +482,19 @@ max_results
 max_sync
 ```
 
-The current normal desktop suite contains 39 tests.
+The current normal desktop suite contains 47 tests.
+
+## APP_SHELL_V1 read-only equipment paging
+
+`trainlog_database_list_custom_equipment_page()` is a desktop read-only page
+reader for the equipment catalogue UI; it is not a migration or a schema
+change. It accepts an offset, caller-owned output buffer, and a capacity of
+1 through 128. It reads at most `capacity + 1` rows in deterministic
+`display_name COLLATE NOCASE, equipment_id` order. `output_more` is true only
+when that one extra ordered row exists. Every output is valid only on `OK`;
+invalid arguments, invalid/overflow offsets, and corrupt non-text or
+embedded-NUL values fail explicitly. The offset is a refreshable presentation
+position while data is unchanged, never a durable cursor or idempotency token.
 
 ## 11. Explicit and legacy measured maxima
 
@@ -540,10 +569,15 @@ Desktop schema v11 and Android schema v10 then add only body-zone relation and
 sync-baseline tables. Both seed exact manifest mappings by stable exercise ID;
 neither migration changes the occurrence/equipment/MAX graph described above.
 
+Desktop and Android schema v12 add only the durable flattened
+`exercise_aliases` mapping. It resolves retired creator IDs to a live canonical
+exercise during catalog and companion reconciliation without changing any
+session, set, continuous, MAX, equipment, body-zone or planning wire shape.
+
 ## 13. Body analytics persistence rule
 
 Body analytics still require no dedicated schema change; schemas v9 through
-v11 do not alter their measurement storage.
+v12 do not alter their measurement storage.
 
 Canonical persistence continues to contain only measurements actually entered
 by the user.
@@ -566,7 +600,7 @@ history.
 ## 14. Training knowledge read boundary
 
 Training Knowledge V1 adds no table, migration, seed data or synchronization
-artifact. The desktop database remains schema v11. Read-only context assembly
+artifact. The desktop database remains schema v12. Read-only context assembly
 joins an exact existing exercise with its persisted BODY ZONE relations,
 occurrence history, raw sets, actual equipment and latest explicit MAX, then
 optionally attaches immutable catalog knowledge. Missing catalog knowledge is

@@ -1,5 +1,14 @@
 # Changelog
 
+- Added `PERCENT_MAX_INPUT_V1` as a transient user calculator in TUI planning
+  and both generator previews: exact exercise/equipment external-load context,
+  integer 1..100, `MAX × percentage / 100`, no recommendation, and only the
+  resulting target kg persisted. Automatic generator policy V1 is unchanged.
+- Repaired TUI `/` through the stable action registry, deduplicated actions by
+  stable ID, strengthened Lavender plus textual selection states, compacted
+  Android generator choices into localized chips, and made generator duration,
+  shortfall, warm-up and cool-down limitations explicit.
+
 All notable changes to Trainlog are documented here.
 
 Detailed implementation chronology remains available in Git history and
@@ -8,6 +17,22 @@ Detailed implementation chronology remains available in Git history and
 ## Unreleased
 
 ### Added
+
+- `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`: a shared seven-root
+  application shell—Accueil, Séances, Exercices, Équipements, Statistiques,
+  Synchronisation and Paramètres—on the Notcurses TUI and Android Material 3
+  drawer. Séances now contains the existing generator, current/manual session
+  entry and completed history; existing body and MAX views are reached from
+  Statistiques. The TUI adds its run-scoped multi-plane shell, one event loop,
+  stable-ID list/focus restoration, bounded UTF-8 search/forms, F6 Navigation,
+  F7 shared actions, compact/sidebar thresholds, and explicit transient leave
+  guards. Android adds typed controller-owned routes, local vectors, 48 dp
+  actions and guarded navigation. The change adds no statistics, schema,
+  synchronization artifact or exercise-domain semantics. Automated validation
+  passed. A second automated repair review covered root search/action dispatch,
+  F6/F7 focus/selection restoration, shell hubs/catalogues and Android compact
+  presentation/latest-MAX semantics; human visual/accessibility review remains
+  pending.
 
 - `SESSION_GENERATOR_V1=PASS`: one frozen shared policy; deterministic bounded previews for
   11 BODY ZONES and four goals; explicit incomplete coverage and recorded-dose
@@ -96,8 +121,10 @@ Detailed implementation chronology remains available in Git history and
 - Android `EXERCISE_EDIT_V1`: visible catalog editing, stable-ID name rename,
   explicit invalid/conflict/profile/database results, and profile locking once
   completed history or an active draft references the exercise;
-- `ANDROID_BANNER_PARITY_V1`: one Android `◆ TRAINLOG ◆` header component
-  matching the compact Notcurses banner's accent and muted context rhythm;
+- `ANDROID_BANNER_PARITY_V1`: the earlier Android `◆ TRAINLOG ◆` header
+  component matched the compact Notcurses banner's accent and muted context
+  rhythm. APP_SHELL_V1 supersedes that per-page presentation with the fixed
+  Material 3 `AndroidAppShell` top bar;
 
 - one durable Android active-session draft with Home resume, raw form restore,
   confirmed discard and draft-only exercise removal;

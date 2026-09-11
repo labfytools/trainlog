@@ -338,6 +338,67 @@ static bool test_transaction_rollback(void)
     return true;
 }
 
+static bool test_exercise_merge_aliases_and_conflicts(void)
+{
+    TrainlogDatabase *database = NULL;
+    TrainlogExerciseBodyZone zones[4];
+    const char *source_secondary[] = {"shoulders"};
+    const char *target_secondary[] = {"chest"};
+    char canonical[TRAINLOG_ID_MAX + 1U];
+    TrainlogExerciseMergePreview preview;
+    size_t count = 0U;
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database, "ex_source", "Curl A",
+        "curl a", TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database, "ex_target", "Curl B",
+        "curl b", TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database, "ex_final", "Curl C",
+        "curl c", TRAINLOG_TRACKING_REPS) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise(database, "ex_duration", "Hold",
+        "hold", TRAINLOG_TRACKING_DURATION) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_replace_exercise_body_zones(database, "ex_source",
+        "arms", source_secondary, 1U) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_replace_exercise_body_zones(database, "ex_target",
+        "arms", target_secondary, 1U) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_preview_exercise_merge(database, "ex_source",
+        &preview) == TRAINLOG_STATUS_OK);
+    CHECK(preview.occurrences == 0U && preview.performed_sets == 0U &&
+        preview.continuous_activities == 0U && preview.max_results == 0U &&
+        preview.associated_equipment == 0U && preview.body_zones == 2U);
+
+    CHECK(trainlog_database_merge_exercises(database, "ex_source", "ex_target") ==
+        TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_resolve_exercise_id(database, "ex_source", canonical,
+        sizeof(canonical)) == TRAINLOG_STATUS_OK);
+    CHECK(strcmp(canonical, "ex_target") == 0);
+    CHECK(trainlog_database_list_exercise_body_zones(database, "ex_target", zones,
+        4U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 3U);
+    CHECK(strcmp(zones[0].zone_id, "arms") == 0 &&
+        zones[0].role == TRAINLOG_BODY_ZONE_PRIMARY);
+
+    /* A second merge must collapse every old source directly to the newest
+     * canonical ID; resolution never depends on an unbounded alias walk. */
+    CHECK(trainlog_database_merge_exercises(database, "ex_target", "ex_final") ==
+        TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_resolve_exercise_id(database, "ex_source", canonical,
+        sizeof(canonical)) == TRAINLOG_STATUS_OK);
+    CHECK(strcmp(canonical, "ex_final") == 0);
+    CHECK(trainlog_database_resolve_exercise_id(database, "ex_target", canonical,
+        sizeof(canonical)) == TRAINLOG_STATUS_OK);
+    CHECK(strcmp(canonical, "ex_final") == 0);
+
+    CHECK(trainlog_database_merge_exercises(database, "ex_final", "ex_duration") ==
+        TRAINLOG_STATUS_CONFLICT);
+    CHECK(trainlog_database_resolve_exercise_id(database, "ex_final", canonical,
+        sizeof(canonical)) == TRAINLOG_STATUS_OK);
+    CHECK(strcmp(canonical, "ex_final") == 0);
+    CHECK(trainlog_database_exercise_count(database, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 2U);
+    trainlog_database_close(database);
+    return true;
+}
+
 struct TestCase {
     const char *name;
     bool (*function)(void);
@@ -352,6 +413,7 @@ int main(void)
         {"session_insert", test_session_insert},
         {"body_weight_history", test_body_weight_history},
         {"transaction_rollback", test_transaction_rollback},
+        {"exercise_merge_aliases_and_conflicts", test_exercise_merge_aliases_and_conflicts},
     };
     size_t index;
 
