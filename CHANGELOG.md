@@ -338,3 +338,7 @@ Added:
 
 Estimated analytics remain derived display values and are never persisted as
 direct measurements. Android remains capture-only for this feature.
+
+- Hid `SESSION_GENERATOR_V1` from normal UI pending V2; manual `%MAX` entry is unchanged.
+- Added versioned canonical exercise display names, stale-peer-name convergence,
+  and the STATS_V1 query-contract preparation (no analytics implementation).

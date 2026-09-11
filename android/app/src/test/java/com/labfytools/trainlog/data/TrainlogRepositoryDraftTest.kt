@@ -591,6 +591,49 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
+    fun pcCatalogUsesCanonicalMappedNameButLeavesDistinctAndCustomIdsAlone() {
+        val repo = openRepository()
+        val mappedId = "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163"
+        val distinctId = "ex_617007f9-7420-4408-91b9-8ffb77900f13"
+        val customId = "ex_fcc75fa7-671e-4868-bab2-47033128dfb7"
+        fun item(id: String, name: String) = JSONObject()
+            .put("exercise_id", id)
+            .put("name", name)
+            .put("recording_mode", "sets")
+            .put("tracking_mode", "reps")
+            .put("data_fields", 0)
+        val stalePcCatalog = JSONObject()
+            .put("format", "trainlog-pc-catalog")
+            .put("version", 1)
+            .put(
+                "exercises",
+                org.json.JSONArray()
+                    .put(item(mappedId, "Seated leg curl"))
+                    .put(item(distinctId, "Seated Leg"))
+                    .put(item(customId, "My custom curl")),
+            )
+
+        assertEquals(
+            PcCatalogImportResult.Applied(imported = 3, reconciled = 0, skipped = 0),
+            repo.applyPcCatalogJson(stalePcCatalog.toString()),
+        )
+        val byId = repo.listExercises().associateBy { it.exerciseId }
+        assertEquals("Flexion de genou assise", byId.getValue(mappedId).name)
+        assertEquals("Seated Leg", byId.getValue(distinctId).name)
+        assertEquals("My custom curl", byId.getValue(customId).name)
+
+        /* Replaying the stale mapped label is idempotent and cannot restore it. */
+        assertEquals(
+            PcCatalogImportResult.Applied(imported = 0, reconciled = 0, skipped = 3),
+            repo.applyPcCatalogJson(stalePcCatalog.toString()),
+        )
+        assertEquals(
+            "Flexion de genou assise",
+            repo.listExercises().single { it.exerciseId == mappedId }.name,
+        )
+    }
+
+    @Test
     fun marcheReconciliationKeepsRicherProfileAndTwoOccurrenceValues() {
         val repo = openRepository()
         val androidId = "ex_23212d79-52ce-4195-914d-dd983f133936"

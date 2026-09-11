@@ -72,10 +72,14 @@ void trainlog_terminal_cursor_visible(TrainlogTerminal *terminal, bool visible);
 void trainlog_terminal_draw(TrainlogTerminal *terminal, int row, int column, uint32_t codepoint);
 void trainlog_terminal_box(TrainlogTerminal *terminal, int top, int left,
                            int bottom, int right);
-bool trainlog_terminal_translate_input(uint32_t id,
+/* WHY: Notcurses can report a physical key in id while eff_text holds its
+ * layout-resolved Unicode character. CONTRACT: Shift may produce a printable
+ * action character (for example French AZERTY '/'); Ctrl/Alt/Super never
+ * collapse into an unmodified action. */
+bool trainlog_terminal_translate_input(uint32_t id, uint32_t effective_text,
                                        TrainlogInputEventType event_type,
-                                       bool shifted,
-                                       int *key);
+                                       bool shifted, bool control, bool alt,
+                                       bool super, int *key);
 int trainlog_terminal_get_key(TrainlogTerminal *terminal);
 bool trainlog_terminal_read_unicode(TrainlogTerminal *terminal, int *codepoint,
                                     char utf8[5]);

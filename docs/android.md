@@ -637,3 +637,7 @@ The tranche is `TRAINING_KNOWLEDGE_V1=PASS`. The Android loader enforces canonic
 and equipment identity syntax, bidirectional exercise/capability compatibility,
 HIGH evidence source type, and non-unresolved BODY ZONE audit evidence. Its
 full source and uncertainty contract is in [Training knowledge system V1](domain/knowledge_system.md).
+
+The normal shell exposes manual sessions but not SESSION_GENERATOR_V1 pending
+V2. When importing the PC catalog, Android applies the versioned canonical
+exercise-name mapping for mapped IDs; unmapped user exercises remain editable.

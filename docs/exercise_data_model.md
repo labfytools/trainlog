@@ -352,3 +352,7 @@ the same comparison; malformed cursors or matching stored timestamps report
 explicit errors. The initial audit's stale temporal documentation, Android
 loader, Meson input, and C role-only query findings were repaired and
 independently verified; final validation passed.
+
+Exercise names are mutable display metadata. The versioned canonical-name map
+applies only to listed stable IDs and never makes two distinct exercises,
+equipment contexts, MAX observations, or historical occurrences equivalent.

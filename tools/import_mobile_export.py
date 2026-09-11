@@ -9,6 +9,7 @@ import unicodedata
 from pathlib import Path
 
 from validate_json import TrainlogSemanticError, parse_timestamp
+from exercise_names import ExerciseNameCatalogError, load_exercise_names
 
 
 FORMAT = "trainlog-mobile-export"
@@ -1005,8 +1006,16 @@ def import_exercises(
     trace_exercises=False,
 ):
     mapping = {}
+    try:
+        canonical_names = load_exercise_names()
+    except ExerciseNameCatalogError as error:
+        raise ImportFailure(str(error)) from error
 
-    for exercise in payload["exercises"]:
+    for supplied_exercise in payload["exercises"]:
+        exercise = dict(supplied_exercise)
+        exercise["name"] = canonical_names.get(
+            exercise["exercise_id"], exercise["name"]
+        )
         exercise_id = exercise["exercise_id"]
         normalized = normalize_name(
             exercise["name"]

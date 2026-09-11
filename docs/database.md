@@ -618,3 +618,7 @@ The temporal contract has independent PASS evidence. The initial audit's stale
 temporal documentation, Android loader, Meson input, and C role-only query
 findings were repaired, independently verified, and final-validated;
 `TRAINING_KNOWLEDGE_V1=PASS`.
+
+Exercise naming changes update only `exercises.name` and `normalized_name` for
+explicitly mapped stable IDs; no schema migration or historical-row rewrite is
+required.

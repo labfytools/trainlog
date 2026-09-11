@@ -487,3 +487,11 @@ needed for the optional body-fat estimate.
 
 No estimated body-fat, fat-mass, lean-mass, ratio, or asymmetry value is stored
 as if it were a real measurement.
+
+## Shell and naming closeout
+
+`SESSION_GENERATOR_V1` is technically retained but hidden from normal UI pending
+V2. Manual `%MAX` remains available. `exercise-names-v1.json` supplies
+movement-oriented canonical metadata for mapped stable IDs; stale peer labels
+cannot overwrite those names, while custom exercise naming remains editable.
+STATS_V1 is prepared only in `reviews/stats_v1_design.md`.

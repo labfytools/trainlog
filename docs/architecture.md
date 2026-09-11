@@ -567,3 +567,8 @@ fails explicitly. The initial full-tranche audit's stale temporal-documentation,
 Android loader, Meson input, and C role-only query findings were resolved by one
 bounded repair chain and independently verified. Its full contract, uncertainty boundary and
 future-only planning architecture are in [Training knowledge system V1](domain/knowledge_system.md).
+
+Canonical mapped exercise names are a separate, small versioned presentation
+catalog. Stable `exercise_id` owns both display and normalized metadata for
+mapped IDs during PC/Android reconciliation; it does not alter observations,
+aliases, BODY ZONES, or equipment context.

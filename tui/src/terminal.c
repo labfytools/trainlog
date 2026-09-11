@@ -299,10 +299,10 @@ static int terminal_key(uint32_t id, bool shifted)
     }
 }
 
-bool trainlog_terminal_translate_input(uint32_t id,
+bool trainlog_terminal_translate_input(uint32_t id, uint32_t effective_text,
                                        TrainlogInputEventType event_type,
-                                       bool shifted,
-                                       int *key)
+                                       bool shifted, bool control, bool alt,
+                                       bool super, int *key)
 {
     if (key == NULL || id == 0U || id == UINT32_MAX) {
         return false;
@@ -312,7 +312,14 @@ bool trainlog_terminal_translate_input(uint32_t id,
     case TRAINLOG_INPUT_UNKNOWN:
     case TRAINLOG_INPUT_PRESS:
     case TRAINLOG_INPUT_REPEAT:
-        *key = terminal_key(id, shifted);
+        /* INVARIANT: only Shift is a text-producing modifier. The effective
+         * character is layout-independent; do not turn Ctrl/Alt/Super chords
+         * into ordinary shortcuts. */
+        if (effective_text >= 0x20U && effective_text <= 0x10ffffU) {
+            if (control || alt || super) return false;
+            *key = (int)effective_text;
+        } else
+            *key = terminal_key(id, shifted);
         return true;
     case TRAINLOG_INPUT_RELEASE:
     default:
@@ -347,10 +354,12 @@ static bool terminal_read_input(TrainlogTerminal *terminal,
         if (id == 0U || id == UINT32_MAX) {
             return false;
         }
-        if (!trainlog_terminal_translate_input(id,
+        if (!trainlog_terminal_translate_input(id, input.eff_text[0],
                                                terminal_event_type(input.evtype),
                                                ncinput_shift_p(&input),
-                                               key)) {
+                                               ncinput_ctrl_p(&input),
+                                               ncinput_alt_p(&input),
+                                               ncinput_super_p(&input), key)) {
             continue;
         }
         if (utf8 != NULL) {

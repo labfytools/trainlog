@@ -346,3 +346,7 @@ BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 DESKTOP_TESTS=39/39 PASS
 ```
+
+`SESSION_GENERATOR_V1` remains implemented but is hidden from normal Android
+and TUI navigation pending V2. `catalog/exercise-names-v1.json` owns mapped
+exercise display metadata across sync while preserving stable IDs and history.

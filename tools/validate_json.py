@@ -441,11 +441,19 @@ def validate_document(
         return [str(exc)]
 
     is_body_zones = isinstance(document, dict) and document.get("format") == "trainlog-body-zone-catalog"
+    is_exercise_names = isinstance(document, dict) and document.get("format") == "trainlog-exercise-names-v1"
     is_mobile_v2 = isinstance(document, dict) and document.get("format") == "trainlog-mobile-export" and document.get("version") == 2
     if is_body_zones:
         try:
             validate_body_zone_catalog(document)
         except TrainlogSemanticError as exc:
+            return [str(exc)]
+        return []
+    if is_exercise_names:
+        try:
+            from exercise_names import load_exercise_names
+            load_exercise_names(path)
+        except ValueError as exc:
             return [str(exc)]
         return []
     if not is_mobile_v2:
@@ -485,6 +493,17 @@ def run_suite(validator: jsonschema.Draft202012Validator) -> int:
         failed = True
     else:
         print(f"PASS body-zone catalog: {BODY_ZONE_CATALOG_PATH}")
+
+    try:
+        from exercise_names import load_exercise_names
+        exercise_names = load_exercise_names()
+        print(
+            "PASS exercise-name catalog: "
+            f"{ROOT / 'catalog' / 'exercise-names-v1.json'} ({len(exercise_names)} names)"
+        )
+    except ValueError as error:
+        print(f"FAIL exercise-name catalog: {error}")
+        failed = True
 
     if not valid:
         print("FAIL test suite: no valid fixtures found")

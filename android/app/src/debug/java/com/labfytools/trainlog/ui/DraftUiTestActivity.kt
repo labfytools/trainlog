@@ -98,7 +98,6 @@ class DraftUiTestActivity : ComponentActivity() {
                         onBody = {},
                         onOpenLatestSession = {},
                         onSync = {},
-                        onGenerateSession = {},
                     )
                 }
             }

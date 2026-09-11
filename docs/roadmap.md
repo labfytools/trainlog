@@ -436,3 +436,14 @@ assistance interpreted as external load
 body-composition estimates presented as direct measurements
 incompatible changes to Trainlog JSON v1 without a new format version
 ```
+
+## Session generator V2
+
+V1 remains technically implemented but hidden from normal UI. V2 must construct
+the requested duration with warm-up, appropriate ramp-up, coherent main work,
+cool-down, transition/setup time, and explicit candidate-scarcity handling.
+
+## STATS_V1
+
+Prepared only: see `reviews/stats_v1_design.md`. Implementation remains a
+future derived-query tranche with no new summary schema in this checkpoint.

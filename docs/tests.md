@@ -638,3 +638,7 @@ verified. See the [temporal contract](reviews/training_knowledge_v1_temporal_con
 for the established contract. No real Android install,
 manual TUI visual exercise, or manual MTP hardware validation was performed
 for Training Knowledge V1.
+
+Shell/naming closeout coverage includes real-PTY shell behavior, canonical
+name export/import replay on temporary databases, and preservation of sets,
+MAX, equipment, BODY ZONES, aliases, and distinct unmapped exercises.

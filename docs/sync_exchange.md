@@ -651,3 +651,7 @@ The historical V1 fallback never consumes a V2 equipment companion: V1 carries
 no occurrence-level equipment signal, so a neighboring V2 companion belongs to
 a different generation and is ignored. This preserves rather than clears
 existing equipment.
+
+Mapped canonical exercise names are metadata owned by `exercise_id`: PC exports
+them and both import paths prevent stale mapped peer labels from restoring an
+old display name. This does not change TRAINLOG_FORMAT_V1.

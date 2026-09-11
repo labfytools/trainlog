@@ -76,10 +76,10 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             AppRoute.Home -> HomeScreen(
                 activeDraft, draftMessage ?: (draftLoad as? ActiveDraftLoadResult.Error)?.message ?: (draftLoad as? ActiveDraftLoadResult.Loaded)?.warning,
                 repository.listSessions().firstOrNull(), repository.listLatestExerciseMaxima().firstOrNull(),
-                ::openManualSession, { open(AppRoute.SessionGenerator) },
+                ::openManualSession,
                 { open(AppRoute.BodyMeasurements) }, { open(AppRoute.SessionDetail(it)) }, { open(AppRoute.Sync) },
             )
-            AppRoute.Sessions -> SessionsHub(activeDraft, { open(AppRoute.SessionEditor) }, { open(AppRoute.SessionGenerator) }, ::openManualSession, { open(AppRoute.CompletedSessions) })
+            AppRoute.Sessions -> SessionsHub(activeDraft, { open(AppRoute.SessionEditor) }, ::openManualSession, { open(AppRoute.CompletedSessions) })
             AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exporter.exportMobileBundle(); draftRevision++ })
             AppRoute.SessionGenerator -> SessionGeneratorScreen(repository, generatorState, { back() }, { generatorState.abandon(); draftRevision++; open(AppRoute.SessionEditor) }, {
                 draftMessage = "Une séance est déjà en cours. Reprenez-la ou revenez à la proposition conservée."

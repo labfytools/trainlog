@@ -14,7 +14,6 @@ fun HomeScreen(
     latestSession: SessionSummary?,
     latestMaximum: LatestExerciseMax?,
     onSession: () -> Unit,
-    onGenerateSession: () -> Unit,
     onBody: () -> Unit,
     onOpenLatestSession: (String) -> Unit,
     onSync: () -> Unit,
@@ -26,10 +25,8 @@ fun HomeScreen(
             if (activeDraft != null) {
                 val kind = if (activeDraft.sessionType == SessionType.MAX_TEST) "Test max" else "Entraînement"
                 TrainlogPrimaryAction("Reprendre la séance en cours", "$kind · ${activeDraft.exercises.size} exercice(s)", onSession)
-                TrainlogAction("Programmer une séance", "La proposition sera conservée séparément.", onGenerateSession)
             } else {
-                TrainlogPrimaryAction("Programmer une séance", "Préparer une proposition modifiable à partir d'une zone, d'un objectif et d'une durée.", onGenerateSession)
-                TrainlogAction("Nouvelle séance manuelle", "Créer explicitement un brouillon durable.", onSession)
+                TrainlogPrimaryAction("Nouvelle séance manuelle", "Créer explicitement un brouillon durable.", onSession)
             }
         }
         latestSession?.let { session ->

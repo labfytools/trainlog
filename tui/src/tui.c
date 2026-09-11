@@ -4235,9 +4235,6 @@ static void app_shell_actions(TrainlogAppContext *app)
     if (route == TRAINLOG_ROUTE_HOME)
         app_shell_add_action(app, "session", '1', "1 Séance", 1U,
             TRAINLOG_INTENT_OPEN_ROUTE, TRAINLOG_ROUTE_SESSION_MANUAL);
-    if (route == TRAINLOG_ROUTE_SESSIONS)
-        app_shell_add_action(app, "generate", 'g', "g Programmer", 1U,
-            TRAINLOG_INTENT_OPEN_ROUTE, TRAINLOG_ROUTE_SESSION_GENERATOR);
     if (route == TRAINLOG_ROUTE_BODY ||
         route == TRAINLOG_ROUTE_SYNC || route == TRAINLOG_ROUTE_SETTINGS)
         app_shell_add_action(app, "open", TRAINLOG_KEY_ENTER, "Entrée Ouvrir", 1U,
@@ -5488,13 +5485,12 @@ static void app_shell_render_content(TrainlogAppContext *app)
     } else if (route == TRAINLOG_ROUTE_HOME) {
         trainlog_surface_printf(app->content, 4, 2, "Votre entraînement, au même endroit.");
         trainlog_surface_printf(app->content, 7, 2, "1  Reprendre ou commencer une séance");
-        trainlog_surface_printf(app->content, 9, 2, "g  Programmer une séance");
-        trainlog_surface_printf(app->content, 11, 2, "5  Ajouter ou consulter des mensurations");
+        trainlog_surface_printf(app->content, 9, 2, "5  Ajouter ou consulter des mensurations");
     } else if (route == TRAINLOG_ROUTE_SESSIONS) {
-        static const char *const rows[] = {"Séance en cours", "Programmer une séance",
-            "Nouvelle séance manuelle", "Séances effectuées"};
+        static const char *const rows[] = {"Séance en cours", "Nouvelle séance manuelle",
+            "Séances effectuées"};
         size_t index;
-        for (index = 0U; index < 4U; ++index) {
+        for (index = 0U; index < 3U; ++index) {
             trainlog_surface_set_role(app->content,
                 app->content_selected == index ? TRAINLOG_COLOR_ACCENT : TRAINLOG_COLOR_DEFAULT,
                 TRAINLOG_RGB_BASE,
@@ -6214,9 +6210,8 @@ static void app_shell_primary(TrainlogAppContext *app)
     TrainlogAppRoute route = app->navigation.current.route;
     if (route == TRAINLOG_ROUTE_SESSIONS) {
         static const TrainlogAppRoute targets[] = {TRAINLOG_ROUTE_SESSION_CURRENT,
-            TRAINLOG_ROUTE_SESSION_GENERATOR, TRAINLOG_ROUTE_SESSION_MANUAL,
-            TRAINLOG_ROUTE_SESSIONS_COMPLETED};
-        app_shell_open_route(app, targets[app->content_selected % 4U]);
+            TRAINLOG_ROUTE_SESSION_MANUAL, TRAINLOG_ROUTE_SESSIONS_COMPLETED};
+        app_shell_open_route(app, targets[app->content_selected % 3U]);
     } else if (route == TRAINLOG_ROUTE_STATS) {
         static const TrainlogAppRoute targets[] = {TRAINLOG_ROUTE_STATS_EXERCISE,
             TRAINLOG_ROUTE_BODY, TRAINLOG_ROUTE_MAX};
@@ -7379,6 +7374,17 @@ static void app_shell_dispatch(TrainlogAppContext *app, int key)
         /* INVARIANT: the rendered Actions control owns its input. */
         return;
     }
+    /* WHY: route controllers may legitimately own printable keys. Search is a
+     * shell action, so resolve its registered '/' before those controllers.
+     * CONTRACT: physical '/' and F7 select the same list.search action. */
+    action = trainlog_actions_find_key(&app->actions, key);
+    if (action != NULL && action->intent == TRAINLOG_INTENT_OPEN_SEARCH &&
+        app_shell_is_list_route(app->navigation.current.route)) {
+        app->search.open = true;
+        app->search.focused = true;
+        app->focus = TRAINLOG_FOCUS_SEARCH;
+        return;
+    }
     if (app_shell_dispatch_exercise_controller(app, key)) return;
     if (app_shell_dispatch_equipment_controller(app, key)) return;
     if (app_shell_dispatch_body_controller(app, key)) return;
@@ -7388,7 +7394,7 @@ static void app_shell_dispatch(TrainlogAppContext *app, int key)
     if ((app->navigation.current.route == TRAINLOG_ROUTE_SESSIONS ||
          app->navigation.current.route == TRAINLOG_ROUTE_STATS) &&
         (key == TRAINLOG_KEY_UP || key == TRAINLOG_KEY_DOWN)) {
-        size_t count = app->navigation.current.route == TRAINLOG_ROUTE_SESSIONS ? 4U : 3U;
+        size_t count = 3U;
         if (key == TRAINLOG_KEY_UP && app->content_selected > 0U) --app->content_selected;
         if (key == TRAINLOG_KEY_DOWN && app->content_selected + 1U < count) ++app->content_selected;
         return;
@@ -7641,20 +7647,7 @@ shell_nonanalytics_input:
     else if (key == TRAINLOG_KEY_F3) key = '3';
     else if (key == TRAINLOG_KEY_F4) key = '4';
     else if (key == TRAINLOG_KEY_F5) key = '5';
-    if ((key == 'g' || key == 'G') && app->navigation.current.route == TRAINLOG_ROUTE_HOME) {
-        app_shell_open_route(app, TRAINLOG_ROUTE_SESSION_GENERATOR); return;
-    }
     action = trainlog_actions_find_key(&app->actions, key);
-    if (action != NULL && action->intent == TRAINLOG_INTENT_OPEN_SEARCH &&
-        app_shell_is_list_route(app->navigation.current.route)) {
-        /* CONTRACT: the physical '/' follows input adapter -> top-level action
-         * registry -> focus/search -> list filter. F7 invokes the same stable
-         * action and Escape retains the established clear-then-close behavior. */
-        app->search.open = true;
-        app->search.focused = true;
-        app->focus = TRAINLOG_FOCUS_SEARCH;
-        return;
-    }
     if (action != NULL && action->intent == TRAINLOG_INTENT_OPEN_ROUTE) {
         app_shell_open_route(app, action->route); return;
     }

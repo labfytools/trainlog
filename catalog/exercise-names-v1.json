@@ -1,0 +1,22 @@
+{
+  "format": "trainlog-exercise-names-v1",
+  "version": 1,
+  "names": [
+    {"exercise_id":"ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef","display_name":"Adduction de hanche assise","normalized_name":"adduction de hanche assise","previous_display_names":["Hip adduction"]},
+    {"exercise_id":"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab","display_name":"Extension de genou assise","normalized_name":"extension de genou assise","previous_display_names":["Leg extension"]},
+    {"exercise_id":"ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0","display_name":"Rotation du tronc à la machine","normalized_name":"rotation du tronc à la machine","previous_display_names":["Rotary torso"]},
+    {"exercise_id":"ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de","display_name":"Tirage horizontal divergent assis","normalized_name":"tirage horizontal divergent assis","previous_display_names":["Diverged seated row"]},
+    {"exercise_id":"ex_33f79331-871c-4eed-babe-346e53a99070","display_name":"Tirage horizontal assis","normalized_name":"tirage horizontal assis","previous_display_names":["Seated row"]},
+    {"exercise_id":"ex_474ec393-3efa-4aaa-8e08-1a0245ed7835","display_name":"Extension du tronc","normalized_name":"extension du tronc","previous_display_names":["Back extension"]},
+    {"exercise_id":"ex_4cd2433e-80b1-478a-b8df-73fc6ef80962","display_name":"Écarté inversé à la machine","normalized_name":"écarté inversé à la machine","previous_display_names":["Rear Delt"]},
+    {"exercise_id":"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b","display_name":"Développé épaules convergent","normalized_name":"développé épaules convergent","previous_display_names":["Converging Shoulder Press"]},
+    {"exercise_id":"ex_7e7cf906-2214-4066-bcb7-c16382d83b3b","display_name":"Abduction de hanche assise","normalized_name":"abduction de hanche assise","previous_display_names":["Hip abduction"]},
+    {"exercise_id":"ex_9adf7566-f10c-443c-b63b-681d37665693","display_name":"Crunch à la machine","normalized_name":"crunch à la machine","previous_display_names":["Abdominal crunch"]},
+    {"exercise_id":"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163","display_name":"Flexion de genou assise","normalized_name":"flexion de genou assise","previous_display_names":["Seated leg curl"]},
+    {"exercise_id":"ex_a72fa713-4b0e-431d-95e2-42d95beb77b1","display_name":"Tirage vertical à la poulie","normalized_name":"tirage vertical à la poulie","previous_display_names":["Lat pull"]},
+    {"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","display_name":"Presse à cuisses","normalized_name":"presse à cuisses","previous_display_names":["Leg press"]},
+    {"exercise_id":"ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6","display_name":"Tirage vertical divergent","normalized_name":"tirage vertical divergent","previous_display_names":["Diverging lat pulldown"]},
+    {"exercise_id":"ex_d7398d9f-d928-4d2e-94e9-74e201da55c5","display_name":"Flexion de genou couchée","normalized_name":"flexion de genou couchée","previous_display_names":["Prone leg curl"]},
+    {"exercise_id":"ex_ec619fc2-4685-4044-873c-86764bd4a0fe","display_name":"Flexion de coude à la machine","normalized_name":"flexion de coude à la machine","previous_display_names":["Arm curl"]}
+  ]
+}

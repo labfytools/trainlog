@@ -23,6 +23,8 @@ DESKTOP_WALK_ID = "ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d"
 ANDROID_WALK_ID = "ex_23212d79-52ce-4195-914d-dd983f133936"
 ANDROID_SESSION_ID = "se_ac3908d6-8e3e-4ac6-81a6-62dc2c39075a"
 ANDROID_WALK_ENTRY_ID = "sxe_f25142c8-455e-4346-9bfc-31d0989e275d"
+SEATED_CURL_ID = "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163"
+SEATED_LEG_DISTINCT_ID = "ex_617007f9-7420-4408-91b9-8ffb77900f13"
 
 SCHEMA = """
 PRAGMA foreign_keys=ON;
@@ -484,6 +486,96 @@ def main():
             after = semantic_state(connection)
             assert before == after
             assert_no_integrity_error(connection)
+
+        # Canonical-name ownership is ID-scoped. A stale Android catalogue
+        # cannot rename the mapped curl back, while the distinct ex_617...
+        # identity and an unmapped custom exercise keep their own semantics.
+        names_db = root / "canonical-names.db"
+        create_database(names_db, fields=1)
+        with sqlite3.connect(names_db) as connection:
+            connection.execute("DELETE FROM exercises")
+            for exercise_id, name in (
+                (SEATED_CURL_ID, "Seated leg curl"),
+                (SEATED_LEG_DISTINCT_ID, "Seated Leg"),
+                ("ex_fcc75fa7-671e-4868-bab2-47033128dfb7", "Custom curl"),
+            ):
+                connection.execute(
+                    "INSERT INTO exercises(exercise_id,name,normalized_name,tracking_mode,recording_mode,data_fields) "
+                    "VALUES(?,?,lower(?),'reps','sets',0)",
+                    (exercise_id, name, name),
+                )
+            exercise_row = connection.execute(
+                "SELECT id FROM exercises WHERE exercise_id=?", (SEATED_CURL_ID,)
+            ).fetchone()[0]
+            session_row = connection.execute(
+                "INSERT INTO sessions(session_id,started_at,session_type) VALUES(?,?,?)",
+                ("se_c6daf1c6-b98b-4f18-8583-72e8c7cc3c99", "2026-09-10T08:00:00+02:00", "max_test"),
+            ).lastrowid
+            set_entry = connection.execute(
+                "INSERT INTO session_exercises(entry_id,session_row_id,exercise_row_id,recording_mode,data_fields,position,load_mode,rest_seconds,equipment_id) "
+                "VALUES(?,?,?,'sets',0,0,'none',0,'seated_leg_curl')",
+                ("sxe_names_set", session_row, exercise_row),
+            ).lastrowid
+            connection.execute(
+                "INSERT INTO performed_sets(session_exercise_row_id,position,reps,weight_kg) VALUES(?,0,11,42.5)",
+                (set_entry,),
+            )
+            max_entry = connection.execute(
+                "INSERT INTO session_exercises(entry_id,session_row_id,exercise_row_id,recording_mode,data_fields,position,load_mode,rest_seconds,equipment_id) "
+                "VALUES(?,?,?,'sets',0,1,'none',0,'seated_leg_curl')",
+                ("sxe_names_max", session_row, exercise_row),
+            ).lastrowid
+            connection.execute(
+                "INSERT INTO max_results(session_exercise_row_id,max_weight_kg) VALUES(?,?)",
+                (max_entry, 73.0),
+            )
+            connection.execute(
+                "CREATE TABLE exercise_body_zones(exercise_row_id INTEGER,zone_id TEXT,role TEXT)"
+            )
+            connection.execute(
+                "INSERT INTO exercise_body_zones VALUES(?,'thighs','primary')", (exercise_row,)
+            )
+            connection.commit()
+
+        stale = {
+            "format": "trainlog-mobile-export", "version": 2,
+            "generated_at": "2026-09-10T09:00:00+02:00",
+            "exercises": [
+                {"exercise_id": SEATED_CURL_ID, "name": "Seated leg curl", "recording_mode": "sets", "tracking_mode": "reps", "data_fields": 0},
+                {"exercise_id": SEATED_LEG_DISTINCT_ID, "name": "Seated Leg", "recording_mode": "sets", "tracking_mode": "reps", "data_fields": 0},
+                {"exercise_id": "ex_fcc75fa7-671e-4868-bab2-47033128dfb7", "name": "Custom curl", "recording_mode": "sets", "tracking_mode": "reps", "data_fields": 0},
+            ],
+            "sessions": [], "body_observations": [],
+        }
+        stale_path = root / "stale-names.json"
+        stale_path.write_text(json.dumps(stale), encoding="utf-8")
+        run(IMPORT_MOBILE, stale_path, "--database", names_db)
+        run(IMPORT_MOBILE, stale_path, "--database", names_db)
+
+        names_catalog = root / "names-pc-catalog.json"
+        names_mobile = root / "names-pc-mobile.json"
+        run(EXPORT_CATALOG, names_catalog, "--database", names_db)
+        run(EXPORT_MOBILE, names_mobile, "--database", names_db, "--version", "2")
+        with sqlite3.connect(names_db) as connection:
+            assert connection.execute(
+                "SELECT name FROM exercises WHERE exercise_id=?", (SEATED_CURL_ID,)
+            ).fetchone()[0] == "Flexion de genou assise"
+            assert connection.execute(
+                "SELECT name FROM exercises WHERE exercise_id=?", (SEATED_LEG_DISTINCT_ID,)
+            ).fetchone()[0] == "Seated Leg"
+            assert connection.execute(
+                "SELECT name FROM exercises WHERE exercise_id='ex_fcc75fa7-671e-4868-bab2-47033128dfb7'"
+            ).fetchone()[0] == "Custom curl"
+            assert connection.execute("SELECT reps,weight_kg FROM performed_sets").fetchall() == [(11, 42.5)]
+            assert connection.execute("SELECT max_weight_kg FROM max_results").fetchall() == [(73.0,)]
+            assert connection.execute("SELECT equipment_id FROM session_exercises ORDER BY position").fetchall() == [("seated_leg_curl",), ("seated_leg_curl",)]
+            assert connection.execute("SELECT zone_id,role FROM exercise_body_zones").fetchall() == [("thighs", "primary")]
+        for artifact in (names_catalog, names_mobile):
+            exercises = json.loads(artifact.read_text(encoding="utf-8"))["exercises"]
+            by_id = {item["exercise_id"]: item["name"] for item in exercises}
+            assert by_id[SEATED_CURL_ID] == "Flexion de genou assise"
+            assert by_id[SEATED_LEG_DISTINCT_ID] == "Seated Leg"
+            assert by_id["ex_fcc75fa7-671e-4868-bab2-47033128dfb7"] == "Custom curl"
 
     print("PASS exercise_reconciliation")
 

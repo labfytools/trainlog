@@ -6,6 +6,8 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from exercise_names import load_exercise_names
+
 
 def default_database_path():
     data_home = os.environ.get("XDG_DATA_HOME")
@@ -57,6 +59,7 @@ def main():
     )
 
     try:
+        canonical_names = load_exercise_names()
         version = connection.execute(
             "PRAGMA user_version;"
         ).fetchone()[0]
@@ -95,7 +98,7 @@ def main():
             "exercises": [
                 {
                     "exercise_id": row[0],
-                    "name": row[1],
+                    "name": canonical_names.get(row[0], row[1]),
                     "recording_mode": row[2],
                     "tracking_mode": row[3],
                     "data_fields": row[4],

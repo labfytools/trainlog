@@ -547,3 +547,7 @@ exclusive source-text cursors, bounded selection before hydration, and one
 read snapshot per call. Malformed cursors and matching stored timestamps fail
 explicitly. The full-tranche audit repair chain and independent verification
 passed. See [Training knowledge system V1](domain/knowledge_system.md).
+
+The normal Sessions hub has current/manual/completed paths only; the retained
+SESSION_GENERATOR_V1 route is not advertised. Physical `/` and F7 Rechercher
+dispatch the one registered list-search action on supported lists.

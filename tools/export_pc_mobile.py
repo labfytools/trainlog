@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from validate_json import TrainlogSemanticError, parse_timestamp
+from exercise_names import load_exercise_names
 
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalog" / "equipment-v1.json"
@@ -70,13 +71,16 @@ def main():
         if schema_version not in (11, 12) and not (args.version == 2 and schema_version == 10):
             raise ValueError("schema desktop v11/v12 requis (v10 accepté pour export V2 explicite)")
         known_equipment = supplied_equipment_ids()
+        canonical_names = load_exercise_names()
         known_equipment.update(row[0] for row in con.execute(
             "SELECT equipment_id FROM custom_equipment"))
         root = {"format": "trainlog-mobile-export", "version": args.version,
                 "generated_at": datetime.now().astimezone().isoformat(),
                 "exercises": [], "sessions": [], "body_observations": []}
         for row in con.execute("SELECT exercise_id,name,recording_mode,tracking_mode,data_fields FROM exercises ORDER BY exercise_id"):
-            root["exercises"].append(dict(row))
+            exported = dict(row)
+            exported["name"] = canonical_names.get(row["exercise_id"], row["name"])
+            root["exercises"].append(exported)
         for session in con.execute("SELECT id,session_id,started_at,session_type FROM sessions ORDER BY started_at,id"):
             # CONTRACT: a V3 producer must not publish history which the exact
             # temporal readers reject. V2 export retains its published behavior.
@@ -108,7 +112,8 @@ def main():
                         f"session_id={session['session_id']} entry_id={entry['entry_id']}"
                     )
                 item = {"entry_id": entry["entry_id"], "position": entry["position"],
-                        "exercise_id": entry["exercise_id"], "name": entry["name"],
+                        "exercise_id": entry["exercise_id"],
+                        "name": canonical_names.get(entry["exercise_id"], entry["name"]),
                         "recording_mode": entry["recording_mode"], "tracking_mode": entry["tracking_mode"],
                         "data_fields": entry["data_fields"],
                         "load_mode": entry["load_mode"] if args.version == 3 else "none",

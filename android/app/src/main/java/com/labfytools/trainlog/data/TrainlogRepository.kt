@@ -274,6 +274,7 @@ class TrainlogRepository(
         ANDROID_DATABASE_NAME,
 ) {
     private val applicationContext = context.applicationContext
+    private val canonicalExerciseNames = ExerciseNameCatalog.load(applicationContext)
     private val bodyZones = BodyZoneCatalog.load(applicationContext)
     private val trainingKnowledge = TrainingKnowledgeCatalog.load(applicationContext, bodyZones)
     private val sessionGenerationPolicy =
@@ -1534,10 +1535,8 @@ class TrainlogRepository(
                 val exerciseId = resolveExerciseId(db, suppliedExerciseId)
                 val suppliedRetiredAlias = suppliedExerciseId != exerciseId
 
-                val name =
-                    item.getString(
-                        "name"
-                    )
+                val suppliedName = item.getString("name")
+                val name = canonicalExerciseNames[exerciseId] ?: suppliedName
 
                 val normalized =
                     normalizeName(
@@ -1600,6 +1599,12 @@ class TrainlogRepository(
                 }
 
                 if (
+                    !NewExerciseProfile(
+                        name = suppliedName,
+                        recordingMode = recording,
+                        trackingMode = tracking,
+                        dataFields = dataFields,
+                    ).validate() ||
                     !NewExerciseProfile(
                         name = name,
                         recordingMode = recording,

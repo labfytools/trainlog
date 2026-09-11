@@ -20,7 +20,6 @@ import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 fun SessionsHub(
     draft: ActiveSessionDraft?,
     onResume: () -> Unit,
-    onGenerate: () -> Unit,
     onManual: () -> Unit,
     onHistory: () -> Unit,
 ) {
@@ -31,7 +30,6 @@ fun SessionsHub(
             else TrainlogAction("Reprendre", "${draft.exercises.size} exercice(s) · le brouillon durable est conservé.", onResume, accent = colors.success)
         }
         TrainlogFrame("Préparer") {
-            TrainlogAction("Programmer une séance", "Générer une proposition modifiable.", onGenerate, accent = if (draft == null) colors.success else colors.accent)
             TrainlogAction("Nouvelle séance manuelle", if (draft == null) "Créer explicitement un brouillon de séance." else "Ouvrir la séance en cours sans l'écraser.", onManual)
         }
         TrainlogAction("Séances effectuées", "Consulter les actuals, plans et MAX enregistrés.", onHistory)
