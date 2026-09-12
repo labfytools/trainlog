@@ -332,7 +332,9 @@ static bool test_transaction_rollback(void)
         trainlog_database_exercise_count(database, &count) ==
         TRAINLOG_STATUS_OK
     );
-    CHECK(count == 0U);
+    /* Schema v13 seeds the five frozen supplied machine identities. The
+     * rolled-back custom row must not change that baseline. */
+    CHECK(count == 5U);
 
     trainlog_database_close(database);
     return true;
@@ -394,7 +396,7 @@ static bool test_exercise_merge_aliases_and_conflicts(void)
         sizeof(canonical)) == TRAINLOG_STATUS_OK);
     CHECK(strcmp(canonical, "ex_final") == 0);
     CHECK(trainlog_database_exercise_count(database, &count) == TRAINLOG_STATUS_OK);
-    CHECK(count == 2U);
+    CHECK(count == 7U);
     trainlog_database_close(database);
     return true;
 }

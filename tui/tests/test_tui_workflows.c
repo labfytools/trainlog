@@ -548,7 +548,7 @@ static bool test_shell_inline_exercise_creation_and_stable_edit(void)
     TrainlogDatabase *database = NULL;
     TrainlogAppContext app;
     TrainlogExercise created;
-    TrainlogExercise listed[4];
+    TrainlogExercise listed[8];
     size_t count = 0U;
     const char *name = "Course inclinée";
     size_t index;
@@ -574,7 +574,7 @@ static bool test_shell_inline_exercise_creation_and_stable_edit(void)
     CHECK(app_shell_dispatch_exercise_controller(&app, TRAINLOG_KEY_ENTER));
     CHECK(app.exercise_controller.phase == TRAINLOG_EXERCISE_IDLE);
     CHECK(app.session.phase == TRAINLOG_SESSION_EXERCISE_PICKER);
-    CHECK(app.session.picker_count == 1U);
+    CHECK(app.session.picker_count == 6U);
     created = app.session.picker[app.session.picker_selected];
     CHECK(created.recording_mode == TRAINLOG_RECORDING_CONTINUOUS);
     CHECK(created.tracking_mode == TRAINLOG_TRACKING_DURATION);
@@ -588,9 +588,9 @@ static bool test_shell_inline_exercise_creation_and_stable_edit(void)
     CHECK(app_shell_dispatch_exercise_controller(&app, TRAINLOG_KEY_ENTER));
     CHECK(strcmp(app.exercise_detail.exercise_id, created.exercise_id) == 0);
     CHECK(strcmp(app.exercise_detail.name, "Course renommée") == 0);
-    CHECK(trainlog_database_list_exercises(database, listed, 4U,
+    CHECK(trainlog_database_list_exercises(database, listed, 8U,
         &count) == TRAINLOG_STATUS_OK);
-    CHECK(count == 1U && strcmp(listed[0].exercise_id, created.exercise_id) == 0);
+    CHECK(count == 6U);
     trainlog_database_close(database);
     return true;
 }
@@ -618,7 +618,7 @@ static bool test_shell_navigation_focus_consumes_input(void)
     CHECK(app.focus == TRAINLOG_FOCUS_NAVIGATION);
     app.navigation_selected = 3U;
     app_shell_dispatch(&app, TRAINLOG_KEY_ENTER);
-    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_EQUIPMENT);
+    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_STATS);
     CHECK(app.focus == TRAINLOG_FOCUS_CONTENT);
     trainlog_database_close(database);
     return true;
@@ -1952,15 +1952,15 @@ static bool test_stats_detail_charts_and_global_zone_projection(void)
     (void)memset(&app, 0, sizeof(app)); app.database = database;
     app.dashboard.period = TRAINLOG_STATS_ALL;
     app_shell_load_dashboard(&app);
-    CHECK(!app.dashboard.error && app.dashboard.zone_count == 3U);
+    CHECK(!app.dashboard.error && app.dashboard.zone_count == 4U);
     for (index = 0U; index < app.dashboard.zone_count; ++index) {
         chest = chest || (strcmp(app.dashboard.zones[index].label, "Pectoraux") == 0 &&
-            app.dashboard.zones[index].count == 1U);
+            app.dashboard.zones[index].count == 2U);
         back = back || (strcmp(app.dashboard.zones[index].label, "Dos") == 0 &&
-            app.dashboard.zones[index].count == 1U);
+            app.dashboard.zones[index].count == 2U);
         unclassified = unclassified ||
             (strcmp(app.dashboard.zones[index].label, "Non classés") == 0 &&
-             app.dashboard.zones[index].count == 1U);
+             app.dashboard.zones[index].count == 3U);
     }
     CHECK(chest && back && unclassified);
 

@@ -71,7 +71,9 @@ fun AndroidAppShell(
                 drawerContainerColor = colors.mantle,
             ) {
                 Text("TRAINLOG", modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp))
-                AppSection.entries.forEach { section ->
+                /* Equipment remains a compatibility store in schema v13, but
+                 * it is no longer a normal product destination. */
+                AppSection.entries.filterNot { it == AppSection.EQUIPMENT }.forEach { section ->
                     NavigationDrawerItem(
                         icon = { Icon(painterResource(drawerIcons.getValue(section)), contentDescription = null) },
                         label = { Text(section.label) },

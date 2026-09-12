@@ -95,6 +95,106 @@ def main():
         assert canonical_conflict.returncode != 0
         assert 'conflit exercice association' in canonical_conflict.stdout
 
+        # MACHINE_EXERCISE_MODEL_V1: a stale pre-split companion is accepted
+        # only for the closed set of completed stable entries and only when the
+        # current V3 snapshot proves the exact machine-specific target.
+        split_db = directory / 'machine-splits.db'
+        db = sqlite3.connect(split_db)
+        db.executescript("""
+            CREATE TABLE exercises(id INTEGER PRIMARY KEY, exercise_id TEXT UNIQUE);
+            CREATE TABLE sessions(id INTEGER PRIMARY KEY, session_id TEXT UNIQUE, started_at TEXT);
+            CREATE TABLE session_exercises(id INTEGER PRIMARY KEY, entry_id TEXT UNIQUE,
+                session_row_id INTEGER, exercise_row_id INTEGER, position INTEGER, equipment_id TEXT);
+            CREATE TABLE custom_equipment(equipment_id TEXT PRIMARY KEY, display_name TEXT NOT NULL,
+                label_name TEXT NOT NULL, equipment_type TEXT NOT NULL, load_semantics TEXT NOT NULL);
+            CREATE TABLE draft_session_exercises(entry_id TEXT PRIMARY KEY, exercise_id TEXT, equipment_id TEXT);
+            PRAGMA user_version=13;
+        """)
+        plate_old = 'ex_b432623f-bfe9-4daf-a653-60ec7fdffbde'
+        plate_new = 'ex_0e26c06f-a458-40a4-be20-4ed219ede30d'
+        walk_old = 'ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d'
+        treadmill_new = 'ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2'
+        seated_leg = 'ex_617007f9-7420-4408-91b9-8ffb77900f13'
+        rear_delt = 'ex_4cd2433e-80b1-478a-b8df-487bf6014ce6'
+        ids = [plate_new, walk_old, treadmill_new, seated_leg, rear_delt, 'ex_unrelated']
+        db.executemany('INSERT INTO exercises VALUES(?,?)', enumerate(ids, 1))
+        sessions = [
+            ('se_c0d07454-b58b-403e-8b79-744619815fc5', '2026-09-07T19:27:35+02:00'),
+            ('se_ac3908d6-8e3e-4ac6-81a6-62dc2c39075a', '2026-09-08T11:25:30+02:00'),
+        ]
+        db.executemany('INSERT INTO sessions(id,session_id,started_at) VALUES(?,?,?)',
+                       [(i, *row) for i, row in enumerate(sessions, 1)])
+        row_by_id = {value: index for index, value in enumerate(ids, 1)}
+        occurrences = [
+            ('sxe_draft_legacy_7', 1, plate_new, 0, 'plate_loaded_leg_press'),
+            ('sxe_093c1331-beaa-4b69-91b3-240292709be6', 1, treadmill_new, 1, 'treadmill'),
+            ('sxe_draft_legacy_1', 1, walk_old, 2, None),
+            ('sxe_draft_legacy_3', 1, seated_leg, 3, 'seated_leg_curl'),
+            ('sxe_8b0b1722-7c32-4364-aefa-b4825fe681d7', 2, rear_delt, 0, None),
+        ]
+        db.executemany(
+            'INSERT INTO session_exercises(entry_id,session_row_id,exercise_row_id,position,equipment_id) VALUES(?,?,?,?,?)',
+            [(entry, session, row_by_id[exercise], position, equipment)
+             for entry, session, exercise, position, equipment in occurrences])
+        db.execute("INSERT INTO draft_session_exercises VALUES('sxe_draft_current',?,?)",
+                   (walk_old, 'treadmill'))
+        db.commit(); db.close()
+
+        split_artifact = directory / 'stale-machine-associations.json'
+        split_payload = {
+            'format': 'trainlog-equipment-associations', 'version': 2,
+            'generated_at': '2026-09-12T08:05:57+02:00',
+            'associations': [
+                {'session_id': sessions[0][0], 'entry_id': 'sxe_draft_legacy_7',
+                 'exercise_id': plate_old, 'state': 'set', 'equipment_id': 'plate_loaded_leg_press'},
+                {'session_id': sessions[0][0], 'entry_id': 'sxe_093c1331-beaa-4b69-91b3-240292709be6',
+                 'exercise_id': walk_old, 'state': 'set', 'equipment_id': 'treadmill'},
+                {'session_id': sessions[0][0], 'entry_id': 'sxe_draft_legacy_1',
+                 'exercise_id': walk_old, 'state': 'cleared'},
+                {'session_id': sessions[0][0], 'entry_id': 'sxe_draft_legacy_3',
+                 'exercise_id': seated_leg, 'state': 'set', 'equipment_id': 'seated_leg_curl'},
+                {'session_id': sessions[1][0], 'entry_id': 'sxe_8b0b1722-7c32-4364-aefa-b4825fe681d7',
+                 'exercise_id': rear_delt, 'state': 'cleared'},
+            ],
+        }
+        split_artifact.write_text(json.dumps(split_payload))
+        proof = directory / 'current-machine-v3.json'
+        proof.write_text(json.dumps({
+            'format': 'trainlog-mobile-export', 'version': 3,
+            'generated_at': '2026-09-12T09:26:00+02:00', 'exercises': [],
+            'body_observations': [], 'sessions': [
+                {'session_id': session_id, 'exercises': [
+                    {'entry_id': entry, 'exercise_id': exercise}
+                    for entry, session, exercise, _position, _equipment in occurrences
+                    if session == session_index
+                ]}
+                for session_index, (session_id, _started) in enumerate(sessions, 1)
+            ],
+        }))
+        for _ in range(2):
+            accepted = subprocess.run(
+                [sys.executable, ROOT / 'tools/import_equipment_associations.py', split_artifact,
+                 '--database', split_db, '--mobile-export', proof],
+                text=True, capture_output=True,
+            )
+            assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+        with sqlite3.connect(split_db) as db:
+            assert db.execute('SELECT exercise_id,equipment_id FROM draft_session_exercises').fetchone() == (walk_old, 'treadmill')
+            assert db.execute('SELECT exercise_id FROM exercises WHERE exercise_id=?', (seated_leg,)).fetchone() == (seated_leg,)
+            assert db.execute('SELECT equipment_id FROM session_exercises WHERE entry_id=?',
+                              ('sxe_8b0b1722-7c32-4364-aefa-b4825fe681d7',)).fetchone() == (None,)
+
+        conflict_payload = json.loads(split_artifact.read_text())
+        conflict_payload['associations'][0]['exercise_id'] = 'ex_unrelated'
+        split_artifact.write_text(json.dumps(conflict_payload))
+        true_conflict = subprocess.run(
+            [sys.executable, ROOT / 'tools/import_equipment_associations.py', split_artifact,
+             '--database', split_db, '--mobile-export', proof],
+            text=True, capture_output=True,
+        )
+        assert true_conflict.returncode != 0
+        assert 'conflit exercice association' in true_conflict.stdout
+
         # The importer must validate the entire artifact before applying its
         # first otherwise-valid association. v2 cannot transport custom IDs.
         prevalidation_artifact = directory / 'prevalidation-rejected.json'

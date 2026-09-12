@@ -1,0 +1,26 @@
+{
+  "format": "trainlog-machine-exercises",
+  "version": 1,
+  "exercises": [
+    {"exercise_id":"ex_0e26c06f-a458-40a4-be20-4ed219ede30d","display_name":"Plate Loaded Leg Press","load_semantics":"external","machine_variant":"plate_loaded","legacy_equipment_id":"plate_loaded_leg_press","scientific_profile_id":"sp_leg_press_v1","science_state":"resolved"},
+    {"exercise_id":"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab","display_name":"Leg Extension","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"leg_extension","scientific_profile_id":"sp_leg_extension_v1","science_state":"resolved"},
+    {"exercise_id":"ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0","display_name":"Rotary Torso","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"rotary_torso","scientific_profile_id":"sp_rotary_torso_v1","science_state":"resolved"},
+    {"exercise_id":"ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de","display_name":"Diverging Seated Row","load_semantics":"external","machine_variant":"diverging","legacy_equipment_id":"diverging_seated_row","scientific_profile_id":"sp_seated_row_v1","science_state":"resolved"},
+    {"exercise_id":"ex_33f79331-871c-4eed-babe-346e53a99070","display_name":"Seated Row","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"seated_row","scientific_profile_id":"sp_seated_row_v1","science_state":"resolved"},
+    {"exercise_id":"ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf","display_name":"Dip Assist","load_semantics":"assistance","machine_variant":"assisted","legacy_equipment_id":"assisted_dip_chin_machine","scientific_profile_id":"sp_assisted_dip_v1","science_state":"resolved"},
+    {"exercise_id":"ex_474ec393-3efa-4aaa-8e08-1a0245ed7835","display_name":"Back Extension","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"back_extension","scientific_profile_id":"sp_back_extension_v1","science_state":"resolved"},
+    {"exercise_id":"ex_4cd2433e-80b1-478a-b8df-73fc6ef80962","display_name":"Rear Delt","load_semantics":"external","machine_variant":"rear_delt","legacy_equipment_id":"rear_delt_pec_fly","scientific_profile_id":"sp_rear_delt_v1","science_state":"resolved"},
+    {"exercise_id":"ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee","display_name":"Pec Fly","load_semantics":"external","machine_variant":"pec_fly","legacy_equipment_id":"rear_delt_pec_fly","scientific_profile_id":"sp_pec_fly_v1","science_state":"resolved"},
+    {"exercise_id":"ex_58b8dfbc-92b2-4783-a449-9947a42480b8","display_name":"Chin Assist","load_semantics":"assistance","machine_variant":"assisted","legacy_equipment_id":"assisted_dip_chin_machine","scientific_profile_id":"sp_assisted_chin_v1","science_state":"resolved"},
+    {"exercise_id":"ex_617007f9-7420-4408-91b9-8ffb77900f13","display_name":"Seated Leg","load_semantics":null,"machine_variant":null,"legacy_equipment_id":null,"scientific_profile_id":null,"science_state":"unresolved"},
+    {"exercise_id":"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b","display_name":"Converging Shoulder Press","load_semantics":"external","machine_variant":"converging","legacy_equipment_id":"converging_shoulder_press","scientific_profile_id":"sp_shoulder_press_v1","science_state":"resolved"},
+    {"exercise_id":"ex_7e7cf906-2214-4066-bcb7-c16382d83b3b","display_name":"Hip Abduction","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"hip_abduction","scientific_profile_id":"sp_hip_abduction_v1","science_state":"resolved"},
+    {"exercise_id":"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163","display_name":"Seated Leg Curl","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"seated_leg_curl","scientific_profile_id":"sp_seated_leg_curl_v1","science_state":"resolved"},
+    {"exercise_id":"ex_a72fa713-4b0e-431d-95e2-42d95beb77b1","display_name":"Lat Pull","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"lat_pull","scientific_profile_id":"sp_vertical_pull_v1","science_state":"resolved"},
+    {"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","display_name":"Leg Press","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"leg_press","scientific_profile_id":"sp_leg_press_v1","science_state":"resolved"},
+    {"exercise_id":"ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6","display_name":"Diverging Lat Pulldown","load_semantics":"external","machine_variant":"diverging","legacy_equipment_id":"diverging_lat_pulldown","scientific_profile_id":"sp_vertical_pull_v1","science_state":"resolved"},
+    {"exercise_id":"ex_d7398d9f-d928-4d2e-94e9-74e201da55c5","display_name":"Prone Leg Curl","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"prone_leg_curl","scientific_profile_id":"sp_prone_leg_curl_v1","science_state":"resolved"},
+    {"exercise_id":"ex_ec619fc2-4685-4044-873c-86764bd4a0fe","display_name":"Arm Curl","load_semantics":"external","machine_variant":"selectorized","legacy_equipment_id":"arm_curl","scientific_profile_id":"sp_arm_curl_v1","science_state":"resolved"},
+    {"exercise_id":"ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2","display_name":"Treadmill","load_semantics":"cardio","machine_variant":"treadmill","legacy_equipment_id":"treadmill","scientific_profile_id":null,"science_state":"unresolved"}
+  ]
+}

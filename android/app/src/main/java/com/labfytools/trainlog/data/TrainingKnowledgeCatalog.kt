@@ -97,6 +97,12 @@ data class EquipmentKnowledge(
     val scientificStatusScope: String,
 )
 
+data class EquipmentExerciseRelation(
+    val equipmentId: String, val exerciseId: String, val relationType: String,
+    val configurationLabel: String?, val confidence: KnowledgeConfidence,
+    val sourceRefs: List<String>,
+)
+
 data class KnowledgeExerciseFilters(
     val movementPatternId: String? = null,
     val muscleId: String? = null,
@@ -107,7 +113,7 @@ data class KnowledgeExerciseFilters(
 )
 
 /**
- * Immutable TRAINING KNOWLEDGE V1 view over the six shared repository assets.
+ * Immutable training-knowledge view over the shared repository assets.
  * WHY: strict loading makes malformed scientific data a deployment failure and
  * prevents Android from quietly developing a second, hand-maintained taxonomy.
  */
@@ -115,6 +121,7 @@ class TrainingKnowledgeCatalog private constructor(
     val references: List<ScienceReference>, val muscles: List<MuscleKnowledge>,
     val jointActions: List<JointActionKnowledge>, val movementPatterns: List<MovementPatternKnowledge>,
     val exercises: List<ExerciseKnowledge>, val equipment: List<EquipmentKnowledge>,
+    val equipmentExerciseRelations: List<EquipmentExerciseRelation>,
     private val bodyZones: BodyZoneCatalog,
 ) {
     private val referencesById = references.associateBy { it.refId }
@@ -123,6 +130,8 @@ class TrainingKnowledgeCatalog private constructor(
     private val patternsById = movementPatterns.associateBy { it.patternId }
     private val exercisesById = exercises.associateBy { it.exerciseId }
     private val equipmentById = equipment.associateBy { it.equipmentId }
+    private val relationsByEquipment = equipmentExerciseRelations.groupBy { it.equipmentId }
+    private val relationsByExercise = equipmentExerciseRelations.groupBy { it.exerciseId }
 
     fun getReference(refId: String) = referencesById[refId]
     fun getMuscle(muscleId: String) = musclesById[muscleId]
@@ -132,6 +141,28 @@ class TrainingKnowledgeCatalog private constructor(
     fun getConditionalExerciseKnowledge(exerciseId: String): ExerciseKnowledge? =
         exercisesById[exerciseId]?.takeIf { it.resolutionStatus == ExerciseKnowledgeStatus.CONDITIONAL }
     fun getEquipmentKnowledge(equipmentId: String): EquipmentKnowledge? = equipmentById[equipmentId]
+
+    fun listExercisesForEquipment(equipmentId: String): List<ExerciseKnowledge> {
+        require(equipmentById.containsKey(equipmentId)) { "equipment_id inconnu: $equipmentId" }
+        return relationsByEquipment[equipmentId].orEmpty().map { exercisesById.getValue(it.exerciseId) }
+    }
+
+    fun listRelationsForEquipment(equipmentId: String): List<EquipmentExerciseRelation> =
+        relationsByEquipment[equipmentId].orEmpty()
+
+    fun listEquipmentForExercise(exerciseId: String): List<EquipmentKnowledge> {
+        require(exercisesById.containsKey(exerciseId)) { "exercise_id inconnu: $exerciseId" }
+        return relationsByExercise[exerciseId].orEmpty().map { equipmentById.getValue(it.equipmentId) }
+    }
+
+    fun listEquipmentForBodyZone(zoneId: String): List<EquipmentKnowledge> {
+        val exerciseIds = queryExercises(KnowledgeExerciseFilters(scientificZoneId = zoneId))
+            .map { it.exerciseId }.toSet()
+        // CONTRACT: BODY ZONE membership comes from resolved exercise anatomy,
+        // never from an equipment name, capability label, or custom record.
+        return equipment.filter { item -> relationsByEquipment[item.equipmentId].orEmpty()
+            .any { it.exerciseId in exerciseIds } }
+    }
 
     fun getScientificBodyZoneMapping(exerciseId: String): ScientificBodyZoneMapping? =
         resolvedInterpretation(exerciseId)?.let { ScientificBodyZoneMapping(it.primaryZoneId, it.secondaryZoneIds) }
@@ -148,7 +179,7 @@ class TrainingKnowledgeCatalog private constructor(
 
     fun listCompatibleExercises(equipmentId: String): List<ExerciseKnowledge> {
         require(equipmentById.containsKey(equipmentId)) { "equipment_id inconnu: $equipmentId" }
-        return queryExercises(KnowledgeExerciseFilters(equipmentId = equipmentId))
+        return listExercisesForEquipment(equipmentId)
     }
 
     fun queryExercises(filters: KnowledgeExerciseFilters): List<ExerciseKnowledge> {
@@ -166,7 +197,8 @@ class TrainingKnowledgeCatalog private constructor(
             val interpretation = resolvedInterpretation(exercise.exerciseId) ?: return@filter false
             (filters.movementPatternId == null || filters.movementPatternId in interpretation.patternIds) &&
                 (filters.muscleId == null || filters.muscleId in interpretation.muscles(filters.muscleRole!!)) &&
-                (filters.equipmentId == null || filters.equipmentId in exercise.equipmentIds) &&
+                (filters.equipmentId == null || relationsByEquipment[filters.equipmentId].orEmpty()
+                    .any { it.exerciseId == exercise.exerciseId }) &&
                 (zones == null || interpretation.primaryZoneId in zones ||
                     interpretation.secondaryZoneIds.any { it in zones })
         }
@@ -209,6 +241,13 @@ class TrainingKnowledgeCatalog private constructor(
             val patternJson = root("movement-patterns-v1.json", "trainlog-movement-patterns-v1", "movement_patterns")
             val exerciseJson = root("exercise-knowledge-v1.json", "trainlog-exercise-knowledge-v1", "exercises")
             val equipmentJson = root("equipment-knowledge-v1.json", "trainlog-equipment-knowledge-v1", "equipment")
+            val relationText = assetText("equipment-exercise-relations-v2.json")
+            DuplicateJsonKeyValidator.validate(relationText)
+            val relationRoot = JSONObject(relationText)
+            requireKeys(relationRoot, setOf("format", "version", "equipment_relations"), "equipment_relations")
+            check(relationRoot.getString("format") == "trainlog-equipment-exercise-relations-v2" &&
+                relationRoot.rawInt("version") == 2) { "equipment_relations: version non prise en charge" }
+            val relationJson = relationRoot.getJSONArray("equipment_relations")
 
             val references = referenceJson.objects("ref_id") { item ->
                 requireKeys(item, setOf("ref_id", "title", "authors_or_organization", "year", "type", "url", "topics", "notes", "limitations", "doi", "pmid", "accessed_on"), "reference", setOf("publication_note"))
@@ -319,7 +358,34 @@ class TrainingKnowledgeCatalog private constructor(
                 EquipmentKnowledge(item.text("equipment_id"), item.nullableString("manufacturer"), item.nullableString("model"), item.text("identification_status"), enumValue(item.text("scientific_status"), EquipmentScienceStatus.entries), item.text("catalog_type"), item.nullableString("catalog_load_semantics")?.let { enumValue(it, EquipmentLoadSemantics.entries) }, item.text("mechanics"), item.text("evidence_type"), conf, refs, capabilities, item.rawBoolean("requires_actual_exercise"), item.strings("limitations"), item.optionalString("audit_note"), item.text("scientific_status_scope"))
             }
             exercises.forEach { exercise -> exercise.equipmentIds.forEach { check(exercise.exerciseId to it in linked) { "compatibilité exercice/équipement asymétrique" } } }
-            return TrainingKnowledgeCatalog(references, muscles, actions, patterns, exercises, equipment, bodyZones)
+            val relationPairs = mutableSetOf<Pair<String, String>>()
+            var previousEquipmentId: String? = null
+            val relations = relationJson.objectsUnordered { group ->
+                requireKeys(group, setOf("equipment_id", "exercise_options"), "equipment relation")
+                val equipmentId = group.text("equipment_id")
+                check(equipmentId in equipmentIds && (previousEquipmentId == null || previousEquipmentId!! < equipmentId)) {
+                    "equipment relation inconnue, dupliquée ou hors ordre"
+                }
+                previousEquipmentId = equipmentId
+                var previousOption: String? = null
+                group.getJSONArray("exercise_options").objectsUnordered { option ->
+                    requireKeys(option, setOf("exercise_id", "relation_type", "configuration_label", "confidence", "source_refs"), "equipment exercise option")
+                    val exerciseId = option.text("exercise_id")
+                    val configuration = option.nullableString("configuration_label")
+                    val key = "$exerciseId|${configuration ?: ""}"
+                    val refs = option.strings("source_refs", true)
+                    check(exerciseId in exerciseIds && option.text("relation_type") == "supported_exercise" &&
+                        refs.all { it in refIds } && relationPairs.add(equipmentId to exerciseId) &&
+                        (previousOption == null || previousOption!! < key)) { "relation équipement/exercice invalide" }
+                    previousOption = key
+                    EquipmentExerciseRelation(equipmentId, exerciseId, option.text("relation_type"),
+                        configuration, confidence(option), refs)
+                }
+            }.flatten()
+            check(relations.none { it.exerciseId == "ex_617007f9-7420-4408-91b9-8ffb77900f13" }) {
+                "Seated Leg reste non résolu et distinct de la flexion de genou assise"
+            }
+            return TrainingKnowledgeCatalog(references, muscles, actions, patterns, exercises, equipment, relations, bodyZones)
         }
 
         private fun confidence(item: JSONObject): KnowledgeConfidence = confidenceValues[item.text("confidence")] ?: error("confidence invalide")

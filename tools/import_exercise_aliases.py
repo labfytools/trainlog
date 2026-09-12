@@ -62,8 +62,8 @@ def main():
     con = sqlite3.connect(args.database)
     try:
         con.execute("PRAGMA foreign_keys=ON")
-        if con.execute("PRAGMA user_version").fetchone()[0] != 12:
-            fail("schema desktop v12 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13):
+            fail("schema desktop v12/v13 requis")
         con.execute("BEGIN IMMEDIATE")
         for source, canonical in aliases:
             target = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (canonical,)).fetchone()

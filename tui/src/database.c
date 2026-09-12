@@ -512,6 +512,60 @@ static const char *const MIGRATE_V11_TO_V12_SQL =
     "ON exercise_aliases(canonical_exercise_id);"
     "PRAGMA user_version = 12;COMMIT;";
 
+/* WHY: the selectable identity is now the concrete machine exercise; legacy
+ * equipment remains occurrence provenance for V3/old-peer compatibility.
+ * CONTRACT: v13 is additive, creates only the five frozen UUID identities and
+ * repoints only the approved entry/exercise/equipment triples. INVARIANT:
+ * session/entry IDs and every child fact remain untouched. */
+static const char *const MIGRATE_V12_TO_V13_SQL_A =
+    "BEGIN IMMEDIATE;"
+    "ALTER TABLE exercises ADD COLUMN load_semantics TEXT CHECK(load_semantics IN ('none','external','assistance','bodyweight','cardio'));"
+    "ALTER TABLE exercises ADD COLUMN machine_variant TEXT;"
+    "ALTER TABLE exercises ADD COLUMN machine_provenance TEXT;"
+    "ALTER TABLE exercises ADD COLUMN scientific_profile_id TEXT;"
+    "ALTER TABLE exercises ADD COLUMN science_state TEXT NOT NULL DEFAULT 'unresolved' CHECK(science_state IN ('resolved','unresolved'));"
+    "ALTER TABLE exercises ADD COLUMN legacy_equipment_id TEXT;"
+    "UPDATE exercises SET name='Hip Abduction',normalized_name='hip abduction',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_hip_abduction_v1',science_state='resolved',legacy_equipment_id='hip_abduction' WHERE exercise_id='ex_7e7cf906-2214-4066-bcb7-c16382d83b3b' AND name='Abduction de hanche assise';"
+    "UPDATE exercises SET name='Leg Extension',normalized_name='leg extension',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_leg_extension_v1',science_state='resolved',legacy_equipment_id='leg_extension' WHERE exercise_id='ex_1872246a-39ae-44dc-b58d-f87e90ca49ab' AND name='Extension de genou assise';"
+    "UPDATE exercises SET name='Back Extension',normalized_name='back extension',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_back_extension_v1',science_state='resolved',legacy_equipment_id='back_extension' WHERE exercise_id='ex_474ec393-3efa-4aaa-8e08-1a0245ed7835' AND name='Extension du tronc';"
+    "UPDATE exercises SET name='Arm Curl',normalized_name='arm curl',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_arm_curl_v1',science_state='resolved',legacy_equipment_id='arm_curl' WHERE exercise_id='ex_ec619fc2-4685-4044-873c-86764bd4a0fe' AND name='Flexion de coude à la machine';"
+    "UPDATE exercises SET name='Prone Leg Curl',normalized_name='prone leg curl',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_prone_leg_curl_v1',science_state='resolved',legacy_equipment_id='prone_leg_curl' WHERE exercise_id='ex_d7398d9f-d928-4d2e-94e9-74e201da55c5' AND name='Flexion de genou couchée';"
+    "UPDATE exercises SET name='Rotary Torso',normalized_name='rotary torso',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_rotary_torso_v1',science_state='resolved',legacy_equipment_id='rotary_torso' WHERE exercise_id='ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0' AND name='Rotation du tronc à la machine';";
+
+static const char *const MIGRATE_V12_TO_V13_SQL_B =
+    "UPDATE exercises SET name='Seated Row',normalized_name='seated row',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_seated_row_v1',science_state='resolved',legacy_equipment_id='seated_row' WHERE exercise_id='ex_33f79331-871c-4eed-babe-346e53a99070' AND name='Tirage horizontal assis';"
+    "UPDATE exercises SET name='Diverging Seated Row',normalized_name='diverging seated row',load_semantics='external',machine_variant='diverging',scientific_profile_id='sp_seated_row_v1',science_state='resolved',legacy_equipment_id='diverging_seated_row' WHERE exercise_id='ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de' AND name='Tirage horizontal divergent assis';"
+    "UPDATE exercises SET name='Diverging Lat Pulldown',normalized_name='diverging lat pulldown',load_semantics='external',machine_variant='diverging',scientific_profile_id='sp_vertical_pull_v1',science_state='resolved',legacy_equipment_id='diverging_lat_pulldown' WHERE exercise_id='ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6' AND name='Tirage vertical divergent';"
+    "UPDATE exercises SET name='Lat Pull',normalized_name='lat pull',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_vertical_pull_v1',science_state='resolved',legacy_equipment_id='lat_pull' WHERE exercise_id='ex_a72fa713-4b0e-431d-95e2-42d95beb77b1' AND name='Tirage vertical à la poulie';"
+    "UPDATE exercises SET name='Converging Shoulder Press',normalized_name='converging shoulder press',load_semantics='external',machine_variant='converging',scientific_profile_id='sp_shoulder_press_v1',science_state='resolved',legacy_equipment_id='converging_shoulder_press' WHERE exercise_id='ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b' AND name='Développé épaules convergent';"
+    "UPDATE exercises SET name='Seated Leg Curl',normalized_name='seated leg curl',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_seated_leg_curl_v1',science_state='resolved',legacy_equipment_id='seated_leg_curl' WHERE exercise_id='ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163' AND name='Flexion de genou assise';"
+    "UPDATE exercises SET name='Leg Press',normalized_name='leg press',load_semantics='external',machine_variant='selectorized',scientific_profile_id='sp_leg_press_v1',science_state='resolved',legacy_equipment_id='leg_press' WHERE exercise_id='ex_b432623f-bfe9-4daf-a653-60ec7fdffbde' AND name IN ('Presse à cuisses','Leg press');"
+    "UPDATE exercises SET name='Rear Delt',normalized_name='rear delt',load_semantics='external',machine_variant='rear_delt',scientific_profile_id='sp_rear_delt_v1',science_state='resolved',legacy_equipment_id='rear_delt_pec_fly' WHERE exercise_id='ex_4cd2433e-80b1-478a-b8df-73fc6ef80962' AND name='Écarté inversé à la machine';"
+    "INSERT INTO exercises(exercise_id,name,normalized_name,tracking_mode,recording_mode,data_fields,load_semantics,machine_variant,scientific_profile_id,science_state,legacy_equipment_id) VALUES"
+    "('ex_0e26c06f-a458-40a4-be20-4ed219ede30d','Plate Loaded Leg Press','plate loaded leg press','reps','sets',0,'external','plate_loaded','sp_leg_press_v1','resolved','plate_loaded_leg_press'),"
+    "('ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2','Treadmill','treadmill','duration','continuous',3,'cardio','treadmill',NULL,'unresolved','treadmill'),"
+    "('ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee','Pec Fly','pec fly','reps','sets',0,'external','pec_fly','sp_pec_fly_v1','resolved','rear_delt_pec_fly'),"
+    "('ex_58b8dfbc-92b2-4783-a449-9947a42480b8','Chin Assist','chin assist','reps','sets',0,'assistance','assisted','sp_assisted_chin_v1','resolved','assisted_dip_chin_machine'),"
+    "('ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf','Dip Assist','dip assist','reps','sets',0,'assistance','assisted','sp_assisted_dip_v1','resolved','assisted_dip_chin_machine');";
+
+static const char *const MIGRATE_V12_TO_V13_SQL_C =
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT n.id,z.zone_id,z.role FROM exercises n JOIN exercises o ON o.exercise_id='ex_b432623f-bfe9-4daf-a653-60ec7fdffbde' JOIN exercise_body_zones z ON z.exercise_row_id=o.id WHERE n.exercise_id='ex_0e26c06f-a458-40a4-be20-4ed219ede30d';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'chest','primary' FROM exercises WHERE exercise_id='ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'shoulders','secondary' FROM exercises WHERE exercise_id='ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'back','primary' FROM exercises WHERE exercise_id='ex_58b8dfbc-92b2-4783-a449-9947a42480b8';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'arms','secondary' FROM exercises WHERE exercise_id='ex_58b8dfbc-92b2-4783-a449-9947a42480b8';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'arms','primary' FROM exercises WHERE exercise_id='ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'chest','secondary' FROM exercises WHERE exercise_id='ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf';"
+    "INSERT INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,'shoulders','secondary' FROM exercises WHERE exercise_id='ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf';"
+    "INSERT INTO exercise_body_zone_sync(exercise_row_id,synced_state) SELECT id,'thighs|glutes' FROM exercises WHERE exercise_id='ex_0e26c06f-a458-40a4-be20-4ed219ede30d';"
+    "INSERT INTO exercise_body_zone_sync(exercise_row_id,synced_state) SELECT id,'chest|shoulders' FROM exercises WHERE exercise_id='ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee';"
+    "INSERT INTO exercise_body_zone_sync(exercise_row_id,synced_state) SELECT id,'back|arms' FROM exercises WHERE exercise_id='ex_58b8dfbc-92b2-4783-a449-9947a42480b8';"
+    "INSERT INTO exercise_body_zone_sync(exercise_row_id,synced_state) SELECT id,'arms|chest,shoulders' FROM exercises WHERE exercise_id='ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf';"
+    "UPDATE session_exercises SET exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_0e26c06f-a458-40a4-be20-4ed219ede30d') WHERE entry_id='sxe_draft_legacy_7' AND equipment_id='plate_loaded_leg_press' AND exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_b432623f-bfe9-4daf-a653-60ec7fdffbde');"
+    "UPDATE session_exercises SET exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2') WHERE entry_id IN ('sxe_093c1331-beaa-4b69-91b3-240292709be6','sxe_f25142c8-455e-4346-9bfc-31d0989e275d','sxe_f2242691-ba6c-48a0-b938-a1f744375d75','sxe_9f8882f4-069e-49d5-8216-19d16b467e4a') AND equipment_id='treadmill' AND exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d');"
+    "UPDATE exercises SET load_semantics=NULL,machine_variant=NULL,machine_provenance=NULL,scientific_profile_id=NULL,science_state='unresolved',legacy_equipment_id=NULL WHERE exercise_id='ex_617007f9-7420-4408-91b9-8ffb77900f13';"
+    "PRAGMA user_version=13;COMMIT;";
+
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
     "ALTER TABLE sessions "
@@ -1028,7 +1082,7 @@ static TrainlogStatus initialize_or_validate_schema(
         status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
     } else if (version == 10) {
         status = TRAINLOG_STATUS_OK;
-    } else if (version == 11) {
+    } else if (version == 11 || version == 12) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1165,8 +1219,17 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK) {
         if (version < 11) status = migrate_v10_to_v11(database);
     }
-    if (status == TRAINLOG_STATUS_OK) {
+    if (status == TRAINLOG_STATUS_OK && version < 12) {
         status = execute_sql(database, MIGRATE_V11_TO_V12_SQL);
+    }
+    if (status == TRAINLOG_STATUS_OK && version < 13) {
+        status = execute_sql(database, MIGRATE_V12_TO_V13_SQL_A);
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V12_TO_V13_SQL_B);
+        }
+        if (status == TRAINLOG_STATUS_OK) {
+            status = execute_sql(database, MIGRATE_V12_TO_V13_SQL_C);
+        }
     }
 
     if (
@@ -1176,7 +1239,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v12" : "migrate database to schema v12",
+            version == 0 ? "create schema v13" : "migrate database to schema v13",
             database->connection,
             SQLITE_ERROR
         );

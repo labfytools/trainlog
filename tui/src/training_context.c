@@ -4,30 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static size_t id_list_count(const char *list)
-{
-    size_t count = 0U;
-    const char *at = list;
-    if (at == NULL || *at == '\0') return 0U;
-    count = 1U;
-    while (*at != '\0') { if (*at == '\n') ++count; ++at; }
-    return count;
-}
-
-static const TrainlogEquipmentKnowledge *equipment_from_list(const char **at)
-{
-    const char *end;
-    char id[TRAINLOG_ID_MAX + 1U];
-    size_t length;
-    if (at == NULL || *at == NULL || **at == '\0') return NULL;
-    end = strchr(*at, '\n');
-    length = end == NULL ? strlen(*at) : (size_t)(end - *at);
-    if (length == 0U || length >= sizeof(id)) return NULL;
-    (void)memcpy(id, *at, length); id[length] = '\0';
-    *at = end == NULL ? *at + length : end + 1;
-    return trainlog_equipment_knowledge_lookup(id);
-}
-
 void trainlog_training_exercise_context_release(TrainlogTrainingExerciseContext *context)
 {
     if (context == NULL) return;
@@ -44,7 +20,7 @@ TrainlogStatus trainlog_training_exercise_context_load(
 {
     TrainlogTrainingExerciseContext result = {0};
     TrainlogStatus status;
-    const char *equipment_at;
+    char canonical_exercise_id[TRAINLOG_ID_MAX + 1U];
     size_t index;
     size_t zone_count = 0U;
     bool snapshot = false;
@@ -56,7 +32,12 @@ TrainlogStatus trainlog_training_exercise_context_load(
     status = trainlog_database_read_snapshot_begin(database);
     if (status != TRAINLOG_STATUS_OK) return status;
     snapshot = true;
-    status = trainlog_database_get_exercise_profile(database, exercise_id, &result.exercise);
+    /* INVARIANT: aliases canonicalize exactly once before immutable knowledge
+     * joins. Persisted history/MAX APIs keep their existing canonical behavior. */
+    status = trainlog_database_resolve_exercise_id(database, exercise_id,
+        canonical_exercise_id, sizeof(canonical_exercise_id));
+    if (status != TRAINLOG_STATUS_OK) goto done;
+    status = trainlog_database_get_exercise_profile(database, canonical_exercise_id, &result.exercise);
     if (status != TRAINLOG_STATUS_OK) goto done;
     status = trainlog_database_list_exercise_body_zones(database, exercise_id, NULL, 0U, &zone_count);
     if (status != TRAINLOG_STATUS_OK && !(status == TRAINLOG_STATUS_INVALID_ARGUMENT && zone_count > 0U)) goto done;
@@ -67,18 +48,20 @@ TrainlogStatus trainlog_training_exercise_context_load(
         status=trainlog_database_list_exercise_body_zones(database,exercise_id,result.persisted_zones,zone_count,&result.persisted_zone_count);
         if(status!=TRAINLOG_STATUS_OK)goto done;
     }
-    result.knowledge=trainlog_exercise_knowledge_lookup(exercise_id);
+    result.knowledge=trainlog_exercise_knowledge_lookup(canonical_exercise_id);
     if(result.knowledge!=NULL){
-        result.compatible_equipment_count=id_list_count(result.knowledge->equipment_ids);
+        status=trainlog_knowledge_list_equipment_for_exercise(canonical_exercise_id,NULL,0U,
+            &result.compatible_equipment_count);
+        if(status!=TRAINLOG_STATUS_OK && !(status==TRAINLOG_STATUS_INVALID_ARGUMENT &&
+                result.compatible_equipment_count>0U))goto done;
         if(result.compatible_equipment_count>SIZE_MAX/sizeof(*result.compatible_equipment)){status=TRAINLOG_STATUS_INVALID_ARGUMENT;goto done;}
         if(result.compatible_equipment_count>0U){
             result.compatible_equipment=calloc(result.compatible_equipment_count,sizeof(*result.compatible_equipment));
             if(result.compatible_equipment==NULL){status=TRAINLOG_STATUS_SYSTEM_ERROR;goto done;}
-            equipment_at=result.knowledge->equipment_ids;
-            for(index=0U;index<result.compatible_equipment_count;++index){
-                result.compatible_equipment[index]=equipment_from_list(&equipment_at);
-                if(result.compatible_equipment[index]==NULL){status=TRAINLOG_STATUS_DATABASE_ERROR;goto done;}
-            }
+            status=trainlog_knowledge_list_equipment_for_exercise(canonical_exercise_id,
+                result.compatible_equipment,result.compatible_equipment_count,
+                &result.compatible_equipment_count);
+            if(status!=TRAINLOG_STATUS_OK)goto done;
         }
     }
     status=trainlog_database_latest_explicit_max_context(database,exercise_id,&result.latest_max);

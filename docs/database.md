@@ -1,5 +1,18 @@
 # Desktop database
 
+## Schema v13: machine-specific exercises
+
+Migration v12→v13 is additive and transactional. It adds exercise-owned load
+and provenance metadata, installs the five frozen UUIDv4 identities, applies
+the approved same-ID display renames, and repoints only manifest-listed
+`entry_id` + source exercise + source equipment triples. Session IDs, entry
+IDs, positions, child set/MAX/continuous rows, notes, targets, timestamps,
+aliases, and body observations are unchanged. Reopening v13 is idempotent.
+
+Equipment tables and occurrence equipment columns remain in Phase 1 for sync,
+durable drafts, old imports, and explicit historical provenance. Schema cleanup
+is a later, separately versioned migration.
+
 ## 1. Status
 
 ```text
@@ -569,7 +582,7 @@ Desktop schema v11 and Android schema v10 then add only body-zone relation and
 sync-baseline tables. Both seed exact manifest mappings by stable exercise ID;
 neither migration changes the occurrence/equipment/MAX graph described above.
 
-Desktop and Android schema v12 add only the durable flattened
+Desktop and Android schema v12 added only the durable flattened
 `exercise_aliases` mapping. It resolves retired creator IDs to a live canonical
 exercise during catalog and companion reconciliation without changing any
 session, set, continuous, MAX, equipment, body-zone or planning wire shape.
@@ -600,7 +613,7 @@ history.
 ## 14. Training knowledge read boundary
 
 Training Knowledge V1 adds no table, migration, seed data or synchronization
-artifact. The desktop database remains schema v12. Read-only context assembly
+artifact. Desktop schema v13 retains it unchanged. Read-only context assembly
 joins an exact existing exercise with its persisted BODY ZONE relations,
 occurrence history, raw sets, actual equipment and latest explicit MAX, then
 optionally attaches immutable catalog knowledge. Missing catalog knowledge is

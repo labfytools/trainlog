@@ -255,7 +255,7 @@ class BodyZonesTest {
             db.execSQL("DROP TABLE exercise_body_zone_sync;")
             db.execSQL("DROP TABLE exercise_body_zones;")
             db.execSQL(
-                "INSERT INTO exercises VALUES(42,'ex_9adf7566-f10c-443c-b63b-681d37665693'," +
+                "INSERT INTO exercises(id,exercise_id,name,normalized_name,recording_mode,tracking_mode,data_fields) VALUES(42,'ex_9adf7566-f10c-443c-b63b-681d37665693'," +
                     "'Abdominal crunch','abdominal crunch','sets','reps',0);",
             )
             val equipmentRow = db.rawQuery(
@@ -307,7 +307,9 @@ class BodyZonesTest {
             db.execSQL("PRAGMA user_version=9;")
         }
         val repository = TrainlogRepository(context, name)
-        val exercise = repository.listExercises().single()
+        val exercise = repository.listExercises().single {
+            it.exerciseId == "ex_9adf7566-f10c-443c-b63b-681d37665693"
+        }
         assertEquals("core", exercise.primaryZoneId)
         val training = repository.getSessionDetail("se_zone_training")!!.exercises.single()
         assertEquals("sxe_zone_training", training.entryId)
@@ -321,7 +323,7 @@ class BodyZonesTest {
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null,
             SQLiteDatabase.OPEN_READONLY).use { db ->
             db.rawQuery("PRAGMA user_version", null).use { cursor ->
-                assertTrue(cursor.moveToFirst()); assertEquals(12, cursor.getInt(0))
+                assertTrue(cursor.moveToFirst()); assertEquals(13, cursor.getInt(0))
             }
             db.rawQuery("SELECT id FROM exercises", null).use { cursor ->
                 assertTrue(cursor.moveToFirst()); assertEquals(42L, cursor.getLong(0))

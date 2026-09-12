@@ -496,7 +496,7 @@ Historical validation checkpoint (the current desktop suite is 48/48):
 ## 13. Android session draft v1
 
 Android schema v4 introduced one durable active draft; the current additive
-chain reaches schema v12 without clearing completed history or the draft. The
+chain reaches schema v13 without clearing completed history or the draft. The
 explicit v10 -> v11 migration adds optional planning metadata while preserving
 existing rows with `load_mode=none`, zero rest and NULL targets. The
 v11 -> v12 migration adds the durable flattened exercise-alias table. Its exact
@@ -630,6 +630,13 @@ This exercises real artifacts and production import/export code on copies. It
 does not substitute for a final direct-MTP run when USB ownership or sandbox
 permissions prevent libmtp access.
 
+`tests/test_equipment_associations_exchange.py` additionally covers the
+bounded v13 stale-companion bridge for the five frozen machine-exercise splits.
+Plate Loaded Leg Press and Treadmill pass only with matching current mobile V3
+proof; generic Marche, the durable Marche+treadmill draft, Seated Leg, and Rear
+Delt NULL provenance remain unchanged; an unrelated exercise mismatch still
+fails; and replay is idempotent.
+
 For this checkpoint, the USB probe discovered the connected Samsung interface
 but libmtp failed at `libusb_open()`. The canonical desktop DB was also
 read-only to the sandbox; the first attempted definitions import failed before
@@ -688,3 +695,7 @@ for Training Knowledge V1.
 Shell/naming closeout coverage includes real-PTY shell behavior, canonical
 name export/import replay on temporary databases, and preservation of sets,
 MAX, equipment, BODY ZONES, aliases, and distinct unmapped exercises.
+EQUIPMENT_KNOWLEDGE_V2 validation covers relation envelopes, canonical UUID and
+equipment references, enum/source integrity, uniqueness and stable ordering,
+the unresolved Seated Leg invariant, generic/custom non-inference, and generated
+C/Android query parity for leg press, combo equipment, and chest-zone derivation.

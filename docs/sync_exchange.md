@@ -1,5 +1,15 @@
 # Synchronization exchange
 
+## Machine-exercise Phase 1 compatibility
+
+Desktop and Android schema v13 retain mobile export V3, readable V1/V2 imports,
+equipment definitions V1, equipment associations V2, exercise aliases V1, and
+the BODY ZONES companion without wire-format changes. Machine metadata is not
+silently added to a frozen artifact: stable exercise IDs and canonical names
+travel through the existing catalog, while v13 metadata stays local until a
+dedicated versioned companion is required. Legacy equipment IDs may still be
+written for fixed supplied machines as compatibility provenance.
+
 ## 1. Status
 
 ```text
@@ -567,6 +577,16 @@ missing companion conveys no equipment information and cannot clear a
 previously known choice. Unknown canonical IDs, unknown entries, ambiguous
 identities and divergent values reject processing explicitly; an unknown
 equipment reference is never silently changed to null.
+
+After `MACHINE_EXERCISE_MODEL_V1`, a pre-v13 association companion can outlive
+the five approved completed-occurrence splits even though the active mobile V3
+snapshot already carries the new identities. Desktop accepts that stale
+corroborating `exercise_id` only for the frozen `(session_id, entry_id, old ID,
+new ID)` split table and only when the mobile V3 snapshot imported in the same
+run proves the exact new local identity. Equipment state must still be equal.
+Every other exercise mismatch remains a conflict. The old Leg Press and Marche
+IDs are not aliases for their machine-specific siblings, and draft occurrences
+are outside this completed-history compatibility rule.
 
 V2 association semantics are unchanged. A custom equipment ID is accepted only
 after its definition V1 artifact has reconciled it on the receiving side.

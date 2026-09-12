@@ -618,7 +618,7 @@ class TrainlogRepositoryDraftTest {
             repo.applyPcCatalogJson(stalePcCatalog.toString()),
         )
         val byId = repo.listExercises().associateBy { it.exerciseId }
-        assertEquals("Flexion de genou assise", byId.getValue(mappedId).name)
+        assertEquals("Seated Leg Curl", byId.getValue(mappedId).name)
         assertEquals("Seated Leg", byId.getValue(distinctId).name)
         assertEquals("My custom curl", byId.getValue(customId).name)
 
@@ -628,7 +628,7 @@ class TrainlogRepositoryDraftTest {
             repo.applyPcCatalogJson(stalePcCatalog.toString()),
         )
         assertEquals(
-            "Flexion de genou assise",
+            "Seated Leg Curl",
             repo.listExercises().single { it.exerciseId == mappedId }.name,
         )
     }
@@ -1651,7 +1651,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(12, cursor.getInt(0))
+                assertEquals(13, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1765,7 +1765,7 @@ class TrainlogRepositoryDraftTest {
         createVersionFourFixture(context.getDatabasePath(databaseName).path)
         val repo = openRepository()
 
-        assertEquals(1, repo.listExercises().size)
+        assertEquals(20, repo.listExercises().size)
         assertEquals(1, repo.listSessions().size)
         assertEquals(1, repo.listBodyObservations().size)
         val loadedDraft = loadDraft(repo)
@@ -1778,7 +1778,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(12, cursor.getInt(0))
+                assertEquals(13, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())

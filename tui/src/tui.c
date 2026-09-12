@@ -3090,6 +3090,46 @@ static void session_controller_load_equipment(TrainlogAppContext *app)
     session->phase = TRAINLOG_SESSION_EQUIPMENT_PICKER;
 }
 
+static bool machine_exercise_compatibility(const char *exercise_id,
+    const char **equipment_id, TrainlogLoadMode *load_mode)
+{
+    static const struct { const char *exercise; const char *equipment; bool assistance; } rows[] = {
+        {"ex_0e26c06f-a458-40a4-be20-4ed219ede30d", "plate_loaded_leg_press", false},
+        {"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab", "leg_extension", false},
+        {"ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0", "rotary_torso", false},
+        {"ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de", "diverging_seated_row", false},
+        {"ex_33f79331-871c-4eed-babe-346e53a99070", "seated_row", false},
+        {"ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf", "assisted_dip_chin_machine", true},
+        {"ex_474ec393-3efa-4aaa-8e08-1a0245ed7835", "back_extension", false},
+        {"ex_4cd2433e-80b1-478a-b8df-73fc6ef80962", "rear_delt_pec_fly", false},
+        {"ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee", "rear_delt_pec_fly", false},
+        {"ex_58b8dfbc-92b2-4783-a449-9947a42480b8", "assisted_dip_chin_machine", true},
+        {"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b", "converging_shoulder_press", false},
+        {"ex_7e7cf906-2214-4066-bcb7-c16382d83b3b", "hip_abduction", false},
+        {"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163", "seated_leg_curl", false},
+        {"ex_a72fa713-4b0e-431d-95e2-42d95beb77b1", "lat_pull", false},
+        {"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde", "leg_press", false},
+        {"ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6", "diverging_lat_pulldown", false},
+        {"ex_d7398d9f-d928-4d2e-94e9-74e201da55c5", "prone_leg_curl", false},
+        {"ex_ec619fc2-4685-4044-873c-86764bd4a0fe", "arm_curl", false}
+    };
+    size_t index;
+    if (strcmp(exercise_id, "ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2") == 0) {
+        *equipment_id = "treadmill";
+        *load_mode = TRAINLOG_LOAD_NONE;
+        return true;
+    }
+    for (index = 0U; index < sizeof(rows) / sizeof(rows[0]); ++index) {
+        if (strcmp(rows[index].exercise, exercise_id) == 0) {
+            *equipment_id = rows[index].equipment;
+            *load_mode = rows[index].assistance ? TRAINLOG_LOAD_ASSISTANCE :
+                TRAINLOG_LOAD_EXTERNAL;
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool session_controller_choose_exercise(TrainlogSessionController *session)
 {
     TrainlogSessionDraftExercise replacement;
@@ -3119,6 +3159,19 @@ static bool session_controller_choose_exercise(TrainlogSessionController *sessio
     replacement.input.recording_mode = exercise->recording_mode;
     replacement.input.data_fields = exercise->data_fields;
     replacement.input.load_mode = TRAINLOG_LOAD_NONE;
+    {
+        const char *compatibility_equipment = NULL;
+        TrainlogLoadMode compatibility_load = TRAINLOG_LOAD_NONE;
+        /* WHY: fixed-machine identity already determines the Phase-1 legacy
+         * provenance. CONTRACT: custom/unresolved IDs never use name
+         * inference and retain the explicit compatibility editor. */
+        if (machine_exercise_compatibility(exercise->exercise_id,
+                &compatibility_equipment, &compatibility_load)) {
+            (void)snprintf(replacement.input.equipment_id,
+                sizeof(replacement.input.equipment_id), "%s", compatibility_equipment);
+            replacement.input.load_mode = compatibility_load;
+        }
+    }
     draft_bind_input(&replacement);
     if (session->replacing_occurrence) session->drafts[session->selected] = replacement;
     else {
@@ -3312,12 +3365,11 @@ static bool session_controller_accept_generator(TrainlogAppContext *app)
 
 static const TrainlogAppRoute shell_sections[] = {
     TRAINLOG_ROUTE_HOME, TRAINLOG_ROUTE_SESSIONS, TRAINLOG_ROUTE_EXERCISES,
-    TRAINLOG_ROUTE_EQUIPMENT, TRAINLOG_ROUTE_STATS, TRAINLOG_ROUTE_SYNC,
-    TRAINLOG_ROUTE_SETTINGS
+    TRAINLOG_ROUTE_STATS, TRAINLOG_ROUTE_SYNC, TRAINLOG_ROUTE_SETTINGS
 };
 static const char *const shell_section_labels[] = {
-    "Accueil", "Séances", "Exercices", "Équipements", "Statistiques",
-    "Synchronisation", "Paramètres"
+    "Accueil", "Séances", "Exercices", "Statistiques", "Synchronisation",
+    "Paramètres"
 };
 
 static void app_shell_destroy_surfaces(TrainlogAppContext *app)
@@ -5203,8 +5255,6 @@ static void app_shell_actions(TrainlogAppContext *app)
         TRAINLOG_INTENT_OPEN_ROUTE, TRAINLOG_ROUTE_SESSIONS_COMPLETED);
     app_shell_add_action(app, "exercises.alias", '3', "3 Exercices", 103U,
         TRAINLOG_INTENT_OPEN_ROUTE, TRAINLOG_ROUTE_EXERCISES);
-    app_shell_add_action(app, "equipment.alias", '4', "4 Équipements", 104U,
-        TRAINLOG_INTENT_OPEN_ROUTE, TRAINLOG_ROUTE_EQUIPMENT);
     app_shell_add_action(app, "body.alias", '5', "5 Mensurations", 105U,
         TRAINLOG_INTENT_OPEN_ROUTE, TRAINLOG_ROUTE_BODY);
     app_shell_add_action(app, "sync.alias", '6', "6 Synchronisation", 106U,
@@ -6923,6 +6973,8 @@ static void app_shell_render_content(TrainlogAppContext *app)
         }
     } else if (route == TRAINLOG_ROUTE_EQUIPMENT_DETAIL) {
         const TrainlogResolvedEquipment *item = &app->equipment_detail;
+        size_t relation_index;
+        int relation_row = 12;
         trainlog_surface_printf(app->content, 4, 2, "%s", item->display_name);
         trainlog_surface_printf(app->content, 6, 2, "Identifiant : %s", item->equipment_id);
         trainlog_surface_printf(app->content, 7, 2, "Étiquette : %s",
@@ -6933,6 +6985,27 @@ static void app_shell_render_content(TrainlogAppContext *app)
             item->load_semantics[0] != '\0' ? item->load_semantics : "—");
         trainlog_surface_printf(app->content, 10, 2, "Origine : %s",
             equipment_origin_label(item->origin));
+        trainlog_surface_printf(app->content, relation_row++, 2, "Exercices possibles");
+        for (relation_index = 0U;
+             relation_index < trainlog_equipment_exercise_relation_count() &&
+             relation_row < app->layout.content.height; ++relation_index) {
+            const TrainlogEquipmentExerciseRelation *relation =
+                trainlog_equipment_exercise_relation_at(relation_index);
+            const TrainlogExerciseKnowledge *exercise;
+            const char *confidence;
+            if (relation == NULL || strcmp(relation->equipment_id,
+                    item->equipment_id) != 0) continue;
+            exercise = trainlog_exercise_knowledge_lookup(relation->exercise_id);
+            if (exercise == NULL) continue;
+            confidence = strcmp(relation->confidence, "high") == 0 ? "élevée" :
+                strcmp(relation->confidence, "moderate") == 0 ? "modérée" : "incertaine";
+            trainlog_surface_printf(app->content, relation_row++, 4,
+                "> %.38s · confiance %s · sources vérifiées",
+                exercise->exercise_name, confidence);
+        }
+        if (relation_row == 13)
+            trainlog_surface_printf(app->content, relation_row, 4,
+                "Aucune association vérifiée; aucune anatomie déduite du nom.");
     } else if (route == TRAINLOG_ROUTE_EXERCISE_DETAIL) {
         const TrainlogExercise *item = &app->exercise_detail;
         const TrainlogBodyZone *primary = NULL;
@@ -8963,6 +9036,25 @@ body_global_unhandled:;
         return;
     }
 shell_nonknowledge_input:
+    if (app->navigation.current.route == TRAINLOG_ROUTE_EQUIPMENT_DETAIL &&
+        (key == TRAINLOG_KEY_ENTER || key == '\n')) {
+        size_t relation_index;
+        for (relation_index = 0U;
+             relation_index < trainlog_equipment_exercise_relation_count();
+             ++relation_index) {
+            const TrainlogEquipmentExerciseRelation *relation =
+                trainlog_equipment_exercise_relation_at(relation_index);
+            if (relation == NULL || strcmp(relation->equipment_id,
+                    app->equipment_detail.equipment_id) != 0) continue;
+            if (trainlog_database_get_exercise_profile(app->database,
+                    relation->exercise_id, &app->exercise_detail) == TRAINLOG_STATUS_OK) {
+                app_shell_load_exercise_detail_metadata(app);
+                (void)trainlog_navigation_open(&app->navigation,
+                    TRAINLOG_ROUTE_EXERCISE_DETAIL, app->exercise_detail.exercise_id);
+            }
+            return;
+        }
+    }
     if (app->navigation.current.route == TRAINLOG_ROUTE_EXERCISE_PERFORMANCE ||
         app->navigation.current.route == TRAINLOG_ROUTE_EXERCISE_MAX) {
         size_t page = app->layout.content.height > 10

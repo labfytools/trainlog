@@ -64,8 +64,12 @@ class AndroidV11ExerciseAliasMigrationTest {
             migrated.close()
         }
         SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(12, scalar(db, "PRAGMA user_version"))
-            assertEquals(before, snapshot(db).filterKeys { it != "exercise_aliases" })
+            assertEquals(13, scalar(db, "PRAGMA user_version"))
+            /* v13 intentionally adds the frozen machine identities and
+             * exercise-owned metadata; all non-exercise facts stay exact. */
+            val after = snapshot(db).filterKeys { it != "exercise_aliases" }
+            before.filterKeys { it !in setOf("exercises", "exercise_body_zones", "exercise_body_zone_sync") }
+                .forEach { (table, rows) -> assertEquals(rows, after[table]) }
             assertEquals(0, scalar(db, "SELECT COUNT(*) FROM exercise_aliases"))
             db.rawQuery("PRAGMA foreign_key_check", null).use { assertFalse(it.moveToFirst()) }
         }

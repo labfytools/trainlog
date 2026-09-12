@@ -125,6 +125,11 @@ def validate(root: Path) -> None:
     patterns_rows = envelope(load(root / "movement-patterns-v1.json"), "trainlog-movement-patterns-v1", "movement_patterns")
     exercise_rows = envelope(load(root / "exercise-knowledge-v1.json"), "trainlog-exercise-knowledge-v1", "exercises")
     equipment_rows = envelope(load(root / "equipment-knowledge-v1.json"), "trainlog-equipment-knowledge-v1", "equipment")
+    relation_root = load(root / "equipment-exercise-relations-v2.json")
+    require(set(relation_root) == {"format", "version", "equipment_relations"} and
+            relation_root["format"] == "trainlog-equipment-exercise-relations-v2" and
+            relation_root["version"] == 2 and isinstance(relation_root["equipment_relations"], list),
+            "invalid equipment relation V2 envelope")
     refs = ids(references, "ref_id", "references")
     muscles = ids(muscles_rows, "muscle_id", "muscles")
     actions = ids(actions_rows, "action_id", "joint_actions")
@@ -159,6 +164,34 @@ def validate(root: Path) -> None:
         required_exercises.add(mapping["exercise_id"])
     require(required_equipment <= equipment, "knowledge catalog misses supplied equipment")
     require(required_exercises <= exercises, "knowledge catalog misses observed exercises")
+
+    # CONTRACT: equipment relations contain identity/provenance only. Anatomy is
+    # exercise-owned and therefore cannot be duplicated or inferred here.
+    relation_rows = relation_root["equipment_relations"]
+    relation_equipment = ids(relation_rows, "equipment_id", "equipment relations")
+    require(relation_equipment <= equipment, "equipment relation references unknown equipment")
+    seen_relations = set()
+    for relation_row in relation_rows:
+        exact_object(relation_row, {"equipment_id", "exercise_options"}, "equipment relation")
+        options = relation_row["exercise_options"]
+        require(isinstance(options, list) and bool(options), "equipment relation options must be non-empty")
+        order = []
+        for option in options:
+            exact_object(option, {"exercise_id", "relation_type", "configuration_label",
+                                  "confidence", "source_refs"}, "equipment exercise option")
+            require(option["exercise_id"] in exercises, "equipment option references unknown exercise")
+            require(option["relation_type"] == "supported_exercise", "invalid equipment relation type")
+            nullable_text(option["configuration_label"], "equipment option.configuration_label")
+            confidence(option["confidence"], "equipment option.confidence")
+            refs_list(option["source_refs"], "equipment option.source_refs", refs)
+            pair = (relation_row["equipment_id"], option["exercise_id"])
+            require(pair not in seen_relations, "duplicate equipment/exercise relation")
+            seen_relations.add(pair)
+            order.append((option["exercise_id"], option["configuration_label"] or ""))
+        require(order == sorted(order), "equipment exercise options must be deterministically ordered")
+    seated_leg = "ex_617007f9-7420-4408-91b9-8ffb77900f13"
+    require(all(exercise_id != seated_leg for _, exercise_id in seen_relations),
+            "Seated Leg is unresolved and must not inherit seated-leg-curl knowledge")
 
     ref_required = {"ref_id", "title", "authors_or_organization", "year", "type", "url", "topics",
                     "notes", "limitations", "doi", "pmid", "accessed_on"}

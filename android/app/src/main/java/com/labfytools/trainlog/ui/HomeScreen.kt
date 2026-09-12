@@ -152,8 +152,8 @@ internal fun BodyZoneHomeSection(
                     style = TrainlogTypography.small.copy(color = colors.text),
                 )
                 BasicText(
-                    exposureCountLabel(zone.primaryWork7Days, "principale") + " sur 7 j · " +
-                        exposureCountLabel(zone.secondaryWork7Days, "secondaire") + " sur 7 j",
+                    recentWorkLabel(zone.primaryWork7Days, "principal") + " · " +
+                        recentWorkLabel(zone.secondaryWork7Days, "secondaire"),
                     style = TrainlogTypography.small.copy(color = colors.text),
                 )
                 BasicText(
@@ -482,7 +482,7 @@ private fun stateColor(state: BodyZoneHomeState, colors: TrainlogColors): Color 
 internal fun recommendationReason(zone: BodyZoneHomeStatus): String = when {
     zone.lastPrimaryExposure == null -> "Aucune exposition principale enregistrée"
     zone.primaryWork7Days == 0 -> "Dernier travail principal : ${ageLabel(zone.primaryExposureAgeSeconds)}"
-    else -> exposureCountLabel(zone.primaryWork7Days, "principale") + " sur 7 j"
+    else -> recentWorkLabel(zone.primaryWork7Days, "principal")
 }
 
 internal fun homeStateLabel(zone: BodyZoneHomeStatus): String =
@@ -492,9 +492,8 @@ internal fun homeStateLabel(zone: BodyZoneHomeStatus): String =
         zone.state.label
     }
 
-internal fun exposureCountLabel(count: Int, adjective: String): String =
-    "$count ${if (count == 1) "exposition" else "expositions"} " +
-        if (count == 1) adjective else "${adjective}s"
+internal fun recentWorkLabel(count: Int, kind: String): String =
+    "Travail $kind sur 7 j : $count"
 
 private fun availableExerciseLabel(count: Int): String =
     "$count ${if (count == 1) "exercice disponible" else "exercices disponibles"}"

@@ -164,6 +164,17 @@ typedef struct TrainlogEquipmentCapability {
     const TrainlogKnowledgeInterpretation *interpretation;
 } TrainlogEquipmentCapability;
 
+/** Physical-equipment compatibility with one already-known canonical exercise.
+ * INVARIANT: this record never owns muscles, movements, or BODY ZONES. */
+typedef struct TrainlogEquipmentExerciseRelation {
+    const char *equipment_id;
+    const char *exercise_id;
+    const char *relation_type;
+    const char *configuration_label;
+    const char *confidence;
+    const char *source_refs;
+} TrainlogEquipmentExerciseRelation;
+
 typedef struct TrainlogKnowledgeQuery {
     const char *scientific_zone_id;
     bool include_zone_descendants;
@@ -200,6 +211,18 @@ const TrainlogEquipmentKnowledge *trainlog_equipment_knowledge_at(size_t index);
 const TrainlogEquipmentKnowledge *trainlog_equipment_knowledge_lookup(const char *equipment_id);
 size_t trainlog_equipment_capability_count(void);
 const TrainlogEquipmentCapability *trainlog_equipment_capability_at(size_t index);
+size_t trainlog_equipment_exercise_relation_count(void);
+const TrainlogEquipmentExerciseRelation *trainlog_equipment_exercise_relation_at(size_t index);
+TrainlogStatus trainlog_knowledge_list_exercises_for_equipment(
+    const char *equipment_id, const TrainlogExerciseKnowledge **output,
+    size_t capacity, size_t *output_count);
+TrainlogStatus trainlog_knowledge_list_equipment_for_exercise(
+    const char *exercise_id, const TrainlogEquipmentKnowledge **output,
+    size_t capacity, size_t *output_count);
+TrainlogStatus trainlog_knowledge_list_equipment_for_body_zone(
+    const char *zone_id, bool include_descendants,
+    const TrainlogEquipmentKnowledge **output, size_t capacity,
+    size_t *output_count);
 
 /**
  * AND-combine optional resolved-knowledge filters in stable exercise-ID order.

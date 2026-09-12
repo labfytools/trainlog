@@ -46,6 +46,7 @@ def main() -> None:
     patterns = load(root / "movement-patterns-v1.json", "movement_patterns")
     exercises = load(root / "exercise-knowledge-v1.json", "exercises")
     equipment = load(root / "equipment-knowledge-v1.json", "equipment")
+    relation_groups = load(root / "equipment-exercise-relations-v2.json", "equipment_relations")
     lines = ['#include "trainlog/training_knowledge.h"',
              '#include "trainlog/body_zone_catalog.h"', "#include <string.h>", ""]
     lines.append("static const TrainlogKnowledgeReference references[] = {")
@@ -114,6 +115,14 @@ def main() -> None:
         fields.append("true" if row["requires_actual_exercise"] else "false")
         lines.append("  {%s}," % ",".join(fields))
     lines.append("};")
+    relations = [(row["equipment_id"], option) for row in relation_groups
+                 for option in row["exercise_options"]]
+    lines.append("static const TrainlogEquipmentExerciseRelation equipment_exercise_relations[] = {")
+    for equipment_id, option in relations:
+        lines.append("  {%s}," % ",".join(c(value) for value in (
+            equipment_id, option["exercise_id"], option["relation_type"],
+            option["configuration_label"], option["confidence"], option["source_refs"])))
+    lines.append("};")
     capabilities = [(row["equipment_id"], cap) for row in equipment for cap in row["capabilities"]]
     lines.append("static const TrainlogKnowledgeInterpretation capability_interpretations[] = {")
     for _, cap in capabilities:
@@ -158,6 +167,40 @@ size_t trainlog_equipment_capability_count(void) { return sizeof(capabilities)/s
 const TrainlogEquipmentCapability *trainlog_equipment_capability_at(size_t index) {
   return index < trainlog_equipment_capability_count() ? &capabilities[index] : NULL;
 }
+size_t trainlog_equipment_exercise_relation_count(void) {
+  return sizeof(equipment_exercise_relations)/sizeof(equipment_exercise_relations[0]);
+}
+const TrainlogEquipmentExerciseRelation *trainlog_equipment_exercise_relation_at(size_t index) {
+  return index < trainlog_equipment_exercise_relation_count() ? &equipment_exercise_relations[index] : NULL;
+}
+TrainlogStatus trainlog_knowledge_list_exercises_for_equipment(const char *equipment_id,
+    const TrainlogExerciseKnowledge **output, size_t capacity, size_t *output_count) {
+  size_t i, count=0;
+  if (output_count == NULL || (capacity > 0 && output == NULL)) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+  *output_count=0;
+  if (trainlog_equipment_knowledge_lookup(equipment_id) == NULL) return TRAINLOG_STATUS_NOT_FOUND;
+  for (i=0; i<trainlog_equipment_exercise_relation_count(); ++i) {
+    const TrainlogEquipmentExerciseRelation *r=&equipment_exercise_relations[i];
+    if (strcmp(r->equipment_id,equipment_id)!=0) continue;
+    if (count<capacity) output[count]=trainlog_exercise_knowledge_lookup(r->exercise_id);
+    ++count;
+  }
+  *output_count=count; return count>capacity ? TRAINLOG_STATUS_INVALID_ARGUMENT : TRAINLOG_STATUS_OK;
+}
+TrainlogStatus trainlog_knowledge_list_equipment_for_exercise(const char *exercise_id,
+    const TrainlogEquipmentKnowledge **output, size_t capacity, size_t *output_count) {
+  size_t i, count=0;
+  if (output_count == NULL || (capacity > 0 && output == NULL)) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+  *output_count=0;
+  if (trainlog_exercise_knowledge_lookup(exercise_id) == NULL) return TRAINLOG_STATUS_NOT_FOUND;
+  for (i=0; i<trainlog_equipment_exercise_relation_count(); ++i) {
+    const TrainlogEquipmentExerciseRelation *r=&equipment_exercise_relations[i];
+    if (strcmp(r->exercise_id,exercise_id)!=0) continue;
+    if (count<capacity) output[count]=trainlog_equipment_knowledge_lookup(r->equipment_id);
+    ++count;
+  }
+  *output_count=count; return count>capacity ? TRAINLOG_STATUS_INVALID_ARGUMENT : TRAINLOG_STATUS_OK;
+}
 const TrainlogKnowledgeInterpretation *trainlog_exercise_knowledge_conditional(const char *exercise_id) {
   const TrainlogExerciseKnowledge *record = trainlog_exercise_knowledge_lookup(exercise_id);
   return record == NULL ? NULL : record->conditional_interpretation;
@@ -174,6 +217,29 @@ static bool zone_matches(const TrainlogKnowledgeInterpretation *value, const cha
       at=end+1; }
   }
   return false;
+}
+TrainlogStatus trainlog_knowledge_list_equipment_for_body_zone(const char *zone_id, bool descendants,
+    const TrainlogEquipmentKnowledge **output, size_t capacity, size_t *output_count) {
+  size_t i, count=0;
+  if (output_count == NULL || (capacity > 0 && output == NULL)) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+  *output_count=0;
+  if (trainlog_body_zone_catalog_lookup(zone_id) == NULL) return TRAINLOG_STATUS_NOT_FOUND;
+  /* CONTRACT: zone -> resolved exercise anatomy -> physical relation. Machine
+   * labels never participate in this derivation. */
+  for (i=0; i<trainlog_equipment_knowledge_count(); ++i) {
+    const TrainlogEquipmentKnowledge *eq=&equipment[i]; size_t j; bool matched=false;
+    for (j=0; j<trainlog_equipment_exercise_relation_count(); ++j) {
+      const TrainlogEquipmentExerciseRelation *r=&equipment_exercise_relations[j];
+      const TrainlogExerciseKnowledge *e;
+      if (strcmp(r->equipment_id,eq->equipment_id)!=0) continue;
+      e=trainlog_exercise_knowledge_lookup(r->exercise_id);
+      if (e!=NULL && e->interpretation!=NULL && zone_matches(e->interpretation,zone_id,descendants)) { matched=true; break; }
+    }
+    if (!matched) continue;
+    if (count<capacity) output[count]=eq;
+    ++count;
+  }
+  *output_count=count; return count>capacity ? TRAINLOG_STATUS_INVALID_ARGUMENT : TRAINLOG_STATUS_OK;
 }
 TrainlogStatus trainlog_exercise_knowledge_query(const TrainlogKnowledgeQuery *query,
     const TrainlogExerciseKnowledge **output, size_t capacity, size_t *output_count) {

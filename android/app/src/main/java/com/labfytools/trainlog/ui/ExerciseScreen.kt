@@ -608,13 +608,17 @@ private fun KnowledgePanel(repository: TrainlogRepository, knowledge: ExerciseKn
         val patterns = resolved.patternIds.mapNotNull(repository::getMovementPatternKnowledge)
         val primary = resolved.primaryMuscleIds.mapNotNull(repository::getMuscleKnowledge)
         val secondary = resolved.secondaryMuscleIds.mapNotNull(repository::getMuscleKnowledge)
+        val stabilizers = resolved.stabilizerMuscleIds.mapNotNull(repository::getMuscleKnowledge)
+        val actions = resolved.actionIds.mapNotNull(repository::getJointActionKnowledge)
         val primaryZone = repository.bodyZone(resolved.primaryZoneId)?.displayName ?: resolved.primaryZoneId
         val secondaryZones = resolved.secondaryZoneIds.map { repository.bodyZone(it)?.displayName ?: it }
         val runtimeEquipment = repository.listEquipment().associateBy { it.equipmentId }
-        val equipment = knowledge.equipmentIds.map { runtimeEquipment[it]?.displayName ?: it }
-        TrainlogInfo("Mouvement : ${patterns.joinToString { it.displayNameFr }.ifEmpty { "Non classé" }}")
+        val equipment = repository.listEquipmentForKnownExercise(knowledge.exerciseId)
+            .map { runtimeEquipment[it.equipmentId]?.displayName ?: it.equipmentId }
+        TrainlogInfo("Mouvements : ${actions.joinToString { it.displayNameFr }.ifEmpty { patterns.joinToString { it.displayNameFr }.ifEmpty { "Non classés" } }}")
         TrainlogInfo("Muscles principaux : ${primary.joinToString { it.displayNameFr }.ifEmpty { "Non classés" }}")
         TrainlogInfo("Muscles secondaires : ${secondary.joinToString { it.displayNameFr }.ifEmpty { "Aucun établi" }}")
+        TrainlogInfo("Stabilisateurs : ${stabilizers.joinToString { it.displayNameFr }.ifEmpty { "Aucun établi" }}")
         TrainlogInfo("Zones scientifiques : $primaryZone" + if (secondaryZones.isEmpty()) "" else " · secondaires : ${secondaryZones.joinToString()}")
         TrainlogInfo("Équipement compatible : ${equipment.joinToString().ifEmpty { "Non établi" }}")
         TrainlogInfo("Confiance : ${confidenceLabel(resolved.confidence)}", colors.muted)
@@ -695,7 +699,8 @@ fun ExerciseDetailScreen(
         TrainlogFrame("Équipements compatibles", active = context.compatibleEquipment.isNotEmpty()) {
             if (context.compatibleEquipment.isEmpty()) TrainlogInfo("Compatibilité non établie.")
             context.compatibleEquipment.forEach { equipment ->
-                val name = listOfNotNull(equipment.manufacturer, equipment.model).joinToString(" ").ifBlank { equipment.equipmentId }
+                val name = repository.listEquipment().firstOrNull { it.equipmentId == equipment.equipmentId }?.displayName
+                    ?: listOfNotNull(equipment.manufacturer, equipment.model).joinToString(" ").ifBlank { equipment.equipmentId }
                 TrainlogInfo(name)
             }
         }

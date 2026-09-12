@@ -1,0 +1,23 @@
+{
+  "format": "trainlog-equipment-exercise-relations-v2",
+  "version": 2,
+  "equipment_relations": [
+    {"equipment_id":"abdominal","exercise_options":[{"exercise_id":"ex_9adf7566-f10c-443c-b63b-681d37665693","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["nih_abdominal_wall","openstax_trunk"]}]},
+    {"equipment_id":"arm_curl","exercise_options":[{"exercise_id":"ex_ec619fc2-4685-4044-873c-86764bd4a0fe","relation_type":"supported_exercise","configuration_label":null,"confidence":"high","source_refs":["openstax_upper"]}]},
+    {"equipment_id":"back_extension","exercise_options":[{"exercise_id":"ex_474ec393-3efa-4aaa-8e08-1a0245ed7835","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["lee_2015","openstax_back","openstax_lower"]}]},
+    {"equipment_id":"converging_shoulder_press","exercise_options":[{"exercise_id":"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["nih_deltoid","openstax_upper"]}]},
+    {"equipment_id":"diverging_lat_pulldown","exercise_options":[{"exercise_id":"ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["lehman_2004","openstax_upper","vigotsky_2018"]}]},
+    {"equipment_id":"diverging_seated_row","exercise_options":[{"exercise_id":"ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["franke_2015","lehman_2004","openstax_upper"]}]},
+    {"equipment_id":"hip_abduction","exercise_options":[{"exercise_id":"ex_7e7cf906-2214-4066-bcb7-c16382d83b3b","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["nih_gluteus_minimus","openstax_lower"]}]},
+    {"equipment_id":"hip_adduction","exercise_options":[{"exercise_id":"ex_01ff06dd-ad00-46ee-9b46-ed32cabedbef","relation_type":"supported_exercise","configuration_label":null,"confidence":"high","source_refs":["openstax_lower"]}]},
+    {"equipment_id":"lat_pull","exercise_options":[{"exercise_id":"ex_a72fa713-4b0e-431d-95e2-42d95beb77b1","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["lehman_2004","openstax_upper","vigotsky_2018"]}]},
+    {"equipment_id":"leg_extension","exercise_options":[{"exercise_id":"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab","relation_type":"supported_exercise","configuration_label":null,"confidence":"high","source_refs":["openstax_lower"]}]},
+    {"equipment_id":"leg_press","exercise_options":[{"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["martin_fuentes_2020","openstax_lower","vigotsky_2018"]}]},
+    {"equipment_id":"plate_loaded_leg_press","exercise_options":[{"exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["martin_fuentes_2020","openstax_lower","vigotsky_2018"]}]},
+    {"equipment_id":"prone_leg_curl","exercise_options":[{"exercise_id":"ex_d7398d9f-d928-4d2e-94e9-74e201da55c5","relation_type":"supported_exercise","configuration_label":null,"confidence":"high","source_refs":["maeo_2021","openstax_lower"]}]},
+    {"equipment_id":"rear_delt_pec_fly","exercise_options":[{"exercise_id":"ex_4cd2433e-80b1-478a-b8df-73fc6ef80962","relation_type":"supported_exercise","configuration_label":"Oiseaux / Rear Delt","confidence":"moderate","source_refs":["franke_2015","life_fitness_catalog_2024","nih_deltoid","openstax_upper","vigotsky_2018"]}]},
+    {"equipment_id":"rotary_torso","exercise_options":[{"exercise_id":"ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["nih_abdominal_wall","openstax_back","openstax_trunk"]}]},
+    {"equipment_id":"seated_leg_curl","exercise_options":[{"exercise_id":"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163","relation_type":"supported_exercise","configuration_label":null,"confidence":"high","source_refs":["maeo_2021","openstax_lower"]}]},
+    {"equipment_id":"seated_row","exercise_options":[{"exercise_id":"ex_33f79331-871c-4eed-babe-346e53a99070","relation_type":"supported_exercise","configuration_label":null,"confidence":"moderate","source_refs":["franke_2015","lehman_2004","openstax_upper"]}]}
+  ]
+}

@@ -48,6 +48,7 @@ training_knowledge_generated = custom_target(
     meson.project_source_root() / 'catalog/movement-patterns-v1.json',
     meson.project_source_root() / 'catalog/exercise-knowledge-v1.json',
     meson.project_source_root() / 'catalog/equipment-knowledge-v1.json',
+    meson.project_source_root() / 'catalog/equipment-exercise-relations-v2.json',
     meson.project_source_root() / 'catalog/training-knowledge-audit-v1.json',
   ],
   output: 'training_knowledge_generated.c',

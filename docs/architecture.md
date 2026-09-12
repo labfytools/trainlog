@@ -83,7 +83,7 @@ It consumes core services for:
 - synchronization log/detail display.
 
 APP_SHELL_V1 places these existing capabilities below seven platform-neutral
-sections: Accueil, Séances, Exercices, Équipements, Statistiques,
+sections: Accueil, Séances, Exercices, Statistiques,
 Synchronisation and Paramètres. The controller owns route history, focus,
 overlays and transient leave guards; rendering owns no persistence, SQLite,
 transport, or synchronization decisions. Navigation and redraw alone never
@@ -168,7 +168,7 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v12 is canonical long-term history. Its v9 -> v10
+Desktop SQLite schema v13 is canonical long-term history. Its v9 -> v10
 migration losslessly rebuilds only `performed_sets` so actual `weight_kg` may
 be finite `>= 0`; the column already existed and targets/max results retain
 their strictly-positive contracts. `session_exercises`
@@ -203,7 +203,7 @@ exercise_body_zone_sync
 
 ### Android
 
-Android has an independent local SQLite schema, currently v12. Completed and
+Android has an independent local SQLite schema, currently v13. Completed and
 draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
 resuming a completed Test max records its stable source session in the one
 durable draft.
@@ -537,14 +537,17 @@ reconciliation.
 
 ## 14. Training knowledge V1 boundary
 
-`TRAINING_KNOWLEDGE_V1` is a read-only composition layer. Six versioned JSON
+`TRAINING_KNOWLEDGE_V1` is a read-only composition layer. Versioned JSON
 catalogs under `catalog/` are the only authored scientific source; generated C
 data and Android asset loading derive from them. They contain cited anatomy,
 movement, exercise and equipment knowledge, not user history. The generated
 knowledge audit is evidence output, not an editable source.
 
 The desktop `training_knowledge.h` API exposes immutable catalog records and
-stable-ID queries. `training_context.h` combines one exact persisted exercise
+stable-ID queries. `EQUIPMENT_KNOWLEDGE_V2` adds a separate immutable relation artifact and bounded
+equipment/exercise/zone queries. Zone queries are strictly zone → resolved
+exercise → equipment relation; equipment labels never infer anatomy.
+`training_context.h` combines one exact persisted exercise
 with its stored BODY ZONE relations, optional science, compatible equipment,
 latest explicit maximum, and bounded occurrence/set history under one read
 snapshot. Android provides the corresponding catalog and repository context.

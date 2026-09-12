@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — MACHINE_EXERCISE_MODEL_V1
+
+- Add desktop and Android schema v13 for machine-specific exercise metadata.
+- Preserve stable IDs for pure renames and introduce the five approved UUIDv4
+  identities for Plate Loaded Leg Press, Treadmill, Pec Fly, Chin Assist, and
+  Dip Assist.
+- Make exact manifest splits transactional and idempotent while preserving all
+  occurrence child facts and unresolved provenance.
+- Remove Equipment from normal Android and TUI navigation while retaining its
+  Phase 1 storage and sync compatibility roles.
+
 - Added `PERCENT_MAX_INPUT_V1` as a transient user calculator in TUI planning
   and both generator previews: exact exercise/equipment external-load context,
   integer 1..100, `MAX × percentage / 100`, no recommendation, and only the

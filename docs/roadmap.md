@@ -1,5 +1,16 @@
 # Roadmap
 
+## MACHINE_EXERCISE_MODEL_V1 — implementation awaiting human review
+
+Phase 1 introduces additive schema v13, machine-facing exercise identities,
+exercise-owned load semantics, reusable scientific profile references, exact
+manifest splits, and exercise-centric Android/TUI navigation. Real database
+migration remains gated on copy validation and human review.
+
+`EQUIPMENT_SCHEMA_CLEANUP_V1` remains a later phase after real-world
+validation; it may remove obsolete legacy tables, fields, companions, and UI
+only with a new explicit migration and compatibility decision.
+
 This file is the canonical product roadmap for Trainlog.
 
 Historical implementation detail belongs in Git history and `docs/reviews`.
@@ -479,3 +490,7 @@ Exact parsed instants govern boundaries and ordering. Assistance, missing values
 and incomparable equipment contexts are never coerced into progress values.
 Malformed legacy timestamps are skipped by the projection with a visible warning
 while valid statistics remain available.
+Future equipment identification may collect manufacturer, model, name, photo,
+pictogram, and notes to form a proposal which the user must verify before
+persistence. OCR/image recognition and a custom-equipment relation schema are
+not part of EQUIPMENT_KNOWLEDGE_V2.

@@ -73,8 +73,8 @@ class BodyZoneHomeSemanticsTest {
         compose.onNodeWithTag("body-map-front", useUnmergedTree = true).onChildren().assertCountEquals(0)
         compose.onNodeWithTag("body-map-back", useUnmergedTree = true).onChildren().assertCountEquals(0)
         compose.onNodeWithText("1. Pectoraux · Priorité relative").assertExists()
-        compose.onNodeWithText("1 exposition principale sur 7 j").assertExists()
-        listOf("fait(s) primaire(s)", "fait(s) secondaire(s)", "secondaire pondéré plus faiblement").forEach {
+        compose.onNodeWithText("Travail principal sur 7 j : 1").assertExists()
+        listOf("exposition principale sur 7 j", "exposition secondaire sur 7 j", "fait(s) primaire(s)", "fait(s) secondaire(s)", "secondaire pondéré plus faiblement").forEach {
             compose.onAllNodesWithText(it, substring = true).assertCountEquals(0)
         }
     }

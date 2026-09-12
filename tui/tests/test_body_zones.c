@@ -90,11 +90,11 @@ static int relation_and_filter_contract(void)
         true, false, false, results, 8U, &count) == TRAINLOG_STATUS_OK);
     CHECK(count == 1U && strcmp(results[0].exercise_id, created.exercise_id) == 0);
     CHECK(trainlog_database_list_exercises_filtered(database, "", "chest",
-        false, false, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 1U);
+        false, false, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 3U);
     CHECK(trainlog_database_list_exercises_filtered(database, "", "arms",
-        false, false, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 1U);
+        false, false, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 3U);
     CHECK(trainlog_database_list_exercises_filtered(database, "", "arms",
-        false, true, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 0U);
+        false, true, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 1U);
     CHECK(trainlog_database_list_exercises_filtered(database, "chest", "back",
         true, false, false, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 0U);
     CHECK(trainlog_database_list_exercises_filtered(database, "", "back",
@@ -157,7 +157,8 @@ static int relation_and_filter_contract(void)
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
     CHECK(trainlog_database_list_exercises_filtered(database, "", NULL,
-        true, false, true, results, 8U, &count) == TRAINLOG_STATUS_OK && count == 1U);
+        true, false, true, results, 8U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 3U);
     trainlog_database_close(database);
     database = NULL;
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
@@ -186,6 +187,7 @@ static int migration_preserves_identity_and_history(void)
         "name TEXT NOT NULL,normalized_name TEXT NOT NULL UNIQUE,tracking_mode TEXT NOT NULL,"
         "recording_mode TEXT NOT NULL,data_fields INTEGER NOT NULL);"
         "CREATE TABLE sessions(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL UNIQUE);"
+        "CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,exercise_row_id INTEGER,entry_id TEXT,equipment_id TEXT);"
         "INSERT INTO exercises VALUES(7,'ex_b432623f-bfe9-4daf-a653-60ec7fdffbde',"
         "'Leg press','leg press','reps','sets',0);"
         "INSERT INTO sessions VALUES(3,'se_preserved');"
@@ -193,7 +195,7 @@ static int migration_preserves_identity_and_history(void)
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
-    CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK && version == 12);
+    CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK && version == 13);
     CHECK(trainlog_database_list_exercise_body_zones(database,
         "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde", relations, 4U, &count) == TRAINLOG_STATUS_OK);
     CHECK(count == 2U);

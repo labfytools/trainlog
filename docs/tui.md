@@ -13,7 +13,7 @@ Desktop SQLite is the canonical long-term history.
 The persistent shell has seven root sections:
 
 ```text
-Accueil | Séances | Exercices | Équipements | Statistiques | Synchronisation | Paramètres
+Accueil | Séances | Exercices | Statistiques | Synchronisation | Paramètres
 ```
 
 `Séances` contains **Séance en cours**, **Programmer une séance**, **Nouvelle
@@ -281,7 +281,9 @@ catalog.
 
 ## 7. Equipment
 
-`Équipements` (direct alias `4/F4`) provides supplied-equipment browsing,
+The legacy Equipment catalogue is no longer a normal top-level workflow.
+Its storage and compatibility APIs remain available for old history and peers.
+Historically, `Équipements` (direct alias `4/F4`) provided supplied-equipment browsing,
 search, detail, and custom-equipment creation and selection. Supplied definitions are generated
 from `catalog/equipment-v1.json`; user-created definitions persist in desktop
 SQLite and synchronize separately through definitions V1.
@@ -635,3 +637,6 @@ passed. See [Training knowledge system V1](domain/knowledge_system.md).
 The normal Sessions hub has current/manual/completed paths only; the retained
 SESSION_GENERATOR_V1 route is not advertised. Physical `/` and F7 Rechercher
 dispatch the one registered list-search action on supported lists.
+Equipment Detail lists V2 verified exercise options and confidence within the
+72x20 layout. The generated core also exposes bounded reverse and BODY ZONE
+queries without changing Body Focus geometry or session generation.

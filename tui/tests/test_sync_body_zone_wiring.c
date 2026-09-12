@@ -403,7 +403,7 @@ static bool database_state(
     CHECK(sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM exercises", -1,
                              &statement, NULL) == SQLITE_OK);
     CHECK(sqlite3_step(statement) == SQLITE_ROW);
-    CHECK(sqlite3_column_int(statement, 0) == 1);
+    CHECK(sqlite3_column_int(statement, 0) == 6);
     CHECK(sqlite3_finalize(statement) == SQLITE_OK);
     statement = NULL;
     if (source_should_resolve) {
@@ -493,9 +493,15 @@ static bool run_success_case(
     CHECK(prepare_database(case_root, persistent_alias, false,
                            database_path, sizeof(database_path)));
     CHECK(write_artifacts(SOURCE_ID, SOURCE_ID, persistent_alias));
-    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
-        persistent_alias ? TRAINLOG_SYNC_BIDIRECTIONAL :
-            TRAINLOG_SYNC_ANDROID_TO_PC, &report) == TRAINLOG_STATUS_OK);
+    {
+        TrainlogStatus status = trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+            persistent_alias ? TRAINLOG_SYNC_BIDIRECTIONAL :
+                TRAINLOG_SYNC_ANDROID_TO_PC, &report);
+        if (status != TRAINLOG_STATUS_OK) {
+            (void)fprintf(stderr, "sync failure: %s\n", report.error);
+        }
+        CHECK(status == TRAINLOG_STATUS_OK);
+    }
     CHECK(report.success);
     CHECK(database_state(database_path, persistent_alias, "back", "arms", 2U));
     CHECK(successful_journal(case_root, report.sync_id));

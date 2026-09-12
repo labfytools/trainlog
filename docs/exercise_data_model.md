@@ -1,5 +1,24 @@
 # Exercise data model
 
+## Machine-specific performance identity (schema v13)
+
+Normal selection is exercise-centric: a fixed machine/movement is represented
+by one stable `exercise_id`. `Leg Press` and `Plate Loaded Leg Press`, or
+`Rear Delt` and `Pec Fly`, therefore keep independent occurrences, MAX results,
+and working-load series even when they share a frame or scientific profile.
+
+The additive exercise metadata is `load_semantics` (`none`, `external`,
+`assistance`, `bodyweight`, or `cardio`), nullable `machine_variant` and
+`machine_provenance`, nullable `scientific_profile_id`, explicit
+`science_state`, and nullable `legacy_equipment_id`. Null metadata is valid for
+custom or unresolved exercises and must never be inferred from the name.
+Occurrence `load_mode` remains a separate recorded fact.
+
+Scientific profiles are versioned knowledge identities. They may be shared by
+several exercises to reuse movement, joint-action, muscle, evidence, and BODY
+ZONE knowledge. They are never a performance grouping key. Seated Leg and
+Treadmill deliberately have no profile in V1.
+
 ## Status
 
 ```text
@@ -356,3 +375,7 @@ independently verified; final validation passed.
 Exercise names are mutable display metadata. The versioned canonical-name map
 applies only to listed stable IDs and never makes two distinct exercises,
 equipment contexts, MAX observations, or historical occurrences equivalent.
+Equipment compatibility is an additive relation between a physical equipment
+ID and an already-known canonical exercise UUID. It is not exercise identity,
+anatomy, occurrence history, or MAX context. Generic and custom equipment stay
+unassociated unless an explicit verified relation is representable.

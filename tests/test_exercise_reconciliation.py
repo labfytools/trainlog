@@ -559,7 +559,7 @@ def main():
         with sqlite3.connect(names_db) as connection:
             assert connection.execute(
                 "SELECT name FROM exercises WHERE exercise_id=?", (SEATED_CURL_ID,)
-            ).fetchone()[0] == "Flexion de genou assise"
+            ).fetchone()[0] == "Seated Leg Curl"
             assert connection.execute(
                 "SELECT name FROM exercises WHERE exercise_id=?", (SEATED_LEG_DISTINCT_ID,)
             ).fetchone()[0] == "Seated Leg"
@@ -573,7 +573,7 @@ def main():
         for artifact in (names_catalog, names_mobile):
             exercises = json.loads(artifact.read_text(encoding="utf-8"))["exercises"]
             by_id = {item["exercise_id"]: item["name"] for item in exercises}
-            assert by_id[SEATED_CURL_ID] == "Flexion de genou assise"
+            assert by_id[SEATED_CURL_ID] == "Seated Leg Curl"
             assert by_id[SEATED_LEG_DISTINCT_ID] == "Seated Leg"
             assert by_id["ex_fcc75fa7-671e-4868-bab2-47033128dfb7"] == "Custom curl"
 

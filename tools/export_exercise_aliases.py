@@ -15,8 +15,8 @@ def main():
     args = parser.parse_args()
     con = sqlite3.connect(args.database)
     try:
-        if con.execute("PRAGMA user_version").fetchone()[0] != 12:
-            raise ValueError("schema desktop v12 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13):
+            raise ValueError("schema desktop v12/v13 requis")
         rows = con.execute(
             "SELECT source_exercise_id,canonical_exercise_id FROM exercise_aliases "
             "ORDER BY source_exercise_id COLLATE BINARY"

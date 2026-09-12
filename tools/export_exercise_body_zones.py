@@ -40,8 +40,8 @@ def main():
     connection = sqlite3.connect(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12):
-            raise ValueError("schema desktop v11/v12 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13):
+            raise ValueError("schema desktop v11/v12/v13 requis")
         exercises = []
         for exercise in connection.execute("SELECT id,exercise_id FROM exercises ORDER BY exercise_id"):
             if EXERCISE_ID_PATTERN.fullmatch(exercise["exercise_id"]) is None:

@@ -841,10 +841,13 @@ private fun SessionExerciseForm(
 
     var equipmentRevision by remember(key) { mutableStateOf(0) }
     val equipmentEntries = remember(equipmentRevision) { repository.listEquipment() }
+    val fixedEquipmentId = remember(exercise.exerciseId) {
+        repository.machineExerciseLegacyEquipmentId(exercise.exerciseId)
+    }
     var equipmentSearch by remember(key) { mutableStateOf("") }
     var customEquipmentName by remember(key) { mutableStateOf("") }
     var selectedEquipmentId by remember(key) {
-        mutableStateOf(initialForm.selectedEquipmentId)
+        mutableStateOf(initialForm.selectedEquipmentId ?: fixedEquipmentId)
     }
     var targetChoice by remember(key) {
         mutableStateOf(if (initialPlan?.weightKg != null) ManualTargetChoice.KG
@@ -871,34 +874,38 @@ private fun SessionExerciseForm(
             color = colors.accent,
         )
 
-        TrainlogInputField(
-            label = "Machine / équipement (optionnel)",
-            value = equipmentSearch,
-            onValueChange = { equipmentSearch = it },
-        )
-        TrainlogInputField(
-            label = "Nouvelle machine",
-            value = customEquipmentName,
-            onValueChange = { customEquipmentName = it },
-        )
-        TrainlogAction(
-            label = "Créer la machine",
-            description = "L'ajouter à votre catalogue puis la sélectionner pour cette entrée.",
-            accent = colors.success,
-            onClick = {
-                when (val result = repository.createCustomEquipment(customEquipmentName)) {
-                    is CreateEquipmentResult.Created -> {
-                        customEquipmentName = ""
-                        equipmentRevision += 1
-                        selectedEquipmentId = result.equipment.equipmentId
-                        onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText, maxWeightText))
+        if (fixedEquipmentId == null) {
+            /* Legacy/custom/unresolved rows retain the compatibility selector;
+             * resolved fixed machines never require a second user choice. */
+            TrainlogInputField(
+                label = "Contexte historique (optionnel)",
+                value = equipmentSearch,
+                onValueChange = { equipmentSearch = it },
+            )
+            TrainlogInputField(
+                label = "Nouveau contexte historique",
+                value = customEquipmentName,
+                onValueChange = { customEquipmentName = it },
+            )
+            TrainlogAction(
+                label = "Créer le contexte",
+                description = "Compatibilité temporaire pour un exercice custom ou non résolu.",
+                accent = colors.success,
+                onClick = {
+                    when (val result = repository.createCustomEquipment(customEquipmentName)) {
+                        is CreateEquipmentResult.Created -> {
+                            customEquipmentName = ""
+                            equipmentRevision += 1
+                            selectedEquipmentId = result.equipment.equipmentId
+                            onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText, maxWeightText))
+                        }
+                        CreateEquipmentResult.Invalid -> error = "Donnez un nom de contexte valide."
+                        CreateEquipmentResult.Conflict -> error = "Ce contexte existe déjà."
+                        is CreateEquipmentResult.DatabaseError -> error = "Contexte non créé : ${result.message}"
                     }
-                    CreateEquipmentResult.Invalid -> error = "Donnez un nom de machine valide."
-                    CreateEquipmentResult.Conflict -> error = "Cette machine existe déjà."
-                    is CreateEquipmentResult.DatabaseError -> error = "Machine non créée : ${result.message}"
-                }
-            },
-        )
+                },
+            )
+        }
         val selectedEquipment = equipmentEntries.firstOrNull { it.equipmentId == selectedEquipmentId }
         val percentResult = remember(
             exercise.exerciseId, selectedEquipmentId, targetPercentText,
@@ -911,7 +918,7 @@ private fun SessionExerciseForm(
                 )
             else null
         }
-        if (selectedEquipment != null) {
+        if (selectedEquipment != null && fixedEquipmentId == null) {
             TrainlogAction(
                 label = "✓ ${selectedEquipment.displayName}",
                 description = selectedEquipment.labelName.ifBlank { "Équipement sélectionné." },
@@ -922,7 +929,7 @@ private fun SessionExerciseForm(
                 },
             )
         }
-        repository.searchEquipment(equipmentSearch).take(8).forEach { equipment ->
+        if (fixedEquipmentId == null) repository.searchEquipment(equipmentSearch).take(8).forEach { equipment ->
             TrainlogAction(
                 label = if (equipment.equipmentId == selectedEquipmentId) "✓ ${equipment.displayName}" else equipment.displayName,
                 description = equipment.labelName.ifBlank { equipment.type },

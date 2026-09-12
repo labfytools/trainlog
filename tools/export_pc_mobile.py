@@ -68,8 +68,8 @@ def main():
     con.row_factory = sqlite3.Row
     try:
         schema_version = con.execute("PRAGMA user_version").fetchone()[0]
-        if schema_version not in (11, 12) and not (args.version == 2 and schema_version == 10):
-            raise ValueError("schema desktop v11/v12 requis (v10 accepté pour export V2 explicite)")
+        if schema_version not in (11, 12, 13) and not (args.version == 2 and schema_version == 10):
+            raise ValueError("schema desktop v11/v12/v13 requis (v10 accepté pour export V2 explicite)")
         known_equipment = supplied_equipment_ids()
         canonical_names = load_exercise_names()
         known_equipment.update(row[0] for row in con.execute(

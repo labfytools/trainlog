@@ -81,7 +81,7 @@ Implemented:
   F7 actions, and restored focus after overlays/routes);
 - UTF-8 cell-aware scrolling training-knowledge screen, tested at the 72x20
   minimum terminal;
-- SQLite schema v12, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v13, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
   definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
   rebuilds only `performed_sets` to permit explicit zero actual loads while
@@ -111,7 +111,7 @@ Implemented:
 Primary navigation is now shared with Android:
 
 ```text
-Accueil | Séances | Exercices | Équipements | Statistiques | Synchronisation | Paramètres
+Accueil | Séances | Exercices | Statistiques | Synchronisation | Paramètres
 ```
 
 `Séances` contains the current draft, the existing generator, manual entry,
@@ -181,14 +181,21 @@ top bar and content host keep navigation separate from page ownership.
 
 ## Training knowledge V1
 
-The implemented read-only training-knowledge layer loads six versioned JSON
+The implemented read-only training-knowledge layer loads shared versioned JSON
 catalogs as the sole authored scientific source, generates the immutable C
 catalog representation, and loads the same assets on Android. It has no
 database migration, no auto-seeding, and no synchronization artifact. The
-desktop database remains schema v12 and Android remains schema v12.
+desktop and Android databases are schema v13. Schema v13 is additive: exercise
+rows own machine-facing load semantics, optional legacy equipment provenance,
+an optional scientific profile, and an explicit resolved/unresolved science
+state. Legacy equipment tables and occurrence columns remain intact.
 
 Desktop `training_knowledge.h` and Android `TrainingKnowledgeCatalog` expose
-source-linked science lookups and resolved-candidate filters. Desktop
+source-linked science lookups and resolved-candidate filters. The additive
+`equipment-exercise-relations-v2.json` catalog is the canonical
+equipment-to-exercise compatibility source. Equipment owns physical identity,
+load semantics, configuration labels, confidence, and source references only;
+exercise knowledge exclusively owns muscles, movements, and BODY ZONES. Desktop
 `training_context.h` and Android `TrainlogRepository` compose one real runtime
 exercise with its persisted zones, compatible equipment, latest explicit MAX,
 and bounded chronological occurrence/set history. Persisted zones remain

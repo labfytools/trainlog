@@ -20,6 +20,7 @@ class TrainingKnowledgeCatalogTest {
     private val names = listOf(
         "science-references-v1.json", "muscles-v1.json", "joint-actions-v1.json",
         "movement-patterns-v1.json", "exercise-knowledge-v1.json", "equipment-knowledge-v1.json",
+        "equipment-exercise-relations-v2.json",
     )
 
     @Test
@@ -38,6 +39,15 @@ class TrainingKnowledgeCatalogTest {
         val multifunction = catalog.getEquipmentKnowledge("rear_delt_pec_fly")
         assertEquals(2, multifunction?.capabilities?.size)
         assertTrue(catalog.listCompatibleExercises("rear_delt_pec_fly").any { it.exerciseId == "ex_4cd2433e-80b1-478a-b8df-73fc6ef80962" })
+        assertEquals(listOf("ex_4cd2433e-80b1-478a-b8df-73fc6ef80962"),
+            catalog.listExercisesForEquipment("rear_delt_pec_fly").map { it.exerciseId })
+        assertTrue(catalog.listExercisesForEquipment("functional_trainer").isEmpty())
+        assertTrue(catalog.listExercisesForEquipment("assisted_dip_chin_machine").isEmpty())
+        assertFalse(catalog.listExercisesForEquipment("seated_leg_curl")
+            .any { it.exerciseId == "ex_617007f9-7420-4408-91b9-8ffb77900f13" })
+        assertEquals(listOf("leg_press", "plate_loaded_leg_press"),
+            catalog.listEquipmentForExercise(legPress.exerciseId).map { it.equipmentId })
+        assertFalse(catalog.listEquipmentForBodyZone("chest").any { it.equipmentId == "rear_delt_pec_fly" })
         assertNotNull(catalog.getMuscle("deltoid_posterior"))
         assertNotNull(catalog.getJointAction("shoulder_horizontal_abduction"))
         assertNotNull(catalog.getReference(legPress.sourceRefs.first()))

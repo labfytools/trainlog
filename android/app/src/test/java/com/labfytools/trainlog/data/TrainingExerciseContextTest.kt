@@ -59,6 +59,23 @@ class TrainingExerciseContextTest {
     }
 
     @Test
+    fun retiredAliasResolvesToCanonicalV2EquipmentContextExactlyOnce() {
+        seedFixture()
+        SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                "INSERT INTO exercise_aliases(source_exercise_id,canonical_exercise_id) VALUES(?,?);",
+                arrayOf(RETIRED_LEG_PRESS_ID, LEG_PRESS_ID),
+            )
+        }
+
+        val context = repository.getTrainingExerciseContext(RETIRED_LEG_PRESS_ID)!!
+
+        assertEquals(LEG_PRESS_ID, context.exercise.exerciseId)
+        assertEquals(LEG_PRESS_ID, context.knowledge!!.exerciseId)
+        assertEquals(1, context.compatibleEquipment.count { it.equipmentId == "leg_press" })
+    }
+
+    @Test
     fun continuousOccurrenceHasNoArtificialSetsAndInvalidPagingFails() {
         seedFixture()
         val continuous = repository.getTrainingExerciseContext(CONTINUOUS_ID)!!.recentPerformance.occurrences.single()
@@ -202,5 +219,6 @@ class TrainingExerciseContextTest {
     companion object {
         private const val LEG_PRESS_ID = "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde"
         private const val CONTINUOUS_ID = "ex_00000000-0000-4000-8000-000000000001"
+        private const val RETIRED_LEG_PRESS_ID = "ex_00000000-0000-4000-8000-000000000099"
     }
 }

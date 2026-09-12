@@ -35,11 +35,11 @@ class BodyZoneHomePresentationTest {
         }
     }
 
-    @Test fun exposureLabelsUseNaturalFrenchSingularAndPlural() {
-        assertEquals("1 exposition principale", exposureCountLabel(1, "principale"))
-        assertEquals("2 expositions principales", exposureCountLabel(2, "principale"))
-        assertEquals("1 exposition secondaire", exposureCountLabel(1, "secondaire"))
-        assertEquals("3 expositions secondaires", exposureCountLabel(3, "secondaire"))
+    @Test fun recentWorkLabelsAreNeutralFactualCounts() {
+        assertEquals("Travail principal sur 7 j : 1", recentWorkLabel(1, "principal"))
+        assertEquals("Travail principal sur 7 j : 2", recentWorkLabel(2, "principal"))
+        assertEquals("Travail secondaire sur 7 j : 1", recentWorkLabel(1, "secondaire"))
+        assertEquals("Travail secondaire sur 7 j : 3", recentWorkLabel(3, "secondaire"))
     }
 
     @Test fun recentPrioritizedExposureIsPresentedAsRelativePriority() {
@@ -61,7 +61,8 @@ class BodyZoneHomePresentationTest {
         )
 
         assertEquals("Priorité relative", homeStateLabel(status))
-        assertEquals("2 expositions principales sur 7 j", recommendationReason(status))
+        assertEquals("Travail principal sur 7 j : 2", recommendationReason(status))
+        assertFalse(recommendationReason(status).contains("exposition"))
         assertFalse(recommendationReason(status).contains("fait(s)"))
         assertFalse(recommendationReason(status).contains("pondéré"))
     }

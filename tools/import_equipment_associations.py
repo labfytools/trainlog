@@ -8,6 +8,31 @@ from pathlib import Path
 FORMAT = "trainlog-equipment-associations"
 VERSION = 2
 
+# CONTRACT: MACHINE_EXERCISE_MODEL_V1 split only these completed occurrences.
+# The legacy exercise IDs are deliberately not aliases: other occurrences of
+# the same source exercise remain valid unsplit history.
+MACHINE_EXERCISE_SPLITS = {
+    ("se_c0d07454-b58b-403e-8b79-744619815fc5", "sxe_draft_legacy_7"):
+        ("ex_b432623f-bfe9-4daf-a653-60ec7fdffbde",
+         "ex_0e26c06f-a458-40a4-be20-4ed219ede30d"),
+    ("se_c0d07454-b58b-403e-8b79-744619815fc5",
+     "sxe_093c1331-beaa-4b69-91b3-240292709be6"):
+        ("ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d",
+         "ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2"),
+    ("se_ac3908d6-8e3e-4ac6-81a6-62dc2c39075a",
+     "sxe_f25142c8-455e-4346-9bfc-31d0989e275d"):
+        ("ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d",
+         "ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2"),
+    ("se_8a7ac0cb-9e67-42b6-bac9-179bbedf0024",
+     "sxe_f2242691-ba6c-48a0-b938-a1f744375d75"):
+        ("ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d",
+         "ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2"),
+    ("se_8e6baa18-53ff-486b-b011-02a15291789e",
+     "sxe_9f8882f4-069e-49d5-8216-19d16b467e4a"):
+        ("ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d",
+         "ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2"),
+}
+
 
 def fail(message):
     raise ValueError(message)
@@ -55,11 +80,11 @@ def validate_associations(associations, known):
 
 
 def load_mobile_occurrences(path):
-    """Return the source V2 identity claimed for every stable occurrence."""
+    """Return the current V2/V3 identity claimed for every stable occurrence."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
         payload.get("format") != "trainlog-mobile-export"
-        or payload.get("version") != 2
+        or payload.get("version") not in (2, 3)
         or not isinstance(payload.get("sessions"), list)
     ):
         fail("snapshot mobile V2 de preuve invalide")
@@ -89,6 +114,18 @@ def load_mobile_occurrences(path):
                 fail("identité du snapshot mobile V2 de preuve invalide")
             occurrences[key] = exercise_id
     return occurrences
+
+
+def approved_machine_split(session_id, entry_id, incoming_id, local_id,
+                           mobile_occurrences):
+    """Corroborate one frozen completed-history split with the current snapshot."""
+    expected = MACHINE_EXERCISE_SPLITS.get((session_id, entry_id))
+    if expected != (incoming_id, local_id):
+        return False
+    # INVARIANT: the stale companion alone is never authority. The mobile
+    # snapshot selected and imported in this same sync must already carry the
+    # exact v13 target identity for this stable completed occurrence.
+    return mobile_occurrences.get((session_id, entry_id)) == local_id
 
 
 def canonical_exercise_id(connection, exercise_id):
@@ -123,7 +160,7 @@ def main():
         "--mobile-export",
         type=Path,
         help=(
-            "snapshot mobile V2 importé juste avant ce companion; requis "
+            "snapshot mobile V2/V3 importé juste avant ce companion; requis "
             "pour prouver un exercise_id réconcilié"
         ),
     )
@@ -135,8 +172,8 @@ def main():
         fail("clés extension équipement invalides")
     connection = sqlite3.connect(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12):
-            fail("schema desktop v8 à v12 requis")
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13):
+            fail("schema desktop v8 à v13 requis")
         known = load_catalog(args.catalog)
         known.update(row[0] for row in connection.execute(
             "SELECT equipment_id FROM custom_equipment"))
@@ -170,12 +207,15 @@ def main():
                     "SELECT 1 FROM exercises WHERE exercise_id=?;",
                     (exercise_id,),
                 ).fetchone() is not None
-                if proof != exercise_id or incoming_still_exists:
+                alias_reconciliation = proof == exercise_id and not incoming_still_exists
+                split_reconciliation = approved_machine_split(
+                    session_id, entry_id, incoming_canonical,
+                    stored_canonical, mobile_occurrences)
+                if not alias_reconciliation and not split_reconciliation:
                     fail(f"conflit exercice association: {session_id}/{entry_id}")
-                # CONTRACT: this fallback is only for schemas/runs without a
-                # persistent alias. import_mobile_export may have removed a
-                # profile-compatible duplicate; the selected V2 snapshot then
-                # proves the stale source identity for this stable occurrence.
+                # CONTRACT: the first fallback is only for schemas/runs without
+                # a persistent alias. The second is the closed v13 split table
+                # above; no source ID becomes a global one-to-many alias.
             # INVARIANT: identity reconciliation never changes session_id,
             # entry_id, equipment_id, or any persisted occurrence. A distinct
             # live canonical exercise therefore remains a hard conflict.

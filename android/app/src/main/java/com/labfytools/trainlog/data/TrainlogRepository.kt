@@ -655,6 +655,18 @@ class TrainlogRepository(
     fun getMovementPatternKnowledge(patternId: String): MovementPatternKnowledge? = trainingKnowledge.getMovementPattern(patternId)
     fun getScienceReference(refId: String): ScienceReference? = trainingKnowledge.getReference(refId)
     fun getEquipmentKnowledge(equipmentId: String): EquipmentKnowledge? = trainingKnowledge.getEquipmentKnowledge(equipmentId)
+    fun listEquipmentExerciseOptions(equipmentId: String): List<Pair<EquipmentExerciseRelation, ExerciseKnowledge>> =
+        trainingKnowledge.listRelationsForEquipment(equipmentId).mapNotNull { relation ->
+            trainingKnowledge.getExerciseKnowledge(relation.exerciseId)?.let { relation to it }
+        }
+    fun listEquipmentForKnownExercise(exerciseId: String): List<EquipmentKnowledge> =
+        resolveExerciseId(database.readableDatabase, exerciseId).let { canonicalExerciseId ->
+            // INVARIANT: retired creator IDs canonicalize exactly once before
+            // immutable equipment relations are queried; aliases are not extra options.
+            trainingKnowledge.getExerciseKnowledge(canonicalExerciseId)?.let {
+                trainingKnowledge.listEquipmentForExercise(canonicalExerciseId)
+            }.orEmpty()
+        }
     fun getScientificBodyZoneMapping(exerciseId: String): ScientificBodyZoneMapping? = trainingKnowledge.getScientificBodyZoneMapping(exerciseId)
     fun listExercisesByMovementPattern(patternId: String): List<ExerciseKnowledge> = trainingKnowledge.listExercisesByMovementPattern(patternId)
     fun listExercisesByMuscle(muscleId: String, role: MuscleRole): List<ExerciseKnowledge> = trainingKnowledge.listExercisesByMuscle(muscleId, role)
@@ -690,6 +702,20 @@ class TrainlogRepository(
 
     fun searchEquipment(query: String): List<EquipmentCatalogEntry> =
         EquipmentCatalog.search(listEquipment(), query)
+
+    /**
+     * CONTRACT: resolved machine exercises carry their Phase-1 legacy
+     * equipment context themselves. The UI may write this compatibility ID
+     * without asking the user for a second identity; NULL remains explicit for
+     * custom and unresolved exercises and is never inferred from a name.
+     */
+    fun machineExerciseLegacyEquipmentId(exerciseId: String): String? =
+        database.readableDatabase.rawQuery(
+            "SELECT legacy_equipment_id FROM exercises WHERE exercise_id=?;",
+            arrayOf(resolveExerciseId(database.readableDatabase, exerciseId)),
+        ).use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0)) null else cursor.getString(0)
+        }
 
     /** Custom equipment is local user data, not an edit to the bundled manifest. */
     fun createCustomEquipment(name: String): CreateEquipmentResult {
@@ -4376,7 +4402,11 @@ class TrainlogRepository(
         val ownsTransaction = !db.inTransaction()
         if (ownsTransaction) db.beginTransactionNonExclusive()
         return try {
-            val exercise = readExerciseProfileExact(db, exerciseId) ?: return null
+            // INVARIANT: retired creator IDs canonicalize once in this read
+            // snapshot, so profile, scientific metadata, relations, and actual
+            // history all describe the same exercise without alias duplicates.
+            val canonicalExerciseId = resolveExerciseId(db, exerciseId)
+            val exercise = readExerciseProfileExact(db, canonicalExerciseId) ?: return null
             val direct = buildList {
                 exercise.primaryZoneId?.let(::add)
                 addAll(exercise.secondaryZoneIds)
@@ -4386,16 +4416,16 @@ class TrainlogRepository(
                 expanded += zoneId
                 expanded += bodyZones.ancestors(zoneId).map { it.zoneId }
             }
-            val knowledge = trainingKnowledge.getExerciseKnowledge(exerciseId)
-            val compatible = knowledge?.equipmentIds.orEmpty().mapNotNull(trainingKnowledge::getEquipmentKnowledge)
+            val knowledge = trainingKnowledge.getExerciseKnowledge(canonicalExerciseId)
+            val compatible = knowledge?.let { trainingKnowledge.listEquipmentForExercise(canonicalExerciseId) }.orEmpty()
             val result = TrainingExerciseContext(
                 exercise = exercise,
                 persistedDirectZoneIds = direct,
                 persistedZoneIdsWithAncestors = bodyZones.zones.map { it.zoneId }.filter { it in expanded },
                 knowledge = knowledge,
                 compatibleEquipment = compatible,
-                latestExplicitMax = readLatestExplicitMax(db, exerciseId),
-                recentPerformance = readExerciseOccurrencePage(db, exerciseId, occurrenceLimit, null, setPreviewLimit),
+                latestExplicitMax = readLatestExplicitMax(db, canonicalExerciseId),
+                recentPerformance = readExerciseOccurrencePage(db, canonicalExerciseId, occurrenceLimit, null, setPreviewLimit),
             )
             if (ownsTransaction) db.setTransactionSuccessful()
             result
@@ -5783,7 +5813,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    12,
+    13,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -5909,6 +5939,11 @@ private class TrainlogDatabaseHelper(
         if (version < 12 && newVersion >= 12) {
             createExerciseAliasTable(db)
             version = 12
+        }
+
+        if (version < 13 && newVersion >= 13) {
+            migrateMachineExercisesToVersionThirteen(db)
+            version = 13
         }
 
         if (version != newVersion) {
@@ -6198,6 +6233,14 @@ private class TrainlogDatabaseHelper(
                         data_fields >= 0 AND
                         (data_fields & ~3) = 0
                     ),
+                load_semantics TEXT
+                    CHECK(load_semantics IN ('none','external','assistance','bodyweight','cardio')),
+                machine_variant TEXT,
+                machine_provenance TEXT,
+                scientific_profile_id TEXT,
+                science_state TEXT NOT NULL DEFAULT 'unresolved'
+                    CHECK(science_state IN ('resolved','unresolved')),
+                legacy_equipment_id TEXT,
                 CHECK(
                     recording_mode !=
                         'continuous' OR
@@ -6212,6 +6255,121 @@ private class TrainlogDatabaseHelper(
             );
             """.trimIndent()
         )
+    }
+
+    /**
+     * WHY: a fixed gym machine/movement is now the selectable performance
+     * identity, while equipment rows remain only compatibility/provenance.
+     * CONTRACT: v13 adds exercise metadata and the five frozen creator IDs.
+     * INVARIANT: only approved entry/exercise/equipment triples are repointed;
+     * sessions, entry IDs, child facts, targets and the durable draft survive.
+     */
+    private fun migrateMachineExercisesToVersionThirteen(db: SQLiteDatabase) {
+        val columns = mutableSetOf<String>()
+        db.rawQuery("PRAGMA table_info(exercises);", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) columns += cursor.getString(nameIndex)
+        }
+        fun add(name: String, declaration: String) {
+            if (name !in columns) db.execSQL("ALTER TABLE exercises ADD COLUMN $declaration;")
+        }
+        add("load_semantics", "load_semantics TEXT CHECK(load_semantics IN ('none','external','assistance','bodyweight','cardio'))")
+        add("machine_variant", "machine_variant TEXT")
+        add("machine_provenance", "machine_provenance TEXT")
+        add("scientific_profile_id", "scientific_profile_id TEXT")
+        add("science_state", "science_state TEXT NOT NULL DEFAULT 'unresolved' CHECK(science_state IN ('resolved','unresolved'))")
+        add("legacy_equipment_id", "legacy_equipment_id TEXT")
+        seedMachineExercisesV13(db)
+    }
+
+    private data class MachineSeed(
+        val exerciseId: String,
+        val oldName: String?,
+        val name: String,
+        val recording: String,
+        val tracking: String,
+        val fields: Int,
+        val load: String?,
+        val variant: String?,
+        val profile: String?,
+        val legacyEquipment: String?,
+    )
+
+    private fun seedMachineExercisesV13(db: SQLiteDatabase) {
+        fun normalized(value: String): String = Normalizer.normalize(
+            value.trim().lowercase(Locale.ROOT), Normalizer.Form.NFD,
+        ).replace(Regex("\\p{Mn}+"), "")
+        val rows = listOf(
+            MachineSeed("ex_7e7cf906-2214-4066-bcb7-c16382d83b3b", "Abduction de hanche assise", "Hip Abduction", "sets", "reps", 0, "external", "selectorized", "sp_hip_abduction_v1", "hip_abduction"),
+            MachineSeed("ex_1872246a-39ae-44dc-b58d-f87e90ca49ab", "Extension de genou assise", "Leg Extension", "sets", "reps", 0, "external", "selectorized", "sp_leg_extension_v1", "leg_extension"),
+            MachineSeed("ex_474ec393-3efa-4aaa-8e08-1a0245ed7835", "Extension du tronc", "Back Extension", "sets", "reps", 0, "external", "selectorized", "sp_back_extension_v1", "back_extension"),
+            MachineSeed("ex_ec619fc2-4685-4044-873c-86764bd4a0fe", "Flexion de coude à la machine", "Arm Curl", "sets", "reps", 0, "external", "selectorized", "sp_arm_curl_v1", "arm_curl"),
+            MachineSeed("ex_d7398d9f-d928-4d2e-94e9-74e201da55c5", "Flexion de genou couchée", "Prone Leg Curl", "sets", "reps", 0, "external", "selectorized", "sp_prone_leg_curl_v1", "prone_leg_curl"),
+            MachineSeed("ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0", "Rotation du tronc à la machine", "Rotary Torso", "sets", "reps", 0, "external", "selectorized", "sp_rotary_torso_v1", "rotary_torso"),
+            MachineSeed("ex_33f79331-871c-4eed-babe-346e53a99070", "Tirage horizontal assis", "Seated Row", "sets", "reps", 0, "external", "selectorized", "sp_seated_row_v1", "seated_row"),
+            MachineSeed("ex_1b0c6b8b-b05e-4e6f-8809-5f7d85d668de", "Tirage horizontal divergent assis", "Diverging Seated Row", "sets", "reps", 0, "external", "diverging", "sp_seated_row_v1", "diverging_seated_row"),
+            MachineSeed("ex_b4d1daf1-de4a-4016-abdf-487bf6014ce6", "Tirage vertical divergent", "Diverging Lat Pulldown", "sets", "reps", 0, "external", "diverging", "sp_vertical_pull_v1", "diverging_lat_pulldown"),
+            MachineSeed("ex_a72fa713-4b0e-431d-95e2-42d95beb77b1", "Tirage vertical à la poulie", "Lat Pull", "sets", "reps", 0, "external", "selectorized", "sp_vertical_pull_v1", "lat_pull"),
+            MachineSeed("ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b", "Développé épaules convergent", "Converging Shoulder Press", "sets", "reps", 0, "external", "converging", "sp_shoulder_press_v1", "converging_shoulder_press"),
+            MachineSeed("ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163", "Flexion de genou assise", "Seated Leg Curl", "sets", "reps", 0, "external", "selectorized", "sp_seated_leg_curl_v1", "seated_leg_curl"),
+            MachineSeed("ex_b432623f-bfe9-4daf-a653-60ec7fdffbde", "Presse à cuisses", "Leg Press", "sets", "reps", 0, "external", "selectorized", "sp_leg_press_v1", "leg_press"),
+            MachineSeed("ex_4cd2433e-80b1-478a-b8df-73fc6ef80962", "Écarté inversé à la machine", "Rear Delt", "sets", "reps", 0, "external", "rear_delt", "sp_rear_delt_v1", "rear_delt_pec_fly"),
+            MachineSeed("ex_0e26c06f-a458-40a4-be20-4ed219ede30d", null, "Plate Loaded Leg Press", "sets", "reps", 0, "external", "plate_loaded", "sp_leg_press_v1", "plate_loaded_leg_press"),
+            MachineSeed("ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2", null, "Treadmill", "continuous", "duration", 3, "cardio", "treadmill", null, "treadmill"),
+            MachineSeed("ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee", null, "Pec Fly", "sets", "reps", 0, "external", "pec_fly", "sp_pec_fly_v1", "rear_delt_pec_fly"),
+            MachineSeed("ex_58b8dfbc-92b2-4783-a449-9947a42480b8", null, "Chin Assist", "sets", "reps", 0, "assistance", "assisted", "sp_assisted_chin_v1", "assisted_dip_chin_machine"),
+            MachineSeed("ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf", null, "Dip Assist", "sets", "reps", 0, "assistance", "assisted", "sp_assisted_dip_v1", "assisted_dip_chin_machine"),
+        )
+        rows.forEach { item ->
+            val existing = exerciseIdentityRow(db, item.exerciseId)
+            if (existing == null) {
+                db.execSQL(
+                    "INSERT INTO exercises(exercise_id,name,normalized_name,recording_mode,tracking_mode,data_fields,load_semantics,machine_variant,scientific_profile_id,science_state,legacy_equipment_id) VALUES(?,?,?,?,?,?,?,?,?,?,?);",
+                    arrayOf<Any?>(item.exerciseId, item.name, normalized(item.name), item.recording, item.tracking, item.fields, item.load, item.variant, item.profile, if (item.profile == null) "unresolved" else "resolved", item.legacyEquipment),
+                )
+            } else if (item.oldName != null) {
+                db.execSQL(
+                    "UPDATE exercises SET name=?,normalized_name=?,load_semantics=?,machine_variant=?,scientific_profile_id=?,science_state='resolved',legacy_equipment_id=? WHERE exercise_id=? AND name=?;",
+                    arrayOf<Any?>(item.name, normalized(item.name), item.load, item.variant, item.profile, item.legacyEquipment, item.exerciseId, item.oldName),
+                )
+            }
+        }
+        val hasBodyZoneTables = db.rawQuery(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('exercise_body_zones','exercise_body_zone_sync');",
+            null,
+        ).use { cursor -> cursor.moveToFirst() && cursor.getInt(0) == 2 }
+        /* CONTRACT: BODY FOCUS consumes the existing exercise-owned relation.
+         * New performance identities reuse reviewed profile mappings without
+         * grouping their load histories. */
+        if (hasBodyZoneTables) {
+            db.execSQL("INSERT OR IGNORE INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT n.id,z.zone_id,z.role FROM exercises n JOIN exercises o ON o.exercise_id='ex_b432623f-bfe9-4daf-a653-60ec7fdffbde' JOIN exercise_body_zones z ON z.exercise_row_id=o.id WHERE n.exercise_id='ex_0e26c06f-a458-40a4-be20-4ed219ede30d';")
+            listOf(
+            Triple("ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee", "chest", "primary"),
+            Triple("ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee", "shoulders", "secondary"),
+            Triple("ex_58b8dfbc-92b2-4783-a449-9947a42480b8", "back", "primary"),
+            Triple("ex_58b8dfbc-92b2-4783-a449-9947a42480b8", "arms", "secondary"),
+            Triple("ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf", "arms", "primary"),
+            Triple("ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf", "chest", "secondary"),
+            Triple("ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf", "shoulders", "secondary"),
+            ).forEach { (exerciseId, zoneId, role) -> db.execSQL(
+                "INSERT OR IGNORE INTO exercise_body_zones(exercise_row_id,zone_id,role) SELECT id,?,? FROM exercises WHERE exercise_id=?;",
+                arrayOf(zoneId, role, exerciseId),
+            ) }
+            listOf(
+            "ex_0e26c06f-a458-40a4-be20-4ed219ede30d" to "thighs|glutes",
+            "ex_54dcdfd2-280d-4c2b-ae6b-c6089a985eee" to "chest|shoulders",
+            "ex_58b8dfbc-92b2-4783-a449-9947a42480b8" to "back|arms",
+            "ex_44358a7b-09c8-4992-8f70-7eee4e99bbdf" to "arms|chest,shoulders",
+            ).forEach { (exerciseId, state) -> db.execSQL(
+                "INSERT OR REPLACE INTO exercise_body_zone_sync(exercise_row_id,synced_state) SELECT id,? FROM exercises WHERE exercise_id=?;",
+                arrayOf(state, exerciseId),
+            ) }
+        }
+        db.execSQL("UPDATE exercises SET load_semantics=NULL,machine_variant=NULL,machine_provenance=NULL,scientific_profile_id=NULL,science_state='unresolved',legacy_equipment_id=NULL WHERE exercise_id='ex_617007f9-7420-4408-91b9-8ffb77900f13';")
+        fun equipmentRow(id: String) = "(SELECT id FROM equipment WHERE equipment_id='$id')"
+        db.execSQL("UPDATE session_exercises SET exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_0e26c06f-a458-40a4-be20-4ed219ede30d') WHERE entry_id='sxe_draft_legacy_7' AND exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_b432623f-bfe9-4daf-a653-60ec7fdffbde') AND equipment_row_id=${equipmentRow("plate_loaded_leg_press")};")
+        val treadmillEntries = listOf("sxe_093c1331-beaa-4b69-91b3-240292709be6", "sxe_f25142c8-455e-4346-9bfc-31d0989e275d", "sxe_f2242691-ba6c-48a0-b938-a1f744375d75", "sxe_9f8882f4-069e-49d5-8216-19d16b467e4a")
+        treadmillEntries.forEach { entry -> db.execSQL("UPDATE session_exercises SET exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_f01d2a46-6984-4dec-8934-4d82fca6dfc2') WHERE entry_id=? AND exercise_row_id=(SELECT id FROM exercises WHERE exercise_id='ex_b1e6ffc6-75b5-45ff-a3c0-e7433c58013d') AND equipment_row_id=${equipmentRow("treadmill")};", arrayOf(entry)) }
     }
 
     private fun createSessionTables(

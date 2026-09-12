@@ -26,7 +26,6 @@ never silently rewritten as V3.
 Accueil
 Séances
 Exercices
-Équipements
 Statistiques
 Synchronisation
 Paramètres
@@ -78,7 +77,8 @@ The section roots are:
 Accueil          durable-draft resume, manual capture, recent BODY ZONES exposure, concise local links
 Séances          current session, programme a session, manual entry, completed sessions
 Exercices        catalogue, detail, create, and contextual edit
-Équipements      catalogue, detail, and custom-equipment creation
+Legacy equipment catalogue/detail routes remain compatibility-only and are
+not exposed in the normal drawer.
 Statistiques     STATS_V1 dashboard, conservative graphs and detailed local drill-downs
 Synchronisation  existing request, result, and diagnostic workflow
 Paramètres       exchange-folder authorization and explicit PC-catalog refresh
@@ -512,7 +512,7 @@ result.
 
 Before applying the PC catalog or its V2 artifacts, Android applies
 `trainlog-pc-equipment-definitions-v1.json`. Thus custom definitions are known
-before a received V2 association references them. Android schema v12 retains
+before a received V2 association references them. Android schema v13 retains
 the non-destructive v7 -> v8 migration required for `load_semantics = none`.
 It also applies `trainlog-exercise-aliases-v1.json` before catalog and session
 reconciliation. The additive v11 → v12 alias table lets legacy exercise IDs
@@ -668,7 +668,8 @@ frozen desktop/Python normalization contract uses NFC, Unicode whitespace
 collapse and case folding without accent removal. Existing Marche/Leg press
 data is unaffected, but changing this safely requires an explicit Android
 schema migration that recomputes every normalized key and handles newly exposed
-collisions. It is not silently changed inside schema v12.
+collisions. Schema v13 changes only the additive machine-exercise metadata and
+the approved exact-ID historical contexts.
 
 The bundled exercise/equipment relationship metadata is seeded and preserved,
 including during exercise-identity reconciliation, but the current equipment
@@ -720,3 +721,7 @@ full source and uncertainty contract is in [Training knowledge system V1](domain
 The normal shell exposes manual sessions but not SESSION_GENERATOR_V1 pending
 V2. When importing the PC catalog, Android applies the versioned canonical
 exercise-name mapping for mapped IDs; unmapped user exercises remain editable.
+Equipment Detail reads the shared V2 relation asset, shows verified possible
+exercises with French confidence/evidence status, and opens Exercise Detail.
+Exercise Detail shows exercise-owned muscles, movements, BODY ZONES, and
+compatible physical equipment. Custom equipment receives no inferred anatomy.

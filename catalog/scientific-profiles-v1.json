@@ -1,0 +1,21 @@
+{
+  "format": "trainlog-scientific-profiles",
+  "version": 1,
+  "profiles": [
+    {"scientific_profile_id":"sp_arm_curl_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_ec619fc2-4685-4044-873c-86764bd4a0fe"}},
+    {"scientific_profile_id":"sp_assisted_chin_v1","knowledge_source":{"kind":"equipment_capability","equipment_id":"assisted_dip_chin_machine","capability":"assisted chin pullup"}},
+    {"scientific_profile_id":"sp_assisted_dip_v1","knowledge_source":{"kind":"equipment_capability","equipment_id":"assisted_dip_chin_machine","capability":"assisted dip"}},
+    {"scientific_profile_id":"sp_back_extension_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_474ec393-3efa-4aaa-8e08-1a0245ed7835"}},
+    {"scientific_profile_id":"sp_hip_abduction_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_7e7cf906-2214-4066-bcb7-c16382d83b3b"}},
+    {"scientific_profile_id":"sp_leg_extension_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_1872246a-39ae-44dc-b58d-f87e90ca49ab"}},
+    {"scientific_profile_id":"sp_leg_press_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_b432623f-bfe9-4daf-a653-60ec7fdffbde"}},
+    {"scientific_profile_id":"sp_pec_fly_v1","knowledge_source":{"kind":"equipment_capability","equipment_id":"rear_delt_pec_fly","capability":"pec fly"}},
+    {"scientific_profile_id":"sp_prone_leg_curl_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_d7398d9f-d928-4d2e-94e9-74e201da55c5"}},
+    {"scientific_profile_id":"sp_rear_delt_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_4cd2433e-80b1-478a-b8df-73fc6ef80962"}},
+    {"scientific_profile_id":"sp_rotary_torso_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_1a34814c-2e46-40fc-b1f4-6d60b8e5a3e0"}},
+    {"scientific_profile_id":"sp_seated_leg_curl_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163"}},
+    {"scientific_profile_id":"sp_seated_row_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_33f79331-871c-4eed-babe-346e53a99070"}},
+    {"scientific_profile_id":"sp_shoulder_press_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_6dfc7ffd-8891-464e-a995-808baf1b0d7b"}},
+    {"scientific_profile_id":"sp_vertical_pull_v1","knowledge_source":{"kind":"exercise","exercise_id":"ex_a72fa713-4b0e-431d-95e2-42d95beb77b1"}}
+  ]
+}

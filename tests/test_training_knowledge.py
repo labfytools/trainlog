@@ -22,6 +22,7 @@ class TrainingKnowledgeValidationTest(unittest.TestCase):
         "body-zones-v1.json", "equipment-v1.json", "science-references-v1.json", "muscles-v1.json",
         "joint-actions-v1.json", "movement-patterns-v1.json",
         "exercise-knowledge-v1.json", "equipment-knowledge-v1.json",
+        "equipment-exercise-relations-v2.json",
         "training-knowledge-audit-v1.json",
     )
 
@@ -127,6 +128,20 @@ class TrainingKnowledgeValidationTest(unittest.TestCase):
             root["equipment"][0]["evidence_type"] = "manufacturer_statement"
         self.mutate("equipment-knowledge-v1.json", mutation)
         self.assert_invalid()
+
+    def test_equipment_v2_rejects_phantoms_duplicates_and_unresolved_seated_leg(self):
+        original = (self.catalog / "equipment-exercise-relations-v2.json").read_bytes()
+        mutations = [
+            lambda root: root["equipment_relations"][0]["exercise_options"][0].__setitem__("exercise_id", "ex_00000000-0000-4000-8000-000000000000"),
+            lambda root: root["equipment_relations"][0]["exercise_options"].append(copy.deepcopy(root["equipment_relations"][0]["exercise_options"][0])),
+            lambda root: root["equipment_relations"][0]["exercise_options"][0].__setitem__("confidence", "likely"),
+            lambda root: root["equipment_relations"][0]["exercise_options"][0].__setitem__("source_refs", ["missing_ref"]),
+            lambda root: root["equipment_relations"][0]["exercise_options"][0].__setitem__("exercise_id", "ex_617007f9-7420-4408-91b9-8ffb77900f13"),
+        ]
+        for mutation in mutations:
+            (self.catalog / "equipment-exercise-relations-v2.json").write_bytes(original)
+            self.mutate("equipment-exercise-relations-v2.json", mutation)
+            self.assert_invalid()
 
 
 if __name__ == "__main__":

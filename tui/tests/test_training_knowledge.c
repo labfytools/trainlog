@@ -29,6 +29,7 @@ int main(void)
     size_t index;
     int rotary_capability_found = 0;
     const TrainlogKnowledgeBodyZoneAudit *audit;
+    const TrainlogEquipmentKnowledge *equipment_rows[32];
 
     CHECK(trainlog_knowledge_reference_count() == 23U);
     CHECK(trainlog_knowledge_muscle_count() == 53U);
@@ -52,6 +53,20 @@ int main(void)
     CHECK(trainlog_knowledge_reference_lookup("openstax_upper") != NULL);
     CHECK(trainlog_equipment_knowledge_lookup("rear_delt_pec_fly") != NULL);
     CHECK(trainlog_exercise_knowledge_lookup("ex_unknown") == NULL);
+    CHECK(trainlog_equipment_exercise_relation_count() == 17U);
+    CHECK(trainlog_knowledge_list_exercises_for_equipment("leg_press", rows, 32U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 1U && strcmp(rows[0]->exercise_id, leg_press) == 0);
+    CHECK(trainlog_knowledge_list_exercises_for_equipment("functional_trainer", rows, 32U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 0U);
+    CHECK(trainlog_knowledge_list_exercises_for_equipment("assisted_dip_chin_machine", rows, 32U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 0U);
+    CHECK(trainlog_knowledge_list_exercises_for_equipment("seated_leg_curl", rows, 32U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 1U && strcmp(rows[0]->exercise_id, "ex_a1ef5047-b44b-4c64-a6ed-c7a3bc13b163") == 0);
+    CHECK(trainlog_knowledge_list_equipment_for_exercise(leg_press, equipment_rows, 32U, &count) == TRAINLOG_STATUS_OK);
+    CHECK(count == 2U && strcmp(equipment_rows[0]->equipment_id, "leg_press") == 0);
+    CHECK(trainlog_knowledge_list_equipment_for_body_zone("chest", true, equipment_rows, 32U, &count) == TRAINLOG_STATUS_OK);
+    for (index = 0U; index < count; ++index)
+        CHECK(strcmp(equipment_rows[index]->equipment_id, "rear_delt_pec_fly") != 0);
 
     record = trainlog_exercise_knowledge_lookup(rear_delt);
     CHECK(record != NULL && record->interpretation != NULL);

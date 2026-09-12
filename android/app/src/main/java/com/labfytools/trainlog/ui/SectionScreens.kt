@@ -11,6 +11,7 @@ import com.labfytools.trainlog.data.CreateEquipmentResult
 import com.labfytools.trainlog.data.CatalogInboxResult
 import com.labfytools.trainlog.data.EquipmentCatalogEntry
 import com.labfytools.trainlog.data.EquipmentLoadSemantics
+import com.labfytools.trainlog.data.KnowledgeConfidence
 import com.labfytools.trainlog.data.SyncCatalogInbox
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ActiveSessionDraft
@@ -88,9 +89,10 @@ fun EquipmentScreen(
 }
 
 @Composable
-fun EquipmentDetailScreen(repository: TrainlogRepository, equipmentId: String) {
+fun EquipmentDetailScreen(repository: TrainlogRepository, equipmentId: String, onOpenExercise: (String) -> Unit) {
     val colors = LocalTrainlogColors.current
     val entry = remember(equipmentId) { repository.listEquipment().firstOrNull { it.equipmentId == equipmentId } }
+    val options = remember(equipmentId) { repository.listEquipmentExerciseOptions(equipmentId) }
     TrainlogScreen("Fiche équipement", scrollKey = "equipment-detail:$equipmentId") {
         if (entry == null) {
             TrainlogInfo("Référence inconnue · $equipmentId", colors.warning)
@@ -103,6 +105,19 @@ fun EquipmentDetailScreen(repository: TrainlogRepository, equipmentId: String) {
             TrainlogInfo("Type : ${entry.type}")
             TrainlogInfo("Charge : ${equipmentSemanticsLabel(entry.loadSemantics)}")
             if (entry.aliases.isNotEmpty()) TrainlogInfo("Alias : ${entry.aliases.joinToString()}", colors.muted)
+        }
+        TrainlogFrame("Exercices possibles", active = options.isNotEmpty()) {
+            if (options.isEmpty()) TrainlogInfo("Aucune association vérifiée. L’anatomie n’est pas déduite du nom de la machine.", colors.muted)
+            options.forEach { (relation, exercise) ->
+                val confidence = when (relation.confidence) {
+                    KnowledgeConfidence.HIGH -> "élevée"
+                    KnowledgeConfidence.MODERATE -> "modérée"
+                    KnowledgeConfidence.UNCERTAIN -> "incertaine"
+                }
+                TrainlogAction(exercise.exerciseName,
+                    listOfNotNull(relation.configurationLabel, "Confiance $confidence", "Sources vérifiées : ${relation.sourceRefs.size}").joinToString(" · "),
+                    { onOpenExercise(exercise.exerciseId) })
+            }
         }
     }
 }

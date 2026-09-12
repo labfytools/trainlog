@@ -105,7 +105,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             is AppRoute.ExerciseCreate -> ExerciseEditorRoute(repository, exerciseState, null, route.caller == AppRoute.SessionEditor) { exporter.exportMobileBundle(); catalogRevision++; back() }
             is AppRoute.ExerciseEdit -> ExerciseEditorRoute(repository, exerciseState, route.exerciseId, false) { exporter.exportMobileBundle(); catalogRevision++; back() }
             AppRoute.Equipment -> EquipmentScreen(repository, equipmentState, { open(AppRoute.EquipmentCreate(AppRoute.Equipment)) }, { open(AppRoute.EquipmentDetail(it)) })
-            is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId)
+            is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId) { open(AppRoute.ExerciseDetail(it)) }
             is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exporter.exportMobileBundle(); catalogRevision++; back() }
             AppRoute.Statistics -> StatisticsDashboard(repository)
             AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exporter.exportMobileBundle() }, { back() })

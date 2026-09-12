@@ -52,7 +52,7 @@ APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2
 ```
 
 `APP_SHELL_V1` provides the shared seven-section application shell on both
-platforms: **Accueil**, **Séances**, **Exercices**, **Équipements**,
+platforms: **Accueil**, **Séances**, **Exercices**,
 **Statistiques**, **Synchronisation**, and **Paramètres**. Completed history
 and the existing generator now live under **Séances**; existing body and MAX
 views live under **Statistiques**. It records no new statistics, schema, or
@@ -205,7 +205,7 @@ export or desktop synchronization as completed sessions.
 Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v12. Its additive v4 -> v12 chain adds the shared
+The current Android schema is v13. Its additive v4 -> v13 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
 identities, custom-equipment definition support, explicit MAX results and
 stable-source Test max resumption, then direct primary/secondary body-zone

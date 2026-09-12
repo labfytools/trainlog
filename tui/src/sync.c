@@ -1315,9 +1315,9 @@ static TrainlogStatus sync_run_python_tool(
         );
 
         if (database_path != NULL && mobile_export_path != NULL) {
-            /* CONTRACT: the body-zone importer may consume the exact retained
-             * V2 snapshot as identity-reconciliation proof. argv stays
-             * bounded and shell-free; all other helpers omit this pair. */
+            /* CONTRACT: reconciliation-aware companion importers may consume
+             * the exact retained V2/V3 snapshot as stable-entry identity
+             * proof. argv stays bounded and shell-free. */
             execlp(
                 "python3",
                 "python3",
@@ -3070,7 +3070,7 @@ TrainlogStatus trainlog_sync_run(
         status = sync_run_python_tool("import_equipment_associations.py",
                                       EQUIPMENT_ASSOCIATIONS_LOCAL,
                                       database_path,
-                                      NULL,
+                                      MOBILE_EXPORT_LOCAL,
                                       EQUIPMENT_ASSOCIATIONS_RESULT,
                                       tool_output, sizeof(tool_output));
         if (status != TRAINLOG_STATUS_OK ||
