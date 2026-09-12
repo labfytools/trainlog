@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -93,19 +94,19 @@ class SessionDraftUiInstrumentedTest {
             .performClick()
         compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("4")
         compose.onNodeWithTag("session-set-2-reps").performScrollTo().assertTextEquals("6")
-        compose.onNodeWithText(
-            "Retirer Test UI"
+        compose.onNodeWithContentDescription(
+            "Supprimer cet exercice"
         ).performScrollTo()
             .assertIsDisplayed()
     }
 
     @Test
     fun confirmedDiscardRemovesResumeWithoutHistory() {
-        compose.onNodeWithText(
+        compose.onNodeWithContentDescription(
             "Supprimer la séance en cours"
         ).performClick()
         compose.onNodeWithText(
-            "Confirmer la suppression"
+            "Abandonner la séance en cours ?"
         ).assertIsDisplayed()
         compose.onNodeWithText(
             "Annuler"
@@ -114,13 +115,13 @@ class SessionDraftUiInstrumentedTest {
             "Reprendre la séance en cours"
         ).assertIsDisplayed()
 
-        compose.onNodeWithText(
+        compose.onNodeWithContentDescription(
             "Supprimer la séance en cours"
         ).performClick()
         compose.onNodeWithText(
-            "Confirmer la suppression"
+            "Abandonner la séance en cours ?"
         ).assertIsDisplayed()
-            .performClick()
+        compose.onNodeWithText("Abandonner").performClick()
         compose.onNodeWithText(
             "Reprendre la séance en cours"
         ).assertDoesNotExist()
@@ -229,7 +230,10 @@ class SessionDraftUiInstrumentedTest {
         compose.onNodeWithTag("session-set-1-reps").performTextInput("9")
         compose.onNodeWithTag("session-set-1-weight")
             .performScrollTo().performTextInput("32,5")
-        compose.onNodeWithText("Supprimer la série 1").performScrollTo().performClick()
+        compose.onNodeWithTag("delete-set-1").performScrollTo().performClick()
+        compose.onNodeWithText("Supprimer la série 1 ?").assertIsDisplayed()
+        compose.onNodeWithTag("session-set-0-reps").assertTextEquals("4")
+        compose.onNodeWithText("Supprimer").performClick()
         compose.onNodeWithText("Ajouter une série").performScrollTo().performClick()
 
         compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("9")
@@ -241,6 +245,16 @@ class SessionDraftUiInstrumentedTest {
         compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("9")
         compose.onNodeWithTag("session-set-0-weight").performScrollTo().assertTextEquals("32,5")
         compose.onNodeWithTag("session-set-3-reps").performScrollTo().assertTextEquals("")
+    }
+
+    @Test
+    fun modifierOpensPrefilledEditorAndKeepsOccurrenceIdentity() {
+        compose.onNodeWithText("Reprendre la séance en cours").performClick()
+        compose.onNodeWithText("Modifier Test UI").performScrollTo().performClick()
+        compose.onNodeWithText("Modification en cours — faites défiler jusqu’à SAISIE — Test UI.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("4")
+        compose.onNodeWithTag("session-set-2-reps").performScrollTo().assertTextEquals("6")
     }
 
     @Test

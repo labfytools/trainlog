@@ -699,3 +699,20 @@ EQUIPMENT_KNOWLEDGE_V2 validation covers relation envelopes, canonical UUID and
 equipment references, enum/source integrity, uniqueness and stable ordering,
 the unresolved Seated Leg invariant, generic/custom non-inference, and generated
 C/Android query parity for leg press, combo equipment, and chest-zone derivation.
+`training_feedback_sync` covers first import, identical replay, post-sync
+follow-up addition, PC export convergence, and immutable-ID conflict. Android
+unit tests cover partial/final recognition, correction, resume/append, stop,
+save/cancel, failure preservation, permission/unavailable fallback, lifecycle
+destroy, and H+ flooring/unknown anchors. Draft-feedback coverage saves before
+completion, reopens the repository, preserves multiple stable IDs and ordering
+across ordinary draft rewrites, verifies active/completed Compose readback,
+excludes the draft rows from sync, transfers them atomically on finalization,
+rolls back on an injected insert failure, and checks discard cascading. The
+real-v13-copy production migration test also requires the existing active draft
+and all its occurrences to remain identical while the new draft-feedback table
+starts empty and a second production open is logically idempotent.
+`feedback_correction` reconstructs completed occurrence rowids while retaining,
+reordering and changing the exercise context of stable entries; it verifies
+exact feedback preservation, selective cascade on removal, no inheritance by a
+new entry, unchanged follow-ups, and full rollback on injected reattachment
+failure. Android additionally covers its bounded resumed-MAX replacement path.

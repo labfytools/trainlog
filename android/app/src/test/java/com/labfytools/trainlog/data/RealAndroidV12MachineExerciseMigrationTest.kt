@@ -44,6 +44,46 @@ class RealAndroidV12MachineExerciseMigrationTest {
     }
 
     @Test
+    fun realVersionThirteenCopyUsesProductionMigrationPreservesFactsAndIsIdempotent() {
+        val source = File(System.getenv("TRAINLOG_ANDROID_V13_FIXTURE") ?: "")
+        val output = File(System.getenv("TRAINLOG_ANDROID_V14_OUTPUT") ?: "")
+        assumeTrue("TRAINLOG_ANDROID_V13_FIXTURE is not available", source.isFile)
+        assumeTrue("TRAINLOG_ANDROID_V14_OUTPUT is not available", output.parentFile?.isDirectory == true)
+        val databasePath = context.getDatabasePath(databaseName)
+        databasePath.parentFile?.mkdirs()
+        Files.copy(source.toPath(), databasePath.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        val before = historicalDump(databasePath)
+        val beforeDraftCounts = SQLiteDatabase.openDatabase(databasePath.path, null, SQLiteDatabase.OPEN_READONLY).use { database ->
+            scalarInt(database, "SELECT COUNT(*) FROM active_session_draft;") to
+                scalarInt(database, "SELECT COUNT(*) FROM draft_session_exercises;")
+        }
+        SQLiteDatabase.openDatabase(databasePath.path, null, SQLiteDatabase.OPEN_READONLY).use { database ->
+            assertEquals(13, scalarInt(database, "PRAGMA user_version;"))
+            assertEquals("ok", scalarString(database, "PRAGMA integrity_check;"))
+        }
+        TrainlogRepository(context, databaseName).let { repository ->
+            try { assertTrue(repository.listExercises().isNotEmpty()) } finally { repository.close() }
+        }
+        assertValidVersionThirteen(databasePath)
+        assertEquals(before, historicalDump(databasePath, before.keys))
+        SQLiteDatabase.openDatabase(databasePath.path, null, SQLiteDatabase.OPEN_READONLY).use { database ->
+            assertEquals(0, scalarInt(database, "SELECT COUNT(*) FROM exercise_feedback;"))
+            assertEquals(0, scalarInt(database, "SELECT COUNT(*) FROM draft_exercise_feedback;"))
+            assertEquals(0, scalarInt(database, "SELECT COUNT(*) FROM session_followups;"))
+            assertEquals(beforeDraftCounts.first, scalarInt(database, "SELECT COUNT(*) FROM active_session_draft;"))
+            assertEquals(beforeDraftCounts.second, scalarInt(database, "SELECT COUNT(*) FROM draft_session_exercises;"))
+            /* No historical value is synthesized by the nullable new column. */
+            assertEquals(0, scalarInt(database, "SELECT COUNT(*) FROM sessions WHERE ended_at IS NOT NULL;"))
+        }
+        val first = logicalDump(databasePath)
+        TrainlogRepository(context, databaseName).let { repository ->
+            try { assertTrue(repository.listExercises().isNotEmpty()) } finally { repository.close() }
+        }
+        assertEquals(first, logicalDump(databasePath))
+        Files.copy(databasePath.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    @Test
     fun realVersionTwelveCopyUsesProductionMigrationAndIsIdempotent() {
         val source = File(System.getenv("TRAINLOG_ANDROID_V12_FIXTURE") ?: "")
         val output = File(System.getenv("TRAINLOG_ANDROID_V13_OUTPUT") ?: "")
@@ -85,7 +125,7 @@ class RealAndroidV12MachineExerciseMigrationTest {
 
     private fun assertValidVersionThirteen(databasePath: File) {
         SQLiteDatabase.openDatabase(databasePath.path, null, SQLiteDatabase.OPEN_READONLY).use { database ->
-            assertEquals(13, scalarInt(database, "PRAGMA user_version;"))
+            assertEquals(15, scalarInt(database, "PRAGMA user_version;"))
             assertEquals("ok", scalarString(database, "PRAGMA integrity_check;"))
             database.rawQuery("PRAGMA foreign_key_check;", null).use { assertFalse(it.moveToFirst()) }
         }
@@ -112,6 +152,26 @@ class RealAndroidV12MachineExerciseMigrationTest {
                         }
                     }
                 }
+            }
+        }
+
+    /** Snapshot every original column so additive columns/tables are ignored
+     * while every pre-migration user fact remains byte-for-byte comparable. */
+    private fun historicalDump(databasePath: File, shape: Set<String>? = null): Map<String, List<String>> =
+        SQLiteDatabase.openDatabase(databasePath.path, null, SQLiteDatabase.OPEN_READONLY).use { database ->
+            val tables = database.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;", null)
+                .use { c -> buildList { while(c.moveToNext()) add(c.getString(0)) } }
+                .filter { it != "android_metadata" }
+            val specifications = shape ?: tables.map { table ->
+                val columns = database.rawQuery("PRAGMA table_info(`$table`);", null)
+                    .use { c -> buildList { while(c.moveToNext()) add(c.getString(1)) } }
+                "$table|${columns.joinToString(",")}"
+            }.toSet()
+            specifications.associateWith { specification ->
+                val table = specification.substringBefore('|')
+                val columns = specification.substringAfter('|').split(',')
+                database.rawQuery("SELECT ${columns.joinToString(",") { "`$it`" }} FROM `$table` ORDER BY rowid;",null)
+                    .use { c -> buildList { while(c.moveToNext()) add(buildString { repeat(c.columnCount){i->if(i>0)append('|');append(if(c.isNull(i))"<NULL>" else c.getString(i))} }) } }
             }
         }
 

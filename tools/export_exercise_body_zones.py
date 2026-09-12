@@ -40,7 +40,7 @@ def main():
     connection = sqlite3.connect(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13):
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15):
             raise ValueError("schema desktop v11/v12/v13 requis")
         exercises = []
         for exercise in connection.execute("SELECT id,exercise_id FROM exercises ORDER BY exercise_id"):

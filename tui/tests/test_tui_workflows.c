@@ -370,6 +370,35 @@ static bool test_shell_generator_keep_and_accept_has_no_actuals(void)
     return true;
 }
 
+static bool test_destructive_session_choices_default_to_cancel(void)
+{
+    TrainlogAppContext app;
+    (void)memset(&app, 0, sizeof(app));
+    app.navigation.current.route = TRAINLOG_ROUTE_SESSION_CURRENT;
+    app.session.has_draft = true;
+    app.session.draft_count = 1U;
+    app.session.phase = TRAINLOG_SESSION_ACTUALS;
+    app.session.drafts[0].input.set_count = 2U;
+    app.session.drafts[0].sets[0].reps = 8;
+    app.session.drafts[0].sets[1].reps = 7;
+    draft_bind_input(&app.session.drafts[0]);
+    CHECK(app_shell_dispatch_session(&app, 'd'));
+    CHECK(app.session.phase == TRAINLOG_SESSION_CONFIRM_SET_REMOVE);
+    CHECK(!app.session.destructive_confirm_selected);
+    CHECK(app_shell_dispatch_session(&app, TRAINLOG_KEY_ENTER));
+    CHECK(app.session.phase == TRAINLOG_SESSION_ACTUALS);
+    CHECK(app.session.drafts[0].input.set_count == 2U);
+    CHECK(app_shell_dispatch_session(&app, 'd'));
+    CHECK(app_shell_dispatch_session(&app, TRAINLOG_KEY_RIGHT));
+    CHECK(app_shell_dispatch_session(&app, TRAINLOG_KEY_ENTER));
+    CHECK(app.session.drafts[0].input.set_count == 1U);
+    app.session.phase = TRAINLOG_SESSION_DRAFT;
+    CHECK(app_shell_dispatch_session(&app, 'd'));
+    CHECK(app_shell_dispatch_session(&app, 'q'));
+    CHECK(app.session.draft_count == 1U);
+    return true;
+}
+
 static bool test_shell_session_forms_keep_plan_and_actuals_separate(void)
 {
     TrainlogDatabase *database = NULL;
@@ -2206,6 +2235,7 @@ int main(void)
     if (!test_knowledge_scrolls_long_lists_at_minimum_terminal() ||
         !test_shell_session_navigation_preserves_run_draft() ||
         !test_shell_generator_keep_and_accept_has_no_actuals() ||
+        !test_destructive_session_choices_default_to_cancel() ||
         !test_shell_session_forms_keep_plan_and_actuals_separate() ||
         !test_shell_continuous_supplemental_fields_have_no_fake_set() ||
         !test_shell_generator_dose_edit_drops_stale_load_provenance() ||

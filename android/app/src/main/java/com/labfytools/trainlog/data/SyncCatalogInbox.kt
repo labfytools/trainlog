@@ -145,11 +145,14 @@ class SyncCatalogInbox(
                     when (val sessions = importPcSessions(directory)) {
                         null -> when (val equipment = importPcEquipmentAssociations(directory)) {
                             null -> when (val bodyZones = importPcBodyZones(directory)) {
-                                null -> CatalogInboxResult.Imported(
-                                    imported = result.imported,
-                                    reconciled = result.reconciled,
-                                    skipped = result.skipped,
-                                )
+                                null -> when (val feedback = importTrainingFeedback(directory)) {
+                                    null -> CatalogInboxResult.Imported(
+                                        imported = result.imported,
+                                        reconciled = result.reconciled,
+                                        skipped = result.skipped,
+                                    )
+                                    else -> CatalogInboxResult.Error(feedback)
+                                }
                                 else -> CatalogInboxResult.Error(bodyZones)
                             }
                             else -> CatalogInboxResult.Error(equipment)
@@ -194,6 +197,23 @@ class SyncCatalogInbox(
                 MobileSessionImportResult.DatabaseError -> "Erreur base locale séances."
             }
         } catch (error: Exception) { error.message ?: "Import séances impossible." }
+    }
+
+    private fun importTrainingFeedback(directory: DocumentFile): String? {
+        /* V2 is authoritative for revision history. V1 remains a fallback for
+         * an older peer and can only add deterministic initial revisions. */
+        val file = directory.findFile("trainlog-training-feedback-v2.json")
+            ?: directory.findFile("trainlog-training-feedback-v1.json") ?: return null
+        return try {
+            val json = appContext.contentResolver.openInputStream(file.uri)?.bufferedReader(Charsets.UTF_8)
+                ?.use { it.readText() } ?: return "Lecture des ressentis impossible."
+            when (val result = repository.applyTrainingFeedbackJson(json)) {
+                is TrainingFeedbackImportResult.Applied -> null
+                is TrainingFeedbackImportResult.Invalid -> result.message
+                is TrainingFeedbackImportResult.Conflict -> "Conflit de ressenti : ${result.stableId}"
+                TrainingFeedbackImportResult.DatabaseError -> "Erreur base locale ressentis."
+            }
+        } catch (error: Exception) { error.message ?: "Import des ressentis impossible." }
     }
 
     /** Test seam for the real filename-priority boundary; production uses the same method. */

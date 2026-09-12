@@ -494,3 +494,9 @@ Future equipment identification may collect manufacturer, model, name, photo,
 pictogram, and notes to form a proposal which the user must verify before
 persistence. OCR/image recognition and a custom-equipment relation schema are
 not part of EQUIPMENT_KNOWLEDGE_V2.
+## TRAINING_FEEDBACK_V1
+
+Implemented for human review: schema v14, Android voice/manual append-only
+capture and readback, desktop read-only consultation, and bidirectional strict
+companion convergence. Automatic interpretation and recommendations remain
+future scope.

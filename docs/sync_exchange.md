@@ -2,7 +2,7 @@
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop and Android schema v13 retain mobile export V3, readable V1/V2 imports,
+Desktop and Android schema v15 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -675,3 +675,7 @@ existing equipment.
 Mapped canonical exercise names are metadata owned by `exercise_id`: PC exports
 them and both import paths prevent stale mapped peer labels from restoring an
 old display name. This does not change TRAINLOG_FORMAT_V1.
+Training observations use the independent direction-neutral
+`trainlog-training-feedback-v2.json`. Its append-only revision union, strict identity
+checks, ordering, bounds, and conflicts are specified in
+[Training feedback](training_feedback.md).

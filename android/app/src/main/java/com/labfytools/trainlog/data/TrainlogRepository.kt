@@ -14,6 +14,8 @@ import com.labfytools.trainlog.model.BodyObservationSummary
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.ExerciseEditInput
+import com.labfytools.trainlog.model.ExerciseFeedback
+import com.labfytools.trainlog.model.DraftExerciseFeedback
 import com.labfytools.trainlog.model.LatestExerciseMax
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
@@ -24,6 +26,7 @@ import com.labfytools.trainlog.model.SessionSummary
 import com.labfytools.trainlog.model.SessionDetail
 import com.labfytools.trainlog.model.SessionExerciseDetail
 import com.labfytools.trainlog.model.SessionExercisePlan
+import com.labfytools.trainlog.model.SessionFollowUp
 import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
@@ -178,6 +181,20 @@ sealed interface SaveSessionResult {
 
     data object DatabaseError :
         SaveSessionResult
+}
+
+sealed interface SaveFeedbackResult {
+    data class Saved(val stableId: String) : SaveFeedbackResult
+    data class Invalid(val message: String) : SaveFeedbackResult
+    data class DatabaseError(val message: String) : SaveFeedbackResult
+}
+
+sealed interface TrainingFeedbackImportResult {
+    data class Applied(val exerciseAdded: Int, val exerciseSkipped: Int,
+        val followupsAdded: Int, val followupsSkipped: Int) : TrainingFeedbackImportResult
+    data class Invalid(val message: String) : TrainingFeedbackImportResult
+    data class Conflict(val stableId: String) : TrainingFeedbackImportResult
+    data object DatabaseError : TrainingFeedbackImportResult
 }
 
 sealed interface ActiveDraftLoadResult {
@@ -1541,6 +1558,7 @@ class TrainlogRepository(
         val startedAt =
             OffsetDateTime.now()
                 .toString()
+        val endedAt = OffsetDateTime.now().toString()
 
         db.beginTransaction()
 
@@ -1562,6 +1580,7 @@ class TrainlogRepository(
                         draft.sessionType
                             .wireValue
                     )
+                    put("ended_at", endedAt)
                 }
 
             val sessionRowId =
@@ -3815,7 +3834,8 @@ class TrainlogRepository(
                     s.session_id,
                     s.started_at,
                     s.session_type,
-                    COUNT(se.id)
+                    COUNT(se.id),
+                    s.ended_at
                 FROM sessions AS s
                 LEFT JOIN session_exercises AS se
                     ON se.session_row_id = s.id
@@ -3835,9 +3855,8 @@ class TrainlogRepository(
                         exerciseCount =
                             cursor.getInt(3),
                         sessionType =
-                            SessionType.fromWire(
-                                cursor.getString(2)
-                            ),
+                            SessionType.fromWire(cursor.getString(2)),
+                        endedAt = cursor.optionalText(4),
                     )
                 }
             } ?: return null
@@ -4076,11 +4095,327 @@ class TrainlogRepository(
             }
         }
 
+        val feedbackByEntry = listExerciseFeedback(sessionId).groupBy { it.entryId }
         return SessionDetail(
             summary = summary,
-            exercises = exercises,
+            exercises = exercises.map { it.copy(feedback = feedbackByEntry[it.entryId].orEmpty()) },
+            followUps = listSessionFollowUps(sessionId),
         )
     }
+
+    /** Android-only root creation API. Revisions are immutable; raw_text on
+     * the root is only the transactionally maintained current-text cache. */
+    fun saveExerciseFeedback(sessionId: String, entryId: String, rawText: String,
+        observedAt: String = OffsetDateTime.now().toString()): SaveFeedbackResult {
+        val text = rawText.trim()
+        if (!validFeedbackText(text) || TrainlogTimestamp.parse(observedAt) == null)
+            return SaveFeedbackResult.Invalid("Le ressenti doit contenir au plus 8192 octets UTF-8.")
+        val stableId = "fb_" + UUID.randomUUID().toString()
+        return try {
+            val db = database.writableDatabase
+            val row = db.rawQuery(
+                "SELECT se.id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id WHERE s.session_id=? AND se.entry_id=?;",
+                arrayOf(sessionId, entryId),
+            ).use { if (it.moveToFirst()) it.getLong(0) else null }
+                ?: return SaveFeedbackResult.Invalid("Occurrence de séance introuvable.")
+            db.beginTransaction()
+            db.insertOrThrow("exercise_feedback", null, ContentValues().apply {
+                put("feedback_id", stableId); put("session_exercise_row_id", row)
+                put("observed_at", observedAt); put("raw_text", text)
+            })
+            insertInitialRevision(db, "exercise_feedback_revisions", "feedback_id", stableId, observedAt, text)
+            db.setTransactionSuccessful(); db.endTransaction()
+            SaveFeedbackResult.Saved(stableId)
+        } catch (error: Exception) { if (database.writableDatabase.inTransaction()) database.writableDatabase.endTransaction(); SaveFeedbackResult.DatabaseError(error.message ?: "Enregistrement impossible.") }
+    }
+
+    /** Persist feedback immediately against the durable active-draft
+     * occurrence. The stable ID is retained when the session is finalized. */
+    fun saveDraftExerciseFeedback(entryId: String, rawText: String,
+        observedAt: String = OffsetDateTime.now().toString()): SaveFeedbackResult {
+        val text = rawText.trim()
+        if (!validFeedbackText(text) || TrainlogTimestamp.parse(observedAt) == null)
+            return SaveFeedbackResult.Invalid("Le ressenti doit contenir au plus 8192 octets UTF-8.")
+        val stableId = "fb_" + UUID.randomUUID().toString()
+        return try {
+            val db = database.writableDatabase
+            val row = db.rawQuery(
+                "SELECT de.id FROM draft_session_exercises de JOIN active_session_draft d ON d.id=de.draft_id " +
+                    "WHERE d.id=? AND de.entry_id=?;",
+                arrayOf(ACTIVE_DRAFT_ID.toString(), entryId),
+            ).use { if (it.moveToFirst()) it.getLong(0) else null }
+                ?: return SaveFeedbackResult.Invalid("Occurrence du brouillon introuvable.")
+            db.beginTransaction()
+            db.insertOrThrow("draft_exercise_feedback", null, ContentValues().apply {
+                put("feedback_id", stableId); put("draft_session_exercise_row_id", row)
+                put("observed_at", observedAt); put("raw_text", text)
+            })
+            insertInitialRevision(db, "draft_exercise_feedback_revisions", "feedback_id", stableId, observedAt, text)
+            db.setTransactionSuccessful(); db.endTransaction()
+            SaveFeedbackResult.Saved(stableId)
+        } catch (error: Exception) {
+            if (database.writableDatabase.inTransaction()) database.writableDatabase.endTransaction()
+            SaveFeedbackResult.DatabaseError(error.message ?: "Enregistrement impossible.")
+        }
+    }
+
+    fun listDraftExerciseFeedback(entryId: String): List<DraftExerciseFeedback> = buildList {
+        database.readableDatabase.rawQuery(
+            "SELECT f.feedback_id,de.entry_id,e.exercise_id,f.observed_at,f.raw_text," +
+                "(SELECT COUNT(*) FROM draft_exercise_feedback_revisions r WHERE r.feedback_id=f.feedback_id) " +
+                "FROM draft_exercise_feedback f JOIN draft_session_exercises de " +
+                "ON de.id=f.draft_session_exercise_row_id JOIN exercises e ON e.id=de.exercise_row_id " +
+                "WHERE de.draft_id=? AND de.entry_id=?;",
+            arrayOf(ACTIVE_DRAFT_ID.toString(), entryId),
+        ).use { c -> while (c.moveToNext()) add(DraftExerciseFeedback(
+            c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getInt(5) > 1)) }
+    }.sortedWith { a,b -> TrainlogTimestamp.parse(a.observedAt)!!.compareTo(TrainlogTimestamp.parse(b.observedAt)!!)
+        .takeIf { it != 0 } ?: TrainlogTimestamp.compareIds(a.feedbackId,b.feedbackId) }
+
+    fun saveSessionFollowUp(sessionId: String, rawText: String,
+        observedAt: String = OffsetDateTime.now().toString()): SaveFeedbackResult {
+        val text = rawText.trim()
+        if (!validFeedbackText(text) || TrainlogTimestamp.parse(observedAt) == null)
+            return SaveFeedbackResult.Invalid("Le suivi doit contenir au plus 8192 octets UTF-8.")
+        val stableId = "fu_" + UUID.randomUUID().toString()
+        return try {
+            val db = database.writableDatabase
+            val row = db.rawQuery("SELECT id FROM sessions WHERE session_id=?;", arrayOf(sessionId))
+                .use { if (it.moveToFirst()) it.getLong(0) else null }
+                ?: return SaveFeedbackResult.Invalid("Séance introuvable.")
+            db.beginTransaction()
+            db.insertOrThrow("session_followups", null, ContentValues().apply {
+                put("followup_id", stableId); put("session_row_id", row)
+                put("observed_at", observedAt); put("raw_text", text)
+            })
+            insertInitialRevision(db, "session_followup_revisions", "followup_id", stableId, observedAt, text)
+            db.setTransactionSuccessful(); db.endTransaction()
+            SaveFeedbackResult.Saved(stableId)
+        } catch (error: Exception) { if (database.writableDatabase.inTransaction()) database.writableDatabase.endTransaction(); SaveFeedbackResult.DatabaseError(error.message ?: "Enregistrement impossible.") }
+    }
+
+    private fun insertInitialRevision(db: SQLiteDatabase, table: String, parentColumn: String,
+        rootId: String, createdAt: String, rawText: String) {
+        db.insertOrThrow(table, null, ContentValues().apply {
+            put("revision_id", "fr0_$rootId"); put(parentColumn, rootId)
+            put("created_at", createdAt); put("raw_text", rawText)
+        })
+    }
+
+    private fun saveFeedbackRevision(table: String, parentColumn: String, rootTable: String,
+        rootIdColumn: String, rootId: String, rawText: String,
+        createdAt: String = OffsetDateTime.now().toString()): SaveFeedbackResult {
+        val text = rawText.trim()
+        if (!validFeedbackText(text) || TrainlogTimestamp.parse(createdAt) == null)
+            return SaveFeedbackResult.Invalid("Le texte doit contenir au plus 8192 octets UTF-8.")
+        val revisionId = "fr_" + UUID.randomUUID().toString()
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            val changed = db.update(rootTable, ContentValues().apply { put("raw_text", text) },
+                "$rootIdColumn=?", arrayOf(rootId))
+            if (changed != 1) throw IllegalArgumentException("Ressenti introuvable.")
+            db.insertOrThrow(table, null, ContentValues().apply {
+                put("revision_id", revisionId); put(parentColumn, rootId)
+                put("created_at", createdAt); put("raw_text", text)
+            })
+            db.setTransactionSuccessful(); SaveFeedbackResult.Saved(rootId)
+        } catch (error: Exception) {
+            SaveFeedbackResult.DatabaseError(error.message ?: "Correction impossible.")
+        } finally { if (db.inTransaction()) db.endTransaction() }
+    }
+
+    fun reviseExerciseFeedback(feedbackId: String, rawText: String): SaveFeedbackResult =
+        saveFeedbackRevision("exercise_feedback_revisions", "feedback_id", "exercise_feedback", "feedback_id", feedbackId, rawText)
+
+    fun reviseDraftExerciseFeedback(feedbackId: String, rawText: String): SaveFeedbackResult =
+        saveFeedbackRevision("draft_exercise_feedback_revisions", "feedback_id", "draft_exercise_feedback", "feedback_id", feedbackId, rawText)
+
+    fun reviseSessionFollowUp(followupId: String, rawText: String): SaveFeedbackResult =
+        saveFeedbackRevision("session_followup_revisions", "followup_id", "session_followups", "followup_id", followupId, rawText)
+
+    fun listExerciseFeedback(sessionId: String): List<ExerciseFeedback> = buildList {
+        database.readableDatabase.rawQuery(
+            "SELECT f.feedback_id,s.session_id,se.entry_id,e.exercise_id,f.observed_at,f.raw_text," +
+                "(SELECT COUNT(*) FROM exercise_feedback_revisions r WHERE r.feedback_id=f.feedback_id) " +
+                "FROM exercise_feedback f JOIN session_exercises se ON se.id=f.session_exercise_row_id " +
+                "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id " +
+                "WHERE s.session_id=?;", arrayOf(sessionId),
+        ).use { c -> while (c.moveToNext()) add(ExerciseFeedback(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getInt(6)>1)) }
+    }.sortedWith { a,b -> TrainlogTimestamp.parse(a.observedAt)!!.compareTo(TrainlogTimestamp.parse(b.observedAt)!!)
+        .takeIf { it != 0 } ?: TrainlogTimestamp.compareIds(a.feedbackId,b.feedbackId) }
+
+    fun listSessionFollowUps(sessionId: String): List<SessionFollowUp> = buildList {
+        database.readableDatabase.rawQuery(
+            "SELECT f.followup_id,s.session_id,f.observed_at,f.raw_text," +
+                "(SELECT COUNT(*) FROM session_followup_revisions r WHERE r.followup_id=f.followup_id) FROM session_followups f " +
+                "JOIN sessions s ON s.id=f.session_row_id WHERE s.session_id=?;", arrayOf(sessionId),
+        ).use { c -> while (c.moveToNext()) add(SessionFollowUp(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getInt(4)>1)) }
+    }.sortedWith { a,b -> TrainlogTimestamp.parse(a.observedAt)!!.compareTo(TrainlogTimestamp.parse(b.observedAt)!!)
+        .takeIf { it != 0 } ?: TrainlogTimestamp.compareIds(a.followupId,b.followupId) }
+
+    private fun validFeedbackText(text: String): Boolean = text.isNotBlank() &&
+        text.toByteArray(Charsets.UTF_8).size <= MAX_FEEDBACK_UTF8_BYTES
+
+    /** Direction-neutral V2 companion: roots and every immutable revision. */
+    fun buildTrainingFeedbackJson(): String {
+        val root = JSONObject().put("format", "trainlog-training-feedback").put("version", 2)
+            .put("generated_at", OffsetDateTime.now().toString())
+        val exercise = JSONArray()
+        database.readableDatabase.rawQuery(
+            "SELECT f.feedback_id,s.session_id,se.entry_id,e.exercise_id,f.observed_at " +
+                "FROM exercise_feedback f JOIN session_exercises se ON se.id=f.session_exercise_row_id " +
+                "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id " +
+                "ORDER BY f.observed_at,f.feedback_id;", null,
+        ).use { c -> while (c.moveToNext()) {
+            val revisions = JSONArray()
+            database.readableDatabase.rawQuery(
+                "SELECT revision_id,created_at,raw_text FROM exercise_feedback_revisions WHERE feedback_id=?;",
+                arrayOf(c.getString(0)),
+            ).use { r -> while (r.moveToNext()) revisions.put(JSONObject().put("revision_id",r.getString(0))
+                .put("created_at",r.getString(1)).put("raw_text",r.getString(2))) }
+            exercise.put(JSONObject().put("feedback_id",c.getString(0)).put("session_id",c.getString(1))
+                .put("entry_id",c.getString(2)).put("exercise_id",c.getString(3)).put("observed_at",c.getString(4))
+                .put("revisions",revisions))
+        } }
+        val followups = JSONArray()
+        database.readableDatabase.rawQuery(
+            "SELECT f.followup_id,s.session_id,f.observed_at FROM session_followups f " +
+                "JOIN sessions s ON s.id=f.session_row_id ORDER BY f.observed_at,f.followup_id;", null,
+        ).use { c -> while (c.moveToNext()) {
+            val revisions = JSONArray()
+            database.readableDatabase.rawQuery(
+                "SELECT revision_id,created_at,raw_text FROM session_followup_revisions WHERE followup_id=?;",
+                arrayOf(c.getString(0)),
+            ).use { r -> while (r.moveToNext()) revisions.put(JSONObject().put("revision_id",r.getString(0))
+                .put("created_at",r.getString(1)).put("raw_text",r.getString(2))) }
+            followups.put(JSONObject().put("followup_id",c.getString(0)).put("session_id",c.getString(1))
+                .put("observed_at",c.getString(2)).put("revisions",revisions))
+        } }
+        return root.put("exercise_feedback",exercise).put("session_followups",followups).toString()
+    }
+
+    fun applyTrainingFeedbackJson(json: String): TrainingFeedbackImportResult {
+        if (json.toByteArray(Charsets.UTF_8).size > 40 * 1024 * 1024)
+            return TrainingFeedbackImportResult.Invalid("Compagnon de ressentis trop volumineux.")
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return TrainingFeedbackImportResult.Invalid("JSON de ressentis invalide.")
+        }
+        if (root.keys().asSequence().toSet() != setOf("format","version","generated_at","exercise_feedback","session_followups") ||
+            root.optString("format") != "trainlog-training-feedback" || root.optInt("version",-1) !in 1..2 ||
+            TrainlogTimestamp.parse(root.optString("generated_at")) == null)
+            return TrainingFeedbackImportResult.Invalid("Contrat trainlog-training-feedback v1/v2 invalide.")
+        if (root.optInt("version") == 2) return applyTrainingFeedbackV2(root)
+        val exercise = root.optJSONArray("exercise_feedback")
+            ?: return TrainingFeedbackImportResult.Invalid("exercise_feedback absent.")
+        val followups = root.optJSONArray("session_followups")
+            ?: return TrainingFeedbackImportResult.Invalid("session_followups absent.")
+        if (exercise.length() > MAX_FEEDBACK_RECORDS || followups.length() > MAX_FEEDBACK_RECORDS)
+            return TrainingFeedbackImportResult.Invalid("Trop d’observations dans le compagnon.")
+        val db = database.writableDatabase
+        var ea=0; var es=0; var fa=0; var fs=0
+        db.beginTransaction()
+        try {
+            for (index in 0 until exercise.length()) {
+                val item = exercise.optJSONObject(index) ?: throw IllegalArgumentException("Observation exercice invalide.")
+                val keys = setOf("feedback_id","session_id","entry_id","exercise_id","observed_at","raw_text")
+                if (item.keys().asSequence().toSet()!=keys) throw IllegalArgumentException("Champs observation exercice invalides.")
+                val id=item.optString("feedback_id"); val sid=item.optString("session_id"); val entry=item.optString("entry_id")
+                val claimed=item.optString("exercise_id"); val at=item.optString("observed_at"); val text=item.optString("raw_text")
+                if (!stableFeedbackId(id,"fb_") || TrainlogTimestamp.parse(at)==null || !validFeedbackText(text))
+                    throw IllegalArgumentException("Observation exercice mal formée.")
+                val occurrence = db.rawQuery("SELECT se.id,e.exercise_id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id WHERE s.session_id=? AND se.entry_id=?;",arrayOf(sid,entry))
+                    .use { c -> if(c.moveToFirst()) c.getLong(0) to c.getString(1) else null }
+                    ?: throw IllegalArgumentException("Séance/entrée référencée introuvable.")
+                val canonicalClaim = canonicalExerciseId(db, claimed)
+                    ?: throw IllegalArgumentException("Exercice référencé introuvable.")
+                if (canonicalClaim != occurrence.second) throw IllegalArgumentException("Exercice incompatible avec l’occurrence.")
+                val existing = db.rawQuery("SELECT session_exercise_row_id,observed_at FROM exercise_feedback WHERE feedback_id=?;",arrayOf(id))
+                    .use { c -> if(c.moveToFirst()) c.getLong(0) to c.getString(1) else null }
+                if(existing==null){ db.insertOrThrow("exercise_feedback",null,ContentValues().apply{put("feedback_id",id);put("session_exercise_row_id",occurrence.first);put("observed_at",at);put("raw_text",text)});insertInitialRevision(db,"exercise_feedback_revisions","feedback_id",id,at,text);ea++ }
+                else if(existing==occurrence.first to at) es++ else { db.endTransaction(); return TrainingFeedbackImportResult.Conflict(id) }
+            }
+            for(index in 0 until followups.length()) {
+                val item=followups.optJSONObject(index)?:throw IllegalArgumentException("Suivi invalide.")
+                if(item.keys().asSequence().toSet()!=setOf("followup_id","session_id","observed_at","raw_text")) throw IllegalArgumentException("Champs suivi invalides.")
+                val id=item.optString("followup_id");val sid=item.optString("session_id");val at=item.optString("observed_at");val text=item.optString("raw_text")
+                if(!stableFeedbackId(id,"fu_")||TrainlogTimestamp.parse(at)==null||!validFeedbackText(text)) throw IllegalArgumentException("Suivi mal formé.")
+                val row=db.rawQuery("SELECT id FROM sessions WHERE session_id=?;",arrayOf(sid)).use{if(it.moveToFirst())it.getLong(0) else null}
+                    ?:throw IllegalArgumentException("Séance référencée introuvable.")
+                val old=db.rawQuery("SELECT session_row_id,observed_at FROM session_followups WHERE followup_id=?;",arrayOf(id)).use{c->if(c.moveToFirst())c.getLong(0) to c.getString(1)else null}
+                if(old==null){db.insertOrThrow("session_followups",null,ContentValues().apply{put("followup_id",id);put("session_row_id",row);put("observed_at",at);put("raw_text",text)});insertInitialRevision(db,"session_followup_revisions","followup_id",id,at,text);fa++}
+                else if(old==row to at)fs++ else {db.endTransaction();return TrainingFeedbackImportResult.Conflict(id)}
+            }
+            db.setTransactionSuccessful()
+            return TrainingFeedbackImportResult.Applied(ea,es,fa,fs)
+        } catch(error: IllegalArgumentException) { return TrainingFeedbackImportResult.Invalid(error.message?:"Compagnon invalide.") }
+        catch(_: Exception){return TrainingFeedbackImportResult.DatabaseError}
+        finally { if(db.inTransaction()) db.endTransaction() }
+    }
+
+    private fun applyTrainingFeedbackV2(root: JSONObject): TrainingFeedbackImportResult {
+        val exercise = root.optJSONArray("exercise_feedback") ?: return TrainingFeedbackImportResult.Invalid("exercise_feedback absent.")
+        val followups = root.optJSONArray("session_followups") ?: return TrainingFeedbackImportResult.Invalid("session_followups absent.")
+        if (exercise.length() > MAX_FEEDBACK_RECORDS || followups.length() > MAX_FEEDBACK_RECORDS)
+            return TrainingFeedbackImportResult.Invalid("Trop d’observations dans le compagnon.")
+        val db=database.writableDatabase;var ea=0;var es=0;var fa=0;var fs=0
+        fun mergeRevisions(item: JSONObject, rootId: String, table: String, parentColumn: String,
+            rootTable: String, rootColumn: String) {
+            val revisions=item.optJSONArray("revisions") ?: throw IllegalArgumentException("Révisions absentes.")
+            if(revisions.length()==0 || revisions.length()>MAX_FEEDBACK_RECORDS) throw IllegalArgumentException("Révisions hors borne.")
+            val seen=mutableSetOf<String>()
+            for(i in 0 until revisions.length()) {
+                val revision=revisions.optJSONObject(i)?:throw IllegalArgumentException("Révision invalide.")
+                if(revision.keys().asSequence().toSet()!=setOf("revision_id","created_at","raw_text")) throw IllegalArgumentException("Champs révision invalides.")
+                val id=revision.optString("revision_id");val at=revision.optString("created_at");val text=revision.optString("raw_text")
+                if((!stableFeedbackId(id,"fr_") && id!="fr0_$rootId") || !seen.add(id) || TrainlogTimestamp.parse(at)==null || !validFeedbackText(text)) throw IllegalArgumentException("Révision mal formée.")
+                val old=db.rawQuery("SELECT $parentColumn,created_at,raw_text FROM $table WHERE revision_id=?",arrayOf(id)).use{c->if(c.moveToFirst())Triple(c.getString(0),c.getString(1),c.getString(2))else null}
+                val expected=Triple(rootId,at,text)
+                if(old==null) db.insertOrThrow(table,null,ContentValues().apply{put("revision_id",id);put(parentColumn,rootId);put("created_at",at);put("raw_text",text)})
+                else if(old!=expected) throw SQLiteConstraintException("HARD CONFLICT $id")
+            }
+            val current=db.rawQuery("SELECT revision_id,created_at,raw_text FROM $table WHERE $parentColumn=?",arrayOf(rootId)).use{c->buildList{while(c.moveToNext())add(Triple(c.getString(0),c.getString(1),c.getString(2)))}}
+                .maxWithOrNull{a,b->TrainlogTimestamp.parse(a.second)!!.compareTo(TrainlogTimestamp.parse(b.second)!!).takeIf{it!=0}?:TrainlogTimestamp.compareIds(a.first,b.first)}!!
+            db.update(rootTable,ContentValues().apply{put("raw_text",current.third)},"$rootColumn=?",arrayOf(rootId))
+        }
+        db.beginTransaction()
+        try {
+            for(i in 0 until exercise.length()) {
+                val item=exercise.optJSONObject(i)?:throw IllegalArgumentException("Observation exercice invalide.")
+                if(item.keys().asSequence().toSet()!=setOf("feedback_id","session_id","entry_id","exercise_id","observed_at","revisions"))throw IllegalArgumentException("Champs observation invalides.")
+                val id=item.optString("feedback_id");val at=item.optString("observed_at")
+                if(!stableFeedbackId(id,"fb_")||TrainlogTimestamp.parse(at)==null)throw IllegalArgumentException("Observation mal formée.")
+                val occurrence=db.rawQuery("SELECT se.id,e.exercise_id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id WHERE s.session_id=? AND se.entry_id=?",arrayOf(item.optString("session_id"),item.optString("entry_id"))).use{c->if(c.moveToFirst())c.getLong(0) to c.getString(1)else null}?:throw IllegalArgumentException("Occurrence introuvable.")
+                if(canonicalExerciseId(db,item.optString("exercise_id"))!=occurrence.second)throw IllegalArgumentException("Exercice incompatible.")
+                val old=db.rawQuery("SELECT session_exercise_row_id,observed_at FROM exercise_feedback WHERE feedback_id=?",arrayOf(id)).use{c->if(c.moveToFirst())c.getLong(0) to c.getString(1)else null}
+                val revisions=item.getJSONArray("revisions");val seed=revisions.optJSONObject(0)?.optString("raw_text")?:throw IllegalArgumentException("Révision absente.")
+                if(old==null){db.insertOrThrow("exercise_feedback",null,ContentValues().apply{put("feedback_id",id);put("session_exercise_row_id",occurrence.first);put("observed_at",at);put("raw_text",seed)});ea++}
+                else if(old==occurrence.first to at)es++ else throw SQLiteConstraintException("HARD CONFLICT $id")
+                mergeRevisions(item,id,"exercise_feedback_revisions","feedback_id","exercise_feedback","feedback_id")
+            }
+            for(i in 0 until followups.length()) {
+                val item=followups.optJSONObject(i)?:throw IllegalArgumentException("Suivi invalide.")
+                if(item.keys().asSequence().toSet()!=setOf("followup_id","session_id","observed_at","revisions"))throw IllegalArgumentException("Champs suivi invalides.")
+                val id=item.optString("followup_id");val at=item.optString("observed_at")
+                if(!stableFeedbackId(id,"fu_")||TrainlogTimestamp.parse(at)==null)throw IllegalArgumentException("Suivi mal formé.")
+                val row=db.rawQuery("SELECT id FROM sessions WHERE session_id=?",arrayOf(item.optString("session_id"))).use{if(it.moveToFirst())it.getLong(0)else null}?:throw IllegalArgumentException("Séance introuvable.")
+                val old=db.rawQuery("SELECT session_row_id,observed_at FROM session_followups WHERE followup_id=?",arrayOf(id)).use{c->if(c.moveToFirst())c.getLong(0) to c.getString(1)else null};val revisions=item.getJSONArray("revisions");val seed=revisions.optJSONObject(0)?.optString("raw_text")?:throw IllegalArgumentException("Révision absente.")
+                if(old==null){db.insertOrThrow("session_followups",null,ContentValues().apply{put("followup_id",id);put("session_row_id",row);put("observed_at",at);put("raw_text",seed)});fa++}
+                else if(old==row to at)fs++ else throw SQLiteConstraintException("HARD CONFLICT $id")
+                mergeRevisions(item,id,"session_followup_revisions","followup_id","session_followups","followup_id")
+            }
+            db.setTransactionSuccessful();return TrainingFeedbackImportResult.Applied(ea,es,fa,fs)
+        } catch(error:SQLiteConstraintException){return TrainingFeedbackImportResult.Conflict(error.message?.substringAfterLast(' ')?:"revision")}
+        catch(error:IllegalArgumentException){return TrainingFeedbackImportResult.Invalid(error.message?:"Compagnon invalide.")}
+        catch(_:Exception){return TrainingFeedbackImportResult.DatabaseError}
+        finally{if(db.inTransaction())db.endTransaction()}
+    }
+
+    private fun stableFeedbackId(value:String,prefix:String):Boolean = value.startsWith(prefix) &&
+        runCatching { UUID.fromString(value.removePrefix(prefix)) }.isSuccess
+    private fun canonicalExerciseId(db:SQLiteDatabase,id:String):String? = db.rawQuery(
+        "SELECT exercise_id FROM exercises WHERE exercise_id=? UNION ALL SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=? LIMIT 1;",arrayOf(id,id))
+        .use{if(it.moveToFirst())it.getString(0)else null}
 
     /**
      * Build one transient suggestion from current runtime identities and the
@@ -5127,6 +5462,28 @@ class TrainlogRepository(
             )
         }
 
+        /* CONTRACT: draft persistence currently rebuilds occurrence rows.
+         * Preserve immutable feedback by stable entry_id across that rebuild;
+         * feedback for an explicitly removed occurrence remains parent-owned
+         * and is deliberately not restored. */
+        val retainedFeedback = mutableMapOf<String, MutableList<Triple<String, String, String>>>()
+        val retainedDraftRevisions = mutableMapOf<String, MutableList<Triple<String, String, String>>>()
+        db.rawQuery(
+            "SELECT de.entry_id,f.feedback_id,f.observed_at,f.raw_text FROM draft_exercise_feedback f " +
+                "JOIN draft_session_exercises de ON de.id=f.draft_session_exercise_row_id " +
+                "WHERE de.draft_id=?;", arrayOf(ACTIVE_DRAFT_ID.toString()),
+        ).use { cursor -> while (cursor.moveToNext()) retainedFeedback
+            .getOrPut(cursor.getString(0)) { mutableListOf() }
+            .add(Triple(cursor.getString(1), cursor.getString(2), cursor.getString(3))) }
+        db.rawQuery(
+            "SELECT r.feedback_id,r.revision_id,r.created_at,r.raw_text FROM draft_exercise_feedback_revisions r " +
+                "JOIN draft_exercise_feedback f ON f.feedback_id=r.feedback_id " +
+                "JOIN draft_session_exercises de ON de.id=f.draft_session_exercise_row_id WHERE de.draft_id=?;",
+            arrayOf(ACTIVE_DRAFT_ID.toString()),
+        ).use { cursor -> while (cursor.moveToNext()) retainedDraftRevisions
+            .getOrPut(cursor.getString(0)) { mutableListOf() }
+            .add(Triple(cursor.getString(1), cursor.getString(2), cursor.getString(3))) }
+
         db.delete(
             "draft_session_exercises",
             "draft_id = ?",
@@ -5177,6 +5534,21 @@ class TrainlogRepository(
                     null,
                     exerciseValues,
                 )
+
+            retainedFeedback[exerciseDraft.entryId].orEmpty().forEach { feedback ->
+                db.insertOrThrow("draft_exercise_feedback", null, ContentValues().apply {
+                    put("feedback_id", feedback.first)
+                    put("draft_session_exercise_row_id", draftExerciseRowId)
+                    put("observed_at", feedback.second)
+                    put("raw_text", feedback.third)
+                })
+                retainedDraftRevisions[feedback.first].orEmpty().forEach { revision ->
+                    db.insertOrThrow("draft_exercise_feedback_revisions", null, ContentValues().apply {
+                        put("revision_id", revision.first); put("feedback_id", feedback.first)
+                        put("created_at", revision.second); put("raw_text", revision.third)
+                    })
+                }
+            }
 
             if (exerciseDraft.maxWeightKg != null) {
                 db.insertOrThrow(
@@ -5254,6 +5626,8 @@ class TrainlogRepository(
     ): String {
         val sessionId: String
         val sessionRowId: Long
+        val retainedCompletedFeedback = mutableMapOf<String, MutableList<Triple<String, String, String>>>()
+        val retainedCompletedRevisions = mutableMapOf<String, MutableList<Triple<String, String, String>>>()
         if (sourceSessionId == null) {
             sessionId = "se_" + UUID.randomUUID().toString()
             /* Preserve the existing Android meaning: started_at is assigned
@@ -5261,6 +5635,9 @@ class TrainlogRepository(
             val sessionValues = ContentValues().apply {
                 put("session_id", sessionId)
                 put("started_at", OffsetDateTime.now().toString())
+                /* CONTRACT: this exact explicit finalization instant anchors
+                 * H+; old NULL values remain unknown and are never backfilled. */
+                put("ended_at", OffsetDateTime.now().toString())
                 put("session_type", draft.sessionType.wireValue)
             }
             sessionRowId = db.insertOrThrow("sessions", null, sessionValues)
@@ -5279,6 +5656,27 @@ class TrainlogRepository(
             check(resumedDraftIdentityIsSafe(db, sessionRowId, draft)) {
                 "Une séance reprise ne peut supprimer, réordonner ou réaffecter ses entrées existantes."
             }
+            /* Android has one bounded completed-session correction path:
+             * resumed MAX_TEST finalization. Preserve feedback by the stable
+             * occurrence entry_id before cascading reconstruction; the
+             * surrounding finalization transaction owns rollback. */
+            db.rawQuery(
+                "SELECT se.entry_id,f.feedback_id,f.observed_at,f.raw_text FROM exercise_feedback f " +
+                    "JOIN session_exercises se ON se.id=f.session_exercise_row_id " +
+                    "WHERE se.session_row_id=?;", arrayOf(sessionRowId.toString()),
+            ).use { cursor -> while (cursor.moveToNext()) retainedCompletedFeedback
+                .getOrPut(cursor.getString(0)) { mutableListOf() }
+                .add(Triple(cursor.getString(1), cursor.getString(2), cursor.getString(3))) }
+            db.rawQuery(
+                "SELECT r.feedback_id,r.revision_id,r.created_at,r.raw_text FROM exercise_feedback_revisions r " +
+                    "JOIN exercise_feedback f ON f.feedback_id=r.feedback_id " +
+                    "JOIN session_exercises se ON se.id=f.session_exercise_row_id WHERE se.session_row_id=?;",
+                arrayOf(sessionRowId.toString()),
+            ).use { cursor -> while (cursor.moveToNext()) retainedCompletedRevisions
+                .getOrPut(cursor.getString(0)) { mutableListOf() }
+                .add(Triple(cursor.getString(1), cursor.getString(2), cursor.getString(3))) }
+            db.execSQL("UPDATE sessions SET ended_at=? WHERE id=?;",
+                arrayOf<Any>(OffsetDateTime.now().toString(), sessionRowId))
             /* INVARIANT: child replacement and draft deletion are in the
              * caller's transaction; failure restores the completed baseline. */
             db.delete(
@@ -5327,6 +5725,44 @@ class TrainlogRepository(
                     null,
                     exerciseValues,
                 )
+
+            retainedCompletedFeedback[exerciseDraft.entryId].orEmpty().forEach { feedback ->
+                db.insertOrThrow("exercise_feedback", null, ContentValues().apply {
+                    put("feedback_id", feedback.first)
+                    put("session_exercise_row_id", sessionExerciseRowId)
+                    put("observed_at", feedback.second)
+                    put("raw_text", feedback.third)
+                })
+                retainedCompletedRevisions[feedback.first].orEmpty().forEach { revision ->
+                    db.insertOrThrow("exercise_feedback_revisions", null, ContentValues().apply {
+                        put("revision_id", revision.first); put("feedback_id", feedback.first)
+                        put("created_at", revision.second); put("raw_text", revision.third)
+                    })
+                }
+            }
+
+            /* INVARIANT: transfer occurs inside the caller's finalization
+             * transaction and matches the durable occurrence only by entry_id.
+             * Stable feedback identity, timestamp and raw wording are copied
+             * exactly; deleting the draft later removes only the draft parent. */
+            db.rawQuery(
+                "SELECT f.feedback_id,f.observed_at,f.raw_text FROM draft_exercise_feedback f " +
+                    "JOIN draft_session_exercises de ON de.id=f.draft_session_exercise_row_id " +
+                    "WHERE de.draft_id=? AND de.entry_id=? ORDER BY f.observed_at,f.feedback_id;",
+                arrayOf(ACTIVE_DRAFT_ID.toString(), exerciseDraft.entryId),
+            ).use { cursor -> while (cursor.moveToNext()) {
+                db.insertOrThrow("exercise_feedback", null, ContentValues().apply {
+                    put("feedback_id", cursor.getString(0))
+                    put("session_exercise_row_id", sessionExerciseRowId)
+                    put("observed_at", cursor.getString(1))
+                    put("raw_text", cursor.getString(2))
+                })
+                db.execSQL(
+                    "INSERT INTO exercise_feedback_revisions(revision_id,feedback_id,created_at,raw_text) " +
+                        "SELECT revision_id,feedback_id,created_at,raw_text FROM draft_exercise_feedback_revisions WHERE feedback_id=?;",
+                    arrayOf(cursor.getString(0)),
+                )
+            } }
 
             if (exerciseDraft.maxWeightKg != null) {
                 db.insertOrThrow(
@@ -5798,6 +6234,9 @@ private const val MAX_PLAN_DURATION_SECONDS = 86400
 private const val MAX_PLAN_REST_SECONDS = 86400
 private const val MAX_EXERCISE_ALIAS_BYTES = 1024 * 1024
 private const val MAX_EXERCISE_ALIASES = 4096
+/** UTF-8 byte bound, not UTF-16 code units; oversized dictation is rejected. */
+const val MAX_FEEDBACK_UTF8_BYTES = 8192
+private const val MAX_FEEDBACK_RECORDS = 4096
 private const val ANDROID_LEG_PRESS_LEGACY_ID =
     "ex_d68a1af1-7247-4fb3-a48b-da8516906a29"
 private const val DESKTOP_LEG_PRESS_CANONICAL_ID =
@@ -5813,7 +6252,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    13,
+    15,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -5842,6 +6281,8 @@ private class TrainlogDatabaseHelper(
         createEquipmentTables(db)
         createBodyZoneTables(db)
         createExerciseAliasTable(db)
+        createTrainingFeedbackTables(db)
+        createTrainingFeedbackRevisionTables(db)
         seedEquipment(db)
     }
 
@@ -5946,6 +6387,20 @@ private class TrainlogDatabaseHelper(
             version = 13
         }
 
+        if (version < 14 && newVersion >= 14) {
+            /* CONTRACT: feedback migration is additive and deliberately does
+             * not manufacture ended_at for any historical session. */
+            if (!tableHasColumn(db, "sessions", "ended_at"))
+                db.execSQL("ALTER TABLE sessions ADD COLUMN ended_at TEXT;")
+            createTrainingFeedbackTables(db)
+            version = 14
+        }
+
+        if (version < 15 && newVersion >= 15) {
+            migrateTrainingFeedbackToVersionFifteen(db)
+            version = 15
+        }
+
         if (version != newVersion) {
             error(
                 "Unsupported Android DB upgrade " +
@@ -5983,6 +6438,65 @@ private class TrainlogDatabaseHelper(
                 "CHECK(source_exercise_id<>canonical_exercise_id));",
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS exercise_aliases_canonical ON exercise_aliases(canonical_exercise_id);")
+    }
+
+    private fun createTrainingFeedbackTables(db: SQLiteDatabase) {
+        /* WHY: immutable subjective wording is distinct from actual training
+         * facts. INVARIANT: only Android APIs create rows; peer imports merely
+         * merge identical stable IDs and never update or delete them. */
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS exercise_feedback(" +
+                "id INTEGER PRIMARY KEY,feedback_id TEXT NOT NULL UNIQUE," +
+                "session_exercise_row_id INTEGER NOT NULL REFERENCES session_exercises(id) ON DELETE CASCADE," +
+                "observed_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS exercise_feedback_timeline ON exercise_feedback(session_exercise_row_id,observed_at,feedback_id);")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS draft_exercise_feedback(" +
+                "id INTEGER PRIMARY KEY,feedback_id TEXT NOT NULL UNIQUE," +
+                "draft_session_exercise_row_id INTEGER NOT NULL REFERENCES draft_session_exercises(id) ON DELETE CASCADE," +
+                "observed_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS draft_exercise_feedback_timeline ON draft_exercise_feedback(draft_session_exercise_row_id,observed_at,feedback_id);")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS session_followups(" +
+                "id INTEGER PRIMARY KEY,followup_id TEXT NOT NULL UNIQUE," +
+                "session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE," +
+                "observed_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS session_followups_timeline ON session_followups(session_row_id,observed_at,followup_id);")
+    }
+
+    private fun createTrainingFeedbackRevisionTables(db: SQLiteDatabase) {
+        /* WHY: a wording correction is history about one observation, not a
+         * replacement observation. CONTRACT: roots retain raw_text only as a
+         * transactionally maintained current-text cache. INVARIANT: revision
+         * rows are append-only and are ordered by parsed instant then stable ID. */
+        db.execSQL("CREATE TABLE IF NOT EXISTS exercise_feedback_revisions(" +
+            "revision_id TEXT PRIMARY KEY,feedback_id TEXT NOT NULL REFERENCES exercise_feedback(feedback_id) ON DELETE CASCADE," +
+            "created_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));")
+        db.execSQL("CREATE INDEX IF NOT EXISTS exercise_feedback_revisions_current ON exercise_feedback_revisions(feedback_id,created_at,revision_id);")
+        db.execSQL("CREATE TABLE IF NOT EXISTS draft_exercise_feedback_revisions(" +
+            "revision_id TEXT PRIMARY KEY,feedback_id TEXT NOT NULL REFERENCES draft_exercise_feedback(feedback_id) ON DELETE CASCADE," +
+            "created_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));")
+        db.execSQL("CREATE INDEX IF NOT EXISTS draft_exercise_feedback_revisions_current ON draft_exercise_feedback_revisions(feedback_id,created_at,revision_id);")
+        db.execSQL("CREATE TABLE IF NOT EXISTS session_followup_revisions(" +
+            "revision_id TEXT PRIMARY KEY,followup_id TEXT NOT NULL REFERENCES session_followups(followup_id) ON DELETE CASCADE," +
+            "created_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));")
+        db.execSQL("CREATE INDEX IF NOT EXISTS session_followup_revisions_current ON session_followup_revisions(followup_id,created_at,revision_id);")
+    }
+
+    private fun migrateTrainingFeedbackToVersionFifteen(db: SQLiteDatabase) {
+        createTrainingFeedbackRevisionTables(db)
+        /* CONTRACT: fr0_<root-id> is the cross-peer deterministic revision-one
+         * identity. INSERT OR IGNORE makes v14 migration and later V1 import
+         * converge without manufacturing duplicate initial revisions. */
+        db.execSQL("INSERT OR IGNORE INTO exercise_feedback_revisions(revision_id,feedback_id,created_at,raw_text) " +
+            "SELECT 'fr0_'||feedback_id,feedback_id,observed_at,raw_text FROM exercise_feedback;")
+        db.execSQL("INSERT OR IGNORE INTO draft_exercise_feedback_revisions(revision_id,feedback_id,created_at,raw_text) " +
+            "SELECT 'fr0_'||feedback_id,feedback_id,observed_at,raw_text FROM draft_exercise_feedback;")
+        db.execSQL("INSERT OR IGNORE INTO session_followup_revisions(revision_id,followup_id,created_at,raw_text) " +
+            "SELECT 'fr0_'||followup_id,followup_id,observed_at,raw_text FROM session_followups;")
     }
 
     private fun seedInitialBodyZones(db: SQLiteDatabase) {
@@ -6381,6 +6895,7 @@ private class TrainlogDatabaseHelper(
                 id INTEGER PRIMARY KEY,
                 session_id TEXT NOT NULL UNIQUE,
                 started_at TEXT NOT NULL,
+                ended_at TEXT,
                 session_type TEXT NOT NULL
                     CHECK(
                         session_type IN (

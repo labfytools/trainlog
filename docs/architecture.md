@@ -168,7 +168,9 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v13 is canonical long-term history. Its v9 -> v10
+Desktop SQLite schema v15 is canonical long-term history. Its v14 -> v15
+additive step introduces immutable wording-revision tables for the subjective
+feedback roots introduced in v14; see [Training feedback](training_feedback.md). Its v9 -> v10
 migration losslessly rebuilds only `performed_sets` so actual `weight_kg` may
 be finite `>= 0`; the column already existed and targets/max results retain
 their strictly-positive contracts. `session_exercises`
@@ -203,7 +205,7 @@ exercise_body_zone_sync
 
 ### Android
 
-Android has an independent local SQLite schema, currently v13. Completed and
+Android has an independent local SQLite schema, currently v14. Completed and
 draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
 resuming a completed Test max records its stable source session in the one
 durable draft.

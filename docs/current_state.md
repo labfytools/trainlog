@@ -81,7 +81,7 @@ Implemented:
   F7 actions, and restored focus after overlays/routes);
 - UTF-8 cell-aware scrolling training-knowledge screen, tested at the 72x20
   minimum terminal;
-- SQLite schema v13, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v15, with stable ordered `session_exercises.entry_id`,
   occurrence-level equipment identity, and desktop-local custom-equipment
   definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
   rebuilds only `performed_sets` to permit explicit zero actual loads while
@@ -133,6 +133,8 @@ Implemented:
 - `BODY_FOCUS_HOME_V1`: a compact accessible Home front/back BODY ZONES map,
   textual top-three exposure ranking and Catalogue/Statistics drill-through;
 - explicit confirmed discard and atomic completed-save/draft-clear;
+- schema v15 immutable feedback wording revisions, Android correction UX,
+  read-only TUI display, and Training Feedback V2 synchronization;
 - exercise creation;
 - stable-ID exercise rename/editing with referenced-profile protection;
 - primary/secondary body-zone selection, display, hierarchy filtering and
@@ -185,7 +187,7 @@ The implemented read-only training-knowledge layer loads shared versioned JSON
 catalogs as the sole authored scientific source, generates the immutable C
 catalog representation, and loads the same assets on Android. It has no
 database migration, no auto-seeding, and no synchronization artifact. The
-desktop and Android databases are schema v13. Schema v13 is additive: exercise
+desktop and Android databases are schema v15. Schema v13 is additive: exercise
 rows own machine-facing load semantics, optional legacy equipment provenance,
 an optional scientific profile, and an explicit resolved/unresolved science
 state. Legacy equipment tables and occurrence columns remain intact.

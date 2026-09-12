@@ -31,6 +31,7 @@ import com.labfytools.trainlog.data.CreateEquipmentResult
 import com.labfytools.trainlog.data.EquipmentLoadSemantics
 import com.labfytools.trainlog.data.FinalizeActiveDraftResult
 import com.labfytools.trainlog.data.ManualPercentMaxResult
+import com.labfytools.trainlog.data.SaveFeedbackResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
@@ -102,6 +103,12 @@ fun SessionScreen(
         remember {
             mutableStateOf(false)
         }
+
+    var feedbackEntryId by remember { mutableStateOf<String?>(null) }
+    var editingFeedbackId by remember { mutableStateOf<String?>(null) }
+    var pendingRemoval by remember { mutableStateOf<Pair<Int, SessionExerciseDraft>?>(null) }
+    var pendingDestructiveEdit by remember { mutableStateOf<Pair<Int, SessionExerciseDraft>?>(null) }
+    var feedbackRevision by remember { mutableStateOf(0) }
 
     val persistDraft:
         (ActiveSessionDraft, String?) -> Unit =
@@ -316,30 +323,68 @@ fun SessionScreen(
                                     ),
                                     null,
                                 )
+                                message = "Éditeur ouvert pour ${draft.exercise.name} — les champs préremplis apparaissent ci-dessous."
                             },
                         )
+                        if (currentDraft.form.editingEntryId == draft.entryId) {
+                            TrainlogInfo("Modification en cours — faites défiler jusqu’à SAISIE — ${draft.exercise.name}.", color = colors.accent)
+                        }
+
+                        val draftFeedback = remember(feedbackRevision, draft.entryId) {
+                            repository.listDraftExerciseFeedback(draft.entryId)
+                        }
+                        draftFeedback.forEach { feedback ->
+                            TrainlogInfo(
+                                text = "Ressenti · ${feedback.rawText}${if (feedback.modified) " · Modifié" else ""}",
+                                color = colors.muted,
+                            )
+                            TrainlogAction("Modifier", "Corriger le texte sans changer l’observation.",
+                                onClick = { editingFeedbackId = feedback.feedbackId }, accent = colors.accent)
+                            if (editingFeedbackId == feedback.feedbackId) FeedbackEditor(
+                                initialText = feedback.rawText, editing = true,
+                                onSave = { text -> when (val result = repository.reviseDraftExerciseFeedback(feedback.feedbackId, text)) {
+                                    is SaveFeedbackResult.Saved -> { feedbackRevision++; editingFeedbackId = null; null }
+                                    is SaveFeedbackResult.Invalid -> result.message
+                                    is SaveFeedbackResult.DatabaseError -> result.message
+                                } }, onCancel = { editingFeedbackId = null })
+                        }
+                        TrainlogAction(
+                            label = if (draftFeedback.isEmpty()) {
+                                "🎙 Ressenti"
+                            } else {
+                                "Ressenti (${draftFeedback.size}) · + Ajouter un ressenti"
+                            },
+                            description = "Dicter ou saisir un ressenti maintenant, avant la fin de la séance.",
+                            accent = colors.success,
+                            modifier = Modifier.testTag("draft-feedback-${draft.entryId}"),
+                            onClick = { feedbackEntryId = draft.entryId },
+                        )
+                        if (feedbackEntryId == draft.entryId) {
+                            FeedbackEditor(
+                                onSave = { text ->
+                                    when (val result = repository.saveDraftExerciseFeedback(draft.entryId, text)) {
+                                        is SaveFeedbackResult.Saved -> {
+                                            feedbackRevision += 1
+                                            feedbackEntryId = null
+                                            message = "Ressenti sauvegardé dans la séance en cours."
+                                            null
+                                        }
+                                        is SaveFeedbackResult.Invalid -> result.message
+                                        is SaveFeedbackResult.DatabaseError -> result.message
+                                    }
+                                },
+                                onCancel = { feedbackEntryId = null },
+                            )
+                        }
 
                         if (currentDraft.sourceSessionId == null) {
-                            TrainlogAction(
-                                label =
-                                    "Retirer ${draft.exercise.name}",
-                                description =
-                                    "Supprimer cet exercice de la séance en cours.",
-                                accent =
-                                    colors.error,
+                            TrainlogIconAction(
+                                icon = TrainlogIcons.DeleteOutline,
+                                contentDescription = "Supprimer cet exercice",
+                                accent = colors.error,
+                                modifier = Modifier.testTag("delete-draft-exercise-${draft.entryId}"),
                                 onClick = {
-                                    persistDraft(
-                                        currentDraft.copy(
-                                            exercises =
-                                                currentDraft.exercises
-                                                    .filterIndexed {
-                                                            itemIndex,
-                                                            _ ->
-                                                        itemIndex != index
-                                                    }
-                                        ),
-                                        "Exercice retiré de la séance.",
-                                    )
+                                    pendingRemoval = index to draft
                                 },
                             )
                         }
@@ -388,7 +433,14 @@ fun SessionScreen(
                 onAdd = {
                     draft ->
                         val editIndex = currentDraft.form.editingExerciseIndex
-                        persistDraft(
+                        val previous = editIndex?.let(currentDraft.exercises::getOrNull)
+                        if (editIndex != null && previous != null &&
+                            (previous.exercise.recordingMode != draft.exercise.recordingMode ||
+                                previous.exercise.trackingMode != draft.exercise.trackingMode) &&
+                            (previous.sets.isNotEmpty() || previous.continuousDurationSeconds > 0 ||
+                                previous.maxWeightKg != null || previous.plan != null)) {
+                            pendingDestructiveEdit = editIndex to draft
+                        } else persistDraft(
                             currentDraft.copy(
                                 exercises = editIndex?.let { replacingIndex ->
                                     currentDraft.exercises.mapIndexed { index, existing ->
@@ -456,28 +508,23 @@ fun SessionScreen(
                 },
             )
 
-            TrainlogAction(
-                label = "Supprimer la séance en cours",
-                description =
-                    "Supprimer uniquement ce brouillon local.",
+            TrainlogIconAction(
+                icon = TrainlogIcons.DeleteOutline,
+                contentDescription = "Supprimer la séance en cours",
                 accent = colors.error,
+                modifier = Modifier.testTag("delete-active-draft"),
                 onClick = {
                     confirmingDiscard = true
                 },
             )
 
             if (confirmingDiscard) {
-                TrainlogInfo(
-                    text =
-                        "Cette suppression n'ajoutera rien à l'historique.",
-                    color = colors.error,
-                )
-                TrainlogAction(
-                    label = "Confirmer la suppression",
-                    description =
-                        "Supprimer définitivement la séance en cours.",
-                    accent = colors.error,
-                    onClick = {
+                DestructiveConfirmationDialog(
+                    title = "Abandonner la séance en cours ?",
+                    detail = "Cette action supprimera le brouillon, ses ${currentDraft.exercises.size} exercice(s) et toutes leurs données enregistrées.",
+                    confirmLabel = "Abandonner",
+                    onCancel = { confirmingDiscard = false },
+                    onConfirm = {
                         when (
                             val result =
                                 repository
@@ -492,15 +539,6 @@ fun SessionScreen(
                                 message = result.message
                             }
                         }
-                    },
-                )
-                TrainlogAction(
-                    label = "Annuler",
-                    description =
-                        "Conserver la séance en cours.",
-                    accent = colors.muted,
-                    onClick = {
-                        confirmingDiscard = false
                     },
                 )
             }
@@ -524,6 +562,47 @@ fun SessionScreen(
                         },
                 )
             }
+        }
+
+        pendingRemoval?.let { (index, draft) ->
+            val feedbackCount = repository.listDraftExerciseFeedback(draft.entryId).size
+            val facts = buildList {
+                if (draft.sets.isNotEmpty()) add("${draft.sets.size} série(s)")
+                if (draft.continuousDurationSeconds > 0) add("l’activité continue")
+                if (draft.maxWeightKg != null) add("la donnée MAX")
+                if (feedbackCount > 0) add("$feedbackCount ressenti(s)")
+            }
+            DestructiveConfirmationDialog(
+                title = "Supprimer \"${draft.exercise.name}\" de la séance ?",
+                detail = if (facts.isEmpty()) "Cette occurrence sera retirée." else
+                    "Cette action supprimera :\n- " + facts.joinToString("\n- "),
+                confirmLabel = "Supprimer",
+                onCancel = { pendingRemoval = null },
+                onConfirm = {
+                    persistDraft(currentDraft.copy(exercises = currentDraft.exercises.filterIndexed { i, _ -> i != index }),
+                        "Exercice retiré de la séance.")
+                    pendingRemoval = null
+                },
+            )
+        }
+        pendingDestructiveEdit?.let { (index, replacement) ->
+            val previous=currentDraft.exercises[index]
+            val losses=buildList {
+                if(previous.sets.isNotEmpty())add("${previous.sets.size} série(s)")
+                if(previous.continuousDurationSeconds>0)add("l’activité continue")
+                if(previous.maxWeightKg!=null)add("la donnée MAX")
+                if(previous.plan!=null)add("les objectifs et le repos")
+            }
+            DestructiveConfirmationDialog(
+                title="Changer le profil de ${previous.exercise.name} ?",
+                detail="Ce changement incompatible remplacera :\n- "+losses.joinToString("\n- ")+"\nLes ressentis restent attachés au même entry_id.",
+                confirmLabel="Remplacer",
+                onCancel={pendingDestructiveEdit=null},
+                onConfirm={
+                    persistDraft(currentDraft.copy(exercises=currentDraft.exercises.mapIndexed{i,item->if(i==index)replacement else item},form=SessionDraftForm()),"Exercice modifié.")
+                    pendingDestructiveEdit=null
+                },
+            )
         }
     }
 }
@@ -812,6 +891,7 @@ private fun SessionExerciseForm(
                 initialSetRows
             )
         }
+    var pendingSetRemoval by remember(key) { mutableStateOf<Int?>(null) }
 
     var maxWeightText by
         remember(key) {
@@ -1059,22 +1139,13 @@ private fun SessionExerciseForm(
                             )
                         },
                     )
-                    TrainlogAction(
-                        label = "Supprimer la série ${index + 1}",
-                        description = "Retirer uniquement cette série.",
+                    TrainlogIconAction(
+                        icon = TrainlogIcons.DeleteOutline,
+                        contentDescription = "Supprimer cette série",
                         accent = colors.error,
+                        modifier = Modifier.testTag("delete-set-${index + 1}"),
                         onClick = {
-                            val updated = setRows.filterIndexed { rowIndex, _ -> rowIndex != index }
-                            setRows = updated
-                            repsText = encodeRawReps(updated)
-                            weightText = encodeRawWeights(updated)
-                            error = null
-                            onFormChanged(
-                                currentForm(
-                                    exercise, setCountText, repsText, durationText,
-                                    speedText, distanceText, selectedEquipmentId, weightText,
-                                )
-                            )
+                            pendingSetRemoval = index
                         },
                     )
                 }
@@ -1308,6 +1379,20 @@ private fun SessionExerciseForm(
                 text =
                     error.orEmpty(),
                 color = colors.error,
+            )
+        }
+        pendingSetRemoval?.let { index ->
+            DestructiveConfirmationDialog(
+                title = "Supprimer la série ${index + 1} ?",
+                detail = "Ses répétitions, sa durée et sa charge saisies seront supprimées.",
+                confirmLabel = "Supprimer",
+                onCancel = { pendingSetRemoval = null },
+                onConfirm = {
+                    val updated=setRows.filterIndexed { rowIndex, _ -> rowIndex != index }
+                    setRows=updated;repsText=encodeRawReps(updated);weightText=encodeRawWeights(updated);error=null
+                    onFormChanged(currentForm(exercise,setCountText,repsText,durationText,speedText,distanceText,selectedEquipmentId,weightText,maxWeightText))
+                    pendingSetRemoval=null
+                },
             )
         }
     }

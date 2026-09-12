@@ -8,6 +8,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdint.h>
+
+#include "timestamp.h"
 
 TrainlogStatus trainlog_time_now_rfc3339(
     char *output,
@@ -73,4 +76,31 @@ TrainlogStatus trainlog_time_now_rfc3339(
     }
 
     return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_feedback_relative_label(
+    const char *ended_at, const char *observed_at, bool exercise_feedback,
+    char *output, size_t output_size)
+{
+    TrainlogTimestampKey ended, observed;
+    int written;
+    int64_t elapsed;
+    const char *neutral;
+    if (observed_at == NULL || output == NULL || output_size == 0U)
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    neutral = exercise_feedback ? "Ressenti" : "H+?";
+    if (ended_at == NULL || ended_at[0] == '\0' ||
+        !trainlog_timestamp_parse(ended_at, strlen(ended_at), &ended) ||
+        !trainlog_timestamp_parse(observed_at, strlen(observed_at), &observed)) {
+        written = snprintf(output, output_size, "%s", neutral);
+    } else if (observed.utc_second < ended.utc_second) {
+        written = snprintf(output, output_size, "%s",
+            exercise_feedback ? "Pendant la séance" : "H+?");
+    } else {
+        elapsed = observed.utc_second - ended.utc_second;
+        written = snprintf(output, output_size, "H+%lld",
+            (long long)(elapsed / INT64_C(3600)));
+    }
+    return written >= 0 && (size_t)written < output_size
+        ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_INVALID_ARGUMENT;
 }

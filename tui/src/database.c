@@ -566,6 +566,47 @@ static const char *const MIGRATE_V12_TO_V13_SQL_C =
     "UPDATE exercises SET load_semantics=NULL,machine_variant=NULL,machine_provenance=NULL,scientific_profile_id=NULL,science_state='unresolved',legacy_equipment_id=NULL WHERE exercise_id='ex_617007f9-7420-4408-91b9-8ffb77900f13';"
     "PRAGMA user_version=13;COMMIT;";
 
+/* WHY: subjective observations have their own immutable chronology and must
+ * never be encoded as performed sets, notes, or inferred exercise metadata.
+ * CONTRACT: v14 is additive; exercise feedback belongs to one durable
+ * occurrence and follow-up belongs only to its session. Text byte bounds are
+ * enforced by import/application APIs so SQLite never silently truncates.
+ * INVARIANT: every v13 row and identity remains byte-for-byte untouched. */
+static const char *const MIGRATE_V13_TO_V14_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE exercise_feedback("
+    "id INTEGER PRIMARY KEY,feedback_id TEXT NOT NULL UNIQUE,"
+    "session_exercise_row_id INTEGER NOT NULL REFERENCES session_exercises(id) ON DELETE CASCADE,"
+    "observed_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));"
+    "CREATE INDEX exercise_feedback_timeline ON exercise_feedback(session_exercise_row_id,observed_at,feedback_id);"
+    "CREATE TABLE session_followups("
+    "id INTEGER PRIMARY KEY,followup_id TEXT NOT NULL UNIQUE,"
+    "session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,"
+    "observed_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));"
+    "CREATE INDEX session_followups_timeline ON session_followups(session_row_id,observed_at,followup_id);"
+    "PRAGMA user_version=14;COMMIT;";
+
+/* WHY: wording corrections must not overwrite the original wording.
+ * CONTRACT: v14 root raw_text remains a transactionally maintained current
+ * cache; immutable revisions are the history source of truth. INVARIANT:
+ * fr0_<root-id> is deterministic across peers and migration/V1 import is
+ * idempotent. */
+static const char *const MIGRATE_V14_TO_V15_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE exercise_feedback_revisions("
+    "revision_id TEXT PRIMARY KEY,feedback_id TEXT NOT NULL REFERENCES exercise_feedback(feedback_id) ON DELETE CASCADE,"
+    "created_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));"
+    "CREATE INDEX exercise_feedback_revisions_current ON exercise_feedback_revisions(feedback_id,created_at,revision_id);"
+    "CREATE TABLE session_followup_revisions("
+    "revision_id TEXT PRIMARY KEY,followup_id TEXT NOT NULL REFERENCES session_followups(followup_id) ON DELETE CASCADE,"
+    "created_at TEXT NOT NULL,raw_text TEXT NOT NULL CHECK(length(trim(raw_text))>0));"
+    "CREATE INDEX session_followup_revisions_current ON session_followup_revisions(followup_id,created_at,revision_id);"
+    "INSERT INTO exercise_feedback_revisions(revision_id,feedback_id,created_at,raw_text) "
+    "SELECT 'fr0_'||feedback_id,feedback_id,observed_at,raw_text FROM exercise_feedback;"
+    "INSERT INTO session_followup_revisions(revision_id,followup_id,created_at,raw_text) "
+    "SELECT 'fr0_'||followup_id,followup_id,observed_at,raw_text FROM session_followups;"
+    "PRAGMA user_version=15;COMMIT;";
+
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
     "ALTER TABLE sessions "
@@ -986,6 +1027,80 @@ static TrainlogStatus read_single_int_pragma(
         : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
+static TrainlogStatus list_feedback_query(
+    TrainlogDatabase *database, const char *sql, const char *session_id,
+    TrainlogFeedbackView *output, size_t capacity, size_t *output_count,
+    bool has_entry)
+{
+    sqlite3_stmt *statement = NULL;
+    size_t count = 0U;
+    int rc;
+    if (database == NULL || sql == NULL || session_id == NULL || output == NULL ||
+        output_count == NULL || capacity == 0U) return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    rc = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_bind_text(statement, 1, session_id, -1,
+            SQLITE_TRANSIENT) != SQLITE_OK) {
+        (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while (count < capacity && (rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const unsigned char *stable = sqlite3_column_text(statement, 0);
+        const unsigned char *entry = has_entry ? sqlite3_column_text(statement, 1) : NULL;
+        const unsigned char *at = sqlite3_column_text(statement, has_entry ? 2 : 1);
+        const unsigned char *text = sqlite3_column_text(statement, has_entry ? 3 : 2);
+        if (stable == NULL || at == NULL || text == NULL ||
+            strlen((const char *)text) > TRAINLOG_FEEDBACK_TEXT_MAX) {
+            (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        (void)snprintf(output[count].stable_id, sizeof(output[count].stable_id), "%s", stable);
+        (void)snprintf(output[count].entry_id, sizeof(output[count].entry_id), "%s",
+            entry != NULL ? (const char *)entry : "");
+        (void)snprintf(output[count].observed_at, sizeof(output[count].observed_at), "%s", at);
+        (void)snprintf(output[count].raw_text, sizeof(output[count].raw_text), "%s", text);
+        count += 1U;
+    }
+    if (rc != SQLITE_DONE && count < capacity) {
+        (void)sqlite3_finalize(statement); return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_finalize(statement); *output_count = count;
+    return rc == SQLITE_OK ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+static int compare_feedback_view(const void *left_value, const void *right_value)
+{
+    const TrainlogFeedbackView *left = left_value;
+    const TrainlogFeedbackView *right = right_value;
+    TrainlogTimestampKey left_key, right_key;
+    int compared;
+    if (!trainlog_timestamp_parse(left->observed_at, strlen(left->observed_at), &left_key) ||
+        !trainlog_timestamp_parse(right->observed_at, strlen(right->observed_at), &right_key))
+        return strcmp(left->stable_id, right->stable_id);
+    compared = trainlog_timestamp_compare(&left_key, &right_key);
+    return compared != 0 ? compared : strcmp(left->stable_id, right->stable_id);
+}
+
+TrainlogStatus trainlog_database_list_training_feedback(
+    TrainlogDatabase *database, const char *session_id,
+    TrainlogFeedbackView *exercise_feedback, size_t exercise_capacity,
+    size_t *exercise_count, TrainlogFeedbackView *followups,
+    size_t followup_capacity, size_t *followup_count)
+{
+    TrainlogStatus status = list_feedback_query(database,
+        "SELECT f.feedback_id,se.entry_id,f.observed_at,f.raw_text FROM exercise_feedback f "
+        "JOIN session_exercises se ON se.id=f.session_exercise_row_id JOIN sessions s ON s.id=se.session_row_id "
+        "WHERE s.session_id=?1 ORDER BY f.observed_at COLLATE BINARY,f.feedback_id COLLATE BINARY",
+        session_id, exercise_feedback, exercise_capacity, exercise_count, true);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    qsort(exercise_feedback, *exercise_count, sizeof(*exercise_feedback), compare_feedback_view);
+    status = list_feedback_query(database,
+        "SELECT f.followup_id,f.observed_at,f.raw_text FROM session_followups f "
+        "JOIN sessions s ON s.id=f.session_row_id WHERE s.session_id=?1 "
+        "ORDER BY f.observed_at COLLATE BINARY,f.followup_id COLLATE BINARY",
+        session_id, followups, followup_capacity, followup_count, false);
+    if (status == TRAINLOG_STATUS_OK)
+        qsort(followups, *followup_count, sizeof(*followups), compare_feedback_view);
+    return status;
+}
+
 static TrainlogStatus initialize_or_validate_schema(
     TrainlogDatabase *database,
     char *output_diagnostic,
@@ -1082,7 +1197,7 @@ static TrainlogStatus initialize_or_validate_schema(
         status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
     } else if (version == 10) {
         status = TRAINLOG_STATUS_OK;
-    } else if (version == 11 || version == 12) {
+    } else if (version == 11 || version == 12 || version == 13 || version == 14) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1231,6 +1346,12 @@ static TrainlogStatus initialize_or_validate_schema(
             status = execute_sql(database, MIGRATE_V12_TO_V13_SQL_C);
         }
     }
+    if (status == TRAINLOG_STATUS_OK && version < 14) {
+        status = execute_sql(database, MIGRATE_V13_TO_V14_SQL);
+    }
+    if (status == TRAINLOG_STATUS_OK && version < 15) {
+        status = execute_sql(database, MIGRATE_V14_TO_V15_SQL);
+    }
 
     if (
         status !=
@@ -1239,7 +1360,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v13" : "migrate database to schema v13",
+            version == 0 ? "create schema v15" : "migrate database to schema v15",
             database->connection,
             SQLITE_ERROR
         );
@@ -3723,6 +3844,63 @@ TrainlogStatus trainlog_database_replace_session_exercises(
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
+    /* WHY: replacement reconstructs internal occurrence rows, while feedback
+     * belongs to the stable logical occurrence. CONTRACT: retain immutable
+     * feedback only when the same entry_id remains inside this same session;
+     * removed entries lose their parent-owned rows and new entries inherit
+     * nothing. INVARIANT: the temporary snapshot and reattachment are inside
+     * this transaction, so every failure restores the original graph. */
+    rc = sqlite3_exec(
+        database->connection,
+        "CREATE TEMP TABLE trainlog_correction_feedback("
+        "feedback_id TEXT PRIMARY KEY,entry_id TEXT NOT NULL,"
+        "observed_at TEXT NOT NULL,raw_text TEXT NOT NULL);",
+        NULL, NULL, NULL
+    );
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_prepare_v2(
+            database->connection,
+            "INSERT INTO trainlog_correction_feedback"
+            "(feedback_id,entry_id,observed_at,raw_text) "
+            "SELECT f.feedback_id,se.entry_id,f.observed_at,f.raw_text "
+            "FROM exercise_feedback AS f "
+            "JOIN session_exercises AS se "
+            "ON se.id=f.session_exercise_row_id "
+            "WHERE se.session_row_id=?1;",
+            -1, &statement, NULL
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_int64(statement, 1, session_row_id);
+    }
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_step(statement);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK &&
+        rc == SQLITE_DONE) {
+        rc = SQLITE_ERROR;
+    }
+    statement = NULL;
+    if (rc != SQLITE_DONE) {
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    rc = sqlite3_exec(
+        database->connection,
+        "CREATE TEMP TABLE trainlog_correction_feedback_revisions("
+        "revision_id TEXT PRIMARY KEY,feedback_id TEXT NOT NULL,"
+        "created_at TEXT NOT NULL,raw_text TEXT NOT NULL);"
+        "INSERT INTO trainlog_correction_feedback_revisions "
+        "SELECT r.revision_id,r.feedback_id,r.created_at,r.raw_text "
+        "FROM exercise_feedback_revisions r JOIN trainlog_correction_feedback f "
+        "ON f.feedback_id=r.feedback_id;",
+        NULL, NULL, NULL
+    );
+    if (rc != SQLITE_OK) {
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
     rc = sqlite3_prepare_v2(
         database->connection,
         "DELETE FROM session_exercises "
@@ -3768,6 +3946,47 @@ TrainlogStatus trainlog_database_replace_session_exercises(
     if (status != TRAINLOG_STATUS_OK) {
         (void)trainlog_database_rollback(database);
         return status;
+    }
+
+    rc = sqlite3_prepare_v2(
+        database->connection,
+        "INSERT INTO exercise_feedback"
+        "(feedback_id,session_exercise_row_id,observed_at,raw_text) "
+        "SELECT saved.feedback_id,se.id,saved.observed_at,saved.raw_text "
+        "FROM trainlog_correction_feedback AS saved "
+        "JOIN session_exercises AS se ON se.entry_id=saved.entry_id "
+        "WHERE se.session_row_id=?1;",
+        -1, &statement, NULL
+    );
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_int64(statement, 1, session_row_id);
+    }
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_step(statement);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK &&
+        rc == SQLITE_DONE) {
+        rc = SQLITE_ERROR;
+    }
+    statement = NULL;
+    if (rc == SQLITE_DONE) {
+        rc = sqlite3_exec(
+            database->connection,
+            "INSERT INTO exercise_feedback_revisions(revision_id,feedback_id,created_at,raw_text) "
+            "SELECT r.revision_id,r.feedback_id,r.created_at,r.raw_text "
+            "FROM trainlog_correction_feedback_revisions r "
+            "JOIN exercise_feedback f ON f.feedback_id=r.feedback_id;",
+            NULL, NULL, NULL
+        );
+    }
+    if (rc != SQLITE_OK || sqlite3_exec(
+            database->connection,
+            "DROP TABLE trainlog_correction_feedback_revisions;"
+            "DROP TABLE trainlog_correction_feedback;",
+            NULL, NULL, NULL
+        ) != SQLITE_OK) {
+        (void)trainlog_database_rollback(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
     status = trainlog_database_commit(database);

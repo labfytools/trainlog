@@ -2356,6 +2356,7 @@ typedef enum TrainlogSessionPhase {
     TRAINLOG_SESSION_GENERATOR_WARNING,
     TRAINLOG_SESSION_GENERATOR_PREVIEW,
     TRAINLOG_SESSION_CONFIRM_REMOVE,
+    TRAINLOG_SESSION_CONFIRM_SET_REMOVE,
     TRAINLOG_SESSION_CONFIRM_ABANDON,
     TRAINLOG_SESSION_CONFIRM_LEAVE,
     TRAINLOG_SESSION_MESSAGE
@@ -2393,6 +2394,7 @@ typedef struct TrainlogSessionController {
     bool generation_warning_acknowledged;
     bool correcting;
     bool replacing_occurrence;
+    bool destructive_confirm_selected;
     TrainlogSessionDraftExercise drafts[MAX_SESSION_EXERCISES];
     size_t draft_count;
     size_t selected;
@@ -2427,6 +2429,19 @@ typedef struct TrainlogSessionController {
     int generation_duration_minutes;
     TrainlogDurabilityState durability;
 } TrainlogSessionController;
+
+/* WHY: compiler-visible source buffers are wider than the shell route field.
+ * CONTRACT: stable identities are copied whole or rejected, never truncated.
+ * INVARIANT: a failed copy leaves an empty, terminated destination. */
+static bool copy_ui_stable_id(char *output, size_t capacity, const char *value)
+{
+    size_t length;
+    if (output == NULL || capacity == 0U || value == NULL) return false;
+    length = strlen(value);
+    if (length >= capacity) { output[0] = '\0'; return false; }
+    (void)memcpy(output, value, length + 1U);
+    return true;
+}
 
 typedef enum TrainlogEquipmentPhase {
     TRAINLOG_EQUIPMENT_IDLE = 0,
@@ -2700,6 +2715,10 @@ typedef struct TrainlogAppContext {
     size_t session_entry_selected;
     size_t session_set_scroll;
     bool session_detail_error;
+    TrainlogFeedbackView *exercise_feedback;
+    TrainlogFeedbackView *session_followups;
+    size_t exercise_feedback_count;
+    size_t session_followup_count;
     TrainlogBodyObservationRecord body_records[MAX_BODY_OBSERVATIONS];
     TrainlogBodyObservationRecord body_detail;
     TrainlogBodyMetricPoint body_metric_points[MAX_BODY_METRIC_POINTS];
@@ -4445,8 +4464,8 @@ static bool equipment_controller_save(TrainlogAppContext *app)
     (void)snprintf(controller->message, sizeof(controller->message),
         "Équipement personnel créé : %.120s", controller->pending.display_name);
     app_shell_refresh_list(app);
-    (void)snprintf(app->list.selected_id, sizeof(app->list.selected_id), "%s",
-        controller->pending.equipment_id);
+    if (!copy_ui_stable_id(app->list.selected_id, sizeof(app->list.selected_id),
+            controller->pending.equipment_id)) return false;
     trainlog_list_set_items(&app->list, app->stable_ids, app->loaded_count,
         app->list.visible_rows, app->list.total_known, app->list.more_available);
     return true;
@@ -4750,8 +4769,8 @@ static bool exercise_controller_save(TrainlogAppContext *app)
     }
     else {
         app_shell_refresh_list(app);
-        (void)snprintf(app->list.selected_id, sizeof(app->list.selected_id),
-            "%s", created.exercise_id);
+        if (!copy_ui_stable_id(app->list.selected_id,
+                sizeof(app->list.selected_id), created.exercise_id)) return false;
         trainlog_list_set_items(&app->list, app->stable_ids, app->loaded_count,
             app->list.visible_rows, app->list.total_known,
             app->list.more_available);
@@ -4952,6 +4971,12 @@ static void app_shell_release_session_detail(TrainlogAppContext *app)
         app->session_entry_count);
     (void)memset(app->session_entries, 0, sizeof(app->session_entries));
     app->session_entry_count = 0U;
+    free(app->exercise_feedback);
+    free(app->session_followups);
+    app->exercise_feedback = NULL;
+    app->session_followups = NULL;
+    app->exercise_feedback_count = 0U;
+    app->session_followup_count = 0U;
 }
 
 static void app_shell_open_session_detail(TrainlogAppContext *app,
@@ -4961,6 +4986,23 @@ static void app_shell_open_session_detail(TrainlogAppContext *app,
     app->session_detail_error = trainlog_database_get_session_details(app->database,
         session_id, &app->session_detail, app->session_entries,
         MAX_SESSION_EXERCISES, &app->session_entry_count) != TRAINLOG_STATUS_OK;
+    if (!app->session_detail_error) {
+        /* Resource bound matches the strict companion cardinality. The cache
+         * is detail-owned and released on every navigation replacement. */
+        app->exercise_feedback = calloc(TRAINLOG_FEEDBACK_VIEW_MAX,
+            sizeof(*app->exercise_feedback));
+        app->session_followups = calloc(TRAINLOG_FEEDBACK_VIEW_MAX,
+            sizeof(*app->session_followups));
+        if (app->exercise_feedback == NULL || app->session_followups == NULL)
+            app->session_detail_error = true;
+    }
+    if (!app->session_detail_error) {
+        app->session_detail_error = trainlog_database_list_training_feedback(
+            app->database, session_id, app->exercise_feedback,
+            TRAINLOG_FEEDBACK_VIEW_MAX, &app->exercise_feedback_count,
+            app->session_followups, TRAINLOG_FEEDBACK_VIEW_MAX,
+            &app->session_followup_count) != TRAINLOG_STATUS_OK;
+    }
     app->session_entry_selected = 0U;
     app->session_set_scroll = 0U;
     (void)trainlog_navigation_open(&app->navigation, TRAINLOG_ROUTE_SESSION_DETAIL,
@@ -5559,13 +5601,20 @@ static void app_shell_render_session_controller(TrainlogAppContext *app)
     } else if (session->phase == TRAINLOG_SESSION_CONFIRM_REMOVE) {
         trainlog_surface_printf(app->content, row++, 2,
             "Retirer cette occurrence de la séance ?");
-        trainlog_surface_printf(app->content, row, 4,
-            "1 confirmer · 0/Échap annuler — le catalogue reste intact");
+        trainlog_surface_printf(app->content, row, 4, "%s Non    %s Oui, supprimer",
+            session->destructive_confirm_selected ? "[ ]" : "[>]",
+            session->destructive_confirm_selected ? "[>]" : "[ ]");
+    } else if (session->phase == TRAINLOG_SESSION_CONFIRM_SET_REMOVE) {
+        trainlog_surface_printf(app->content, row++, 2, "Supprimer cette série ?");
+        trainlog_surface_printf(app->content, row, 4, "%s Non    %s Oui, supprimer",
+            session->destructive_confirm_selected ? "[ ]" : "[>]",
+            session->destructive_confirm_selected ? "[>]" : "[ ]");
     } else if (session->phase == TRAINLOG_SESSION_CONFIRM_ABANDON) {
         trainlog_surface_printf(app->content, row++, 2,
             "Abandonner la séance en cours ?");
-        trainlog_surface_printf(app->content, row, 4,
-            "1 confirmer · 0/Échap annuler");
+        trainlog_surface_printf(app->content, row, 4, "%s Non    %s Oui, abandonner",
+            session->destructive_confirm_selected ? "[ ]" : "[>]",
+            session->destructive_confirm_selected ? "[>]" : "[ ]");
     } else if (session->phase == TRAINLOG_SESSION_CONFIRM_LEAVE) {
         trainlog_surface_printf(app->content, row++, 2,
             "Proposition non acceptée conservée en mémoire.");
@@ -6927,6 +6976,25 @@ static void app_shell_render_content(TrainlogAppContext *app)
                     app->session_entry_count, entry->name);
                 trainlog_surface_printf(app->content, row++, 2,
                     "Occurrence : %s", entry->entry_id);
+                {
+                    size_t feedback_index;
+                    bool heading = false;
+                    for (feedback_index = 0U;
+                         feedback_index < app->exercise_feedback_count &&
+                         row < app->layout.content.height; ++feedback_index) {
+                        TrainlogFeedbackView *feedback = &app->exercise_feedback[feedback_index];
+                        char label[32];
+                        if (strcmp(feedback->entry_id, entry->entry_id) != 0) continue;
+                        if (!heading) {
+                            trainlog_surface_printf(app->content, row++, 2, "RESSENTIS EXERCICES");
+                            heading = true;
+                        }
+                        (void)trainlog_feedback_relative_label(app->session_detail.ended_at,
+                        feedback->observed_at, true, label, sizeof(label));
+                        trainlog_surface_printf(app->content, row++, 4, "%s  %s", label,
+                            feedback->raw_text);
+                    }
+                }
                 if (entry->equipment_id[0] != '\0')
                     trainlog_surface_printf(app->content, row++, 2,
                         "Équipement : %s  (i pour la fiche)", entry->equipment_id);
@@ -6968,6 +7036,19 @@ static void app_shell_render_content(TrainlogAppContext *app)
                         trainlog_surface_printf(app->content, row++, 4,
                             "%zu. %-18s  %s", index + 1U, metric, weight);
                     }
+                }
+            }
+            if (app->session_followup_count > 0U && row < app->layout.content.height) {
+                size_t followup_index;
+                trainlog_surface_printf(app->content, row++, 2, "SUIVI APRÈS SÉANCE");
+                for (followup_index = 0U; followup_index < app->session_followup_count &&
+                     row < app->layout.content.height; ++followup_index) {
+                    char label[32];
+                    (void)trainlog_feedback_relative_label(app->session_detail.ended_at,
+                        app->session_followups[followup_index].observed_at,
+                        false, label, sizeof(label));
+                    trainlog_surface_printf(app->content, row++, 4, "%s  %s", label,
+                        app->session_followups[followup_index].raw_text);
                 }
             }
         }
@@ -7785,9 +7866,15 @@ static void app_shell_dispatch_overlay(TrainlogAppContext *app, int key)
                         controller->merge_target.exercise_id);
                     if (status == TRAINLOG_STATUS_OK) {
                         app->exercise_detail = controller->merge_target;
-                        (void)snprintf(app->navigation.current.stable_id,
-                            sizeof(app->navigation.current.stable_id), "%s",
-                            controller->merge_target.exercise_id);
+                        if (!copy_ui_stable_id(app->navigation.current.stable_id,
+                                sizeof(app->navigation.current.stable_id),
+                                controller->merge_target.exercise_id)) {
+                            controller->phase = TRAINLOG_EXERCISE_MERGE_RESULT;
+                            (void)snprintf(controller->message,
+                                sizeof(controller->message),
+                                "Fusion terminée; identifiant UI hors borne.");
+                            return;
+                        }
                         app_shell_load_exercise_detail_metadata(app);
                         (void)snprintf(controller->message, sizeof(controller->message),
                             "Fusion terminée. Cible sélectionnée : %.112s",
@@ -8327,22 +8414,41 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
         return true;
     }
     if (session->phase == TRAINLOG_SESSION_CONFIRM_REMOVE) {
-        if (key == '1' && session->selected < session->draft_count) {
+        if (key == TRAINLOG_KEY_LEFT || key == TRAINLOG_KEY_RIGHT || key == TRAINLOG_KEY_TAB)
+            session->destructive_confirm_selected = !session->destructive_confirm_selected;
+        else if ((key == TRAINLOG_KEY_ENTER || key == '\n') && session->destructive_confirm_selected && session->selected < session->draft_count) {
             draft_delete_exercise(session->drafts, &session->draft_count,
                 session->selected);
             if (session->selected >= session->draft_count && session->selected > 0U)
                 --session->selected;
             session->dirty = true;
             session->phase = TRAINLOG_SESSION_DRAFT;
-        } else if (key == '0' || key == TRAINLOG_KEY_ESCAPE || key == 27)
+        } else if ((key == TRAINLOG_KEY_ENTER || key == '\n') || key == 'q' || key == 'Q' || key == TRAINLOG_KEY_ESCAPE || key == 27)
             session->phase = TRAINLOG_SESSION_DRAFT;
         return true;
     }
+    if (session->phase == TRAINLOG_SESSION_CONFIRM_SET_REMOVE) {
+        TrainlogSessionDraftExercise *draft = &session->drafts[session->selected];
+        if (key == TRAINLOG_KEY_LEFT || key == TRAINLOG_KEY_RIGHT || key == TRAINLOG_KEY_TAB)
+            session->destructive_confirm_selected = !session->destructive_confirm_selected;
+        else if ((key == TRAINLOG_KEY_ENTER || key == '\n') && session->destructive_confirm_selected && draft->input.set_count > 0U) {
+            for (size_t index = session->set_selected; index + 1U < draft->input.set_count; ++index)
+                draft->sets[index] = draft->sets[index + 1U];
+            --draft->input.set_count;
+            if (session->set_selected >= draft->input.set_count && session->set_selected > 0U) --session->set_selected;
+            draft_bind_input(draft); session->dirty = true; session->phase = TRAINLOG_SESSION_ACTUALS;
+        } else if ((key == TRAINLOG_KEY_ENTER || key == '\n') || key == 'q' || key == 'Q' || key == TRAINLOG_KEY_ESCAPE || key == 27)
+            session->phase = TRAINLOG_SESSION_ACTUALS;
+        session_controller_sync_durability(session);
+        return true;
+    }
     if (session->phase == TRAINLOG_SESSION_CONFIRM_ABANDON) {
-        if (key == '1') {
+        if (key == TRAINLOG_KEY_LEFT || key == TRAINLOG_KEY_RIGHT || key == TRAINLOG_KEY_TAB)
+            session->destructive_confirm_selected = !session->destructive_confirm_selected;
+        else if ((key == TRAINLOG_KEY_ENTER || key == '\n') && session->destructive_confirm_selected) {
             session_controller_clear_draft(session);
             app_shell_open_route(app, TRAINLOG_ROUTE_SESSIONS);
-        } else if (key == '0' || key == TRAINLOG_KEY_ESCAPE || key == 27)
+        } else if ((key == TRAINLOG_KEY_ENTER || key == '\n') || key == 'q' || key == 'Q' || key == TRAINLOG_KEY_ESCAPE || key == 27)
             session->phase = TRAINLOG_SESSION_DRAFT;
         return true;
     }
@@ -8530,13 +8636,8 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
             session->set_field = session->set_field == 0U ? 1U : 0U;
         else if ((key == 'd' || key == 'D' || key == TRAINLOG_KEY_DELETE) &&
                  draft->input.set_count > 0U) {
-            for (size_t index = session->set_selected;
-                 index + 1U < draft->input.set_count; ++index)
-                draft->sets[index] = draft->sets[index + 1U];
-            --draft->input.set_count;
-            if (session->set_selected >= draft->input.set_count &&
-                session->set_selected > 0U) --session->set_selected;
-            draft_bind_input(draft); session->dirty = true;
+            session->destructive_confirm_selected = false;
+            session->phase = TRAINLOG_SESSION_CONFIRM_SET_REMOVE;
         } else if ((key == 'a' || key == 'A') &&
                    draft->input.set_count < MAX_SETS_PER_EXERCISE) {
             (void)memset(&session->pending_set, 0, sizeof(session->pending_set));
@@ -8576,8 +8677,10 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
             session->planning_field = 0U;
             session->phase = TRAINLOG_SESSION_PLANNING;
         } else if ((key == 'd' || key == 'D' || key == TRAINLOG_KEY_DELETE) &&
-                   session->draft_count > 0U)
+                   session->draft_count > 0U) {
+            session->destructive_confirm_selected = false;
             session->phase = TRAINLOG_SESSION_CONFIRM_REMOVE;
+        }
         else if ((key == TRAINLOG_KEY_ENTER || key == '\n' || key == 'e' || key == 'E') &&
                  session->draft_count > 0U) {
             session->set_selected = 0U;
@@ -8592,8 +8695,10 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
             if (status != TRAINLOG_STATUS_INVALID_ARGUMENT)
                 (void)snprintf(session->message, sizeof(session->message),
                     "Échec de l’enregistrement; le brouillon est conservé.");
-        } else if (key == 'q' || key == 'Q')
+        } else if (key == 'q' || key == 'Q') {
+            session->destructive_confirm_selected = false;
             session->phase = TRAINLOG_SESSION_CONFIRM_ABANDON;
+        }
         else if (key == TRAINLOG_KEY_ESCAPE || key == 27)
             app_shell_open_route(app, TRAINLOG_ROUTE_SESSIONS);
         session_controller_sync_durability(session);

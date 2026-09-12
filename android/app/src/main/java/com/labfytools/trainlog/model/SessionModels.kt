@@ -109,6 +109,44 @@ data class SessionSummary(
     val startedAt: String,
     val exerciseCount: Int,
     val sessionType: SessionType = SessionType.TRAINING,
+    /** Null is preserved for historical sessions without a trustworthy anchor. */
+    val endedAt: String? = null,
+)
+
+data class ExerciseFeedback(
+    val feedbackId: String,
+    val sessionId: String,
+    val entryId: String,
+    val exerciseId: String,
+    val observedAt: String,
+    val rawText: String,
+    val modified: Boolean = false,
+)
+
+/** Android-local feedback owned by an unfinished occurrence. */
+data class DraftExerciseFeedback(
+    val feedbackId: String,
+    val entryId: String,
+    val exerciseId: String,
+    val observedAt: String,
+    val rawText: String,
+    val modified: Boolean = false,
+)
+
+data class SessionFollowUp(
+    val followupId: String,
+    val sessionId: String,
+    val observedAt: String,
+    val rawText: String,
+    val modified: Boolean = false,
+)
+
+/** Immutable wording revision. The parent observation timestamp is deliberately
+ * absent: correcting wording never creates a new physiological observation. */
+data class FeedbackRevision(
+    val revisionId: String,
+    val createdAt: String,
+    val rawText: String,
 )
 
 data class SessionExerciseDetail(
@@ -128,11 +166,13 @@ data class SessionExerciseDetail(
     val continuousDurationSeconds: Int = 0,
     val speedKmh: Double? = null,
     val distanceKm: Double? = null,
+    val feedback: List<ExerciseFeedback> = emptyList(),
 )
 
 data class SessionDetail(
     val summary: SessionSummary,
     val exercises: List<SessionExerciseDetail>,
+    val followUps: List<SessionFollowUp> = emptyList(),
 )
 
 data class LatestExerciseMax(

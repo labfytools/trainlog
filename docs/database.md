@@ -16,7 +16,7 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=12
+TRAINLOG_DATABASE_SCHEMA_VERSION=15
 DATABASE_SCHEMA_V12=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
@@ -89,6 +89,32 @@ direct zones, and rejects profile or primary-zone conflicts before mutation.
 
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
+
+Schema v14 adds `exercise_feedback` and `session_followups` without rewriting
+v13 facts. Both use stable immutable IDs, exact timestamps, non-empty bounded
+text at API boundaries, and parent-owned cascading foreign keys to
+occurrence/session owners. There is no direct feedback delete operation;
+parent cascade preserves existing correction/deletion semantics. Android
+additionally gains nullable `sessions.ended_at`; migration does
+not populate it for old rows.
+Desktop occurrence replacement preserves feedback for logical occurrences
+whose `entry_id` remains in the same session: it snapshots and remaps the rows
+inside the replacement transaction. Removed entries cascade, new entries do
+not inherit observations, and the stable `sessions` row—and therefore every
+session follow-up—remains unchanged.
+On Android, v14 additionally creates `draft_exercise_feedback`, owned by
+`draft_session_exercises` with `ON DELETE CASCADE`. Its stable `feedback_id`,
+timestamp and raw text transfer to the completed table by occurrence `entry_id`
+inside the existing finalization transaction. It is never synchronized while
+the parent session remains a draft.
+
+Schema v15 is additive. `exercise_feedback_revisions`, Android-only
+`draft_exercise_feedback_revisions`, and `session_followup_revisions` retain
+immutable wording revisions. Every v14 root receives the deterministic initial
+identity `fr0_<root-id>` with `created_at=observed_at`; corrections use
+`fr_<uuid-v4>`. Root `raw_text` remains only a transactionally updated
+current-text cache. The authoritative current revision is selected by parsed
+`created_at` instant, then bytewise `revision_id` on ties.
 
 ## 3. Connection invariants
 

@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     con = sqlite3.connect(args.database)
     try:
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13):
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15):
             raise ValueError("schema desktop v12/v13 requis")
         rows = con.execute(
             "SELECT source_exercise_id,canonical_exercise_id FROM exercise_aliases "

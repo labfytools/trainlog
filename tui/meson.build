@@ -558,6 +558,12 @@ test(
   args: [meson.project_source_root() / 'tests/test_exercise_alias_import.py'],
 )
 
+test(
+  'training_feedback_sync',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_training_feedback_sync.py'],
+)
+
 test_sync_direction = executable(
   'test_sync_direction',
   'tests/test_sync_direction.c',
@@ -651,6 +657,22 @@ test_tui_workflows = executable(
 )
 
 test('tui_workflows', test_tui_workflows)
+
+test_feedback_labels = executable(
+  'test_feedback_labels',
+  'tests/test_feedback_labels.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('feedback_labels', test_feedback_labels)
+
+test_feedback_correction = executable(
+  'test_feedback_correction',
+  'tests/test_feedback_correction.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('feedback_correction', test_feedback_correction)
 
 test_app_shell = executable(
   'test_app_shell',

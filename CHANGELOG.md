@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Training feedback UX and safety
+
+- Added additive schema v15 immutable feedback revisions and Training Feedback
+  V2 with V1 import compatibility.
+- Made saved exercise feedback and session follow-ups correctable on Android
+  while preserving root identity, observation time, H+ placement and history.
+- Preserved occurrence `entry_id` and feedback through draft edit,
+  reconstruction, finalization and completed-session correction.
+- Added explicit destructive confirmation to the reachable Android and TUI
+  session removal/abandon paths.
+
 ## Unreleased — MACHINE_EXERCISE_MODEL_V1
 
 - Add desktop and Android schema v13 for machine-specific exercise metadata.
@@ -353,3 +364,8 @@ direct measurements. Android remains capture-only for this feature.
 - Hid `SESSION_GENERATOR_V1` from normal UI pending V2; manual `%MAX` entry is unchanged.
 - Added versioned canonical exercise display names, stale-peer-name convergence,
   and the STATS_V1 query-contract preparation (no analytics implementation).
+# Unreleased
+
+- Add `TRAINING_FEEDBACK_V1`: schema v14 append-only exercise observations and
+  session follow-ups, Android French voice/manual capture with no audio storage,
+  bidirectional strict companion sync, H+ timelines, and TUI read-only display.

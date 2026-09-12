@@ -272,6 +272,12 @@ Inside editable session exercise lists:
 
 ```text
 d   delete selected exercise from the session
+
+These delete keys now open the existing event-loop-owned confirmation state;
+they do not commit directly. Selection defaults to **Non**, Escape and `q`
+cancel, and Enter commits only when the explicit destructive choice is focused.
+Draft abandon follows the same rule. Exercise merge keeps its impact preview
+and confirmation. Feedback wording remains read-only in the TUI.
 ```
 
 A failed replacement rolls back completely.
@@ -640,3 +646,7 @@ dispatch the one registered list-search action on supported lists.
 Equipment Detail lists V2 verified exercise options and confidence within the
 72x20 layout. The generated core also exposes bounded reverse and BODY ZONE
 queries without changing Body Focus geometry or session generation.
+Completed-session detail also consults synchronized exercise feedback and the
+session follow-up timeline read-only. Exercise labels use `Pendant la séance`,
+`H+xx`, or neutral `Ressenti`; follow-ups use `H+xx` or `H+?`. The TUI never
+renders a negative H+ and has no V1 feedback mutation.

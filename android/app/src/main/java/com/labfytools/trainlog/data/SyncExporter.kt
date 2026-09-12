@@ -48,6 +48,7 @@ class SyncExporter(
         val associationsJson: String
         val bodyZonesJson: String
         val aliasesJson: String
+        val feedbackJson: String
         try {
             definitionsJson = repository.buildEquipmentDefinitionsJson()
             /* V3 is the authoritative mobile session exchange. V1/V2 remain
@@ -56,6 +57,7 @@ class SyncExporter(
             associationsJson = repository.buildEquipmentAssociationsJson()
             bodyZonesJson = repository.buildExerciseBodyZonesJson()
             aliasesJson = repository.buildExerciseAliasesJson()
+            feedbackJson = repository.buildTrainingFeedbackJson()
         } catch (error: Exception) {
             return SyncExportResult.Error(
                 error.message ?: "Préparation de l'export impossible.",
@@ -200,6 +202,9 @@ class SyncExporter(
                 "alias exercice",
             )
             if (aliasesError != null) return SyncExportResult.Error(aliasesError)
+            val feedbackError = writeJsonCompanion(
+                "trainlog-training-feedback-v2.json", feedbackJson, "ressentis d’entraînement")
+            if (feedbackError != null) return SyncExportResult.Error(feedbackError)
             /* CONTRACT: publication, not JSON construction, establishes the
              * common sync ancestor. Applying the exact local snapshot can only
              * record equal baselines; the strict reconciler never unions zones. */

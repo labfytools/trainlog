@@ -24,8 +24,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,10 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
 
@@ -181,6 +187,22 @@ fun TrainlogAction(
     }
 }
 
+/** Compact pictogram action with a mandatory accessible name. */
+@Composable
+fun TrainlogIconAction(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color? = null,
+) {
+    val colors = LocalTrainlogColors.current
+    IconButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp)) {
+        Icon(icon, contentDescription = contentDescription,
+            tint = accent ?: colors.accent)
+    }
+}
+
 @Composable
 fun TrainlogPrimaryAction(label: String, description: String, onClick: () -> Unit) {
     val colors = LocalTrainlogColors.current
@@ -228,6 +250,9 @@ fun TrainlogInputField(
     keyboardOptions: KeyboardOptions =
         KeyboardOptions.Default,
     testTag: String? = null,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -265,7 +290,9 @@ fun TrainlogInputField(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            singleLine = true,
+            singleLine = singleLine,
+            minLines = minLines,
+            maxLines = maxLines,
             keyboardOptions = keyboardOptions,
             cursorBrush =
                 SolidColor(colors.accent),
@@ -338,5 +365,26 @@ fun TrainlogInfo(
                 color =
                     color ?: colors.text,
             ),
+    )
+}
+
+/** Shared destructive commit gate. CONTRACT: dismissal and Back are safe,
+ * outside taps cannot confirm, and only the explicit labelled button invokes
+ * the destructive callback. */
+@Composable
+fun DestructiveConfirmationDialog(
+    title: String,
+    detail: String,
+    confirmLabel: String,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(title) },
+        text = { Text(detail) },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Annuler") } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
+        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false),
     )
 }

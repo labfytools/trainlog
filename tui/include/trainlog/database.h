@@ -11,9 +11,26 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 13
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 15
 
 typedef struct TrainlogDatabase TrainlogDatabase;
+
+#define TRAINLOG_FEEDBACK_TEXT_MAX 8192U
+#define TRAINLOG_FEEDBACK_VIEW_MAX 4096U
+typedef struct TrainlogFeedbackView {
+    char stable_id[TRAINLOG_ID_MAX + 1U];
+    char entry_id[TRAINLOG_ID_MAX + 1U]; /* empty for session follow-up */
+    char observed_at[TRAINLOG_TIMESTAMP_MAX + 1U];
+    char raw_text[TRAINLOG_FEEDBACK_TEXT_MAX + 1U];
+} TrainlogFeedbackView;
+
+/* CONTRACT: read-only chronological consultation; Android remains the sole
+ * V1 creator. Ties use the stable ID byte order. No SQLite resources escape. */
+TrainlogStatus trainlog_database_list_training_feedback(
+    TrainlogDatabase *database, const char *session_id,
+    TrainlogFeedbackView *exercise_feedback, size_t exercise_capacity,
+    size_t *exercise_count, TrainlogFeedbackView *followups,
+    size_t followup_capacity, size_t *followup_count);
 
 /* Nestable read savepoints let composition services observe one database state
  * without exposing SQLite or issuing writes to application data. */
@@ -633,9 +650,11 @@ TrainlogStatus trainlog_database_load_session_editable(
  * @brief Replace only the exercise/set contents of an existing session.
  *
  * The session row itself is preserved, so session_id, timestamps, session type,
- * session notes and body_observations.session_row_id remain attached to the
- * same row. The replacement is atomic: any error rolls the whole operation
- * back.
+ * session notes, session follow-ups and body_observations.session_row_id remain
+ * attached to the same row. Exercise feedback is remapped only by retained
+ * entry_id within that session; removed entries cascade and new entries never
+ * inherit feedback. The replacement is atomic: any error rolls the whole
+ * operation back.
  */
 TrainlogStatus trainlog_database_replace_session_exercises(
     TrainlogDatabase *database,

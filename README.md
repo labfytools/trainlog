@@ -205,7 +205,7 @@ export or desktop synchronization as completed sessions.
 Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v13. Its additive v4 -> v13 chain adds the shared
+The current Android schema is v14. Its additive v4 -> v14 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
 identities, custom-equipment definition support, explicit MAX results and
 stable-source Test max resumption, then direct primary/secondary body-zone

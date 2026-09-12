@@ -11,7 +11,10 @@ The desktop remains the canonical long-term history and analytics store.
 ## Session exchange V3
 
 Completed session occurrences persist an `entry_id`; it is never regenerated
-for exchange. Android publishes `trainlog-mobile-export-v3.json` as the active
+for exchange. Android schema v14 added feedback roots and completion `ended_at`
+anchors; v15 adds immutable correction history and the separately versioned
+`trainlog-training-feedback-v2.json` (while still reading V1). No audio is stored. Android publishes
+`trainlog-mobile-export-v3.json` as the active
 desktop snapshot and imports `trainlog-pc-mobile-export-v3.json` after the PC
 catalogue. The artifact preserves occurrence order, continuous metrics, set
 weights and equipment. The legacy V1 contract remains separate and readable.
@@ -135,6 +138,12 @@ additive v4 -> v11 chain preserves catalog, completed sessions/actuals, body
 observations and the draft while adding the shared equipment catalogue,
 occurrence-level equipment links and stable completed/draft `entry_id` values.
 Exactly one active draft is supported; it is separate from completed history.
+Schema v14 also gives its occurrences durable Android-local
+`draft_exercise_feedback`. The active-session **🎙 Ressenti** action saves there
+immediately and reads all observations back in timestamp/ID order. Multiple
+records are allowed. They survive process restart and transfer by stable
+`entry_id`, without regenerated feedback IDs, in the atomic finalization
+transaction. Explicit draft discard cascades this draft-owned data.
 Schema v9 adds explicit completed/draft MAX results. Schema v10 additively
 stores direct primary/secondary body-zone relations and their private sync
 baseline; the taxonomy itself remains the shared manifest asset. Schema v11
@@ -464,6 +473,8 @@ The user does not need a separate manual export step before synchronization.
 An active draft is never included in completed history, session detail or this
 snapshot. Synchronization continues to exchange completed data while the draft
 stays local; no draft fields were added to the frozen mobile artifact.
+Training Feedback V1 likewise excludes `draft_exercise_feedback`; only its
+exact transferred completed rows are exported after finalization.
 
 ## 10. PC catalog access
 
@@ -725,3 +736,19 @@ Equipment Detail reads the shared V2 relation asset, shows verified possible
 exercises with French confidence/evidence status, and opens Exercise Detail.
 Exercise Detail shows exercise-owned muscles, movements, BODY ZONES, and
 compatible physical equipment. Custom equipment receives no inferred anatomy.
+Saved exercise feedback and session follow-ups expose **Modifier**. The latest
+text is prefilled, resumed dictation appends to it, and save creates an immutable
+v15 revision without changing `observed_at` or the H+ label.
+The feedback editor presents microphone and stop actions with accessible labels
+and keeps the live transcript in a wrapped, multi-line area. Its speech intent
+requests 1.5 seconds of complete silence (and 1.1 seconds of possibly complete
+silence) before completion. These durations are best-effort hints: Android
+recognition engines may ignore them. Trainlog neither fabricates results with a
+local timer nor enters an automatic restart loop; natural completion preserves
+the captured text, while an explicit Stop remains immediate.
+
+Every user-initiated destructive commit uses an action-specific confirmation.
+Cancel and Back are safe, outside taps cannot confirm, and the destructive
+button is explicit. Draft occurrence warnings name nonzero performed-set,
+continuous, MAX and feedback children; series deletion and whole-draft abandon
+use the same gate.

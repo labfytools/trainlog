@@ -57,6 +57,10 @@ static const char *const EXERCISE_BODY_ZONES_NAME =
 
 static const char *const EXERCISE_ALIASES_NAME =
     "trainlog-exercise-aliases-v1.json";
+static const char *const TRAINING_FEEDBACK_NAME =
+    "trainlog-training-feedback-v2.json";
+static const char *const TRAINING_FEEDBACK_V1_NAME =
+    "trainlog-training-feedback-v1.json";
 
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
@@ -90,12 +94,16 @@ static const char *const EXERCISE_BODY_ZONES_LOCAL =
 
 static const char *const EXERCISE_ALIASES_LOCAL =
     "/tmp/trainlog-exercise-aliases-v1.json";
+static const char *const TRAINING_FEEDBACK_LOCAL =
+    "/tmp/trainlog-training-feedback-v2.json";
 
 static const char *const EXERCISE_BODY_ZONES_RESULT =
     "/tmp/trainlog-exercise-body-zones-result.txt";
 
 static const char *const EXERCISE_ALIASES_RESULT =
     "/tmp/trainlog-exercise-aliases-result.txt";
+static const char *const TRAINING_FEEDBACK_RESULT =
+    "/tmp/trainlog-training-feedback-result.txt";
 
 static const char *const SYNC_REQUEST_LOCAL =
     "/tmp/trainlog-sync-request-v1.json";
@@ -3094,6 +3102,36 @@ TrainlogStatus trainlog_sync_run(
         goto finalize;
     }
 
+    /* CONTRACT: feedback references are resolved only after aliases,
+     * catalogue/session snapshots, and occurrence equipment reconciliation. */
+    status = sync_receive_current_android_artifact(&device, folder_id,
+        TRAINING_FEEDBACK_NAME, TRAINING_FEEDBACK_LOCAL, &ignored_size);
+    if (status == TRAINLOG_STATUS_NOT_FOUND) {
+        /* V2 is authoritative, but a deployed V1-only peer remains readable.
+         * The importer turns its immutable raw_text into fr0_<root-id> and
+         * cannot erase locally known revisions. */
+        status = sync_receive_current_android_artifact(&device, folder_id,
+            TRAINING_FEEDBACK_V1_NAME, TRAINING_FEEDBACK_LOCAL, &ignored_size);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = sync_run_python_tool("import_training_feedback.py",
+            TRAINING_FEEDBACK_LOCAL, database_path, NULL, TRAINING_FEEDBACK_RESULT,
+            tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK || strstr(tool_output, "TRAINING_FEEDBACK_IMPORT=PASS") == NULL) {
+            char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            sync_compose_diagnostic(output->error, sizeof(output->error),
+                "Android→PC : ressentis : ", useful[0] ? useful : "import échoué");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "Android→PC : lecture ressentis échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     if (direction == TRAINLOG_SYNC_ANDROID_TO_PC) {
         output->success = true;
         final_status = TRAINLOG_STATUS_OK;
@@ -3116,6 +3154,24 @@ outbound:
     if (status != TRAINLOG_STATUS_OK) {
         (void)snprintf(output->error, sizeof(output->error),
             "PC→Android : publication alias exercices échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
+    status = sync_run_python_tool("export_training_feedback.py",
+        TRAINING_FEEDBACK_LOCAL, database_path, NULL, TRAINING_FEEDBACK_RESULT,
+        tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK || strstr(tool_output, "TRAINING_FEEDBACK_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : export ressentis échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id, TRAINING_FEEDBACK_LOCAL,
+        TRAINING_FEEDBACK_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : publication ressentis échouée.");
         final_status = status;
         goto finalize;
     }

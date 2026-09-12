@@ -121,3 +121,21 @@ internal object TrainlogTimestamp {
         return days + day - 1
     }
 }
+
+/** Shared Android presentation rule; exact instants are parsed before
+ * subtraction and a missing/negative anchor never produces a fabricated H+. */
+fun sessionFollowUpElapsedLabel(endedAt: String?, observedAt: String): String {
+    val end = endedAt?.let(TrainlogTimestamp::parse) ?: return "H+?"
+    val observed = TrainlogTimestamp.parse(observedAt) ?: return "H+?"
+    val seconds = observed.utcSecond - end.utcSecond
+    return if (seconds < 0) "H+?" else "H+${seconds / 3600L}"
+}
+
+/** Exercise observations may precede finalization and therefore use a
+ * session-neutral label instead of a negative or misleading H+ value. */
+fun exerciseFeedbackElapsedLabel(endedAt: String?, observedAt: String): String {
+    val end = endedAt?.let(TrainlogTimestamp::parse) ?: return "Ressenti"
+    val observed = TrainlogTimestamp.parse(observedAt) ?: return "Ressenti"
+    val seconds = observed.utcSecond - end.utcSecond
+    return if (seconds < 0) "Pendant la séance" else "H+${seconds / 3600L}"
+}

@@ -64,7 +64,7 @@ class AndroidV11ExerciseAliasMigrationTest {
             migrated.close()
         }
         SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(13, scalar(db, "PRAGMA user_version"))
+            assertEquals(15, scalar(db, "PRAGMA user_version"))
             /* v13 intentionally adds the frozen machine identities and
              * exercise-owned metadata; all non-exercise facts stay exact. */
             val after = snapshot(db).filterKeys { it != "exercise_aliases" }
