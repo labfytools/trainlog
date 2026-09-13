@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -20,6 +21,9 @@ import com.labfytools.trainlog.data.SyncCatalogInbox
 import com.labfytools.trainlog.data.SyncExporter
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.TrainlogRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: SyncCatalogInbox, requestOutbox: SyncRequestOutbox, appState: TrainlogAppState) {
@@ -32,16 +36,19 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
     var draftRevision by remember { mutableIntStateOf(0) }
     var draftMessage by remember { mutableStateOf<String?>(null) }
     val navigationController = appState.navigationController
+    val coroutineScope = rememberCoroutineScope()
+    fun exportSnapshot() {
+        coroutineScope.launch { exporter.exportMobileBundle() }
+    }
 
     /* CONTRACT: automatic exchange work belongs to the application lifecycle.
      * Re-entering a route must never trigger a second import or export. */
     LaunchedEffect(Unit) {
-        when (inbox.importPcCatalog()) {
+        when (withContext(Dispatchers.IO) { inbox.importPcCatalog() }) {
             is CatalogInboxResult.Imported -> catalogRevision++
             CatalogInboxResult.FolderNotAuthorized, CatalogInboxResult.FileNotFound,
             is CatalogInboxResult.Error -> Unit
         }
-        exporter.exportMobileBundle()
     }
 
     val draftLoad = remember(draftRevision, catalogRevision) { repository.loadActiveSessionDraft() }
@@ -88,7 +95,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 { open(AppRoute.BodyMeasurements) }, { open(AppRoute.SessionDetail(it)) }, { open(AppRoute.Sync) },
             )
             AppRoute.Sessions -> SessionsHub(activeDraft, { open(AppRoute.SessionEditor) }, ::openManualSession, { open(AppRoute.CompletedSessions) })
-            AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exporter.exportMobileBundle(); draftRevision++ })
+            AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exportSnapshot(); draftRevision++ })
             AppRoute.SessionGenerator -> SessionGeneratorScreen(repository, generatorState, { back() }, { generatorState.abandon(); draftRevision++; open(AppRoute.SessionEditor) }, {
                 draftMessage = "Une séance est déjà en cours. Reprenez-la ou revenez à la proposition conservée."
                 draftRevision++
@@ -99,19 +106,23 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 openSection(AppSection.SESSIONS)
             })
             AppRoute.CompletedSessions -> HistoryScreen(repository, { back() }) { open(AppRoute.SessionDetail(it)) }
-            is AppRoute.SessionDetail -> SessionDetailScreen(repository, route.sessionId, { back() }) { draftRevision++; open(AppRoute.SessionEditor) }
+            is AppRoute.SessionDetail -> SessionDetailScreen(repository, route.sessionId, { back() }, { open(AppRoute.SessionCorrection(route.sessionId)) }) { draftRevision++; open(AppRoute.SessionEditor) }
+            is AppRoute.SessionCorrection -> CompletedSessionCorrectionScreen(repository, route.sessionId) { saved ->
+                if (saved) exportSnapshot()
+                back()
+            }
             AppRoute.Exercises -> ExerciseCatalogueScreen(repository, exerciseState, { open(AppRoute.ExerciseCreate(AppRoute.Exercises)) }, { open(AppRoute.ExerciseDetail(it)) })
             is AppRoute.ExerciseDetail -> ExerciseDetailScreen(repository, route.exerciseId, { open(AppRoute.ExerciseEdit(route.exerciseId, route)) }, { open(AppRoute.LatestMaxima) })
-            is AppRoute.ExerciseCreate -> ExerciseEditorRoute(repository, exerciseState, null, route.caller == AppRoute.SessionEditor) { exporter.exportMobileBundle(); catalogRevision++; back() }
-            is AppRoute.ExerciseEdit -> ExerciseEditorRoute(repository, exerciseState, route.exerciseId, false) { exporter.exportMobileBundle(); catalogRevision++; back() }
+            is AppRoute.ExerciseCreate -> ExerciseEditorRoute(repository, exerciseState, null, route.caller == AppRoute.SessionEditor) { exportSnapshot(); catalogRevision++; back() }
+            is AppRoute.ExerciseEdit -> ExerciseEditorRoute(repository, exerciseState, route.exerciseId, false) { exportSnapshot(); catalogRevision++; back() }
             AppRoute.Equipment -> EquipmentScreen(repository, equipmentState, { open(AppRoute.EquipmentCreate(AppRoute.Equipment)) }, { open(AppRoute.EquipmentDetail(it)) })
             is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId) { open(AppRoute.ExerciseDetail(it)) }
-            is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exporter.exportMobileBundle(); catalogRevision++; back() }
+            is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exportSnapshot(); catalogRevision++; back() }
             AppRoute.Statistics -> StatisticsDashboard(repository)
-            AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exporter.exportMobileBundle() }, { back() })
+            AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exportSnapshot() }, { back() })
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)
-            AppRoute.Sync -> SyncScreen(inbox, requestOutbox, { exporter.exportMobileBundle(); catalogRevision++ }, { back() })
-            AppRoute.Settings -> SettingsScreen(inbox) { exporter.exportMobileBundle(); catalogRevision++ }
+            AppRoute.Sync -> SyncScreen(inbox, exporter, requestOutbox, { exportSnapshot(); catalogRevision++ }, { back() })
+            AppRoute.Settings -> SettingsScreen(inbox) { exportSnapshot(); catalogRevision++ }
         }}
     }
 
@@ -134,6 +145,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
 
 private fun AppRoute.stateKey(): String = when (this) {
     is AppRoute.SessionDetail -> "session:${sessionId}"
+    is AppRoute.SessionCorrection -> "session-correction:${sessionId}"
     is AppRoute.ExerciseDetail -> "exercise:${exerciseId}"
     is AppRoute.ExerciseEdit -> "exercise-edit:${exerciseId}:${caller.section}"
     is AppRoute.ExerciseCreate -> "exercise-create:${caller.section}"

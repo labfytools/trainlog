@@ -23,10 +23,24 @@
         }                                                                    \
     } while (0)
 
+#define CHECK_OR_CLEANUP(condition)                                          \
+    do {                                                                     \
+        if (!(condition)) {                                                  \
+            (void)fprintf(                                                   \
+                stderr,                                                      \
+                "CHECK failed at %s:%d: %s\\n",                               \
+                __FILE__,                                                    \
+                __LINE__,                                                    \
+                #condition                                                   \
+            );                                                               \
+            goto cleanup;                                                    \
+        }                                                                    \
+    } while (0)
+
 static bool test_profile_roundtrip(void)
 {
     TrainlogDatabase *database = NULL;
-    TrainlogExercise exercises[4];
+    TrainlogExercise exercises[128];
     size_t count = 0U;
     size_t index;
     bool found_walk = false;
@@ -39,7 +53,7 @@ static bool test_profile_roundtrip(void)
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_insert_exercise(
             database,
             "ex_legacy",
@@ -49,7 +63,7 @@ static bool test_profile_roundtrip(void)
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_insert_exercise_profiled(
             database,
             "ex_walk",
@@ -61,7 +75,7 @@ static bool test_profile_roundtrip(void)
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_insert_exercise_profiled(
             database,
             "ex_invalid",
@@ -73,7 +87,7 @@ static bool test_profile_roundtrip(void)
         ) == TRAINLOG_STATUS_INVALID_ARGUMENT
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_insert_exercise_profiled(
             database,
             "ex_unknown",
@@ -85,28 +99,26 @@ static bool test_profile_roundtrip(void)
         ) == TRAINLOG_STATUS_INVALID_ARGUMENT
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_list_exercises(
             database,
             exercises,
-            4U,
+            128U,
             &count
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(count == 2U);
-
     for (index = 0U; index < count; ++index) {
         if (strcmp(exercises[index].exercise_id, "ex_walk") == 0) {
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].recording_mode ==
                 TRAINLOG_RECORDING_CONTINUOUS
             );
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].tracking_mode ==
                 TRAINLOG_TRACKING_DURATION
             );
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].data_fields ==
                 TRAINLOG_EXERCISE_DATA_SPEED_KMH
             );
@@ -114,20 +126,24 @@ static bool test_profile_roundtrip(void)
         }
 
         if (strcmp(exercises[index].exercise_id, "ex_legacy") == 0) {
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].recording_mode ==
                 TRAINLOG_RECORDING_SETS
             );
-            CHECK(exercises[index].data_fields == 0U);
+            CHECK_OR_CLEANUP(exercises[index].data_fields == 0U);
             found_legacy = true;
         }
     }
 
-    CHECK(found_walk);
-    CHECK(found_legacy);
+    CHECK_OR_CLEANUP(found_walk);
+    CHECK_OR_CLEANUP(found_legacy);
 
     trainlog_database_close(database);
     return true;
+
+cleanup:
+    trainlog_database_close(database);
+    return false;
 }
 
 static bool test_v2_to_current_migration(void)
@@ -179,34 +195,36 @@ static bool test_v2_to_current_migration(void)
     sqlite3 *raw = NULL;
     sqlite3_stmt *statement = NULL;
     TrainlogDatabase *database = NULL;
-    int fd;
+    int fd = -1;
     int version = 0;
+    bool success = false;
 
     fd = mkstemp(path);
-    CHECK(fd >= 0);
-    CHECK(close(fd) == 0);
+    CHECK_OR_CLEANUP(fd >= 0);
+    CHECK_OR_CLEANUP(close(fd) == 0);
+    fd = -1;
 
-    CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(
+    CHECK_OR_CLEANUP(sqlite3_open(path, &raw) == SQLITE_OK);
+    CHECK_OR_CLEANUP(
         sqlite3_exec(raw, V2_SQL, NULL, NULL, NULL) ==
         SQLITE_OK
     );
-    CHECK(sqlite3_close(raw) == SQLITE_OK);
+    CHECK_OR_CLEANUP(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_open(path, &database) ==
         TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_schema_version(
             database,
             &version
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         version ==
         TRAINLOG_DATABASE_SCHEMA_VERSION
     );
@@ -214,9 +232,9 @@ static bool test_v2_to_current_migration(void)
     trainlog_database_close(database);
     database = NULL;
 
-    CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
+    CHECK_OR_CLEANUP(sqlite3_open(path, &raw) == SQLITE_OK);
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         sqlite3_prepare_v2(
             raw,
             "SELECT recording_mode, data_fields "
@@ -227,18 +245,18 @@ static bool test_v2_to_current_migration(void)
         ) == SQLITE_OK
     );
 
-    CHECK(sqlite3_step(statement) == SQLITE_ROW);
-    CHECK(
+    CHECK_OR_CLEANUP(sqlite3_step(statement) == SQLITE_ROW);
+    CHECK_OR_CLEANUP(
         strcmp(
             (const char *)sqlite3_column_text(statement, 0),
             "sets"
         ) == 0
     );
-    CHECK(sqlite3_column_int64(statement, 1) == 0);
-    CHECK(sqlite3_finalize(statement) == SQLITE_OK);
+    CHECK_OR_CLEANUP(sqlite3_column_int64(statement, 1) == 0);
+    CHECK_OR_CLEANUP(sqlite3_finalize(statement) == SQLITE_OK);
     statement = NULL;
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         sqlite3_prepare_v2(
             raw,
             "SELECT recording_mode, data_fields "
@@ -249,18 +267,18 @@ static bool test_v2_to_current_migration(void)
         ) == SQLITE_OK
     );
 
-    CHECK(sqlite3_step(statement) == SQLITE_ROW);
-    CHECK(
+    CHECK_OR_CLEANUP(sqlite3_step(statement) == SQLITE_ROW);
+    CHECK_OR_CLEANUP(
         strcmp(
             (const char *)sqlite3_column_text(statement, 0),
             "sets"
         ) == 0
     );
-    CHECK(sqlite3_column_int64(statement, 1) == 0);
-    CHECK(sqlite3_finalize(statement) == SQLITE_OK);
+    CHECK_OR_CLEANUP(sqlite3_column_int64(statement, 1) == 0);
+    CHECK_OR_CLEANUP(sqlite3_finalize(statement) == SQLITE_OK);
     statement = NULL;
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         sqlite3_prepare_v2(
             raw,
             "SELECT name FROM sqlite_master "
@@ -271,14 +289,23 @@ static bool test_v2_to_current_migration(void)
         ) == SQLITE_OK
     );
 
-    CHECK(sqlite3_step(statement) == SQLITE_ROW);
-    CHECK(sqlite3_finalize(statement) == SQLITE_OK);
+    CHECK_OR_CLEANUP(sqlite3_step(statement) == SQLITE_ROW);
+    CHECK_OR_CLEANUP(sqlite3_finalize(statement) == SQLITE_OK);
+    statement = NULL;
 
-    CHECK(sqlite3_close(raw) == SQLITE_OK);
+    CHECK_OR_CLEANUP(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
     CHECK(unlink(path) == 0);
-    return true;
+    success = true;
+
+cleanup:
+    if (fd >= 0) (void)close(fd);
+    if (statement != NULL) (void)sqlite3_finalize(statement);
+    if (raw != NULL) (void)sqlite3_close(raw);
+    if (database != NULL) trainlog_database_close(database);
+    if (!success) (void)unlink(path);
+    return success;
 }
 
 int main(void)

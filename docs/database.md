@@ -16,8 +16,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=15
-DATABASE_SCHEMA_V12=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=17
+DATABASE_SCHEMA_V17=PASS
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -116,6 +116,24 @@ identity `fr0_<root-id>` with `created_at=observed_at`; corrections use
 current-text cache. The authoritative current revision is selected by parsed
 `created_at` instant, then bytewise `revision_id` on ties.
 
+Desktop schema v16 transactionally rebuilds only `session_exercises` to add
+`tracking_mode TEXT NOT NULL CHECK(tracking_mode IN ('reps','duration'))`.
+Each v15 row is backfilled exactly once from its linked exercise before the
+version is published. Row counts, foreign keys and source/catalog agreement are
+checked before commit; `id`, `entry_id` and every child row remain unchanged.
+Desktop schema v17 and Android schema v16 then add `exercise_profile_state`, a
+one-row-per-exercise current pointer, plus `exercise_profile_revisions`, the
+durable causal chain for mutable current capture profiles. Both migrations seed
+`pr_legacy_v1` without rewriting exercises or occurrence snapshots. Local edits
+append deterministic revisions transactionally. Each exercise is limited to 32
+revision records; a 33rd edit/import is rejected explicitly, never pruned or
+ordered by a wall clock.
+Already-versioned prototype databases are repaired on open without a version
+bump: an exact `pr1|recording_mode|tracking_mode|data_fields` current token is
+replaced atomically by `pr_legacy_v1` and its canonical first `pr2_` child.
+Malformed, impossible, orphaned, or mixed prototype lineage aborts the open and
+rolls back the repair.
+
 ## 3. Connection invariants
 
 Every connection enables:
@@ -204,6 +222,7 @@ session_row_id
 exercise_row_id
 entry_id             UNIQUE stable occurrence identity
 recording_mode
+tracking_mode         immutable occurrence unit snapshot
 data_fields
 position
 load_mode
@@ -216,9 +235,9 @@ equipment_id         nullable equipment identity
 notes
 ```
 
-Current desktop history snapshots `recording_mode` and `data_fields` in the
-session row. `tracking_mode` remains associated with the referenced exercise
-catalog identity.
+Desktop history snapshots `recording_mode`, `tracking_mode` and `data_fields`
+in the occurrence row. Catalogue profile edits supply defaults only to future
+occurrences and never update these snapshots.
 
 An occurrence `equipment_id` resolves to either a supplied manifest definition
 or a desktop-local `custom_equipment` definition. An ID that cannot be
@@ -661,3 +680,21 @@ findings were repaired, independently verified, and final-validated;
 Exercise naming changes update only `exercises.name` and `normalized_name` for
 explicitly mapped stable IDs; no schema migration or historical-row rewrite is
 required.
+
+## 15. Profile-revision SQLite connection functions
+
+Schema v17 profile-state insert/update triggers use the deterministic
+`trainlog_profile_revision(parent, recording_mode, tracking_mode, data_fields)`
+UUIDv5 function. The migration-only `trainlog_pr1_valid(...)` recognizer shares
+the same connection boundary. These are process-local SQLite functions even
+though the triggers that reference them are persisted.
+
+Every production connection capable of preparing Trainlog schema statements
+must therefore install the complete function set before executing schema or
+data SQL. Native connections do so in
+`trainlog_database_open_with_diagnostic()`; Python import/export tools use the
+single `tools/trainlog_sqlite.py::connect_database()` factory. SQLite resolves
+trigger functions while preparing a statement even when a trigger `WHEN`
+condition will suppress its body, so read-mostly importers are not exempt if
+they can update or insert an exercise. Raw SQLite connections are limited to
+test-fixture construction and read-only inspection.

@@ -19,9 +19,42 @@ desktop snapshot and imports `trainlog-pc-mobile-export-v3.json` after the PC
 catalogue. The artifact preserves occurrence order, continuous metrics, set
 weights and equipment. The legacy V1 contract remains separate and readable.
 
+Android schema v16 adds deterministic current exercise-profile ancestry. Its
+v15 migration seeds a shared legacy root without changing catalogue or
+historical occurrence values; later local edits and peer reconciliation advance
+lineage explicitly inside the same repository transaction as the current-profile
+change. The insert trigger owns only initial root creation.
+
+The manual synchronization action publishes one prepared Android→PC bundle
+before it exposes `trainlog-sync-request-v1.json`. The bundle contains mobile
+V3, mobile equipment definitions, equipment associations V2, exercise aliases
+V1, BODY ZONES V1, Training Feedback V2, and Exercise Profile State V1. The
+request is not written if any required publication fails. The persisted,
+user-authorized `Download/Trainlog` SAF tree is the canonical authority for
+both inbound and outbound exchange: MediaStore ownership and app-scoped row
+visibility are not consulted. Exact display names are rewritten through their
+SAF document URI; absence creates the exact name once, and multiple exact names
+fail conservatively. Conflict copies such as `name (1).json` are historical
+objects, never aliases of `name.json`, and are neither selected nor deleted.
+One synchronization enumerates the direct SAF children once, builds a bounded
+exact-name multimap, and shares that transaction-local snapshot across all
+outbound artifacts and the request. Newly created documents update that map.
+The next synchronization enumerates again so PC/MTP changes are never hidden by
+a long-lived cache. Snapshot, create and stream operations run on the I/O
+dispatcher; Compose only launches the suspend coordinator and applies results.
+
 V3 preserves ordinary plan metadata atomically with occurrence identity,
 equipment, actual sets and MAX. V1/V2 remain readable legacy artifacts and are
 never silently rewritten as V3.
+
+Completed Session Detail exposes **Modifier la séance**. Its bounded form is
+initialized from occurrence snapshots and writes nothing before Save. Save
+replaces all children in one transaction while retaining `session_id`, every
+retained `entry_id`, feedback roots/revisions, and the session follow-up parent.
+Set and occurrence removal require explicit confirmation; Cancel writes
+nothing. Exercise Detail separately exposes **Modifier l'exercice**. A
+confirmed incompatible catalogue edit controls future Android occurrences;
+completed and active-draft occurrence snapshots are never converted.
 
 ## 2. Implemented navigation
 
@@ -505,10 +538,14 @@ Android writes:
 trainlog-sync-request-v1.json
 ```
 
-If MediaStore cannot reopen an older MTP-created canonical object, it may
-publish the exact collision sibling `trainlog-sync-request-v1 (N).json`. The
-desktop engine selects the newest canonical-or-suffixed request
-deterministically, while the stable `request_id` remains the replay boundary.
+The request is resolved and rewritten through the same persisted SAF tree as
+the bundle. Android does not create a numbered request sibling merely because
+MediaStore cannot expose an MTP- or peer-created canonical object. The stable
+`request_id` remains the replay boundary.
+
+The application-start catalog import does not publish an outbound bundle.
+Exactly one explicit `Synchroniser maintenant` action invokes one export and
+one request publication unless a later, explicit retry is initiated.
 
 and waits for a matching:
 

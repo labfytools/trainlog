@@ -56,10 +56,11 @@ resources.
 `observed_at` and `sessions.ended_at` are exact offset-aware Trainlog
 timestamps. New Android completions persist their explicit finalization instant
 as `ended_at`; old NULL anchors are not backfilled or derived from `started_at`.
-Session follow-up uses `H+floor((observed-end)/3600)` including after 24 hours,
-or `H+?` when the anchor is missing/invalid. Exercise feedback observed before
-the end displays `Pendant la séance`; at/after end it uses H+, and without an
-anchor it displays the neutral `Ressenti`. No negative H+ is rendered. Ordering
+Session follow-up uses `H+floor((observed-end)/3600)` including after 24 hours.
+When `ended_at` is unavailable but valid `started_at` gives a nonnegative delta,
+both surfaces use `≈H+floor((observed-start)/3600)`; otherwise they use `H+?`.
+Exercise feedback uses `Pendant la séance` only when a trustworthy `ended_at`
+proves the observation preceded completion. No negative H+ is rendered. Ordering
 parses instants, then compares the stable ID bytewise; it never
 uses lexical timestamp order or machine-local timezone.
 

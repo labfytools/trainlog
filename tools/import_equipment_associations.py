@@ -4,6 +4,7 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 FORMAT = "trainlog-equipment-associations"
 VERSION = 2
@@ -170,10 +171,10 @@ def main():
         fail("extension équipement non supportée")
     if set(payload) != {"format", "version", "generated_at", "associations"}:
         fail("clés extension équipement invalides")
-    connection = sqlite3.connect(args.database)
+    connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15):
-            fail("schema desktop v8 à v13 requis")
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+            fail("schema desktop v8 à v16 requis")
         known = load_catalog(args.catalog)
         known.update(row[0] for row in connection.execute(
             "SELECT equipment_id FROM custom_equipment"))

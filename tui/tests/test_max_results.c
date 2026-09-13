@@ -56,6 +56,7 @@ static void max_input(TrainlogSessionExerciseInput *input,
     (void)snprintf(input->equipment_id, sizeof(input->equipment_id), "%s",
         "rear_delt_pec_fly");
     input->recording_mode = TRAINLOG_RECORDING_SETS;
+    input->tracking_mode = TRAINLOG_TRACKING_REPS;
     input->load_mode = TRAINLOG_LOAD_NONE;
     input->has_max_weight = true;
     input->max_weight_kg = weight;
@@ -88,6 +89,7 @@ static bool test_explicit_max_round_trip_and_identity(void)
     (void)snprintf(entries[2].exercise_id, sizeof(entries[2].exercise_id), "%s",
         "ex_walk");
     entries[2].recording_mode = TRAINLOG_RECORDING_CONTINUOUS;
+    entries[2].tracking_mode = TRAINLOG_TRACKING_DURATION;
     entries[2].data_fields = TRAINLOG_EXERCISE_DATA_SPEED_KMH;
     entries[2].load_mode = TRAINLOG_LOAD_NONE;
     entries[2].continuous_duration_seconds = 600;
@@ -163,16 +165,21 @@ static bool test_v8_migration_refuses_to_guess_multiple_attempts(void)
         "name TEXT NOT NULL,normalized_name TEXT NOT NULL UNIQUE,tracking_mode TEXT NOT NULL,"
         "recording_mode TEXT NOT NULL,data_fields INTEGER NOT NULL);"
         "CREATE TABLE sessions(id INTEGER PRIMARY KEY,session_type TEXT);"
-        "CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,"
-        "session_row_id INTEGER,exercise_row_id INTEGER,entry_id TEXT,"
-        "equipment_id TEXT,recording_mode TEXT);"
+        "CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,entry_id TEXT NOT NULL UNIQUE,"
+        "session_row_id INTEGER NOT NULL,exercise_row_id INTEGER NOT NULL,recording_mode TEXT NOT NULL,"
+        "data_fields INTEGER NOT NULL,position INTEGER NOT NULL,load_mode TEXT NOT NULL,rest_seconds INTEGER NOT NULL,"
+        "target_sets INTEGER,target_reps INTEGER,target_duration_seconds INTEGER,target_weight_kg REAL,"
+        "equipment_id TEXT,notes TEXT,UNIQUE(session_row_id,position));"
         "CREATE TABLE performed_sets(id INTEGER PRIMARY KEY,"
         "session_exercise_row_id INTEGER,position INTEGER,reps INTEGER,"
         "duration_seconds INTEGER,weight_kg REAL);"
+        "INSERT INTO exercises VALUES(1,'ex_max_a','Max A','max a','reps','sets',0);"
+        "INSERT INTO exercises VALUES(2,'ex_max_b','Max B','max b','reps','sets',0);"
+        "INSERT INTO exercises VALUES(3,'ex_max_c','Max C','max c','reps','sets',0);"
         "INSERT INTO sessions VALUES(1,'max_test');"
-        "INSERT INTO session_exercises VALUES(10,1,NULL,NULL,NULL,'sets');"
-        "INSERT INTO session_exercises VALUES(11,1,NULL,NULL,NULL,'sets');"
-        "INSERT INTO session_exercises VALUES(12,1,NULL,NULL,NULL,'sets');"
+        "INSERT INTO session_exercises VALUES(10,'sxe_max_a',1,1,'sets',0,0,'none',0,NULL,NULL,NULL,NULL,NULL,NULL);"
+        "INSERT INTO session_exercises VALUES(11,'sxe_max_b',1,2,'sets',0,1,'none',0,NULL,NULL,NULL,NULL,NULL,NULL);"
+        "INSERT INTO session_exercises VALUES(12,'sxe_max_c',1,3,'sets',0,2,'none',0,NULL,NULL,NULL,NULL,NULL,NULL);"
         "INSERT INTO performed_sets VALUES(20,10,0,1,NULL,100.0);"
         "INSERT INTO performed_sets VALUES(21,11,0,1,NULL,80.0);"
         "INSERT INTO performed_sets VALUES(22,11,1,1,NULL,86.0);"

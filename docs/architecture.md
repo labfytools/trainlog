@@ -168,8 +168,13 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v15 is canonical long-term history. Its v14 -> v15
-additive step introduces immutable wording-revision tables for the subjective
+Desktop SQLite schema v17 is canonical long-term history. Its v15 -> v16
+transactional rebuild adds the occurrence-owned `tracking_mode` snapshot; the
+one-time backfill copies the linked catalogue mode without changing child rows
+or stable identities. The additive v16 -> v17 migration adds deterministic
+current-profile ancestry in a 32-record-per-exercise durable chain without
+altering those occurrence snapshots. The v14
+-> v15 additive step introduces immutable wording-revision tables for the subjective
 feedback roots introduced in v14; see [Training feedback](training_feedback.md). Its v9 -> v10
 migration losslessly rebuilds only `performed_sets` so actual `weight_kg` may
 be finite `>= 0`; the column already existed and targets/max results retain

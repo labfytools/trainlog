@@ -9,6 +9,7 @@ import sqlite3
 import unicodedata
 from datetime import datetime
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -201,11 +202,11 @@ def main():
     mobile_proof = (load_mobile_exercise_proof(args.mobile_export)
                     if args.mobile_export is not None else {})
 
-    connection = sqlite3.connect(args.database)
+    connection = connect_database(args.database)
     updated = skipped = kept_local = 0
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15):
-            raise ImportFailure("schema desktop v11/v12/v13 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15, 16, 17):
+            raise ImportFailure("schema desktop v11-v16 requis")
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("BEGIN IMMEDIATE")
         grouped = {}

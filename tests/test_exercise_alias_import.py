@@ -2,6 +2,7 @@
 """Strict JSON validation regressions for exercise-alias imports."""
 
 import importlib.util
+import sys
 import json
 import sqlite3
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
 SPEC = importlib.util.spec_from_file_location(
     "import_exercise_aliases", ROOT / "tools/import_exercise_aliases.py")
 MODULE = importlib.util.module_from_spec(SPEC)

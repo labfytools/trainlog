@@ -1,5 +1,28 @@
 # Changelog
 
+- Fixed Android-triggered synchronization so the complete current Android→PC
+  companion bundle is published before the request signal, including Training
+  Feedback V2 and Exercise Profile State V1. Desktop orchestration now refuses
+  stale temporary profile-state reuse and reports a specific missing causal
+  companion when a modern same-ID profile mismatch requires it.
+- Made Android exchange-file reuse exact and directory-scoped: pending,
+  trashed, unrelated, and conflict-numbered MediaStore rows no longer enter
+  canonical selection, while genuine duplicate exact names fail closed.
+
+## Unreleased — Desktop historical tracking snapshot
+
+- Added desktop schema v17 / Android schema v16 causal current-profile state,
+  bounded 32-revision transitive ancestry, deterministic bidirectional
+  convergence, and explicit concurrent-edit conflicts; legacy feedback without
+  `ended_at` now shows approximate H+ from
+  valid `started_at` instead of a misleading during-session label.
+- Added desktop schema v16 with an atomic v15 backfill of occurrence-owned
+  `session_exercises.tracking_mode`, preserving identities and all child facts.
+- Switched historical readers and V3 exchange to the occurrence snapshot while
+  retaining catalogue profile modes as future-entry defaults.
+- Enabled explicitly confirmed future-only tracking/profile edits in the TUI
+  without rewriting completed sessions.
+
 ## Unreleased — Training feedback UX and safety
 
 - Added additive schema v15 immutable feedback revisions and Training Feedback

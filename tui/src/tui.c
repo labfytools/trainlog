@@ -2478,18 +2478,20 @@ typedef enum TrainlogExercisePhase {
     TRAINLOG_EXERCISE_MERGE_PICKER,
     TRAINLOG_EXERCISE_MERGE_CONFIRM,
     TRAINLOG_EXERCISE_MERGE_RESULT,
+    TRAINLOG_EXERCISE_CONFIRM_PROFILE,
     TRAINLOG_EXERCISE_CONFIRM_DISCARD,
     TRAINLOG_EXERCISE_MESSAGE
 } TrainlogExercisePhase;
 
 typedef struct TrainlogExerciseController {
     /* CONTRACT: creation/editing owns one transient value set. An edit keeps
-     * exercise_id and passes the stored profile back unchanged; referenced
-     * profile restrictions remain enforced by the database transaction. */
+     * exercise_id; incompatible future-profile changes require confirmation
+     * and never mutate occurrence-owned historical snapshots. */
     TrainlogExercisePhase phase;
     TrainlogExercisePhase return_phase;
     TrainlogFormField form;
     TrainlogExercise pending;
+    TrainlogExercise original;
     char primary_zone[TRAINLOG_ZONE_ID_MAX + 1U];
     char secondary_zones[MAX_BODY_ZONES][TRAINLOG_ZONE_ID_MAX + 1U];
     size_t secondary_count;
@@ -2497,6 +2499,7 @@ typedef struct TrainlogExerciseController {
     bool editing;
     bool inline_session;
     bool dirty;
+    bool profile_confirmed;
     bool leaving;
     TrainlogAppRoute pending_route;
     char message[192];
@@ -3654,22 +3657,22 @@ static TrainlogStatus dashboard_database_list_facts(TrainlogDatabase *database,
 {
     static const char *const SQL =
         "SELECT 0,s.started_at,s.session_id,se.entry_id,e.exercise_id,"
-        "COALESCE(se.equipment_id,''),e.tracking_mode,se.load_mode,ps.position,"
-        "CASE WHEN e.tracking_mode='reps' THEN ps.reps ELSE ps.duration_seconds END,"
+        "COALESCE(se.equipment_id,''),se.tracking_mode,se.load_mode,ps.position,"
+        "CASE WHEN se.tracking_mode='reps' THEN ps.reps ELSE ps.duration_seconds END,"
         "ps.weight_kg FROM performed_sets ps "
         "JOIN session_exercises se ON se.id=ps.session_exercise_row_id "
         "JOIN sessions s ON s.id=se.session_row_id "
         "JOIN exercises e ON e.id=se.exercise_row_id "
         "UNION ALL "
         "SELECT 1,s.started_at,s.session_id,se.entry_id,e.exercise_id,"
-        "COALESCE(se.equipment_id,''),e.tracking_mode,se.load_mode,0,0,"
+        "COALESCE(se.equipment_id,''),se.tracking_mode,se.load_mode,0,0,"
         "mr.max_weight_kg FROM max_results mr "
         "JOIN session_exercises se ON se.id=mr.session_exercise_row_id "
         "JOIN sessions s ON s.id=se.session_row_id "
         "JOIN exercises e ON e.id=se.exercise_row_id "
         "UNION ALL "
         "SELECT 2,s.started_at,s.session_id,se.entry_id,e.exercise_id,"
-        "COALESCE(se.equipment_id,''),e.tracking_mode,se.load_mode,0,"
+        "COALESCE(se.equipment_id,''),se.tracking_mode,se.load_mode,0,"
         "ca.duration_seconds,NULL FROM continuous_activity ca "
         "JOIN session_exercises se ON se.id=ca.session_exercise_row_id "
         "JOIN sessions s ON s.id=se.session_row_id "
@@ -4593,6 +4596,7 @@ static void exercise_controller_start_edit(TrainlogAppContext *app)
     TrainlogExerciseController *controller = &app->exercise_controller;
     (void)memset(controller, 0, sizeof(*controller));
     controller->pending = app->exercise_detail;
+    controller->original = app->exercise_detail;
     controller->editing = true;
     controller->phase = TRAINLOG_EXERCISE_NAME;
     controller->return_phase = TRAINLOG_EXERCISE_NAME;
@@ -4706,6 +4710,13 @@ static bool exercise_controller_save(TrainlogAppContext *app)
     TrainlogStatus status;
     char normalized[(TRAINLOG_NAME_MAX * 4U) + 1U];
     size_t index;
+    if (controller->editing && !controller->profile_confirmed &&
+        (controller->pending.tracking_mode != controller->original.tracking_mode ||
+         controller->pending.recording_mode != controller->original.recording_mode ||
+         controller->pending.data_fields != controller->original.data_fields)) {
+        controller->phase = TRAINLOG_EXERCISE_CONFIRM_PROFILE;
+        return false;
+    }
     if (!controller->editing &&
         controller->pending.recording_mode == TRAINLOG_RECORDING_SETS &&
         controller->primary_zone[0] == '\0') {
@@ -4810,6 +4821,17 @@ static bool app_shell_dispatch_exercise_controller(TrainlogAppContext *app,
             if (leaving) app_shell_open_route(app, pending_route);
         } else if (key == '0' || key == TRAINLOG_KEY_ESCAPE)
             controller->phase = controller->return_phase;
+        return true;
+    }
+    if (controller->phase == TRAINLOG_EXERCISE_CONFIRM_PROFILE) {
+        if (key == 'y' || key == 'Y' || key == '1') {
+            controller->profile_confirmed = true;
+            controller->phase = TRAINLOG_EXERCISE_ZONES;
+            (void)exercise_controller_save(app);
+        } else if (key == 'n' || key == 'N' || key == '0' ||
+                   key == TRAINLOG_KEY_ESCAPE || key == 'q' || key == 'Q') {
+            controller->phase = TRAINLOG_EXERCISE_ZONES;
+        }
         return true;
     }
     if (controller->phase == TRAINLOG_EXERCISE_ZONES) {
@@ -5068,7 +5090,12 @@ static void app_shell_actions(TrainlogAppContext *app)
     }
     if (app->exercise_controller.phase != TRAINLOG_EXERCISE_IDLE) {
         TrainlogExercisePhase phase = app->exercise_controller.phase;
-        if (phase == TRAINLOG_EXERCISE_CONFIRM_DISCARD) {
+        if (phase == TRAINLOG_EXERCISE_CONFIRM_PROFILE) {
+            app_shell_add_action(app, "exercise.profile.no", '0',
+                "0 Non", 1U, TRAINLOG_INTENT_BACK, route);
+            app_shell_add_action(app, "exercise.profile.yes", '1',
+                "1 Oui, modifier", 2U, TRAINLOG_INTENT_SAVE, route);
+        } else if (phase == TRAINLOG_EXERCISE_CONFIRM_DISCARD) {
             app_shell_add_action(app, "exercise.form.discard", '1',
                 "1 Abandonner", 1U, TRAINLOG_INTENT_DISCARD, route);
             app_shell_add_action(app, "exercise.form.resume", '0',
@@ -5703,6 +5730,17 @@ static void app_shell_render_exercise_controller(TrainlogAppContext *app)
             "Abandonner les modifications non enregistrées ?");
         trainlog_surface_printf(app->content, row, 4,
             "1 abandonner · 0/Échap reprendre");
+        return;
+    }
+    if (controller->phase == TRAINLOG_EXERCISE_CONFIRM_PROFILE) {
+        trainlog_surface_printf(app->content, row++, 2,
+            "Modifier le mode de suivi ?");
+        trainlog_surface_printf(app->content, row++, 2,
+            "Les anciennes séances resteront inchangées.");
+        trainlog_surface_printf(app->content, row++, 2,
+            "Les prochaines utilisations suivront le nouveau profil.");
+        trainlog_surface_printf(app->content, row, 4,
+            "0/Échap/q Non · 1 Oui, modifier");
         return;
     }
     if (controller->phase == TRAINLOG_EXERCISE_MESSAGE) {
@@ -6990,7 +7028,8 @@ static void app_shell_render_content(TrainlogAppContext *app)
                             heading = true;
                         }
                         (void)trainlog_feedback_relative_label(app->session_detail.ended_at,
-                        feedback->observed_at, true, label, sizeof(label));
+                            app->session_detail.started_at, feedback->observed_at,
+                            true, label, sizeof(label));
                         trainlog_surface_printf(app->content, row++, 4, "%s  %s", label,
                             feedback->raw_text);
                     }
@@ -7045,6 +7084,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
                      row < app->layout.content.height; ++followup_index) {
                     char label[32];
                     (void)trainlog_feedback_relative_label(app->session_detail.ended_at,
+                        app->session_detail.started_at,
                         app->session_followups[followup_index].observed_at,
                         false, label, sizeof(label));
                     trainlog_surface_printf(app->content, row++, 4, "%s  %s", label,

@@ -52,7 +52,7 @@ class SyncCatalogInbox(
 
     private val preferences =
         appContext.getSharedPreferences(
-            "trainlog-sync",
+            SYNC_PREFERENCES_NAME,
             Context.MODE_PRIVATE,
         )
 
@@ -74,7 +74,7 @@ class SyncCatalogInbox(
             preferences
                 .edit()
                 .putString(
-                    KEY_TREE_URI,
+                    SYNC_TREE_URI_KEY,
                     uri.toString(),
                 )
                 .apply()
@@ -133,6 +133,19 @@ class SyncCatalogInbox(
             if (definitionsError != null) return CatalogInboxResult.Error(definitionsError)
             val aliasesError = importExerciseAliases(directory)
             if (aliasesError != null) return CatalogInboxResult.Error(aliasesError)
+            val profileFile = directory.findFile("trainlog-exercise-profile-state-v1.json")
+            val profileJson = profileFile?.let { candidate ->
+                appContext.contentResolver.openInputStream(candidate.uri)
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            }
+            if (profileFile != null && profileJson == null)
+                return CatalogInboxResult.Error("Lecture profile-state impossible.")
+            if (profileJson != null) when(val profile=repository.applyExerciseProfileStateJson(profileJson,allowPending=true)) {
+                is ExerciseProfileStateImportResult.Applied -> Unit
+                is ExerciseProfileStateImportResult.Invalid -> return CatalogInboxResult.Error(profile.message)
+                is ExerciseProfileStateImportResult.Conflict -> return CatalogInboxResult.Error("Conflit de profil : ${profile.exerciseId}")
+                ExerciseProfileStateImportResult.DatabaseError -> return CatalogInboxResult.Error("Erreur base locale profils.")
+            }
 
             when (
                 val result =
@@ -141,7 +154,15 @@ class SyncCatalogInbox(
                             json
                         )
             ) {
-                is PcCatalogImportResult.Applied ->
+                is PcCatalogImportResult.Applied -> {
+                    if (profileJson != null) when(val profile=repository.applyExerciseProfileStateJson(profileJson)) {
+                        is ExerciseProfileStateImportResult.Applied -> Unit
+                        is ExerciseProfileStateImportResult.Invalid -> return CatalogInboxResult.Error(profile.message)
+                        is ExerciseProfileStateImportResult.Conflict -> return CatalogInboxResult.Error("Conflit de profil : ${profile.exerciseId}")
+                        ExerciseProfileStateImportResult.DatabaseError -> return CatalogInboxResult.Error("Erreur base locale profils.")
+                    }
+                    /* Catalogue identities now exist and the strict second pass
+                     * has either installed or verified their causal state. */
                     when (val sessions = importPcSessions(directory)) {
                         null -> when (val equipment = importPcEquipmentAssociations(directory)) {
                             null -> when (val bodyZones = importPcBodyZones(directory)) {
@@ -159,6 +180,7 @@ class SyncCatalogInbox(
                         }
                         else -> CatalogInboxResult.Error(sessions)
                     }
+                }
 
                 is PcCatalogImportResult.Invalid ->
                     CatalogInboxResult.Error(
@@ -399,15 +421,11 @@ fun readSyncReceipt(
     private fun savedTreeUri(): Uri? =
         preferences
             .getString(
-                KEY_TREE_URI,
+                SYNC_TREE_URI_KEY,
                 null,
             )
             ?.let {
                 Uri.parse(it)
             }
 
-    private companion object {
-        const val KEY_TREE_URI =
-            "trainlog_tree_uri"
-    }
 }

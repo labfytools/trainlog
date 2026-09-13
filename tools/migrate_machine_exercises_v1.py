@@ -13,6 +13,7 @@ import sqlite3
 from pathlib import Path
 
 from exercise_names import normalize_catalog_name
+from trainlog_sqlite import connect_database
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = Path("/tmp/trainlog-machine-exercise-manifest/migration-manifest-v1.json")
@@ -167,7 +168,7 @@ def main():
     if database == LIVE_DB.resolve():
         fail("refusing to migrate the canonical live desktop database")
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    connection = sqlite3.connect(database)
+    connection = connect_database(database)
     connection.execute("PRAGMA foreign_keys=ON")
     changed = apply(connection, manifest)
     integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]

@@ -90,7 +90,7 @@ class TrainlogRepositoryDraftTest {
         assertEquals(listOf(target.exerciseId), repo.listExercises().map { it.exerciseId })
         assertEquals("Curl canonique", repo.listExercises().single().name)
 
-        val canonicalCatalog = JSONObject(staleCatalog.toString())
+        val canonicalCatalog = JSONObject(staleCatalog)
         canonicalCatalog.getJSONArray("exercises").getJSONObject(0)
             .put("exercise_id", target.exerciseId)
             .put("name", "Curl canonique renommé")
@@ -870,10 +870,16 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
-    fun renameRejectsDuplicateAndInvalidNamesAndLocksReferencedProfile() {
+    fun renameRejectsDuplicateAndInvalidNamesAndReferencedProfileEditPreservesSnapshots() {
         val repo = openRepository()
         val referenced = createExercise(repo, "Marche", RecordingMode.CONTINUOUS, TrackingMode.DURATION)
         createExercise(repo, "Course", RecordingMode.CONTINUOUS, TrackingMode.DURATION)
+        val completed = repo.saveSession(
+            SessionDraft(exercises = listOf(SessionExerciseDraft(
+                exercise = referenced,
+                continuousDurationSeconds = 30,
+            ))),
+        ) as SaveSessionResult.Saved
         assertEquals(
             ActiveDraftMutationResult.Saved,
             repo.saveActiveSessionDraft(
@@ -887,7 +893,9 @@ class TrainlogRepositoryDraftTest {
                 ),
             ),
         )
-        assertFalse(repo.canEditExerciseProfile(referenced.exerciseId))
+        /* CONTRACT: references own occurrence snapshots and therefore do not
+         * lock the mutable CURRENT catalogue profile. */
+        assertTrue(repo.canEditExerciseProfile(referenced.exerciseId))
         assertEquals(
             EditExerciseResult.Conflict,
             repo.editExercise(
@@ -912,8 +920,7 @@ class TrainlogRepositoryDraftTest {
                 ),
             ),
         )
-        assertEquals(
-            EditExerciseResult.IncompatibleProfileChange,
+        assertTrue(
             repo.editExercise(
                 ExerciseEditInput(
                     referenced.exerciseId,
@@ -922,8 +929,20 @@ class TrainlogRepositoryDraftTest {
                     TrackingMode.REPS,
                     ExerciseDataFields.NONE,
                 ),
-            ),
+            ) is EditExerciseResult.Saved,
         )
+        val current = repo.listExercises().single { it.exerciseId == referenced.exerciseId }
+        assertEquals(RecordingMode.SETS, current.recordingMode)
+        assertEquals(TrackingMode.REPS, current.trackingMode)
+        val retainedDraft = loadDraft(repo).exercises.single()
+        val retained = retainedDraft.exercise
+        assertEquals(RecordingMode.CONTINUOUS, retained.recordingMode)
+        assertEquals(TrackingMode.DURATION, retained.trackingMode)
+        assertEquals(30, retainedDraft.continuousDurationSeconds)
+        val historical = repo.getSessionDetail(completed.sessionId)?.exercises?.single()
+        assertEquals(RecordingMode.CONTINUOUS, historical?.recordingMode)
+        assertEquals(TrackingMode.DURATION, historical?.trackingMode)
+        assertEquals(30, historical?.continuousDurationSeconds)
     }
 
     @Test
@@ -1528,7 +1547,6 @@ class TrainlogRepositoryDraftTest {
         assertTrue(repo.applyPcMobileExportV2Json(changedBody.toString()) is MobileSessionImportResult.Invalid)
 
         val incompatibleProfile = entry("en_incompatible_profile")
-            .put("tracking_mode", "duration")
             .put("sets", org.json.JSONArray().put(JSONObject().put("duration_seconds", 8)))
         assertTrue(repo.applyPcMobileExportV2Json(
             artifact(org.json.JSONArray().put(session("se_incompatible_profile", incompatibleProfile))).toString(),
@@ -1651,7 +1669,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(15, cursor.getInt(0))
+                assertEquals(16, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1778,7 +1796,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(15, cursor.getInt(0))
+                assertEquals(16, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -2164,8 +2182,8 @@ class TrainlogRepositoryDraftTest {
         }
         artifact.getJSONArray("sessions").getJSONObject(0).getJSONArray("exercises")
             .getJSONObject(0).getJSONObject("target").put("reps", 7)
-        assertTrue(source.applyPcMobileExportV3Json(artifact.toString()) is MobileSessionImportResult.Invalid)
-        assertEquals(6, source.getSessionDetail(sessionId)!!.exercises.single().plan!!.reps)
+        assertTrue(source.applyPcMobileExportV3Json(artifact.toString()) is MobileSessionImportResult.Applied)
+        assertEquals(7, source.getSessionDetail(sessionId)!!.exercises.single().plan!!.reps)
 
         source.close(); repository = null
         SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READWRITE).use {

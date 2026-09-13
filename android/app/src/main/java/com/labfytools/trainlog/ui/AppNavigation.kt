@@ -18,6 +18,7 @@ sealed interface AppRoute {
     data object SessionGenerator : AppRoute { override val section = AppSection.SESSIONS }
     data object CompletedSessions : AppRoute { override val section = AppSection.SESSIONS }
     data class SessionDetail(val sessionId: String) : AppRoute { override val section = AppSection.SESSIONS }
+    data class SessionCorrection(val sessionId: String) : AppRoute { override val section = AppSection.SESSIONS }
     data object Exercises : AppRoute { override val section = AppSection.EXERCISES }
     data class ExerciseDetail(val exerciseId: String) : AppRoute { override val section = AppSection.EXERCISES }
     data class ExerciseEdit(val exerciseId: String, val caller: AppRoute) : AppRoute { override val section = caller.section }
@@ -158,6 +159,7 @@ internal fun routeTitle(route: AppRoute): String = when (route) {
     AppRoute.SessionGenerator -> "Programmer une séance"
     AppRoute.CompletedSessions -> "Séances effectuées"
     is AppRoute.SessionDetail -> "Détail de la séance"
+    is AppRoute.SessionCorrection -> "Modifier la séance"
     AppRoute.Exercises -> "Exercices"
     is AppRoute.ExerciseDetail -> "Fiche exercice"
     is AppRoute.ExerciseEdit -> "Modifier l'exercice"

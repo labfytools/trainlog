@@ -674,6 +674,22 @@ test_feedback_correction = executable(
 )
 test('feedback_correction', test_feedback_correction)
 
+test_schema_v16_migration = executable(
+  'test_schema_v16_migration',
+  'tests/test_schema_v16_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('schema_v16_migration', test_schema_v16_migration)
+
+python3 = find_program('python3')
+test(
+  'profile_state_sync',
+  python3,
+  args: [meson.project_source_root() / 'tests/test_profile_state_sync.py'],
+  workdir: meson.project_source_root(),
+)
+
 test_app_shell = executable(
   'test_app_shell',
   'tests/test_app_shell.c',

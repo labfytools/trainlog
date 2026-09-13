@@ -187,7 +187,11 @@ static int migration_preserves_identity_and_history(void)
         "name TEXT NOT NULL,normalized_name TEXT NOT NULL UNIQUE,tracking_mode TEXT NOT NULL,"
         "recording_mode TEXT NOT NULL,data_fields INTEGER NOT NULL);"
         "CREATE TABLE sessions(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL UNIQUE);"
-        "CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,exercise_row_id INTEGER,entry_id TEXT,equipment_id TEXT);"
+        "CREATE TABLE session_exercises(id INTEGER PRIMARY KEY,entry_id TEXT NOT NULL UNIQUE,"
+        "session_row_id INTEGER NOT NULL,exercise_row_id INTEGER NOT NULL,recording_mode TEXT NOT NULL,"
+        "data_fields INTEGER NOT NULL,position INTEGER NOT NULL,load_mode TEXT NOT NULL,rest_seconds INTEGER NOT NULL,"
+        "target_sets INTEGER,target_reps INTEGER,target_duration_seconds INTEGER,target_weight_kg REAL,"
+        "equipment_id TEXT,notes TEXT,UNIQUE(session_row_id,position));"
         "INSERT INTO exercises VALUES(7,'ex_b432623f-bfe9-4daf-a653-60ec7fdffbde',"
         "'Leg press','leg press','reps','sets',0);"
         "INSERT INTO sessions VALUES(3,'se_preserved');"
@@ -195,7 +199,7 @@ static int migration_preserves_identity_and_history(void)
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
-    CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK && version == 15);
+    CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK && version == 17);
     CHECK(trainlog_database_list_exercise_body_zones(database,
         "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde", relations, 4U, &count) == TRAINLOG_STATUS_OK);
     CHECK(count == 2U);

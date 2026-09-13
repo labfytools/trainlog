@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Export the bounded, direction-neutral TRAINING_FEEDBACK_V2 companion."""
 import argparse, datetime, json, sqlite3
+from trainlog_sqlite import connect_database
 from pathlib import Path
 
 def instant(value): return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 def main():
     parser=argparse.ArgumentParser(); parser.add_argument("output",type=Path); parser.add_argument("--database",type=Path,required=True); args=parser.parse_args()
-    db=sqlite3.connect(args.database)
+    db=connect_database(args.database)
     try:
-        if db.execute("PRAGMA user_version").fetchone()[0] != 15: raise ValueError("schema desktop v15 requis")
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (15, 16, 17): raise ValueError("schema desktop v15/v16/v17 requis")
         roots=db.execute("SELECT f.feedback_id,s.session_id,se.entry_id,e.exercise_id,f.observed_at FROM exercise_feedback f JOIN session_exercises se ON se.id=f.session_exercise_row_id JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id").fetchall()
         followups=db.execute("SELECT f.followup_id,s.session_id,f.observed_at FROM session_followups f JOIN sessions s ON s.id=f.session_row_id").fetchall()
         if len(roots)>4096 or len(followups)>4096: raise ValueError("trop d'observations")

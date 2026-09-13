@@ -24,12 +24,39 @@ CREATE TABLE exercise_body_zone_sync(
 PRAGMA user_version=11;
 """
 
+V16_SCHEMA = V11_SCHEMA.replace("PRAGMA user_version=11;", "") + """
+ALTER TABLE exercises ADD COLUMN load_semantics TEXT;
+ALTER TABLE exercises ADD COLUMN machine_variant TEXT;
+ALTER TABLE exercises ADD COLUMN machine_provenance TEXT;
+ALTER TABLE exercises ADD COLUMN scientific_profile_id TEXT;
+ALTER TABLE exercises ADD COLUMN science_state TEXT NOT NULL DEFAULT 'unresolved';
+ALTER TABLE exercises ADD COLUMN legacy_equipment_id TEXT;
+ALTER TABLE session_exercises ADD COLUMN tracking_mode TEXT NOT NULL DEFAULT 'reps';
+CREATE TABLE exercise_aliases(source_exercise_id TEXT PRIMARY KEY,canonical_exercise_id TEXT NOT NULL);
+CREATE TABLE exercise_feedback(id INTEGER PRIMARY KEY,feedback_id TEXT NOT NULL UNIQUE,
+ session_exercise_row_id INTEGER NOT NULL REFERENCES session_exercises(id) ON DELETE CASCADE,
+ observed_at TEXT NOT NULL,raw_text TEXT NOT NULL);
+CREATE TABLE exercise_feedback_revisions(revision_id TEXT PRIMARY KEY,feedback_id TEXT NOT NULL,
+ created_at TEXT NOT NULL,raw_text TEXT NOT NULL);
+CREATE TABLE session_followups(id INTEGER PRIMARY KEY,followup_id TEXT NOT NULL UNIQUE,
+ session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ observed_at TEXT NOT NULL,raw_text TEXT NOT NULL);
+CREATE TABLE session_followup_revisions(revision_id TEXT PRIMARY KEY,followup_id TEXT NOT NULL,
+ created_at TEXT NOT NULL,raw_text TEXT NOT NULL);
+PRAGMA user_version=16;
+"""
+
 
 def run(command, ok=True):
     result = subprocess.run(command, text=True, capture_output=True)
     if (result.returncode == 0) != ok:
         raise AssertionError(result.stdout + result.stderr)
     return result
+
+
+def db_value(path, sql):
+    with sqlite3.connect(path) as connection:
+        return connection.execute(sql).fetchone()[0]
 
 
 def payload():
@@ -122,8 +149,12 @@ def main():
 
         divergent = copy.deepcopy(payload()); divergent["sessions"][0]["exercises"][0]["target"]["reps"] = 9
         divergent_path = root / "divergent.json"; divergent_path.write_text(json.dumps(divergent), encoding="utf-8")
-        run([sys.executable, str(IMPORTER), str(divergent_path), "--database", str(db)], ok=False)
-        assert snapshot(db) == before
+        corrected = run([sys.executable, str(IMPORTER), str(divergent_path), "--database", str(db)])
+        assert "sessions_reconciled=1" in corrected.stdout
+        replay = run([sys.executable, str(IMPORTER), str(divergent_path), "--database", str(db)])
+        assert "sessions_reconciled=0" in replay.stdout
+        assert db_value(db, "SELECT target_reps FROM session_exercises WHERE entry_id='sxe_reps'") == 9
+        before = snapshot(db)
 
         mutations = [
             lambda e: e["target"].update(sets=0),
@@ -205,6 +236,72 @@ def main():
         shared_entry = json.loads(shared_out.read_text())["sessions"][0]["exercises"][0]
         assert shared_entry["target"] == {"sets": 3, "reps": 9, "weight_kg": 55.5}
         assert shared_entry["sets"] == [{"reps": 9, "weight_kg": 52.5}, {"reps": 8}, {"reps": 7, "weight_kg": 0.0}]
+
+        # Desktop v16 stores the unit on the occurrence. A later catalogue
+        # profile change therefore cannot reinterpret or rewrite old facts.
+        v16_db = root / "v16.sqlite"
+        with sqlite3.connect(v16_db) as con:
+            con.executescript(V16_SCHEMA)
+        run([sys.executable, str(IMPORTER), str(artifact), "--database", str(v16_db)])
+        with sqlite3.connect(v16_db) as con:
+            assert con.execute("SELECT tracking_mode FROM session_exercises WHERE entry_id='sxe_reps'").fetchone()[0] == "reps"
+            con.execute("UPDATE exercises SET tracking_mode='duration' WHERE exercise_id='ex_reps'")
+
+        # V2 has the same completed-occurrence ownership contract: catalogue
+        # membership proves identity, while the entry's own profile validates
+        # and preserves the historical payload.
+        historical_v2 = payload()
+        historical_v2["version"] = 2
+        historical_v2["exercises"][0]["tracking_mode"] = "duration"
+        historical_entry = copy.deepcopy(historical_v2["sessions"][0]["exercises"][0])
+        historical_entry.pop("target")
+        historical_entry["entry_id"] = "sxe_v16_historical_v2"
+        historical_entry["load_mode"] = "none"
+        historical_entry["rest_seconds"] = 0
+        historical_v2["sessions"] = [{
+            "session_id": "se_v16_historical_v2",
+            "started_at": "2026-09-09T13:00:00+02:00",
+            "session_type": "training",
+            "exercises": [historical_entry],
+        }]
+        historical_v2["body_observations"] = []
+        historical_v2_path = root / "v16-historical-v2.json"
+        historical_v2_path.write_text(json.dumps(historical_v2), encoding="utf-8")
+        run([sys.executable, str(IMPORTER), str(historical_v2_path), "--database", str(v16_db)])
+        replay_v2 = run([sys.executable, str(IMPORTER), str(historical_v2_path), "--database", str(v16_db)])
+        assert "sessions_skipped=1" in replay_v2.stdout
+        with sqlite3.connect(v16_db) as con:
+            assert con.execute("SELECT tracking_mode FROM session_exercises WHERE entry_id='sxe_v16_historical_v2'").fetchone()[0] == "reps"
+            assert con.execute("SELECT reps FROM performed_sets ps JOIN session_exercises se ON se.id=ps.session_exercise_row_id WHERE se.entry_id='sxe_v16_historical_v2' ORDER BY ps.position LIMIT 1").fetchone()[0] == 8
+        v16_old_export = root / "v16-old.json"
+        run([sys.executable, str(EXPORTER), str(v16_old_export), "--database", str(v16_db)])
+        old_entry = json.loads(v16_old_export.read_text())["sessions"][0]["exercises"][0]
+        assert old_entry["tracking_mode"] == "reps"
+        assert old_entry["sets"][0]["reps"] == 8
+
+        future = payload()
+        future["exercises"][0]["tracking_mode"] = "duration"
+        old_after_profile_change = copy.deepcopy(payload()["sessions"][0])
+        future["sessions"] = [old_after_profile_change, {
+            "session_id": "se_v16_future", "started_at": "2026-09-10T12:00:00+02:00",
+            "session_type": "training", "exercises": [{
+                "entry_id": "sxe_v16_future", "position": 0, "exercise_id": "ex_reps",
+                "name": "Reps", "recording_mode": "sets", "tracking_mode": "duration",
+                "data_fields": 0, "load_mode": "none", "rest_seconds": 0,
+                "equipment_id": None, "target": {"sets": 3, "duration_seconds": 30},
+                "sets": [{"duration_seconds": 30}, {"duration_seconds": 30}, {"duration_seconds": 30}],
+            }],
+        }]
+        future["body_observations"] = []
+        future_path = root / "v16-future.json"
+        future_path.write_text(json.dumps(future), encoding="utf-8")
+        run([sys.executable, str(IMPORTER), str(future_path), "--database", str(v16_db)])
+        idempotent = run([sys.executable, str(IMPORTER), str(future_path), "--database", str(v16_db)])
+        assert "sessions_reconciled=0" in idempotent.stdout
+        with sqlite3.connect(v16_db) as con:
+            assert con.execute("SELECT tracking_mode FROM session_exercises WHERE entry_id='sxe_reps'").fetchone()[0] == "reps"
+            assert con.execute("SELECT tracking_mode FROM session_exercises WHERE entry_id='sxe_v16_future'").fetchone()[0] == "duration"
+            assert con.execute("SELECT group_concat(duration_seconds, ',') FROM performed_sets ps JOIN session_exercises se ON se.id=ps.session_exercise_row_id WHERE se.entry_id='sxe_v16_future' ORDER BY ps.position").fetchone()[0] == "30,30,30"
     print("PASS session_exchange_v3")
 
 

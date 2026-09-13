@@ -125,7 +125,7 @@ class RealAndroidV12MachineExerciseMigrationTest {
 
     private fun assertValidVersionThirteen(databasePath: File) {
         SQLiteDatabase.openDatabase(databasePath.path, null, SQLiteDatabase.OPEN_READONLY).use { database ->
-            assertEquals(15, scalarInt(database, "PRAGMA user_version;"))
+            assertEquals(16, scalarInt(database, "PRAGMA user_version;"))
             assertEquals("ok", scalarString(database, "PRAGMA integrity_check;"))
             database.rawQuery("PRAGMA foreign_key_check;", null).use { assertFalse(it.moveToFirst()) }
         }

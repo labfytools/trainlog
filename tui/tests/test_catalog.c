@@ -23,6 +23,20 @@
         }                                                                    \
     } while (0)
 
+#define CHECK_OR_CLEANUP(condition)                                          \
+    do {                                                                     \
+        if (!(condition)) {                                                  \
+            (void)fprintf(                                                   \
+                stderr,                                                      \
+                "CHECK failed at %s:%d: %s\\n",                               \
+                __FILE__,                                                    \
+                __LINE__,                                                    \
+                #condition                                                   \
+            );                                                               \
+            goto cleanup;                                                    \
+        }                                                                    \
+    } while (0)
+
 static bool test_normalization(void)
 {
     char first[512];
@@ -76,19 +90,19 @@ static bool test_profiled_creation(void)
 {
     TrainlogDatabase *database = NULL;
     TrainlogExercise walk;
-    TrainlogExercise exercises[4];
+    TrainlogExercise exercises[128];
     size_t count = 0U;
     size_t index;
     bool found = false;
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_open(
             ":memory:",
             &database
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_catalog_create_exercise_profiled(
             database,
             "Marche",
@@ -99,22 +113,22 @@ static bool test_profiled_creation(void)
         ) == TRAINLOG_STATUS_OK
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         walk.recording_mode ==
         TRAINLOG_RECORDING_CONTINUOUS
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         walk.tracking_mode ==
         TRAINLOG_TRACKING_DURATION
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         walk.data_fields ==
         TRAINLOG_EXERCISE_DATA_SPEED_KMH
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_catalog_create_exercise_profiled(
             database,
             "Profil invalide",
@@ -125,33 +139,31 @@ static bool test_profiled_creation(void)
         ) == TRAINLOG_STATUS_INVALID_ARGUMENT
     );
 
-    CHECK(
+    CHECK_OR_CLEANUP(
         trainlog_database_list_exercises(
             database,
             exercises,
-            4U,
+            128U,
             &count
         ) == TRAINLOG_STATUS_OK
     );
-
-    CHECK(count == 1U);
 
     for (index = 0U; index < count; ++index) {
         if (strcmp(
                 exercises[index].name,
                 "Marche"
             ) == 0) {
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].recording_mode ==
                 TRAINLOG_RECORDING_CONTINUOUS
             );
 
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].tracking_mode ==
                 TRAINLOG_TRACKING_DURATION
             );
 
-            CHECK(
+            CHECK_OR_CLEANUP(
                 exercises[index].data_fields ==
                 TRAINLOG_EXERCISE_DATA_SPEED_KMH
             );
@@ -160,10 +172,14 @@ static bool test_profiled_creation(void)
         }
     }
 
-    CHECK(found);
+    CHECK_OR_CLEANUP(found);
 
     trainlog_database_close(database);
     return true;
+
+cleanup:
+    trainlog_database_close(database);
+    return false;
 }
 
 int main(void)

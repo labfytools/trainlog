@@ -4,6 +4,7 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 MAX_ALIASES = 4096
 
@@ -13,10 +14,10 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--database", type=Path, required=True)
     args = parser.parse_args()
-    con = sqlite3.connect(args.database)
+    con = connect_database(args.database)
     try:
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15):
-            raise ValueError("schema desktop v12/v13 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17):
+            raise ValueError("schema desktop v12-v16 requis")
         rows = con.execute(
             "SELECT source_exercise_id,canonical_exercise_id FROM exercise_aliases "
             "ORDER BY source_exercise_id COLLATE BINARY"

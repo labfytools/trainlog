@@ -6,6 +6,7 @@ import sqlite3
 import os
 from datetime import datetime
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 
 DEFAULT_CATALOG = Path(__file__).resolve().parents[1] / "catalog" / "equipment-v1.json"
@@ -25,10 +26,10 @@ def main():
                         default=Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "trainlog" / "trainlog.db")
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
     args = parser.parse_args()
-    connection = sqlite3.connect(args.database)
+    connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15):
-            raise ValueError("schema desktop v8 à v13 requis")
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+            raise ValueError("schema desktop v8 à v16 requis")
         known_equipment = load_supplied_equipment_ids(args.catalog)
         known_equipment.update(row[0] for row in connection.execute(
             "SELECT equipment_id FROM custom_equipment"))

@@ -25,7 +25,8 @@ fun SessionDetailScreen(
     repository: TrainlogRepository,
     sessionId: String?,
     onBack: () -> Unit,
-    onResumeMaxTest: () -> Unit,
+    onCorrect: () -> Unit = {},
+    onResumeMaxTest: () -> Unit = {},
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -101,6 +102,13 @@ fun SessionDetailScreen(
 
             TrainlogInfo(
                 "${detail.summary.exerciseCount} exercice(s)"
+            )
+
+            TrainlogAction(
+                label = "Modifier la séance",
+                description = "Corriger les faits enregistrés sans changer l'identité de la séance.",
+                accent = colors.accent,
+                onClick = onCorrect,
             )
 
             if (detail.summary.sessionType == SessionType.MAX_TEST) {
@@ -200,7 +208,7 @@ fun SessionDetailScreen(
                         )
                     }
                     exercise.feedback.forEach { item ->
-                        TrainlogInfo("${exerciseFeedbackElapsedLabel(detail.summary.endedAt, item.observedAt)} · ${item.rawText}${if (item.modified) " · Modifié" else ""}")
+                        TrainlogInfo("${exerciseFeedbackElapsedLabel(detail.summary.endedAt, detail.summary.startedAt, item.observedAt)} · ${item.rawText}${if (item.modified) " · Modifié" else ""}")
                         TrainlogAction("Modifier", "Corriger le texte sans déplacer l’observation.",
                             onClick = { editingFeedbackId = item.feedbackId }, accent = colors.muted)
                         if (editingFeedbackId == item.feedbackId) FeedbackEditor(
@@ -232,7 +240,7 @@ fun SessionDetailScreen(
 
         TrainlogFrame(title = "Suivi après séance") {
             detail.followUps.forEach { item ->
-                TrainlogInfo(sessionFollowUpElapsedLabel(detail.summary.endedAt, item.observedAt), color = colors.accent)
+                TrainlogInfo(sessionFollowUpElapsedLabel(detail.summary.endedAt, detail.summary.startedAt, item.observedAt), color = colors.accent)
                 TrainlogInfo(item.rawText + if (item.modified) " · Modifié" else "")
                 TrainlogAction("Modifier", "Corriger le texte sans changer le repère H+.",
                     onClick = { editingFollowUpId = item.followupId }, accent = colors.muted)

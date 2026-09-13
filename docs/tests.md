@@ -716,3 +716,35 @@ reordering and changing the exercise context of stable entries; it verifies
 exact feedback preservation, selective cascade on removal, no inheritance by a
 new entry, unchanged follow-ups, and full rollback on injected reattachment
 failure. Android additionally covers its bounded resumed-MAX replacement path.
+`tests/test_profile_state_sync.py` covers the captured Planche droite sol
+legacy `SETS+REPS`/`SETS+DURATION` repair, idempotent replay, direct-descendant
+and multi-generation stale-ancestor convergence, sibling conflict, the explicit
+32-record resource bound, exact JSON scalar types, immutable machine conflict,
+and preservation of the old occurrence snapshot. Android
+`ExerciseProfileStateSyncTest` covers the same transitive/type contract in the
+reverse PC→Android path and future-occurrence snapshot.
+`HistoricalSessionProfileImportTest` exercises the production V2/V3 repository
+import with equal and evolved tracking/recording/data-field profiles, strict
+snapshot-local payload rejection, unknown identity rejection, unchanged
+historical values, unchanged current profile history, and idempotent replay.
+`SyncBundlePublicationTest` exercises the production request coordinator and a
+synthetic user-authorized SAF directory whose exact BODY ZONES canonical is
+deliberately unavailable through MediaStore. The exact SAF object is rewritten
+beside 31 preserved historical copies, no MediaStore insert/pending publication
+or `(32)` copy occurs, all seven Android-origin companions precede the request
+signal, and replay reuses canonical objects without stable-feedback churn.
+It also requires one direct-child enumeration for the entire export-plus-request
+transaction, one additional enumeration for each later synchronization, index
+update after a create without rescan, one write per canonical artifact, and
+non-main dispatcher ownership for snapshot and stream operations.
+Native `sync_body_zone_wiring` verifies the
+profile pre-pass before mobile import, strict post-pass gating, replay, legacy
+peer compatibility, and the explicit missing-companion diagnostic even when a
+stale local temporary profile artifact exists.
+Every Android outbound artifact and the request use the shared exact-name SAF
+resolver; app-scoped MediaStore visibility is not part of canonical selection.
+`profile_state_sync` includes the production persisted update-trigger dependency
+on `trainlog_profile_revision`, imports through the same Python connection path
+used by the PC sync worker, and requires first import plus identical replay to
+pass without revision-state or history-count churn. It also checks that the
+central factory installs both profile-revision schema functions.

@@ -61,6 +61,8 @@ static const char *const TRAINING_FEEDBACK_NAME =
     "trainlog-training-feedback-v2.json";
 static const char *const TRAINING_FEEDBACK_V1_NAME =
     "trainlog-training-feedback-v1.json";
+static const char *const EXERCISE_PROFILE_STATE_NAME =
+    "trainlog-exercise-profile-state-v1.json";
 
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
@@ -96,6 +98,8 @@ static const char *const EXERCISE_ALIASES_LOCAL =
     "/tmp/trainlog-exercise-aliases-v1.json";
 static const char *const TRAINING_FEEDBACK_LOCAL =
     "/tmp/trainlog-training-feedback-v2.json";
+static const char *const EXERCISE_PROFILE_STATE_LOCAL =
+    "/tmp/trainlog-exercise-profile-state-v1.json";
 
 static const char *const EXERCISE_BODY_ZONES_RESULT =
     "/tmp/trainlog-exercise-body-zones-result.txt";
@@ -104,6 +108,8 @@ static const char *const EXERCISE_ALIASES_RESULT =
     "/tmp/trainlog-exercise-aliases-result.txt";
 static const char *const TRAINING_FEEDBACK_RESULT =
     "/tmp/trainlog-training-feedback-result.txt";
+static const char *const EXERCISE_PROFILE_STATE_RESULT =
+    "/tmp/trainlog-exercise-profile-state-result.txt";
 
 static const char *const SYNC_REQUEST_LOCAL =
     "/tmp/trainlog-sync-request-v1.json";
@@ -2652,6 +2658,7 @@ TrainlogStatus trainlog_sync_run(
     bool run_started = false;
     bool receipt_published = false;
     bool mobile_export_has_companions = false;
+    bool profile_state_received = false;
     bool retained_mobile_export_is_v2 = false;
 
     if (output == NULL || direction < TRAINLOG_SYNC_ANDROID_TO_PC ||
@@ -2976,6 +2983,34 @@ TrainlogStatus trainlog_sync_run(
         goto finalize;
     }
 
+    /* CONTRACT: causal CURRENT-profile state precedes occurrence import, so a
+     * legitimate direct descendant (including the explicit legacy repair)
+     * cannot be rejected by the unchanged V3 occurrence validator. */
+    status = mobile_export_has_companions
+        ? sync_receive_current_android_artifact(&device, folder_id,
+            EXERCISE_PROFILE_STATE_NAME, EXERCISE_PROFILE_STATE_LOCAL, &ignored_size)
+        : TRAINLOG_STATUS_NOT_FOUND;
+    if (status == TRAINLOG_STATUS_OK) {
+        profile_state_received = true;
+        status = sync_run_python_tool("import_exercise_profile_state.py",
+            EXERCISE_PROFILE_STATE_LOCAL, database_path, MOBILE_EXPORT_LOCAL,
+            EXERCISE_PROFILE_STATE_RESULT, tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK ||
+            strstr(tool_output, "EXERCISE_PROFILE_STATE_IMPORT=PASS") == NULL) {
+            char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            sync_compose_diagnostic(output->error, sizeof(output->error),
+                "Android→PC : profils : ", useful[0] ? useful : "import échoué");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+    } else if (status != TRAINLOG_STATUS_NOT_FOUND) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "Android→PC : lecture profile-state échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     status =
         sync_run_python_tool(
             "import_mobile_export.py",
@@ -3005,14 +3040,25 @@ TrainlogStatus trainlog_sync_run(
             sizeof(useful)
         );
 
-        sync_compose_diagnostic(
-            output->error,
-            sizeof(output->error),
-            "Android→PC : ",
-            useful[0] != '\0'
-                ? useful
-                : "import mobile échoué"
-        );
+        /* WHY: V3/V2 peers may predate profile-state, so absence alone stays
+         * compatible. It becomes actionable only when the unchanged mobile
+         * importer proves that causal profile reconciliation was required.
+         * INVARIANT: never disguise unrelated import failures as capability
+         * failures. */
+        if (mobile_export_has_companions && !profile_state_received &&
+            strstr(useful, "profil incompatible entre identités") != NULL) {
+            sync_compose_diagnostic(output->error, sizeof(output->error),
+                "Android→PC : PROFILE_STATE_COMPANION_MISSING : ", useful);
+        } else {
+            sync_compose_diagnostic(
+                output->error,
+                sizeof(output->error),
+                "Android→PC : ",
+                useful[0] != '\0'
+                    ? useful
+                    : "import mobile échoué"
+            );
+        }
 
         final_status =
             TRAINLOG_STATUS_DATABASE_ERROR;
@@ -3023,6 +3069,24 @@ TrainlogStatus trainlog_sync_run(
         tool_output,
         output
     );
+
+    /* The pre-pass may defer identities introduced by this mobile catalogue.
+     * This strict pass now requires every state record to resolve. */
+    if (profile_state_received) {
+        status = sync_run_python_tool("import_exercise_profile_state.py",
+            EXERCISE_PROFILE_STATE_LOCAL, database_path, NULL,
+            EXERCISE_PROFILE_STATE_RESULT, tool_output, sizeof(tool_output));
+        if (status != TRAINLOG_STATUS_OK ||
+            strstr(tool_output, "EXERCISE_PROFILE_STATE_IMPORT=PASS") == NULL) {
+            char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+            sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+            sync_compose_diagnostic(output->error, sizeof(output->error),
+                "Android→PC : vérification profils : ",
+                useful[0] ? useful : "import échoué");
+            final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finalize;
+        }
+    }
 
     /* CONTRACT: body zones are one directional-neutral companion. Historic
      * V2 publishers may omit it; when present beside V3/V2 it is applied after
@@ -3139,6 +3203,25 @@ TrainlogStatus trainlog_sync_run(
     }
 
 outbound:
+    status = sync_run_python_tool("export_exercise_profile_state.py",
+        EXERCISE_PROFILE_STATE_LOCAL, database_path, NULL,
+        EXERCISE_PROFILE_STATE_RESULT, tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "EXERCISE_PROFILE_STATE_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : export profile-state échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id, EXERCISE_PROFILE_STATE_LOCAL,
+        EXERCISE_PROFILE_STATE_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : publication profile-state échouée.");
+        final_status = status;
+        goto finalize;
+    }
+
     status = sync_run_python_tool("export_exercise_aliases.py",
         EXERCISE_ALIASES_LOCAL, database_path, NULL, EXERCISE_ALIASES_RESULT,
         tool_output, sizeof(tool_output));

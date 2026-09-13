@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from exercise_names import load_exercise_names
+from trainlog_sqlite import connect_database
 
 
 def default_database_path():
@@ -54,7 +55,7 @@ def main():
             "PC_CATALOG_EXPORT=FAIL database not found"
         )
 
-    connection = sqlite3.connect(
+    connection = connect_database(
         args.database
     )
 
@@ -67,7 +68,7 @@ def main():
         # CONTRACT: v8 adds only desktop-local custom equipment.  The PC
         # catalogue artifact is unchanged, but it must read the current
         # canonical desktop schema rather than accept a stale pre-v8 database.
-        if version not in (8, 9, 10, 11, 12, 13, 14, 15):
+        if version not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
             raise SystemExit(
                 "PC_CATALOG_EXPORT=FAIL "
                 f"schema={version}"

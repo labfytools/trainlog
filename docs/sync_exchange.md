@@ -2,13 +2,26 @@
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop and Android schema v15 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v17 and Android schema v16 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
 travel through the existing catalog, while v13 metadata stays local until a
 dedicated versioned companion is required. Legacy equipment IDs may still be
 written for fixed supplied machines as compatibility provenance.
+
+V3 already carries occurrence `tracking_mode`; desktop v16 imports it directly
+into `session_exercises` and exports the same snapshot. Catalogue
+`tracking_mode` remains the default for future occurrences only, so no wire
+format bump is required.
+
+Android and the current desktop importer treat the exercise catalogue link of
+a completed V2/V3 entry as an identity constraint only. The entry's own
+`recording_mode`, `tracking_mode`, and `data_fields` validate its actual payload
+and remain authoritative even after the current catalogue profile evolves.
+Import never rewrites historical sets or continuous values to fit the current
+profile. Legacy desktop schemas that cannot persist the occurrence tracking
+mode retain their explicit compatibility rejection instead of losing its unit.
 
 ## 1. Status
 
@@ -33,6 +46,14 @@ BODY_ZONE_SYNC_V1_LIVE_DEVICE=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
+
+Mobile export V3 also carries completed-session corrections. For an existing
+session with the same immutable header, peers reconcile the complete occurrence
+and planning state atomically. A retained `(session_id, entry_id)` cannot be
+rebound to another exercise and retains feedback roots/revisions; omitted
+occurrences follow the confirmed parent-owned cascade. An identical second
+import is a skip. V2 has no complete planning authority and cannot apply a
+general correction; its older resumed-MAX compatibility remains bounded.
 
 Synchronization artifacts are separate from the frozen Trainlog session JSON
 v1 format.
@@ -679,3 +700,34 @@ Training observations use the independent direction-neutral
 `trainlog-training-feedback-v2.json`. Its append-only revision union, strict identity
 checks, ordering, bounds, and conflicts are specified in
 [Training feedback](training_feedback.md).
+## Exercise current-profile state v1
+
+`trainlog-exercise-profile-state-v1.json` is a separate, directional-neutral
+companion. It does not alter `TRAINLOG_FORMAT_V1`, mobile session V3, PC catalog
+v1, feedback V2, equipment, or BODY ZONES. Each record carries a required
+oldest-to-current `history` of at most 32 revision records. Equal revisions are
+idempotent, an incoming descendant is adopted when its chain proves the local
+current revision, any known incoming ancestor is retained, and sibling or
+otherwise incomparable descendants conflict. A 33rd revision is rejected; the
+chain is never silently truncated. The shared legacy root lets the first
+post-upgrade sync repair older profile differences. Machine/science fields are
+strictly typed equality guards and remain immutable through this artifact.
+
+For an Android-triggered bidirectional run, Android builds every current
+outbound snapshot before publishing any of them and publishes the complete
+bundle before writing the sync request. The request therefore signals that the
+canonical mobile V3, definitions, associations, aliases, zones, feedback V2,
+and profile-state V1 objects have all been refreshed from the same builder
+phase. The desktop receives profile state and runs its causal pre-pass before
+mobile V3, then runs the strict post-pass only when that companion was actually
+received. A V3/V2 same-ID profile mismatch with no received companion reports
+`PROFILE_STATE_COMPANION_MISSING`; absence alone remains accepted for older
+peers whose mobile snapshot does not require causal reconciliation.
+
+The desktop pre/post-pass importer opens its database through the canonical
+Python Trainlog connection factory. That factory registers the same
+deterministic profile-revision function as the native database opener before
+the importer prepares `UPDATE exercises`; the persisted guarded profile trigger
+therefore remains valid even when the authoritative incoming tip makes its body
+a no-op. Replaying the same artifact neither changes the current revision nor
+adds history rows.

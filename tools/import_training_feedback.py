@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Strict V1-compatible, append-only TRAINING_FEEDBACK_V2 desktop merger."""
 import argparse,json,re,sqlite3
+from trainlog_sqlite import connect_database
 from datetime import datetime
 from pathlib import Path
 ID=lambda p:re.compile(r"^"+p+r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -46,11 +47,11 @@ def merge_revisions(db,table,parent_column,parent_id,revisions):
     current=max(db.execute(f"SELECT revision_id,created_at,raw_text FROM {table} WHERE {parent_column}=?",(parent_id,)).fetchall(),key=lambda r:(instant(r[1]),r[0].encode()))
     return added,skipped,current[2]
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("artifact",type=Path);parser.add_argument("--database",type=Path,required=True);args=parser.parse_args();root=load(args.artifact);db=sqlite3.connect(args.database)
+    parser=argparse.ArgumentParser();parser.add_argument("artifact",type=Path);parser.add_argument("--database",type=Path,required=True);args=parser.parse_args();root=load(args.artifact);db=connect_database(args.database)
     roots_added=roots_skipped=revisions_added=revisions_skipped=0
     try:
       db.execute("PRAGMA foreign_keys=ON")
-      if db.execute("PRAGMA user_version").fetchone()[0]!=15:fail("schema desktop v15 requis")
+      if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17):fail("schema desktop v15/v16/v17 requis")
       db.execute("BEGIN IMMEDIATE");seen=set()
       for index,item in enumerate(root["exercise_feedback"]):
         keys={"feedback_id","session_id","entry_id","exercise_id","observed_at","raw_text"} if root["version"]==1 else {"feedback_id","session_id","entry_id","exercise_id","observed_at","revisions"}

@@ -4,6 +4,7 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 FORMAT = "trainlog-equipment-definitions"
 VERSION = 1
@@ -58,10 +59,10 @@ def main():
                         default=Path(__file__).resolve().parents[1] / "catalog/equipment-v1.json")
     args = parser.parse_args()
     definitions = validate(json.loads(args.artifact.read_text(encoding="utf-8")), supplied_ids(args.catalog))
-    connection = sqlite3.connect(args.database)
+    connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15):
-            fail("schema desktop v8 à v13 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+            fail("schema desktop v8 à v16 requis")
         imported = skipped = 0
         # Validate every same-ID row before inserting any definition.
         for definition in definitions:

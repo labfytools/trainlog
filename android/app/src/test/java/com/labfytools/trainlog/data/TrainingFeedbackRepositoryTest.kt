@@ -61,8 +61,10 @@ class TrainingFeedbackRepositoryTest {
         assertEquals(listOf(first.stableId,later.stableId),completed.map{it.feedbackId})
         assertEquals(reopened.map{it.observedAt},completed.map{it.observedAt})
         assertEquals(reopened.map{it.rawText},completed.map{it.rawText})
-        assertEquals("Pendant la séance",exerciseFeedbackElapsedLabel(
-            android.getSessionDetail(saved.sessionId)!!.summary.endedAt,completed.first().observedAt))
+        assertEquals("H+?",exerciseFeedbackElapsedLabel(
+            android.getSessionDetail(saved.sessionId)!!.summary.endedAt,
+            android.getSessionDetail(saved.sessionId)!!.summary.startedAt,
+            completed.first().observedAt))
         val exported=JSONObject(android.buildTrainingFeedbackJson()).getJSONArray("exercise_feedback")
         assertEquals(2,exported.length())
         assertEquals(setOf(first.stableId,later.stableId),(0 until exported.length()).map{exported.getJSONObject(it).getString("feedback_id")}.toSet())
@@ -121,5 +123,52 @@ class TrainingFeedbackRepositoryTest {
         assertEquals(listOf(original.stableId,added.stableId),feedback.map{it.feedbackId})
         assertEquals(listOf("avant reprise","pendant reprise"),feedback.map{it.rawText})
         assertEquals(101.0,android.getSessionDetail(saved.sessionId)!!.exercises.single().maxWeightKg!!,0.0)
+    }
+
+    @Test fun `completed correction is atomic preserves identities feedback revisions and followup`() {
+        val reps=(android.createExercise(NewExerciseProfile("Correction reps",RecordingMode.SETS,TrackingMode.REPS,0)) as CreateExerciseResult.Created).exercise
+        val otherReps=(android.createExercise(NewExerciseProfile("Correction autres reps",RecordingMode.SETS,TrackingMode.REPS,0)) as CreateExerciseResult.Created).exercise
+        val timed=(android.createExercise(NewExerciseProfile("Correction durée",RecordingMode.SETS,TrackingMode.DURATION,0)) as CreateExerciseResult.Created).exercise
+        val first=SessionExerciseDraft(entryId="sxe_00000000-0000-4000-8000-0000000000c1",exercise=reps,
+            sets=listOf(SessionSetDraft(reps=10,weightKg=32.0),SessionSetDraft(reps=10,weightKg=32.0),SessionSetDraft(reps=10,weightKg=32.0)))
+        val second=SessionExerciseDraft(entryId="sxe_00000000-0000-4000-8000-0000000000c2",exercise=timed,
+            sets=listOf(SessionSetDraft(durationSeconds=30)))
+        val saved=android.saveSession(SessionDraft(listOf(first,second))) as SaveSessionResult.Saved
+        val feedback=android.saveExerciseFeedback(saved.sessionId,first.entryId,"initial") as SaveFeedbackResult.Saved
+        assertTrue(android.reviseExerciseFeedback(feedback.stableId,"révisé") is SaveFeedbackResult.Saved)
+        val followup=android.saveSessionFollowUp(saved.sessionId,"suivi") as SaveFeedbackResult.Saved
+        val corrected=first.copy(sets=listOf(
+            SessionSetDraft(reps=10,weightKg=33.0), SessionSetDraft(reps=8,weightKg=32.0),
+            SessionSetDraft(reps=12,weightKg=34.0)))
+        val timedCorrected=second.copy(sets=listOf(SessionSetDraft(durationSeconds=35),SessionSetDraft(durationSeconds=30)))
+        assertEquals(CorrectCompletedSessionResult.Saved,
+            android.correctCompletedSession(saved.sessionId,SessionDraft(listOf(corrected,timedCorrected))))
+        var detail=android.getSessionDetail(saved.sessionId)!!
+        assertEquals(saved.sessionId,detail.summary.sessionId)
+        assertEquals(listOf(first.entryId,second.entryId),detail.exercises.map{it.entryId})
+        assertEquals(listOf(10,8,12),detail.exercises[0].sets.map{it.reps})
+        assertEquals(33.0,detail.exercises[0].sets[0].weightKg!!,0.0)
+        assertEquals(listOf(35,30),detail.exercises[1].sets.map{it.durationSeconds})
+        assertEquals(feedback.stableId,detail.exercises[0].feedback.single().feedbackId)
+        assertTrue(detail.exercises[0].feedback.single().modified)
+        assertEquals(followup.stableId,detail.followUps.single().followupId)
+        android.close();android=TrainlogRepository(context,aName)
+        detail=android.getSessionDetail(saved.sessionId)!!
+        assertEquals(8,detail.exercises[0].sets[1].reps)
+
+        /* CONTRACT: entry identity cannot be silently rebound by the general
+         * replacement path; rejection occurs before its cascading delete. */
+        assertTrue(android.correctCompletedSession(saved.sessionId,
+            SessionDraft(listOf(corrected.copy(exercise=otherReps),timedCorrected))) is CorrectCompletedSessionResult.DatabaseError)
+        assertEquals(reps.exerciseId,android.getSessionDetail(saved.sessionId)!!.exercises[0].exerciseId)
+
+        android.close()
+        SQLiteDatabase.openDatabase(context.getDatabasePath(aName).path,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TRIGGER fail_completed_correction BEFORE INSERT ON performed_sets BEGIN SELECT RAISE(ABORT,'synthetic correction failure'); END;")
+        }
+        android=TrainlogRepository(context,aName)
+        assertTrue(android.correctCompletedSession(saved.sessionId,
+            SessionDraft(listOf(corrected.copy(sets=listOf(SessionSetDraft(reps=1))),timedCorrected))) is CorrectCompletedSessionResult.DatabaseError)
+        assertEquals(8,android.getSessionDetail(saved.sessionId)!!.exercises[0].sets[1].reps)
     }
 }

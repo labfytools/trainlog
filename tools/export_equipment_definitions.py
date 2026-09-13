@@ -6,6 +6,7 @@ import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 FORMAT = "trainlog-equipment-definitions"
 VERSION = 1
@@ -20,11 +21,11 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--database", type=Path, default=default_database())
     args = parser.parse_args()
-    connection = sqlite3.connect(args.database)
+    connection = connect_database(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15):
-            raise ValueError("schema desktop v8 à v13 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+            raise ValueError("schema desktop v8 à v16 requis")
         equipment = [dict(row) for row in connection.execute(
             "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics "
             "FROM custom_equipment ORDER BY equipment_id")]

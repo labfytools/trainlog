@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,10 +114,16 @@ fun ExerciseScreen(
     var message by state.message
     var editedExerciseId by state.editedExerciseId
 
-    val profileLocked =
-        editedExerciseId?.let {
-            !repository.canEditExerciseProfile(it)
-        } ?: false
+    val originalProfile = remember(editedExerciseId) {
+        editedExerciseId?.let { id -> repository.listExercises().firstOrNull { it.exerciseId == id } }
+    }
+    var confirmedIncompatible by remember(editedExerciseId) { mutableStateOf(false) }
+    var confirmingIncompatible by remember(editedExerciseId) { mutableStateOf(false) }
+    val incompatibleProfileChange = originalProfile?.let {
+        it.recordingMode != recordingMode || it.trackingMode != trackingMode ||
+            it.dataFields != ((if (speed) ExerciseDataFields.SPEED_KMH else 0) or
+                (if (distance) ExerciseDataFields.DISTANCE_KM else 0))
+    } == true
 
     fun startEditing(exercise: ExerciseProfile) {
         /* WHY: edit state copies catalog metadata for presentation only. The
@@ -159,9 +168,8 @@ fun ExerciseScreen(
                     selected =
                         recordingMode ==
                             RecordingMode.SETS,
-                    enabled = !profileLocked,
+                    enabled = true,
                     onClick = {
-                        if (profileLocked) return@TrainlogChoice
                         recordingMode =
                             RecordingMode.SETS
 
@@ -176,9 +184,8 @@ fun ExerciseScreen(
                     selected =
                         recordingMode ==
                             RecordingMode.CONTINUOUS,
-                    enabled = !profileLocked,
+                    enabled = true,
                     onClick = {
-                        if (profileLocked) return@TrainlogChoice
                         recordingMode =
                             RecordingMode.CONTINUOUS
 
@@ -203,9 +210,8 @@ fun ExerciseScreen(
                         selected =
                             trackingMode ==
                                 TrackingMode.REPS,
-                        enabled = !profileLocked,
+                        enabled = true,
                         onClick = {
-                            if (profileLocked) return@TrainlogChoice
                             trackingMode =
                                 TrackingMode.REPS
 
@@ -219,9 +225,8 @@ fun ExerciseScreen(
                     selected =
                         trackingMode ==
                             TrackingMode.DURATION,
-                    enabled = !profileLocked,
+                    enabled = true,
                     onClick = {
-                        if (profileLocked) return@TrainlogChoice
                         trackingMode =
                             TrackingMode.DURATION
 
@@ -241,9 +246,8 @@ fun ExerciseScreen(
                     TrainlogChoice(
                         label = "Vitesse",
                         selected = speed,
-                        enabled = !profileLocked,
+                        enabled = true,
                         onClick = {
-                            if (profileLocked) return@TrainlogChoice
                             speed = !speed
                             message = null
                         },
@@ -252,9 +256,8 @@ fun ExerciseScreen(
                     TrainlogChoice(
                         label = "Distance",
                         selected = distance,
-                        enabled = !profileLocked,
+                        enabled = true,
                         onClick = {
-                            if (profileLocked) return@TrainlogChoice
                             distance =
                                 !distance
 
@@ -344,12 +347,10 @@ fun ExerciseScreen(
                 color = colors.accent,
             )
 
-            if (profileLocked) {
+            if (editedExerciseId != null && repository.canEditExerciseProfile(editedExerciseId!!).not()) {
                 TrainlogInfo(
                     text =
-                        "Profil verrouillé : cet exercice est déjà référencé " +
-                            "par une séance terminée ou le brouillon actif. " +
-                            "Le nom reste modifiable.",
+                        "Les séances passées et l'occurrence déjà présente dans le brouillon resteront inchangées. Le nouveau profil s'appliquera aux prochaines utilisations.",
                     color = colors.warning,
                 )
             }
@@ -370,6 +371,10 @@ fun ExerciseScreen(
                         "Conserver l'identité et mettre à jour le catalogue."
                     },
                 onClick = save@{
+                    if (editedExerciseId != null && incompatibleProfileChange && !confirmedIncompatible) {
+                        confirmingIncompatible = true
+                        return@save
+                    }
                     if (editedExerciseId == null &&
                         recordingMode == RecordingMode.SETS && primaryZoneId == null) {
                         message = "Une zone principale est requise pour un nouvel exercice musculaire."
@@ -560,6 +565,17 @@ fun ExerciseScreen(
             )
         }
     }
+    if (confirmingIncompatible) AlertDialog(
+        onDismissRequest = { confirmingIncompatible = false },
+        title = { Text("Modifier le mode de suivi ?") },
+        text = { Text("Les anciennes séances et le brouillon actif resteront inchangés. Les nouvelles utilisations suivront le nouveau profil.") },
+        confirmButton = { TextButton(onClick = {
+            confirmedIncompatible = true
+            confirmingIncompatible = false
+            message = "Transition confirmée. Enregistrez pour appliquer le profil aux prochaines utilisations."
+        }) { Text("Modifier") } },
+        dismissButton = { TextButton(onClick = { confirmingIncompatible = false }) { Text("Annuler") } },
+    )
 }
 
 @Composable

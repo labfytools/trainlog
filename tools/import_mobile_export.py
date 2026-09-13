@@ -10,6 +10,7 @@ from pathlib import Path
 
 from validate_json import TrainlogSemanticError, parse_timestamp
 from exercise_names import ExerciseNameCatalogError, load_exercise_names
+from trainlog_sqlite import connect_database
 
 
 FORMAT = "trainlog-mobile-export"
@@ -492,18 +493,10 @@ def validate_session_exercise(
         label,
     )
 
-    catalog_profile = known_exercise_ids[exercise_id]
-    if (
-        recording_mode != catalog_profile["recording_mode"]
-        or tracking_mode != catalog_profile["tracking_mode"]
-        or item["data_fields"] & ~catalog_profile["data_fields"]
-    ):
-        # CONTRACT: an occurrence snapshots the fields that actually existed
-        # when it was recorded.  It may omit later optional catalog fields, but
-        # it may never claim a field absent from the catalog profile.
-        raise ImportFailure(
-            f"{label}: snapshot incompatible avec le profil catalogue"
-        )
+    # CONTRACT: catalogue membership proves stable identity only. Every
+    # completed occurrence owns its recording/tracking/data-field snapshot in
+    # every readable mobile version; later CURRENT profile evolution cannot
+    # invalidate or reinterpret historical actuals.
 
     if version < 3:
         if item["load_mode"] != "none" or item["rest_seconds"] != 0:
@@ -820,9 +813,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15):
+    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
         raise ImportFailure(
-            f"base desktop schema v5 à v15 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v17 attendue, version trouvée: {version}"
         )
 
 
@@ -1290,7 +1283,12 @@ def import_set_session_exercise(
     values = "?, " if entry_id is not None else ""
     equipment_columns = ", equipment_id" if schema_version >= 6 else ""
     equipment_values = ", ?" if schema_version >= 6 else ""
-    arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row, item["data_fields"], position]
+    tracking_columns = ", tracking_mode" if schema_version >= 16 else ""
+    tracking_values = ", ?" if schema_version >= 16 else ""
+    arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row]
+    if schema_version >= 16:
+        arguments.append(tracking)
+    arguments.extend([item["data_fields"], position])
     arguments.extend(occurrence_plan_values(item))
     if schema_version >= 6:
         arguments.append(item.get("equipment_id"))
@@ -1299,7 +1297,7 @@ def import_set_session_exercise(
         INSERT INTO session_exercises(
             """ + columns + """session_row_id,
             exercise_row_id,
-            recording_mode,
+            recording_mode""" + tracking_columns + """,
             data_fields,
             position,
             load_mode,
@@ -1309,7 +1307,7 @@ def import_set_session_exercise(
             target_duration_seconds,
             target_weight_kg, notes""" + equipment_columns + """
         ) VALUES(
-            """ + values + """?, ?, 'sets', ?, ?, ?, ?,
+            """ + values + """?, ?, 'sets'""" + tracking_values + """, ?, ?, ?, ?,
             ?, ?, ?, ?, NULL""" + equipment_values + """
         );
         """,
@@ -1363,7 +1361,12 @@ def import_continuous_session_exercise(
     values = "?, " if entry_id is not None else ""
     equipment_columns = ", equipment_id" if schema_version >= 6 else ""
     equipment_values = ", ?" if schema_version >= 6 else ""
-    arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row, item["data_fields"], position]
+    tracking_columns = ", tracking_mode" if schema_version >= 16 else ""
+    tracking_values = ", ?" if schema_version >= 16 else ""
+    arguments = ([entry_id] if entry_id is not None else []) + [session_row_id, exercise_row]
+    if schema_version >= 16:
+        arguments.append(item["tracking_mode"])
+    arguments.extend([item["data_fields"], position])
     arguments.extend(occurrence_plan_values(item))
     if schema_version >= 6:
         arguments.append(item.get("equipment_id"))
@@ -1372,7 +1375,7 @@ def import_continuous_session_exercise(
         INSERT INTO session_exercises(
             """ + columns + """session_row_id,
             exercise_row_id,
-            recording_mode,
+            recording_mode""" + tracking_columns + """,
             data_fields,
             position,
             load_mode,
@@ -1382,7 +1385,7 @@ def import_continuous_session_exercise(
             target_duration_seconds,
             target_weight_kg, notes""" + equipment_columns + """
         ) VALUES(
-            """ + values + """?, ?, 'continuous', ?, ?, ?, ?,
+            """ + values + """?, ?, 'continuous'""" + tracking_values + """, ?, ?, ?, ?,
             ?, ?, ?, ?, NULL""" + equipment_values + """
         );
         """,
@@ -1422,25 +1425,24 @@ def import_max_session_exercise(
         raise ImportFailure(
             "max_weight_kg exige le schéma desktop v9"
         )
+    tracking_column = ", tracking_mode" if schema_version >= 16 else ""
+    tracking_value = ", ?" if schema_version >= 16 else ""
+    arguments = [item["entry_id"], session_row_id, exercise_row,
+                 item["recording_mode"]]
+    if schema_version >= 16:
+        arguments.append(item["tracking_mode"])
+    arguments.extend([item["data_fields"], position, *occurrence_plan_values(item),
+                      item.get("equipment_id")])
     cursor = connection.execute(
         """
         INSERT INTO session_exercises(
             entry_id, session_row_id, exercise_row_id, recording_mode,
-            data_fields, position, load_mode, rest_seconds,
+            """ + tracking_column.lstrip(", ") + (", " if tracking_column else "") + """data_fields, position, load_mode, rest_seconds,
             target_sets, target_reps, target_duration_seconds,
             target_weight_kg, notes, equipment_id
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?);
+        ) VALUES(?, ?, ?, ?""" + tracking_value + """, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?);
         """,
-        (
-            item["entry_id"],
-            session_row_id,
-            exercise_row,
-            item["recording_mode"],
-            item["data_fields"],
-            position,
-            *occurrence_plan_values(item),
-            item.get("equipment_id"),
-        ),
+        arguments,
     )
     connection.execute(
         "INSERT INTO max_results(session_exercise_row_id,max_weight_kg) "
@@ -1456,6 +1458,8 @@ def import_sessions(
     report,
 ):
     for session in payload["sessions"]:
+        retained_feedback = []
+        retained_feedback_revisions = []
         if session_exists(
             connection,
             session["session_id"],
@@ -1495,11 +1499,21 @@ def import_sessions(
                 and all(current[index] == incoming[index]
                         for index in range(len(current)))
             )
+            incoming_by_id = dict(incoming)
+            correction = (
+                payload["version"] == 3
+                and header is not None
+                and tuple(header) == (session["started_at"], session["session_type"])
+                and len(incoming_by_id) == len(incoming)
+                and all(entry_id not in dict(current)
+                        or dict(current)[entry_id] == exercise_id
+                        for entry_id, exercise_id in incoming)
+            )
             # A v1 history may be upgraded only when exercise/order mapping is
             # unique. Any other identity disagreement is an explicit conflict.
             if current != incoming and not (
                 (legacy and [x[1] for x in current] == [x[1] for x in incoming])
-                or resumable_max
+                or resumable_max or correction
             ):
                 raise ImportFailure("conflit d'identités d'entrées pour " + session["session_id"])
             if not legacy and session_semantically_matches(
@@ -1510,12 +1524,25 @@ def import_sessions(
             ):
                 report["sessions_skipped"] += 1
                 continue
-            if not legacy and not resumable_max:
+            if not legacy and not (resumable_max or correction):
                 raise ImportFailure("conflit de contenu pour " + session["session_id"])
-            # CONTRACT: a resumed max_test may edit existing max values and
-            # append occurrences, but cannot remove/reorder/rebind any stable
-            # entry. This bounded replacement makes tomorrow's continuation
-            # idempotent without turning arbitrary session conflicts into wins.
+            # CONTRACT: V3 carries the complete occurrence and planning state.
+            # A correction may alter facts and remove explicitly confirmed
+            # parents, but a retained entry_id cannot be rebound to another
+            # exercise. Feedback follows retained session_id + entry_id.
+            if connection.execute("PRAGMA user_version;").fetchone()[0] >= 14:
+                retained_feedback = connection.execute(
+                    "SELECT se.entry_id,f.feedback_id,f.observed_at,f.raw_text "
+                    "FROM exercise_feedback f JOIN session_exercises se "
+                    "ON se.id=f.session_exercise_row_id WHERE se.session_row_id=?;",
+                    (session_row_id,),).fetchall()
+            if connection.execute("PRAGMA user_version;").fetchone()[0] >= 15:
+                retained_feedback_revisions = connection.execute(
+                    "SELECT r.feedback_id,r.revision_id,r.created_at,r.raw_text "
+                    "FROM exercise_feedback_revisions r JOIN exercise_feedback f "
+                    "ON f.feedback_id=r.feedback_id JOIN session_exercises se "
+                    "ON se.id=f.session_exercise_row_id WHERE se.session_row_id=?;",
+                    (session_row_id,),).fetchall()
             # Explicit child deletion makes reconciliation safe even for old
             # databases which were created without enforced foreign keys.
             connection.execute("DELETE FROM performed_sets WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
@@ -1569,9 +1596,9 @@ def import_sessions(
                     f"exercice desktop absent: {desktop_id}"
                 )
 
-            if (
-                row["tracking_mode"]
-                != item["tracking_mode"]
+            schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+            if schema_version < 16 and (
+                row["tracking_mode"] != item["tracking_mode"]
                 or row["recording_mode"]
                 != item["recording_mode"]
                 or item["data_fields"] & ~row["data_fields"]
@@ -1610,6 +1637,25 @@ def import_sessions(
                     row_id,
                 )
 
+        retained_ids = {item["entry_id"] for item in session["exercises"]}
+        for entry_id, feedback_id, observed_at, raw_text in retained_feedback:
+            if entry_id not in retained_ids:
+                continue
+            occurrence = connection.execute(
+                "SELECT id FROM session_exercises WHERE session_row_id=? AND entry_id=?;",
+                (session_row_id, entry_id),).fetchone()
+            if occurrence is None:
+                raise ImportFailure("rattachement feedback impossible: " + entry_id)
+            connection.execute(
+                "INSERT INTO exercise_feedback(feedback_id,session_exercise_row_id,observed_at,raw_text) VALUES(?,?,?,?);",
+                (feedback_id, occurrence[0], observed_at, raw_text),)
+        retained_feedback_ids = {row[1] for row in retained_feedback if row[0] in retained_ids}
+        for feedback_id, revision_id, created_at, raw_text in retained_feedback_revisions:
+            if feedback_id in retained_feedback_ids:
+                connection.execute(
+                    "INSERT INTO exercise_feedback_revisions(revision_id,feedback_id,created_at,raw_text) VALUES(?,?,?,?);",
+                    (revision_id, feedback_id, created_at, raw_text),)
+
         report["sessions_imported"] += 1
 
 
@@ -1623,8 +1669,10 @@ def session_semantically_matches(
         "SELECT started_at,session_type FROM sessions WHERE id=?", (session_row_id,)).fetchone()
     if header is None or (header[0], header[1]) != (incoming["started_at"], incoming["session_type"]):
         return False
+    schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+    tracking_column = "se.tracking_mode" if schema_version >= 16 else "e.tracking_mode"
     rows = connection.execute(
-        "SELECT se.id,se.entry_id,se.position,e.exercise_id,se.recording_mode,e.tracking_mode,"
+        "SELECT se.id,se.entry_id,se.position,e.exercise_id,se.recording_mode," + tracking_column + ","
         "se.data_fields,se.equipment_id,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,"
         "se.target_duration_seconds,se.target_weight_kg FROM session_exercises se JOIN exercises e "
         "ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position", (session_row_id,)).fetchall()
@@ -1772,7 +1820,7 @@ def run_import(
             f"base desktop introuvable: {database_path}"
         )
 
-    connection = sqlite3.connect(
+    connection = connect_database(
         database_path
     )
 
@@ -1927,7 +1975,7 @@ def main():
 
         known_equipment_ids = load_supplied_equipment_ids(args.catalog)
         if args.database.exists():
-            with sqlite3.connect(args.database) as connection:
+            with connect_database(args.database) as connection:
                 if connection.execute("PRAGMA user_version").fetchone()[0] >= 8:
                     known_equipment_ids.update(row[0] for row in connection.execute(
                         "SELECT equipment_id FROM custom_equipment"))

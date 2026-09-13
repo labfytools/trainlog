@@ -73,6 +73,9 @@ int main(void)
     exercise.recording_mode =
         TRAINLOG_RECORDING_CONTINUOUS;
 
+    exercise.tracking_mode =
+        TRAINLOG_TRACKING_DURATION;
+
     exercise.data_fields =
         TRAINLOG_EXERCISE_DATA_SPEED_KMH;
 

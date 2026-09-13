@@ -27,6 +27,8 @@ static const char *const EXERCISE_NAME = "Sync wiring exercise";
 static char remote_root[4096];
 static const char *remote_mobile_name = "trainlog-mobile-export-v2.json";
 static unsigned int remote_mobile_version = 2U;
+static const char *remote_tracking_mode = "reps";
+static bool remote_profile_available = true;
 
 static bool copy_file(const char *source, const char *target)
 {
@@ -148,7 +150,8 @@ TrainlogStatus trainlog_mtp_list_folder(
         return TRAINLOG_STATUS_OK;
     }
     if (parent_folder_id == 2U) {
-        if (capacity < 3U) {
+        size_t count = remote_profile_available ? 4U : 3U;
+        if (capacity < count) {
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
         }
         set_entry(&output[0], 10U, 2U, remote_mobile_name, false);
@@ -156,7 +159,11 @@ TrainlogStatus trainlog_mtp_list_folder(
                   "trainlog-exercise-body-zones-v1.json", false);
         set_entry(&output[2], 12U, 2U,
                   "trainlog-equipment-associations-v2.json", false);
-        *output_count = 3U;
+        if (remote_profile_available) {
+            set_entry(&output[3], 13U, 2U,
+                      "trainlog-exercise-profile-state-v1.json", false);
+        }
+        *output_count = count;
         return TRAINLOG_STATUS_OK;
     }
     *output_count = 0U;
@@ -178,7 +185,8 @@ TrainlogStatus trainlog_mtp_receive_file(
 
     name = item_id == 10U ? remote_mobile_name :
         item_id == 11U ? "trainlog-exercise-body-zones-v1.json" :
-        item_id == 12U ? "trainlog-equipment-associations-v2.json" : NULL;
+        item_id == 12U ? "trainlog-equipment-associations-v2.json" :
+        item_id == 13U ? "trainlog-exercise-profile-state-v1.json" : NULL;
     if (name == NULL || local_path == NULL) {
         return TRAINLOG_STATUS_NOT_FOUND;
     }
@@ -274,10 +282,29 @@ static bool write_artifacts(
             "{\"format\":\"trainlog-mobile-export\",\"version\":%u,"
             "\"generated_at\":\"2032-01-01T00:00:00+00:00\","
             "\"exercises\":[{\"exercise_id\":\"%s\",\"name\":\"%s\","
-            "\"recording_mode\":\"sets\",\"tracking_mode\":\"reps\","
+            "\"recording_mode\":\"sets\",\"tracking_mode\":\"%s\","
             "\"data_fields\":0}],\"sessions\":[],\"body_observations\":[]}",
-            remote_mobile_version, mobile_id, EXERCISE_NAME) > 0);
+            remote_mobile_version, mobile_id, EXERCISE_NAME,
+            remote_tracking_mode) > 0);
     }
+    CHECK(fclose(file) == 0);
+
+    written = snprintf(path, sizeof(path),
+        "%s/trainlog-exercise-profile-state-v1.json", remote_root);
+    CHECK(written >= 0 && (size_t)written < sizeof(path));
+    file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fprintf(file,
+        "{\"format\":\"trainlog-exercise-profile-state\",\"version\":1,"
+        "\"generated_at\":\"2032-01-01T00:00:00+00:00\",\"exercises\":[{"
+        "\"exercise_id\":\"%s\",\"recording_mode\":\"sets\",\"tracking_mode\":\"reps\","
+        "\"data_fields\":0,\"load_semantics\":null,\"machine_variant\":null,"
+        "\"machine_provenance\":null,\"scientific_profile_id\":null,"
+        "\"science_state\":\"unresolved\",\"legacy_equipment_id\":null,"
+        "\"revision_id\":\"pr_legacy_v1\",\"parent_revision_id\":null,\"legacy_seed\":true,"
+        "\"history\":[{\"revision_id\":\"pr_legacy_v1\",\"parent_revision_id\":null,"
+        "\"recording_mode\":\"sets\",\"tracking_mode\":\"reps\",\"data_fields\":0,\"legacy_seed\":true}]}]}",
+        CANONICAL_ID) > 0);
     CHECK(fclose(file) == 0);
 
     written = snprintf(path, sizeof(path),
@@ -589,6 +616,32 @@ static bool run_v3_unknown_with_stale_v2_proof_case(const char *case_root)
     return true;
 }
 
+static bool run_missing_profile_companion_case(const char *case_root)
+{
+    TrainlogSyncReport report;
+    char database_path[4096];
+    /* A stale local profile file is deliberately left by earlier cases. The
+     * selected MTP generation omits it, so neither causal pass may consume it. */
+    remote_mobile_name = "trainlog-mobile-export-v3.json";
+    remote_mobile_version = 3U;
+    remote_tracking_mode = "duration";
+    remote_profile_available = false;
+    CHECK(prepare_database(case_root, false, false,
+                           database_path, sizeof(database_path)));
+    CHECK(write_artifacts(CANONICAL_ID, CANONICAL_ID, false));
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+        TRAINLOG_SYNC_ANDROID_TO_PC, &report) ==
+        TRAINLOG_STATUS_DATABASE_ERROR);
+    CHECK(!report.success);
+    CHECK(strstr(report.error, "PROFILE_STATE_COMPANION_MISSING") != NULL);
+    CHECK(strstr(report.error, "profil incompatible entre identités") != NULL);
+    remote_profile_available = true;
+    remote_tracking_mode = "reps";
+    remote_mobile_name = "trainlog-mobile-export-v2.json";
+    remote_mobile_version = 2U;
+    return true;
+}
+
 static bool run_all(void)
 {
     char temporary[] = "/tmp/trainlog-sync-body-zone-wiring-XXXXXX";
@@ -596,6 +649,7 @@ static bool run_all(void)
     char case_b[4096];
     char case_c[4096];
     char case_d[4096];
+    char case_e[4096];
     char *root = mkdtemp(temporary);
 
     CHECK(root != NULL);
@@ -605,11 +659,13 @@ static bool run_all(void)
     CHECK(snprintf(case_b, sizeof(case_b), "%s/case-b", root) > 0);
     CHECK(snprintf(case_c, sizeof(case_c), "%s/case-c", root) > 0);
     CHECK(snprintf(case_d, sizeof(case_d), "%s/case-d", root) > 0);
+    CHECK(snprintf(case_e, sizeof(case_e), "%s/case-e", root) > 0);
 
     CHECK(run_success_case(case_a, false));
     CHECK(run_success_case(case_b, true));
     CHECK(run_unknown_without_proof_case(case_c));
     CHECK(run_v3_unknown_with_stale_v2_proof_case(case_d));
+    CHECK(run_missing_profile_companion_case(case_e));
     (void)puts("PASS production sync body-zone V2 proof wiring");
     return true;
 }

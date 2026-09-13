@@ -8,6 +8,19 @@ synchronization.
 
 Desktop SQLite is the canonical long-term history.
 
+From completed Session Detail, `e` opens the existing session editor around
+`trainlog_database_replace_session_exercises()`. Per-set values, targets, rest,
+continuous facts and explicit MAX values are corrected atomically under the
+same `session_id`; retained occurrences keep `entry_id`. Destructive set or
+occurrence removal uses the global confirmation flow (`Non` by default,
+Escape/q cancel).
+
+Desktop schema v16 snapshots `tracking_mode` on every `session_exercises`
+occurrence. The exercise editor may therefore change profile axes for future
+uses even when history exists. Incompatible changes require an explicit
+`Non`-by-default confirmation which states that old sessions remain unchanged;
+Escape and `q` cancel.
+
 ## 2. APP_SHELL_V1 navigation
 
 The persistent shell has seven root sections:

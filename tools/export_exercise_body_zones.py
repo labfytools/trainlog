@@ -8,6 +8,7 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "catalog/body-zones-v1.json"
@@ -37,11 +38,11 @@ def main():
     parser.add_argument("--database", type=Path, default=default_database())
     args = parser.parse_args()
     assignable = assignable_zone_ids()
-    connection = sqlite3.connect(args.database)
+    connection = connect_database(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15):
-            raise ValueError("schema desktop v11/v12/v13 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15, 16, 17):
+            raise ValueError("schema desktop v11-v16 requis")
         exercises = []
         for exercise in connection.execute("SELECT id,exercise_id FROM exercises ORDER BY exercise_id"):
             if EXERCISE_ID_PATTERN.fullmatch(exercise["exercise_id"]) is None:

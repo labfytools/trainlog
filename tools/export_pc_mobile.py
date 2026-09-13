@@ -10,6 +10,7 @@ from pathlib import Path
 
 from validate_json import TrainlogSemanticError, parse_timestamp
 from exercise_names import load_exercise_names
+from trainlog_sqlite import connect_database
 
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalog" / "equipment-v1.json"
@@ -64,12 +65,12 @@ def main():
     parser.add_argument("--database", type=Path, default=default_database())
     parser.add_argument("--version", type=int, choices=(2, 3), default=3)
     args = parser.parse_args()
-    con = sqlite3.connect(args.database)
+    con = connect_database(args.database)
     con.row_factory = sqlite3.Row
     try:
         schema_version = con.execute("PRAGMA user_version").fetchone()[0]
-        if schema_version not in (11, 12, 13, 14, 15) and not (args.version == 2 and schema_version == 10):
-            raise ValueError("schema desktop v11/v12/v13 requis (v10 accepté pour export V2 explicite)")
+        if schema_version not in (11, 12, 13, 14, 15, 16, 17) and not (args.version == 2 and schema_version == 10):
+            raise ValueError("schema desktop v11-v16 requis (v10 accepté pour export V2 explicite)")
         known_equipment = supplied_equipment_ids()
         canonical_names = load_exercise_names()
         known_equipment.update(row[0] for row in con.execute(
@@ -89,9 +90,10 @@ def main():
                                       f"session_id={session['session_id']} started_at")
             payload = {key: session[key] for key in ("session_id", "started_at", "session_type")}
             payload["exercises"] = []
-            # INVARIANT: tracking mode is catalogue metadata. v7 occurrences
-            # retain their stable entry_id but do not duplicate that field.
-            sql = "SELECT se.id,se.entry_id,se.position,se.recording_mode,e.tracking_mode,se.data_fields,se.equipment_id,e.exercise_id,e.name,mr.max_weight_kg,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id WHERE se.session_row_id=? ORDER BY se.position"
+            # INVARIANT: v16 exports the occurrence-owned tracking snapshot;
+            # older readable schemas retain their bounded catalogue fallback.
+            tracking_sql = "se.tracking_mode" if schema_version >= 16 else "e.tracking_mode"
+            sql = f"SELECT se.id,se.entry_id,se.position,se.recording_mode,{tracking_sql},se.data_fields,se.equipment_id,e.exercise_id,e.name,mr.max_weight_kg,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN max_results mr ON mr.session_exercise_row_id=se.id WHERE se.session_row_id=? ORDER BY se.position"
             for entry in con.execute(sql, (session["id"],)):
                 validate_plan(entry)
                 if entry["recording_mode"] == "continuous" or entry["max_weight_kg"] is not None:

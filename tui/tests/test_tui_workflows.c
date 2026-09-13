@@ -620,6 +620,25 @@ static bool test_shell_inline_exercise_creation_and_stable_edit(void)
     CHECK(trainlog_database_list_exercises(database, listed, 8U,
         &count) == TRAINLOG_STATUS_OK);
     CHECK(count == 6U);
+
+    /* Incompatible axes are future defaults only, but still require the
+     * global explicit confirmation contract with cancel as the safe default. */
+    exercise_controller_start_edit(&app);
+    app.exercise_controller.pending.recording_mode = TRAINLOG_RECORDING_SETS;
+    app.exercise_controller.pending.tracking_mode = TRAINLOG_TRACKING_DURATION;
+    app.exercise_controller.phase = TRAINLOG_EXERCISE_ZONES;
+    CHECK(!exercise_controller_save(&app));
+    CHECK(app.exercise_controller.phase == TRAINLOG_EXERCISE_CONFIRM_PROFILE);
+    CHECK(app_shell_dispatch_exercise_controller(&app, 'q'));
+    CHECK(app.exercise_controller.phase == TRAINLOG_EXERCISE_ZONES);
+    CHECK(app.exercise_detail.recording_mode == TRAINLOG_RECORDING_CONTINUOUS);
+    CHECK(!exercise_controller_save(&app));
+    CHECK(app_shell_dispatch_exercise_controller(&app, '1'));
+    CHECK(app.exercise_controller.phase == TRAINLOG_EXERCISE_MESSAGE);
+    CHECK(app.exercise_detail.recording_mode == TRAINLOG_RECORDING_SETS);
+    CHECK(app.exercise_detail.tracking_mode == TRAINLOG_TRACKING_DURATION);
+    CHECK(app_shell_dispatch_exercise_controller(&app, TRAINLOG_KEY_ENTER));
+    CHECK(app.exercise_controller.phase == TRAINLOG_EXERCISE_IDLE);
     trainlog_database_close(database);
     return true;
 }

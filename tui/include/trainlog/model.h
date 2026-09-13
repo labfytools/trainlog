@@ -80,6 +80,8 @@ typedef struct TrainlogSessionExerciseInput {
     /* Optional canonical ID from equipment-v1.json, never a SQLite row ID. */
     char equipment_id[TRAINLOG_ID_MAX + 1U];
     TrainlogRecordingMode recording_mode;
+    /** Occurrence-owned unit snapshot; catalogue edits affect future rows only. */
+    TrainlogTrackingMode tracking_mode;
     TrainlogExerciseDataFields data_fields;
     TrainlogLoadMode load_mode;
     int rest_seconds;

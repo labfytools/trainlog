@@ -10,6 +10,7 @@ import math
 import re
 import sys
 import unicodedata
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -29,10 +30,86 @@ SCHEMA_PATH = ROOT / "format" / "trainlog-v1.schema.json"
 VALID_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "valid"
 INVALID_FIXTURE_DIR = ROOT / "tests" / "fixtures" / "invalid"
 BODY_ZONE_CATALOG_PATH = ROOT / "catalog" / "body-zones-v1.json"
+PROFILE_EXERCISE_ID = re.compile(r"^ex_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+PROFILE_NAMESPACE = uuid.UUID("4f4c8ea6-18f6-5e48-9d65-a54a24889149")
+PROFILE_REVISION_ID = re.compile(r"^pr2_[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+PROFILE_HISTORY_MAX = 32
+
+
+def exercise_profile_revision(parent: str, recording: str, tracking: str, fields: int) -> str:
+    return "pr2_" + str(uuid.uuid5(PROFILE_NAMESPACE, f"{parent}\n{recording}\n{tracking}\n{fields}"))
 
 
 class TrainlogSemanticError(ValueError):
     """Raised when structurally valid JSON violates its format semantics."""
+
+
+def validate_exercise_profile_state(document: Any) -> None:
+    """Validate the separately versioned deterministic ancestry companion."""
+    if not isinstance(document, dict) or set(document) != {
+        "format", "version", "generated_at", "exercises",
+    } or document.get("format") != "trainlog-exercise-profile-state" or \
+            type(document.get("version")) is not int or document.get("version") != 1 or not isinstance(document.get("generated_at"), str) or \
+            not document.get("generated_at") or not isinstance(document.get("exercises"), list):
+        raise TrainlogSemanticError("exercise profile-state v1: invalid root")
+    parse_timestamp(document["generated_at"], "generated_at")
+    seen = set()
+    adjacent = {"load_semantics", "machine_variant", "machine_provenance",
+        "scientific_profile_id", "science_state", "legacy_equipment_id"}
+    required = {"exercise_id", "recording_mode", "tracking_mode", "data_fields",
+        "revision_id", "parent_revision_id", "legacy_seed", "history"} | adjacent
+    revision_keys = {"revision_id", "parent_revision_id", "recording_mode",
+        "tracking_mode", "data_fields", "legacy_seed"}
+    for item in document["exercises"]:
+        if not isinstance(item, dict) or set(item) != required:
+            raise TrainlogSemanticError("exercise profile-state v1: invalid record")
+        exercise_id = item["exercise_id"]
+        if not isinstance(exercise_id, str) or not PROFILE_EXERCISE_ID.fullmatch(exercise_id) or exercise_id in seen:
+            raise TrainlogSemanticError("exercise profile-state v1: invalid/duplicate identity")
+        seen.add(exercise_id)
+        recording, tracking, fields = item["recording_mode"], item["tracking_mode"], item["data_fields"]
+        if not isinstance(recording, str) or not isinstance(tracking, str) or \
+                recording not in {"sets", "continuous"} or tracking not in {"reps", "duration"} or \
+                recording == "continuous" and tracking != "duration" or type(fields) is not int or \
+                fields < 0 or fields & ~3 or recording == "sets" and fields != 0:
+            raise TrainlogSemanticError("exercise profile-state v1: invalid profile")
+        if not isinstance(item["science_state"], str) or item["science_state"] not in {"resolved", "unresolved"} or any(
+                item[key] is not None and not isinstance(item[key], str)
+                for key in adjacent - {"science_state"}):
+            raise TrainlogSemanticError("exercise profile-state v1: invalid adjacent metadata")
+        legacy = item["legacy_seed"]
+        if type(legacy) is not bool or (legacy and (item["revision_id"] != "pr_legacy_v1" or item["parent_revision_id"] is not None)) or \
+                (not legacy and (not isinstance(item["parent_revision_id"], str) or not isinstance(item["revision_id"], str) or
+                 not PROFILE_REVISION_ID.fullmatch(item["revision_id"]) or item["revision_id"] !=
+                 exercise_profile_revision(item["parent_revision_id"], recording, tracking, fields))):
+            raise TrainlogSemanticError("exercise profile-state v1: invalid ancestry")
+        history = item["history"]
+        if not isinstance(history, list) or not 1 <= len(history) <= PROFILE_HISTORY_MAX:
+            raise TrainlogSemanticError("exercise profile-state v1: invalid history bound")
+        previous = None
+        revision_ids = set()
+        for index, revision in enumerate(history):
+            if not isinstance(revision, dict) or set(revision) != revision_keys:
+                raise TrainlogSemanticError("exercise profile-state v1: invalid history record")
+            rr, rt, rf = revision["recording_mode"], revision["tracking_mode"], revision["data_fields"]
+            rlegacy = revision["legacy_seed"]
+            if not isinstance(rr, str) or not isinstance(rt, str) or rr not in {"sets", "continuous"} or rt not in {"reps", "duration"} or \
+                    rr == "continuous" and rt != "duration" or type(rf) is not int or rf < 0 or \
+                    rf & ~3 or rr == "sets" and rf != 0 or type(rlegacy) is not bool:
+                raise TrainlogSemanticError("exercise profile-state v1: invalid history profile")
+            rid, parent = revision["revision_id"], revision["parent_revision_id"]
+            if not isinstance(rid, str) or rid in revision_ids or (index > 0 and parent != previous) or \
+                    (index == 0 and (not rlegacy or rid != "pr_legacy_v1" or parent is not None)) or \
+                    (index > 0 and rlegacy) or \
+                    (rlegacy and (rid != "pr_legacy_v1" or parent is not None)) or \
+                    (not rlegacy and (not isinstance(parent, str) or not isinstance(rid, str) or
+                     not PROFILE_REVISION_ID.fullmatch(rid) or rid != exercise_profile_revision(parent, rr, rt, rf))):
+                raise TrainlogSemanticError("exercise profile-state v1: invalid history chain")
+            revision_ids.add(rid)
+            previous = rid
+        tip = history[-1]
+        if any(tip[key] != item[key] for key in revision_keys):
+            raise TrainlogSemanticError("exercise profile-state v1: history tip mismatch")
 
 
 def validate_body_zone_catalog(document: Any) -> None:
@@ -443,6 +520,7 @@ def validate_document(
     is_body_zones = isinstance(document, dict) and document.get("format") == "trainlog-body-zone-catalog"
     is_exercise_names = isinstance(document, dict) and document.get("format") == "trainlog-exercise-names-v1"
     is_mobile_v2 = isinstance(document, dict) and document.get("format") == "trainlog-mobile-export" and document.get("version") == 2
+    is_profile_state = isinstance(document, dict) and document.get("format") == "trainlog-exercise-profile-state"
     if is_body_zones:
         try:
             validate_body_zone_catalog(document)
@@ -454,6 +532,12 @@ def validate_document(
             from exercise_names import load_exercise_names
             load_exercise_names(path)
         except ValueError as exc:
+            return [str(exc)]
+        return []
+    if is_profile_state:
+        try:
+            validate_exercise_profile_state(document)
+        except TrainlogSemanticError as exc:
             return [str(exc)]
         return []
     if not is_mobile_v2:

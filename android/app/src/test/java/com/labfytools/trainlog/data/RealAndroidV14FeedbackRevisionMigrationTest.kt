@@ -33,7 +33,9 @@ class RealAndroidV14FeedbackRevisionMigrationTest {
         }
         TrainlogRepository(context,name).let { repository -> repository.listExercises(); repository.close() }
         SQLiteDatabase.openDatabase(target.path,null,SQLiteDatabase.OPEN_READONLY).use{db->
-            assertEquals(15,scalar(db,"PRAGMA user_version"));assertEquals("ok",string(db,"PRAGMA integrity_check"));db.rawQuery("PRAGMA foreign_key_check",null).use{assertFalse(it.moveToFirst())}
+            assertEquals(16,scalar(db,"PRAGMA user_version"));assertEquals("ok",string(db,"PRAGMA integrity_check"));db.rawQuery("PRAGMA foreign_key_check",null).use{assertFalse(it.moveToFirst())}
+            assertEquals(scalar(db,"SELECT COUNT(*) FROM exercises"),scalar(db,"SELECT COUNT(*) FROM exercise_profile_state WHERE revision_id='pr_legacy_v1' AND legacy_seed=1"))
+            assertEquals(scalar(db,"SELECT COUNT(*) FROM exercises"),scalar(db,"SELECT COUNT(*) FROM exercise_profile_revisions WHERE revision_id='pr_legacy_v1' AND legacy_seed=1"))
             assertEquals(before.first,values(db,"SELECT entry_id FROM draft_session_exercises ORDER BY entry_id"));assertEquals(before.second,values(db,"SELECT feedback_id||'|'||observed_at||'|'||raw_text FROM draft_exercise_feedback ORDER BY feedback_id"))
             assertEquals(before.second.size,scalar(db,"SELECT COUNT(*) FROM draft_exercise_feedback_revisions"))
             assertEquals(0,scalar(db,"SELECT COUNT(*) FROM draft_exercise_feedback f LEFT JOIN draft_exercise_feedback_revisions r ON r.revision_id='fr0_'||f.feedback_id WHERE r.revision_id IS NULL"))

@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 from pathlib import Path
+from trainlog_sqlite import connect_database
 
 MAX_BYTES = 1024 * 1024
 MAX_ALIASES = 4096
@@ -59,11 +60,11 @@ def main():
     parser.add_argument("--database", type=Path, required=True)
     args = parser.parse_args()
     aliases = load(args.artifact)
-    con = sqlite3.connect(args.database)
+    con = connect_database(args.database)
     try:
         con.execute("PRAGMA foreign_keys=ON")
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15):
-            fail("schema desktop v12/v13/v14/v15 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17):
+            fail("schema desktop v12-v16 requis")
         con.execute("BEGIN IMMEDIATE")
         for source, canonical in aliases:
             target = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (canonical,)).fetchone()

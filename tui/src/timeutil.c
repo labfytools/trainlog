@@ -79,23 +79,33 @@ TrainlogStatus trainlog_time_now_rfc3339(
 }
 
 TrainlogStatus trainlog_feedback_relative_label(
-    const char *ended_at, const char *observed_at, bool exercise_feedback,
+    const char *ended_at, const char *started_at, const char *observed_at,
+    bool exercise_feedback,
     char *output, size_t output_size)
 {
-    TrainlogTimestampKey ended, observed;
+    TrainlogTimestampKey ended, started, observed;
     int written;
     int64_t elapsed;
-    const char *neutral;
     if (observed_at == NULL || output == NULL || output_size == 0U)
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
-    neutral = exercise_feedback ? "Ressenti" : "H+?";
-    if (ended_at == NULL || ended_at[0] == '\0' ||
-        !trainlog_timestamp_parse(ended_at, strlen(ended_at), &ended) ||
-        !trainlog_timestamp_parse(observed_at, strlen(observed_at), &observed)) {
-        written = snprintf(output, output_size, "%s", neutral);
+    if (!trainlog_timestamp_parse(observed_at, strlen(observed_at), &observed)) {
+        written = snprintf(output, output_size, "H+?");
+    } else if (ended_at == NULL || ended_at[0] == '\0' ||
+        !trainlog_timestamp_parse(ended_at, strlen(ended_at), &ended)) {
+        if (started_at != NULL && started_at[0] != '\0' &&
+            trainlog_timestamp_parse(started_at, strlen(started_at), &started) &&
+            observed.utc_second >= started.utc_second) {
+            elapsed = observed.utc_second - started.utc_second;
+            written = snprintf(output, output_size, "≈H+%lld",
+                (long long)(elapsed / INT64_C(3600)));
+        } else written = snprintf(output, output_size, "H+?");
     } else if (observed.utc_second < ended.utc_second) {
+        bool within_session = exercise_feedback && started_at != NULL &&
+            started_at[0] != '\0' &&
+            trainlog_timestamp_parse(started_at, strlen(started_at), &started) &&
+            observed.utc_second >= started.utc_second;
         written = snprintf(output, output_size, "%s",
-            exercise_feedback ? "Pendant la séance" : "H+?");
+            within_session ? "Pendant la séance" : "H+?");
     } else {
         elapsed = observed.utc_second - ended.utc_second;
         written = snprintf(output, output_size, "H+%lld",

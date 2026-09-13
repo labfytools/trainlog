@@ -35,11 +35,55 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
 import java.io.StringReader
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.temporal.WeekFields
 import java.util.Locale
 import java.util.UUID
+
+private val PROFILE_REVISION_NAMESPACE = UUID.fromString("4f4c8ea6-18f6-5e48-9d65-a54a24889149")
+private val PROFILE_REVISION_PATTERN = Regex("^pr2_[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+private val PROTOTYPE_PROFILE_REVISION_PATTERN = Regex("^pr1\\|(sets|continuous)\\|(reps|duration)\\|([0-9]+)$")
+private const val PROFILE_HISTORY_MAX = 32
+
+/** Fixed-width UUIDv5 identity over the direct causal parent and resulting profile. */
+internal fun exerciseProfileRevision(parent: String, recording: String, tracking: String, fields: Int): String {
+    val namespace = ByteBuffer.allocate(16).putLong(PROFILE_REVISION_NAMESPACE.mostSignificantBits)
+        .putLong(PROFILE_REVISION_NAMESPACE.leastSignificantBits).array()
+    val name = "$parent\n$recording\n$tracking\n$fields".toByteArray(StandardCharsets.UTF_8)
+    val digest = MessageDigest.getInstance("SHA-1").digest(namespace + name)
+    digest[6] = ((digest[6].toInt() and 0x0f) or 0x50).toByte()
+    digest[8] = ((digest[8].toInt() and 0x3f) or 0x80).toByte()
+    val bytes = ByteBuffer.wrap(digest)
+    return "pr2_" + UUID(bytes.long, bytes.long).toString()
+}
+
+private fun advanceExerciseProfileRevision(
+    db: SQLiteDatabase, rowId: Long, recording: String, tracking: String, fields: Int,
+): Boolean {
+    val state = db.rawQuery(
+        "SELECT revision_id FROM exercise_profile_state WHERE exercise_row_id=?",
+        arrayOf(rowId.toString()),
+    ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else return false }
+    val count = db.rawQuery(
+        "SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=?",
+        arrayOf(rowId.toString()),
+    ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+    if (count >= PROFILE_HISTORY_MAX) return false
+    val child = exerciseProfileRevision(state, recording, tracking, fields)
+    db.execSQL(
+        "UPDATE exercise_profile_state SET revision_id=?,parent_revision_id=?,legacy_seed=0 WHERE exercise_row_id=?",
+        arrayOf(child,state,rowId),
+    )
+    db.execSQL(
+        "INSERT INTO exercise_profile_revisions VALUES(?,?,?,?,?,?,0)",
+        arrayOf(rowId,child,state,recording,tracking,fields),
+    )
+    return true
+}
 
 /* WHY: ended_at is absent on valid imported/history rows and present lifecycle
  * metadata cannot prove actual work. CONTRACT: observable history requires at
@@ -96,6 +140,13 @@ sealed interface PcCatalogImportResult {
 
     data object DatabaseError :
         PcCatalogImportResult
+}
+
+sealed interface ExerciseProfileStateImportResult {
+    data class Applied(val updated: Int, val skipped: Int) : ExerciseProfileStateImportResult
+    data class Invalid(val message: String) : ExerciseProfileStateImportResult
+    data class Conflict(val exerciseId: String) : ExerciseProfileStateImportResult
+    data object DatabaseError : ExerciseProfileStateImportResult
 }
 
 /** Read-only diagnostic emitted by the production PC-catalog importer. */
@@ -181,6 +232,12 @@ sealed interface SaveSessionResult {
 
     data object DatabaseError :
         SaveSessionResult
+}
+
+sealed interface CorrectCompletedSessionResult {
+    data object Saved : CorrectCompletedSessionResult
+    data class Invalid(val message: String) : CorrectCompletedSessionResult
+    data class DatabaseError(val message: String) : CorrectCompletedSessionResult
 }
 
 sealed interface SaveFeedbackResult {
@@ -969,6 +1026,16 @@ class TrainlogRepository(
                     exercise.dataFields,
                 ),
             )
+            db.execSQL(
+                "UPDATE exercise_profile_state SET revision_id=?,parent_revision_id='pr_legacy_v1',legacy_seed=0 " +
+                    "WHERE exercise_row_id=(SELECT id FROM exercises WHERE exercise_id=?);",
+                arrayOf(exerciseProfileRevision("pr_legacy_v1", exercise.recordingMode.wireValue,
+                    exercise.trackingMode.wireValue, exercise.dataFields), exercise.exerciseId),
+            )
+            db.execSQL(
+                "INSERT INTO exercise_profile_revisions SELECT e.id,s.revision_id,s.parent_revision_id,e.recording_mode,e.tracking_mode,e.data_fields,0 FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id WHERE e.exercise_id=?",
+                arrayOf(exercise.exerciseId),
+            )
 
             replaceExerciseBodyZones(db, exercise.exerciseId,
                 exercise.primaryZoneId, exercise.secondaryZoneIds)
@@ -989,18 +1056,12 @@ class TrainlogRepository(
         }
     }
 
-    /**
-     * WHY: completed sessions and active drafts snapshot profile fields, but
-     * keeping referenced catalog profiles immutable prevents a later catalog
-     * sync/profile edit from appearing to change an established exercise.
-     * A rename remains safe because all relationships use the unchanged row.
-     */
+    /** CONTRACT: occurrences snapshot profile semantics, so references never lock CURRENT edits. */
     fun canEditExerciseProfile(
         exerciseId: String,
     ): Boolean {
         val db = database.readableDatabase
-        val rowId = lookupExerciseRowIdOrNull(db, exerciseId) ?: return false
-        return !exerciseHasReferences(db, rowId)
+        return lookupExerciseRowIdOrNull(db, exerciseId) != null
     }
 
     fun editExercise(
@@ -1022,13 +1083,11 @@ class TrainlogRepository(
             db.beginTransaction()
             val current = findExerciseRow(db, "exercise_id = ?", arrayOf(input.exerciseId))
                 ?: return EditExerciseResult.DatabaseError
-            val profileChanged =
-                current.recordingMode != input.recordingMode ||
-                    current.trackingMode != input.trackingMode ||
-                    current.dataFields != input.dataFields
-            if (profileChanged && exerciseHasReferences(db, current.rowId)) {
-                return EditExerciseResult.IncompatibleProfileChange
-            }
+            /* CONTRACT: completed and draft occurrences own profile snapshots.
+             * Updating the catalogue controls future uses only; it must never
+             * rewrite or reject because historical/draft facts reference this
+             * stable exercise identity. The UI confirms incompatible future
+             * behavior before invoking this transaction. */
 
             val nameOwner = findExerciseRow(db, "normalized_name = ?", arrayOf(normalized))
             if (nameOwner != null && nameOwner.rowId != current.rowId) {
@@ -1042,8 +1101,31 @@ class TrainlogRepository(
                 put("tracking_mode", input.trackingMode.wireValue)
                 put("data_fields", input.dataFields)
             }
+            val parentRevision = db.rawQuery(
+                "SELECT revision_id FROM exercise_profile_state WHERE exercise_row_id=?",
+                arrayOf(current.rowId.toString()),
+            ).use { cursor -> check(cursor.moveToFirst()); cursor.getString(0) }
             if (db.update("exercises", values, "id = ?", arrayOf(current.rowId.toString())) != 1) {
                 return EditExerciseResult.DatabaseError
+            }
+            if (current.recordingMode != input.recordingMode || current.trackingMode != input.trackingMode ||
+                current.dataFields != input.dataFields) {
+                val revisionCount = db.rawQuery(
+                    "SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=?",
+                    arrayOf(current.rowId.toString()),
+                ).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+                if (revisionCount >= PROFILE_HISTORY_MAX) return EditExerciseResult.DatabaseError
+                db.execSQL(
+                    "UPDATE exercise_profile_state SET revision_id=?,parent_revision_id=?,legacy_seed=0 WHERE exercise_row_id=?",
+                    arrayOf(exerciseProfileRevision(parentRevision, input.recordingMode.wireValue,
+                        input.trackingMode.wireValue, input.dataFields), parentRevision, current.rowId),
+                )
+                db.execSQL(
+                    "INSERT INTO exercise_profile_revisions VALUES(?,?,?,?,?,?,0)",
+                    arrayOf(current.rowId, exerciseProfileRevision(parentRevision, input.recordingMode.wireValue,
+                        input.trackingMode.wireValue, input.dataFields), parentRevision,
+                        input.recordingMode.wireValue, input.trackingMode.wireValue, input.dataFields),
+                )
             }
             replaceExerciseBodyZones(db, input.exerciseId,
                 input.primaryZoneId, input.secondaryZoneIds)
@@ -1091,6 +1173,176 @@ class TrainlogRepository(
             .put("generated_at", OffsetDateTime.now().toString())
             .put("exercises", exercises)
             .toString()
+    }
+
+    /** Separately versioned causal state for mutable CURRENT profiles. */
+    fun buildExerciseProfileStateJson(): String {
+        val array = JSONArray()
+        database.readableDatabase.rawQuery(
+            "SELECT e.exercise_id,e.recording_mode,e.tracking_mode,e.data_fields," +
+                "e.load_semantics,e.machine_variant,e.machine_provenance,e.scientific_profile_id," +
+                "e.science_state,e.legacy_equipment_id,s.revision_id,s.parent_revision_id,s.legacy_seed " +
+                "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id ORDER BY e.exercise_id",
+            null,
+        ).use { c ->
+            while (c.moveToNext()) {
+                check(c.getType(3)==Cursor.FIELD_TYPE_INTEGER && c.getType(12)==Cursor.FIELD_TYPE_INTEGER &&
+                    c.getInt(12) in 0..1 && c.getType(10)==Cursor.FIELD_TYPE_STRING &&
+                    c.getType(11) in setOf(Cursor.FIELD_TYPE_NULL,Cursor.FIELD_TYPE_STRING))
+                val item = JSONObject().put("exercise_id", c.getString(0))
+                    .put("recording_mode", c.getString(1)).put("tracking_mode", c.getString(2))
+                    .put("data_fields", c.getInt(3))
+                for (i in 4..9) item.put(arrayOf("load_semantics","machine_variant","machine_provenance",
+                    "scientific_profile_id","science_state","legacy_equipment_id")[i-4],
+                    if (c.isNull(i)) JSONObject.NULL else c.getString(i))
+                item.put("revision_id", c.getString(10))
+                    .put("parent_revision_id", if (c.isNull(11)) JSONObject.NULL else c.getString(11))
+                    .put("legacy_seed", c.getInt(12) == 1)
+                val history = JSONArray()
+                val rowId = database.readableDatabase.rawQuery(
+                    "SELECT id FROM exercises WHERE exercise_id=?", arrayOf(c.getString(0)),
+                ).use { idCursor -> check(idCursor.moveToFirst()); idCursor.getLong(0) }
+                database.readableDatabase.rawQuery(
+                    "WITH RECURSIVE lineage(revision_id,parent_revision_id,recording_mode,tracking_mode,data_fields,legacy_seed,level) AS (" +
+                        "SELECT revision_id,parent_revision_id,recording_mode,tracking_mode,data_fields,legacy_seed,0 FROM exercise_profile_revisions WHERE exercise_row_id=? AND revision_id=? " +
+                        "UNION ALL SELECT r.revision_id,r.parent_revision_id,r.recording_mode,r.tracking_mode,r.data_fields,r.legacy_seed,lineage.level+1 FROM exercise_profile_revisions r JOIN lineage ON r.revision_id=lineage.parent_revision_id WHERE r.exercise_row_id=? AND lineage.level<31) " +
+                        "SELECT revision_id,parent_revision_id,recording_mode,tracking_mode,data_fields,legacy_seed FROM lineage ORDER BY level DESC",
+                    arrayOf(rowId.toString(), c.getString(10), rowId.toString()),
+                ).use { revisions ->
+                    var previous: String? = null
+                    var index = 0
+                    while (revisions.moveToNext()) history.put(JSONObject()
+                        .put("revision_id", revisions.getString(0))
+                        .put("parent_revision_id", if (revisions.isNull(1)) JSONObject.NULL else revisions.getString(1))
+                        .put("recording_mode", revisions.getString(2)).put("tracking_mode", revisions.getString(3))
+                        .put("data_fields", revisions.getInt(4)).put("legacy_seed", revisions.getInt(5) == 1).also {
+                            val revision = revisions.getString(0)
+                            val parent = if (revisions.isNull(1)) null else revisions.getString(1)
+                            val recording = revisions.getString(2)
+                            val tracking = revisions.getString(3)
+                            val fields = revisions.getInt(4)
+                            val legacy = revisions.getInt(5) == 1
+                            check(revisions.getType(4)==Cursor.FIELD_TYPE_INTEGER &&
+                                revisions.getType(5)==Cursor.FIELD_TYPE_INTEGER && revisions.getInt(5) in 0..1)
+                            check(recording in setOf("sets","continuous") && tracking in setOf("reps","duration") &&
+                                !(recording=="continuous"&&tracking!="duration") && fields in 0..3 &&
+                                !(recording=="sets"&&fields!=0))
+                            if (index == 0) check(legacy && revision=="pr_legacy_v1" && parent==null)
+                            else check(!legacy && parent==previous && PROFILE_REVISION_PATTERN.matches(revision) &&
+                                revision==exerciseProfileRevision(parent!!,recording,tracking,fields))
+                            previous=revision;index++
+                        })
+                }
+                check(history.length() in 1..PROFILE_HISTORY_MAX)
+                val tip=history.getJSONObject(history.length()-1)
+                check(tip.getString("revision_id")==c.getString(10) &&
+                    (if(tip.isNull("parent_revision_id"))null else tip.getString("parent_revision_id"))==
+                        (if(c.isNull(11))null else c.getString(11)) &&
+                    tip.getBoolean("legacy_seed")== (c.getInt(12)==1) &&
+                    tip.getString("recording_mode")==c.getString(1) &&
+                    tip.getString("tracking_mode")==c.getString(2) && tip.getInt("data_fields")==c.getInt(3))
+                item.put("history", history)
+                array.put(item)
+            }
+        }
+        return JSONObject().put("format","trainlog-exercise-profile-state").put("version",1)
+            .put("generated_at",OffsetDateTime.now().toString()).put("exercises",array).toString()
+    }
+
+    fun applyExerciseProfileStateJson(json: String, allowPending: Boolean = false): ExerciseProfileStateImportResult {
+        if (!hasStrictJsonShape(json))
+            return ExerciseProfileStateImportResult.Invalid("Profile-state JSON invalide ou champ dupliqué.")
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return ExerciseProfileStateImportResult.Invalid("Profile-state JSON invalide.")
+        }
+        if (!root.hasExactKeys(setOf("format","version","generated_at","exercises")) ||
+            root.value("format") != "trainlog-exercise-profile-state" || !root.value("version").isExactJsonInteger(1) ||
+            root.value("generated_at") !is String || TrainlogTimestamp.parse(root.value("generated_at") as String) == null)
+            return ExerciseProfileStateImportResult.Invalid("Profile-state non supporté.")
+        val entries = root.value("exercises") as? JSONArray
+            ?: return ExerciseProfileStateImportResult.Invalid("Profile-state sans exercices.")
+        val db=database.writableDatabase;var updated=0;var skipped=0;val seen=mutableSetOf<String>()
+        return try {
+            db.beginTransaction()
+            for(i in 0 until entries.length()) {
+                val x=entries.get(i) as? JSONObject ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val required=setOf("exercise_id","recording_mode","tracking_mode","data_fields",
+                    "load_semantics","machine_variant","machine_provenance","scientific_profile_id",
+                    "science_state","legacy_equipment_id","revision_id","parent_revision_id","legacy_seed","history")
+                if(!x.hasExactKeys(required)) return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val id=x.value("exercise_id") as? String ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val recording=x.value("recording_mode") as? String ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val tracking=x.value("tracking_mode") as? String ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val fieldsValue=x.value("data_fields"); if(!fieldsValue.isExactJsonInteger()) return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val fieldsLong=(fieldsValue as Number).toLong()
+                if(fieldsLong !in 0L..3L) return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val fields=fieldsLong.toInt()
+                val revision=x.value("revision_id") as? String ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val parent=if(x.value("parent_revision_id")===JSONObject.NULL)null else x.value("parent_revision_id") as? String
+                    ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val legacy=x.value("legacy_seed") as? Boolean ?: return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val nullableAdjacent=listOf("load_semantics","machine_variant","machine_provenance","scientific_profile_id","legacy_equipment_id")
+                if(nullableAdjacent.any { x.value(it)!==JSONObject.NULL && x.value(it) !is String } || x.value("science_state") !in setOf("resolved","unresolved") ||
+                    !EXERCISE_ID_V4_PATTERN.matches(id)||!seen.add(id)||recording !in setOf("sets","continuous")||
+                    tracking !in setOf("reps","duration")||(recording=="continuous"&&tracking!="duration")||
+                    (recording=="sets"&&fieldsLong!=0L)||
+                    (legacy&&(revision!="pr_legacy_v1"||parent!=null))||(!legacy&&(parent==null||
+                        !PROFILE_REVISION_PATTERN.matches(revision)||revision!=exerciseProfileRevision(parent,recording,tracking,fields))))
+                    return ExerciseProfileStateImportResult.Invalid("Entrée profile-state invalide.")
+                val history=x.value("history") as? JSONArray ?: return ExerciseProfileStateImportResult.Invalid("Historique profile-state invalide.")
+                if(history.length() !in 1..PROFILE_HISTORY_MAX) return ExerciseProfileStateImportResult.Invalid("Historique profile-state hors limite.")
+                val revisions=mutableListOf<List<Any?>>()
+                val historyIds=mutableSetOf<String>();var previous:String?=null
+                val revisionKeys=setOf("revision_id","parent_revision_id","recording_mode","tracking_mode","data_fields","legacy_seed")
+                for(j in 0 until history.length()) {
+                    val h=history.get(j) as? JSONObject ?: return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    if(!h.hasExactKeys(revisionKeys)) return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    val hr=h.value("recording_mode") as? String ?: return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    val ht=h.value("tracking_mode") as? String ?: return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    val hfValue=h.value("data_fields");if(!hfValue.isExactJsonInteger()) return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    val hfLong=(hfValue as Number).toLong();val hid=h.value("revision_id") as? String ?: return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    if(hfLong !in 0L..3L) return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    val hf=hfLong.toInt()
+                    val hp=if(h.value("parent_revision_id")===JSONObject.NULL)null else h.value("parent_revision_id") as? String ?: return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    val hl=h.value("legacy_seed") as? Boolean ?: return ExerciseProfileStateImportResult.Invalid("Révision profile-state invalide.")
+                    if(hr !in setOf("sets","continuous")||ht !in setOf("reps","duration")||(hr=="continuous"&&ht!="duration")||(hr=="sets"&&hfLong!=0L)||!historyIds.add(hid)||(j>0&&hp!=previous)||
+                        (j==0&&(!hl||hid!="pr_legacy_v1"||hp!=null))||(j>0&&hl)||
+                        (hl&&(hid!="pr_legacy_v1"||hp!=null))||(!hl&&(hp==null||!PROFILE_REVISION_PATTERN.matches(hid)||hid!=exerciseProfileRevision(hp,hr,ht,hf))))
+                        return ExerciseProfileStateImportResult.Invalid("Chaîne profile-state invalide.")
+                    revisions.add(listOf(hid,hp,hr,ht,hf,hl));previous=hid
+                }
+                if(revisions.last()!=listOf(revision,parent,recording,tracking,fields,legacy)) return ExerciseProfileStateImportResult.Invalid("Pointe profile-state incohérente.")
+                val row=db.rawQuery("SELECT e.id,e.recording_mode,e.tracking_mode,e.data_fields,"+
+                    "e.load_semantics,e.machine_variant,e.machine_provenance,e.scientific_profile_id,e.science_state,e.legacy_equipment_id,"+
+                    "s.revision_id,s.parent_revision_id,s.legacy_seed FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id WHERE e.exercise_id=?",arrayOf(id)).use{c->
+                    if(!c.moveToFirst()) null else (0..12).map{if(c.isNull(it)) null else c.getString(it)}}
+                if(row==null){if(allowPending){skipped++;continue};return ExerciseProfileStateImportResult.Invalid("Identité exercice inconnue : $id")}
+                val incomingAdj=arrayOf("load_semantics","machine_variant","machine_provenance","scientific_profile_id","science_state","legacy_equipment_id").map{key->if(x.value(key)===JSONObject.NULL)null else x.value(key) as String}
+                if((4..9).map{row[it]}!=incomingAdj)return ExerciseProfileStateImportResult.Conflict(id)
+                val localRevision=row[10]!!;val localParent=row[11];val localLegacy=row[12]=="1"
+                val sameProfile=row[1]==recording&&row[2]==tracking&&row[3]?.toInt()==fields
+                val accept = when {
+                    localRevision==revision && sameProfile -> false
+                    localRevision==revision && localLegacy && legacy -> true
+                    localRevision in historyIds -> true
+                    db.rawQuery("SELECT 1 FROM exercise_profile_revisions WHERE exercise_row_id=? AND revision_id=?",arrayOf(row[0],revision)).use{it.moveToFirst()} -> false
+                    else -> return ExerciseProfileStateImportResult.Conflict(id)
+                }
+                if(!accept){skipped++;continue}
+                val knownCount=db.rawQuery("SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=?",arrayOf(row[0])).use{it.moveToFirst();it.getInt(0)}
+                val additions=revisions.count { revisionRow -> db.rawQuery("SELECT 1 FROM exercise_profile_revisions WHERE exercise_row_id=? AND revision_id=?",arrayOf(row[0],revisionRow[0] as String)).use{!it.moveToFirst()} }
+                if(knownCount+additions>PROFILE_HISTORY_MAX)return ExerciseProfileStateImportResult.Invalid("Historique profile-state hors limite : $id")
+                revisions.forEach { h -> db.execSQL("INSERT OR IGNORE INTO exercise_profile_revisions VALUES(?,?,?,?,?,?,?)",arrayOf(row[0],h[0],h[1],h[2],h[3],h[4],if(h[5] as Boolean)1 else 0)) }
+                if(legacy) db.execSQL(
+                    "UPDATE exercise_profile_revisions SET recording_mode=?,tracking_mode=?,data_fields=? WHERE exercise_row_id=? AND revision_id='pr_legacy_v1'",
+                    arrayOf<Any?>(recording,tracking,fields,row[0]),
+                )
+                db.execSQL("UPDATE exercise_profile_state SET revision_id=?,parent_revision_id=?,legacy_seed=? WHERE exercise_row_id=?",arrayOf<Any?>(revision,parent,if(legacy)1 else 0,row[0]!!.toLong()))
+                db.execSQL("UPDATE exercises SET recording_mode=?,tracking_mode=?,data_fields=? WHERE id=?",arrayOf<Any?>(recording,tracking,fields,row[0]!!.toLong()))
+                updated++
+            }
+            db.setTransactionSuccessful();ExerciseProfileStateImportResult.Applied(updated,skipped)
+        } catch(_:Exception){ExerciseProfileStateImportResult.DatabaseError} finally {if(db.inTransaction())db.endTransaction()}
     }
 
     fun applyExerciseBodyZonesJson(json: String): ExerciseBodyZoneImportResult {
@@ -1763,6 +2015,37 @@ class TrainlogRepository(
         }
     }
 
+    /**
+     * WHY: correcting history changes facts, not their logical owners.
+     * CONTRACT: the session row and every retained entry_id survive; feedback
+     * roots/revisions are reattached only to retained entry_ids and follow-ups
+     * remain attached to the untouched session row. The complete replacement
+     * is one transaction, so any failure restores the original history.
+     */
+    fun correctCompletedSession(
+        sessionId: String,
+        draft: SessionDraft,
+    ): CorrectCompletedSessionResult {
+        if (sessionId.isBlank() || draft.exercises.isEmpty() ||
+            draft.exercises.map { it.entryId }.distinct().size != draft.exercises.size ||
+            draft.exercises.any { !validateSessionExercise(it, draft.sessionType) }) {
+            return CorrectCompletedSessionResult.Invalid("La correction de séance est invalide.")
+        }
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            insertCompletedSession(db, draft, sessionId, generalCorrection = true)
+            db.setTransactionSuccessful()
+            CorrectCompletedSessionResult.Saved
+        } catch (error: Exception) {
+            CorrectCompletedSessionResult.DatabaseError(
+                error.message ?: "Correction de la séance impossible."
+            )
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
+        }
+    }
+
     fun listSessions(): List<SessionSummary> {
         val output =
             mutableListOf<SessionSummary>()
@@ -2157,6 +2440,10 @@ class TrainlogRepository(
                     ) {
                         return PcCatalogImportResult.DatabaseError
                     }
+                    if (byId.dataFields != richerFields && !advanceExerciseProfileRevision(
+                            db, byId.rowId, byId.recordingMode.wireValue,
+                            byId.trackingMode.wireValue, richerFields))
+                        return PcCatalogImportResult.DatabaseError
 
                     reconciled += 1
                     traceDecision(
@@ -2227,6 +2514,11 @@ class TrainlogRepository(
                     ) {
                         return PcCatalogImportResult.DatabaseError
                     }
+                    val mergedFields = byName.dataFields or dataFields
+                    if (byName.dataFields != mergedFields && !advanceExerciseProfileRevision(
+                            db, byName.rowId, byName.recordingMode.wireValue,
+                            byName.trackingMode.wireValue, mergedFields))
+                        return PcCatalogImportResult.DatabaseError
 
                     reconciled += 1
                     traceDecision(
@@ -2273,6 +2565,26 @@ class TrainlogRepository(
                     "exercises",
                     null,
                     values
+                )
+                /* WHY: catalog reconciliation inserts outside the local
+                 * creation API. CONTRACT: the strict profile-state second
+                 * pass must observe a canonical causal root, never the
+                 * trigger's transaction-local placeholder. */
+                db.execSQL(
+                    "UPDATE exercise_profile_state SET revision_id=?," +
+                        "parent_revision_id='pr_legacy_v1',legacy_seed=0 " +
+                        "WHERE exercise_row_id=(SELECT id FROM exercises WHERE exercise_id=?);",
+                    arrayOf(
+                        exerciseProfileRevision(
+                            "pr_legacy_v1", recording.wireValue,
+                            tracking.wireValue, dataFields,
+                        ),
+                        exerciseId,
+                    ),
+                )
+                db.execSQL(
+                    "INSERT INTO exercise_profile_revisions SELECT e.id,s.revision_id,s.parent_revision_id,e.recording_mode,e.tracking_mode,e.data_fields,0 FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id WHERE e.exercise_id=?",
+                    arrayOf(exerciseId),
                 )
 
                 imported += 1
@@ -2897,25 +3209,33 @@ class TrainlogRepository(
                         arrayOf(resolveExerciseId(db, exerciseId)),
                     )
                         ?: return MobileSessionImportResult.Invalid("Exercice V2 inconnu : $exerciseId")
-                    if (
-                        entry.optString("recording_mode") != exerciseRow.recordingMode.wireValue ||
-                        entry.optString("tracking_mode") != exerciseRow.trackingMode.wireValue ||
-                        entry.optInt("data_fields", -1) and
-                            exerciseRow.dataFields.inv() != 0
-                    ) {
-                        return MobileSessionImportResult.Invalid("Profil V2 incompatible : $exerciseId")
-                    }
+                    /* CONTRACT: the resolved row proves stable exercise
+                     * identity only. Completed occurrences own their profile
+                     * snapshot; CURRENT catalogue evolution cannot reject it. */
                 }
                 val existingRowId = db.rawQuery("SELECT id FROM sessions WHERE session_id=?", arrayOf(sessionId)).use {
                     if (it.moveToFirst()) it.getLong(0) else null
                 }
+                val retainedFeedback = mutableMapOf<String, MutableList<Triple<String,String,String>>>()
+                val retainedRevisions = mutableMapOf<String, MutableList<Triple<String,String,String>>>()
                 if (existingRowId != null) {
                     if (pcSessionMatches(db, existingRowId, session, version)) {
                         sessionsSkipped += 1
                         continue
                     }
-                    if (!pcResumedMaxUpdateIsSafe(db, existingRowId, session)) {
+                    /* V2 has no complete planning authority; it must never
+                     * erase V3 targets while applying a correction. */
+                    if (version != 3 && session.optString("session_type") != "max_test") return MobileSessionImportResult.Invalid(
+                        "Une correction de séance exige le snapshot V3 complet."
+                    )
+                    if (!pcCompletedCorrectionIsSafe(db, existingRowId, session)) {
                         return MobileSessionImportResult.Invalid("Conflit de contenu pour la séance $sessionId")
+                    }
+                    db.rawQuery("SELECT se.entry_id,f.feedback_id,f.observed_at,f.raw_text FROM exercise_feedback f JOIN session_exercises se ON se.id=f.session_exercise_row_id WHERE se.session_row_id=?", arrayOf(existingRowId.toString())).use { cursor ->
+                        while (cursor.moveToNext()) retainedFeedback.getOrPut(cursor.getString(0)){mutableListOf()}.add(Triple(cursor.getString(1),cursor.getString(2),cursor.getString(3)))
+                    }
+                    db.rawQuery("SELECT r.feedback_id,r.revision_id,r.created_at,r.raw_text FROM exercise_feedback_revisions r JOIN exercise_feedback f ON f.feedback_id=r.feedback_id JOIN session_exercises se ON se.id=f.session_exercise_row_id WHERE se.session_row_id=?", arrayOf(existingRowId.toString())).use { cursor ->
+                        while (cursor.moveToNext()) retainedRevisions.getOrPut(cursor.getString(0)){mutableListOf()}.add(Triple(cursor.getString(1),cursor.getString(2),cursor.getString(3)))
                     }
                     /* Child replacement is inside this import transaction;
                      * entry identity/order may only be retained and appended. */
@@ -2976,6 +3296,21 @@ class TrainlogRepository(
                         if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                     }
                     val occurrence = db.insertOrThrow("session_exercises", null, values)
+                    /* INVARIANT: correction transport follows session_id +
+                     * entry_id. Retained observations keep all immutable
+                     * revisions; an omitted entry intentionally inherits none. */
+                    retainedFeedback[entryId].orEmpty().forEach { feedback ->
+                        db.insertOrThrow("exercise_feedback", null, ContentValues().apply {
+                            put("feedback_id",feedback.first);put("session_exercise_row_id",occurrence)
+                            put("observed_at",feedback.second);put("raw_text",feedback.third)
+                        })
+                        retainedRevisions[feedback.first].orEmpty().forEach { revision ->
+                            db.insertOrThrow("exercise_feedback_revisions",null,ContentValues().apply {
+                                put("revision_id",revision.first);put("feedback_id",feedback.first)
+                                put("created_at",revision.second);put("raw_text",revision.third)
+                            })
+                        }
+                    }
                     if (entry.has("max_weight_kg")) {
                         db.insertOrThrow("max_results", null, ContentValues().apply {
                             put("session_exercise_row_id", occurrence)
@@ -3059,7 +3394,6 @@ class TrainlogRepository(
         }
         return try {
             val exerciseIds = mutableSetOf<String>()
-            val exerciseProfiles = mutableMapOf<String, Triple<String, String, Int>>()
             val exerciseKeys = setOf("exercise_id", "name", "recording_mode", "tracking_mode", "data_fields")
             val exercises = root.getJSONArray("exercises")
             for (index in 0 until exercises.length()) {
@@ -3069,11 +3403,6 @@ class TrainlogRepository(
                     !item.value("name").isNonemptyJsonString() || !validJsonProfile(item)) {
                     return "Catalogue exercices V2 invalide."
                 }
-                exerciseProfiles[id] = Triple(
-                    item.getString("recording_mode"),
-                    item.getString("tracking_mode"),
-                    item.getInt("data_fields"),
-                )
             }
 
             val sessionKeys = setOf("session_id", "started_at", "session_type", "exercises")
@@ -3109,28 +3438,24 @@ class TrainlogRepository(
                     val exerciseId = entry.value("exercise_id")
                     val positionValue = entry.value("position")
                     if (!entry.hasExactKeys(expectedKeys) || !entryId.isNonemptyJsonString() || !entryIds.add(entryId as String) ||
-                        !exerciseId.isNonemptyJsonString() || exerciseId !in exerciseIds || !entry.value("name").isNonemptyJsonString() ||
-                        !validJsonProfile(entry) || !validEntryPlan(entry, version, recording as String, tracking as String, hasMax) ||
+                        !exerciseId.isNonemptyJsonString() || !entry.value("name").isNonemptyJsonString() ||
                         !positionValue.isJsonInt(0, 100000) || !positions.add((positionValue as Number).toInt()) ||
                         !(entry.value("equipment_id") === JSONObject.NULL || entry.value("equipment_id").isNonemptyJsonString())) {
                         return "Entrée de séance V2 invalide."
+                    }
+                    if (exerciseId !in exerciseIds) {
+                        return "Exercice de séance V2 absent du catalogue."
+                    }
+                    if (!validJsonProfile(entry)) {
+                        return "Profil historique V2 invalide."
+                    }
+                    if (!validEntryPlan(entry, version, recording as String, tracking as String, hasMax)) {
+                        return "Plan/payload historique V2 incompatible avec son profil."
                     }
                     if (hasMax &&
                         (session.getString("session_type") != "max_test" ||
                             !entry.value("max_weight_kg").isPositiveJsonNumber())) {
                         return "Résultat max V2 invalide."
-                    }
-                    val catalogProfile = exerciseProfiles[exerciseId]
-                        ?: return "Exercice de séance V2 absent du catalogue."
-                    val entryFields = entry.getInt("data_fields")
-                    if (
-                        entry.getString("recording_mode") != catalogProfile.first ||
-                        entry.getString("tracking_mode") != catalogProfile.second ||
-                        entryFields and catalogProfile.third.inv() != 0
-                    ) {
-                        /* CONTRACT: richer current catalog metadata must not
-                         * rewrite an older occurrence snapshot. */
-                        return "Profil historique V2 incompatible avec le catalogue."
                     }
                     if (hasMax) {
                         /* The exact-key check above excludes set/continuous
@@ -3280,6 +3605,9 @@ class TrainlogRepository(
         val number = toDouble()
         return number.isFinite() && number % 1.0 == 0.0 && number >= minimum && number <= maximum
     }
+    /** CONTRACT: profile-state mirrors Python's exact JSON integer rule; no strings, booleans, or 1.0. */
+    private fun Any?.isExactJsonInteger(expected: Int? = null): Boolean =
+        (this is Int || this is Long) && (expected == null || (this as Number).toLong() == expected.toLong())
     private fun Any?.isPositiveJsonNumber(): Boolean = this is Number && toDouble().isFinite() && toDouble() > 0.0
     private fun Any?.isNonnegativeJsonNumber(): Boolean =
         this is Number && toDouble().isFinite() && toDouble() >= 0.0
@@ -3353,18 +3681,17 @@ class TrainlogRepository(
         return true
     }
 
-    private fun pcResumedMaxUpdateIsSafe(
+    private fun pcCompletedCorrectionIsSafe(
         db: SQLiteDatabase,
         rowId: Long,
         session: JSONObject,
     ): Boolean {
-        if (session.optString("session_type") != "max_test") return false
         val headerMatches = db.rawQuery(
             "SELECT started_at,session_type FROM sessions WHERE id=?",
             arrayOf(rowId.toString()),
         ).use {
             it.moveToFirst() && it.getString(0) == session.optString("started_at") &&
-                it.getString(1) == "max_test"
+                it.getString(1) == session.optString("session_type")
         }
         if (!headerMatches) return false
         val current = mutableListOf<Triple<String, Int, String>>()
@@ -3379,14 +3706,14 @@ class TrainlogRepository(
             }
         }
         val incoming = session.optJSONArray("exercises") ?: return false
-        if (incoming.length() < current.size) return false
-        return current.indices.all { index ->
+        val currentById = current.associateBy { it.first }
+        val seen = mutableSetOf<String>()
+        return (0 until incoming.length()).all { index ->
             val item = incoming.optJSONObject(index) ?: return@all false
-            current[index] == Triple(
-                item.optString("entry_id"),
-                item.optInt("position", -1),
-                resolveExerciseId(db, item.optString("exercise_id")),
-            )
+            val entryId = item.optString("entry_id")
+            val existing = currentById[entryId]
+            seen.add(entryId) && (existing == null || existing.third ==
+                resolveExerciseId(db, item.optString("exercise_id")))
         }
     }
 
@@ -5623,6 +5950,7 @@ class TrainlogRepository(
         db: SQLiteDatabase,
         draft: SessionDraft,
         sourceSessionId: String? = null,
+        generalCorrection: Boolean = false,
     ): String {
         val sessionId: String
         val sessionRowId: Long
@@ -5642,19 +5970,23 @@ class TrainlogRepository(
             }
             sessionRowId = db.insertOrThrow("sessions", null, sessionValues)
         } else {
-            check(draft.sessionType == SessionType.MAX_TEST) {
+            check(generalCorrection || draft.sessionType == SessionType.MAX_TEST) {
                 "Seul un Test max peut remplacer une séance reprise."
             }
             sessionId = sourceSessionId
             sessionRowId = db.rawQuery(
-                "SELECT id FROM sessions WHERE session_id=? AND session_type='max_test';",
+                if (generalCorrection) "SELECT id FROM sessions WHERE session_id=?;"
+                else "SELECT id FROM sessions WHERE session_id=? AND session_type='max_test';",
                 arrayOf(sourceSessionId),
             ).use { cursor ->
                 check(cursor.moveToFirst()) { "Séance Test max source introuvable." }
                 cursor.getLong(0)
             }
-            check(resumedDraftIdentityIsSafe(db, sessionRowId, draft)) {
+            check(generalCorrection || resumedDraftIdentityIsSafe(db, sessionRowId, draft)) {
                 "Une séance reprise ne peut supprimer, réordonner ou réaffecter ses entrées existantes."
+            }
+            check(!generalCorrection || completedCorrectionIdentityIsSafe(db, sessionRowId, draft)) {
+                "Une correction ne peut réaffecter un entry_id existant à un autre exercice."
             }
             /* Android has one bounded completed-session correction path:
              * resumed MAX_TEST finalization. Preserve feedback by the stable
@@ -5675,7 +6007,7 @@ class TrainlogRepository(
             ).use { cursor -> while (cursor.moveToNext()) retainedCompletedRevisions
                 .getOrPut(cursor.getString(0)) { mutableListOf() }
                 .add(Triple(cursor.getString(1), cursor.getString(2), cursor.getString(3))) }
-            db.execSQL("UPDATE sessions SET ended_at=? WHERE id=?;",
+            if (!generalCorrection) db.execSQL("UPDATE sessions SET ended_at=? WHERE id=?;",
                 arrayOf<Any>(OffsetDateTime.now().toString(), sessionRowId))
             /* INVARIANT: child replacement and draft deletion are in the
              * caller's transaction; failure restores the completed baseline. */
@@ -5820,6 +6152,34 @@ class TrainlogRepository(
         }
 
         return sessionId
+    }
+
+    /**
+     * CONTRACT: an occurrence entry_id retains its exercise identity during a
+     * completed-session replacement. Aliases compare canonical creator IDs so
+     * retirement/reconciliation cannot manufacture a false reassignment.
+     * This guard runs inside the replacement transaction before any delete.
+     */
+    private fun completedCorrectionIdentityIsSafe(
+        db: SQLiteDatabase,
+        sessionRowId: Long,
+        draft: SessionDraft,
+    ): Boolean {
+        fun canonical(id: String): String = db.rawQuery(
+            "SELECT COALESCE((SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?),?)",
+            arrayOf(id, id),
+        ).use { cursor -> check(cursor.moveToFirst()); cursor.getString(0) }
+        val incoming = draft.exercises.associate { it.entryId to canonical(it.exercise.exerciseId) }
+        return db.rawQuery(
+            "SELECT se.entry_id,e.exercise_id FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id " +
+                "WHERE se.session_row_id=?", arrayOf(sessionRowId.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val replacement = incoming[cursor.getString(0)] ?: continue
+                if (replacement != canonical(cursor.getString(1))) return@use false
+            }
+            true
+        }
     }
 
     private fun resumedDraftIdentityIsSafe(
@@ -6252,7 +6612,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    15,
+    16,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -6268,7 +6628,16 @@ private class TrainlogDatabaseHelper(
         db: SQLiteDatabase,
     ) {
         super.onOpen(db)
-        migrateApprovedLegPressIdentity(db)
+        db.beginTransaction()
+        try {
+            migrateApprovedLegPressIdentity(db)
+            /* WHY: early unpublished v16 builds used a variable-width pr1
+             * current token. CONTRACT: recognize only its exact grammar and
+             * atomically replace it by the shared root plus canonical pr2 tip. */
+            createExerciseProfileStateTable(db, seedLegacy = false)
+            normalizePrototypeExerciseProfileState(db)
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
     }
 
     override fun onCreate(
@@ -6283,6 +6652,7 @@ private class TrainlogDatabaseHelper(
         createExerciseAliasTable(db)
         createTrainingFeedbackTables(db)
         createTrainingFeedbackRevisionTables(db)
+        createExerciseProfileStateTable(db, seedLegacy = false)
         seedEquipment(db)
     }
 
@@ -6401,6 +6771,15 @@ private class TrainlogDatabaseHelper(
             version = 15
         }
 
+        if (version < 16 && newVersion >= 16) {
+            /* WHY/CONTRACT/INVARIANT: wall clocks cannot order offline profile
+             * edits. Existing rows share one explicit legacy root without any
+             * catalogue or occurrence rewrite; later edits carry direct causal
+             * ancestry in this companion table. */
+            createExerciseProfileStateTable(db, seedLegacy = true)
+            version = 16
+        }
+
         if (version != newVersion) {
             error(
                 "Unsupported Android DB upgrade " +
@@ -6428,6 +6807,91 @@ private class TrainlogDatabaseHelper(
                 "exercise_row_id INTEGER PRIMARY KEY REFERENCES exercises(id) ON DELETE CASCADE," +
                 "synced_state TEXT NOT NULL);",
         )
+    }
+
+    private fun createExerciseProfileStateTable(db: SQLiteDatabase, seedLegacy: Boolean) {
+        /* WHY: wall clocks cannot order offline edits. CONTRACT: revisions form
+         * one explicit causal chain. INVARIANT: at most 32 records are retained
+         * per exercise and overflow aborts instead of pruning ancestry. */
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS exercise_profile_state(" +
+                "exercise_row_id INTEGER PRIMARY KEY REFERENCES exercises(id) ON DELETE CASCADE," +
+                "revision_id TEXT NOT NULL,parent_revision_id TEXT," +
+                "legacy_seed INTEGER NOT NULL CHECK(legacy_seed IN(0,1)));",
+        )
+        if (seedLegacy) {
+            db.execSQL(
+                "INSERT OR IGNORE INTO exercise_profile_state(" +
+                    "exercise_row_id,revision_id,parent_revision_id,legacy_seed) " +
+                    "SELECT id,'pr_legacy_v1',NULL,1 FROM exercises;",
+            )
+        }
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS exercise_profile_revisions(" +
+                "exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE," +
+                "revision_id TEXT NOT NULL,parent_revision_id TEXT,recording_mode TEXT NOT NULL," +
+                "tracking_mode TEXT NOT NULL,data_fields INTEGER NOT NULL," +
+                "legacy_seed INTEGER NOT NULL CHECK(legacy_seed IN(0,1))," +
+                "PRIMARY KEY(exercise_row_id,revision_id));",
+        )
+        db.execSQL(
+            "INSERT OR IGNORE INTO exercise_profile_revisions " +
+                "SELECT e.id,s.revision_id,s.parent_revision_id,e.recording_mode,e.tracking_mode,e.data_fields,s.legacy_seed " +
+                "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id;",
+        )
+        db.execSQL("DROP TRIGGER IF EXISTS exercise_profile_state_insert;")
+        db.execSQL("DROP TRIGGER IF EXISTS exercise_profile_state_update;")
+        db.execSQL(
+            "CREATE TRIGGER exercise_profile_state_insert AFTER INSERT ON exercises BEGIN " +
+                "INSERT INTO exercise_profile_state(exercise_row_id,revision_id,parent_revision_id,legacy_seed) " +
+                "VALUES(NEW.id,'pr_legacy_v1',NULL,1);" +
+                "INSERT INTO exercise_profile_revisions VALUES(NEW.id,'pr_legacy_v1',NULL,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,1);END;",
+        )
+    }
+
+    private fun normalizePrototypeExerciseProfileState(db: SQLiteDatabase) {
+        data class Prototype(val rowId: Long, val token: String, val recording: String,
+            val tracking: String, val fields: Int)
+        val prototypes=mutableMapOf<Long,Prototype>()
+        db.rawQuery(
+            "SELECT s.exercise_row_id,s.revision_id,s.parent_revision_id,s.legacy_seed,"+
+                "e.recording_mode,e.tracking_mode,e.data_fields FROM exercise_profile_state s "+
+                "JOIN exercises e ON e.id=s.exercise_row_id WHERE s.revision_id LIKE 'pr1%'", null,
+        ).use { c -> while(c.moveToNext()) {
+            val token=c.getString(1);val match=PROTOTYPE_PROFILE_REVISION_PATTERN.matchEntire(token)
+                ?: error("Malformed prototype profile revision")
+            val recording=match.groupValues[1];val tracking=match.groupValues[2]
+            val fields=match.groupValues[3].toIntOrNull() ?: error("Malformed prototype profile fields")
+            check(token=="pr1|$recording|$tracking|$fields" && c.isNull(2)&&c.getInt(3)==1 &&
+                recording==c.getString(4) && tracking==c.getString(5) &&
+                fields==c.getInt(6) && fields in 0..3 && !(recording=="sets"&&fields!=0) &&
+                !(recording=="continuous"&&tracking!="duration")) { "Inconsistent prototype profile state" }
+            prototypes[c.getLong(0)]=Prototype(c.getLong(0),token,recording,tracking,fields)
+        }}
+        db.rawQuery(
+            "SELECT exercise_row_id,revision_id,parent_revision_id,recording_mode,tracking_mode,data_fields,legacy_seed "+
+                "FROM exercise_profile_revisions WHERE revision_id LIKE 'pr1%'", null,
+        ).use { c -> while(c.moveToNext()) {
+            val prototype=prototypes[c.getLong(0)] ?: error("Orphan prototype profile revision")
+            check(c.getString(1)==prototype.token && c.isNull(2) && c.getString(3)==prototype.recording &&
+                c.getString(4)==prototype.tracking && c.getInt(5)==prototype.fields && c.getInt(6)==1) {
+                "Inconsistent prototype profile revision"
+            }
+        }}
+        for(prototype in prototypes.values) {
+            val count=db.rawQuery("SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=?",
+                arrayOf(prototype.rowId.toString())).use { it.moveToFirst();it.getInt(0) }
+            check(count==1) { "Mixed prototype profile lineage" }
+            val child=exerciseProfileRevision("pr_legacy_v1",prototype.recording,prototype.tracking,prototype.fields)
+            db.execSQL("DELETE FROM exercise_profile_revisions WHERE exercise_row_id=? AND revision_id LIKE 'pr1%'",
+                arrayOf(prototype.rowId))
+            db.execSQL("INSERT INTO exercise_profile_revisions VALUES(?,'pr_legacy_v1',NULL,?,?,?,1)",
+                arrayOf<Any?>(prototype.rowId,prototype.recording,prototype.tracking,prototype.fields))
+            db.execSQL("INSERT INTO exercise_profile_revisions VALUES(?,?,'pr_legacy_v1',?,?,?,0)",
+                arrayOf<Any?>(prototype.rowId,child,prototype.recording,prototype.tracking,prototype.fields))
+            db.execSQL("UPDATE exercise_profile_state SET revision_id=?,parent_revision_id='pr_legacy_v1',legacy_seed=0 WHERE exercise_row_id=?",
+                arrayOf<Any?>(child,prototype.rowId))
+        }
     }
 
     private fun createExerciseAliasTable(db: SQLiteDatabase) {

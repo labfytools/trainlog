@@ -67,7 +67,7 @@ TRAINING_KNOWLEDGE_V1=PASS
 SESSION_GENERATOR_V1=PASS
 APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2
 
-DESKTOP_TESTS=47/47 PASS (normal and ASan/UBSan Meson suites)
+DESKTOP_TESTS=52/52 PASS (normal); affected ASan/UBSan tests=6/6 PASS
 ANDROID_BUILD=PASS
 HARDWARE_SYNC_VALIDATION=HISTORICAL_PASS
 ```
@@ -81,7 +81,9 @@ Implemented:
   F7 actions, and restored focus after overlays/routes);
 - UTF-8 cell-aware scrolling training-knowledge screen, tested at the 72x20
   minimum terminal;
-- SQLite schema v15, with stable ordered `session_exercises.entry_id`,
+- SQLite schema v17, with stable ordered `session_exercises.entry_id`, an
+  immutable occurrence-owned `tracking_mode` snapshot,
+  bounded durable current-profile revision ancestry,
   occurrence-level equipment identity, and desktop-local custom-equipment
   definitions, plus occurrence-owned `max_results`; its v9 -> v10 migration
   rebuilds only `performed_sets` to permit explicit zero actual loads while
@@ -187,7 +189,7 @@ The implemented read-only training-knowledge layer loads shared versioned JSON
 catalogs as the sole authored scientific source, generates the immutable C
 catalog representation, and loads the same assets on Android. It has no
 database migration, no auto-seeding, and no synchronization artifact. The
-desktop and Android databases are schema v15. Schema v13 is additive: exercise
+desktop database is schema v17 and Android is schema v16. Schema v13 is additive: exercise
 rows own machine-facing load semantics, optional legacy equipment provenance,
 an optional scientific profile, and an explicit resolved/unresolved science
 state. Legacy equipment tables and occurrence columns remain intact.
@@ -425,9 +427,13 @@ unchanged. Live sync runs `sy_0b00dc46-d899-4865-8718-c95085a380b2` and
 `sy_fb0630a8-1938-4d62-9836-b0281955f625` both completed successfully. The
 second run reported zero additions/reconciliations, both stores retained the
 same 32-relation stable-ID hash, and Android application tables plus companion
-exercise states compared equal to the first pass. The engine accepts the exact
-MediaStore collision family `trainlog-sync-request-v1 (N).json`; request-ID
-replay protection remains authoritative.
+exercise states compared equal to the first pass. Android now resolves the
+exact request and every outbound artifact through the persisted authorized SAF
+tree, independently of MediaStore ownership visibility. Historical numbered
+copies remain untouched. One transaction-local exact-name snapshot is shared
+by the complete export and request on the I/O dispatcher; each later sync takes
+a fresh snapshot. The redundant application-start export was removed, and
+request-ID replay protection remains authoritative.
 
 ## Current implementation cursor
 

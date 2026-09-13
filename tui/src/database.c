@@ -20,6 +20,59 @@
 #include <string.h>
 
 #include <sqlite3.h>
+#include <uuid/uuid.h>
+
+/* CONTRACT: exact parity with Android/Python UUIDv5 over parent, profile tuple. */
+static void sqlite_profile_revision(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+    uuid_t namespace_id, revision;
+    char name[256], uuid_text[37], output[41];
+    const char *parent, *recording, *tracking;
+    int length;
+    if (argc != 4 || sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
+        sqlite3_value_type(argv[1]) != SQLITE_TEXT || sqlite3_value_type(argv[2]) != SQLITE_TEXT ||
+        sqlite3_value_type(argv[3]) != SQLITE_INTEGER) { sqlite3_result_error(context, "invalid profile revision", -1); return; }
+    parent = (const char *)sqlite3_value_text(argv[0]); recording = (const char *)sqlite3_value_text(argv[1]);
+    tracking = (const char *)sqlite3_value_text(argv[2]);
+    length = snprintf(name, sizeof(name), "%s\n%s\n%s\n%d", parent, recording, tracking, sqlite3_value_int(argv[3]));
+    if (length < 0 || (size_t)length >= sizeof(name) || uuid_parse("4f4c8ea6-18f6-5e48-9d65-a54a24889149", namespace_id) != 0) {
+        sqlite3_result_error(context, "profile revision overflow", -1); return;
+    }
+    uuid_generate_sha1(revision, namespace_id, name, (size_t)length);
+    uuid_unparse_lower(revision, uuid_text);
+    (void)snprintf(output, sizeof(output), "pr2_%s", uuid_text);
+    sqlite3_result_text(context, output, -1, SQLITE_TRANSIENT);
+}
+
+/* Exact recognizer for the unpublished variable-width prototype token. */
+static void sqlite_prototype_profile_valid(sqlite3_context *context, int argc,
+    sqlite3_value **argv)
+{
+    const char *token, *recording, *tracking;
+    char expected[96];
+    int fields, length;
+    if (argc != 4 || sqlite3_value_type(argv[0]) != SQLITE_TEXT ||
+        sqlite3_value_type(argv[1]) != SQLITE_TEXT ||
+        sqlite3_value_type(argv[2]) != SQLITE_TEXT ||
+        sqlite3_value_type(argv[3]) != SQLITE_INTEGER) {
+        sqlite3_result_int(context, 0); return;
+    }
+    token = (const char *)sqlite3_value_text(argv[0]);
+    recording = (const char *)sqlite3_value_text(argv[1]);
+    tracking = (const char *)sqlite3_value_text(argv[2]);
+    fields = sqlite3_value_int(argv[3]);
+    if ((strcmp(recording, "sets") != 0 && strcmp(recording, "continuous") != 0) ||
+        (strcmp(tracking, "reps") != 0 && strcmp(tracking, "duration") != 0) ||
+        (strcmp(recording, "continuous") == 0 && strcmp(tracking, "duration") != 0) ||
+        fields < 0 || (fields & ~3) != 0 ||
+        (strcmp(recording, "sets") == 0 && fields != 0)) {
+        sqlite3_result_int(context, 0); return;
+    }
+    length = snprintf(expected, sizeof(expected), "pr1|%s|%s|%d",
+        recording, tracking, fields);
+    sqlite3_result_int(context, length >= 0 && (size_t)length < sizeof(expected) &&
+        strcmp(token, expected) == 0);
+}
 
 TrainlogStatus trainlog_database_read_snapshot_begin(TrainlogDatabase *database)
 {
@@ -55,7 +108,7 @@ TrainlogStatus trainlog_database_scan_generation_history(
 {
     static const char *const SQL =
         "SELECT s.session_id,s.started_at,se.entry_id,e.exercise_id,e.recording_mode,"
-        "e.tracking_mode,se.equipment_id,se.load_mode,se.rest_seconds,"
+        "se.tracking_mode,se.equipment_id,se.load_mode,se.rest_seconds,"
         "se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg,"
         "ps.position,ps.reps,ps.weight_kg,mr.max_weight_kg "
         "FROM sessions s JOIN session_exercises se ON se.session_row_id=s.id "
@@ -607,6 +660,187 @@ static const char *const MIGRATE_V14_TO_V15_SQL =
     "SELECT 'fr0_'||followup_id,followup_id,observed_at,raw_text FROM session_followups;"
     "PRAGMA user_version=15;COMMIT;";
 
+static TrainlogStatus read_single_int_pragma(
+    TrainlogDatabase *database, const char *sql, int *output);
+static TrainlogStatus execute_sql(TrainlogDatabase *database, const char *sql);
+
+/* WHY: catalogue profiles describe future capture and may change, while an
+ * occurrence's performed values must retain their original unit forever.
+ * CONTRACT: v15 is the sole source schema; backfill copies the linked exercise
+ * mode exactly once before any later profile edit. INVARIANT: every existing
+ * row/child/stable identity remains untouched and version 16 is published only
+ * after all snapshots are valid and foreign keys remain satisfied. */
+static TrainlogStatus migrate_v15_to_v16(TrainlogDatabase *database)
+{
+    sqlite3_stmt *statement = NULL;
+    int version = -1;
+    int invalid = -1;
+    int source_count = -1;
+    int migrated_count = -1;
+    int rc;
+    if (read_single_int_pragma(database, "PRAGMA user_version;", &version) !=
+            TRAINLOG_STATUS_OK || version != 15)
+        return TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
+    if (read_single_int_pragma(database,
+            "SELECT COUNT(*) FROM session_exercises;", &source_count) !=
+            TRAINLOG_STATUS_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    /* SQLite cannot add a NOT NULL column without a lasting default. Rebuild
+     * the parent table with FK enforcement temporarily disabled so child rows
+     * are neither cascaded nor retargeted to a temporary table name. The
+     * transaction plus the explicit foreign_key_check preserves atomicity. */
+    if (execute_sql(database, "PRAGMA foreign_keys=OFF;") != TRAINLOG_STATUS_OK ||
+        execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK ||
+        execute_sql(database,
+            "CREATE TABLE session_exercises_v16("
+            "id INTEGER PRIMARY KEY,entry_id TEXT NOT NULL UNIQUE,"
+            "session_row_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,"
+            "exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,"
+            "recording_mode TEXT NOT NULL,data_fields INTEGER NOT NULL,"
+            "position INTEGER NOT NULL,load_mode TEXT NOT NULL,rest_seconds INTEGER NOT NULL,"
+            "target_sets INTEGER,target_reps INTEGER,target_duration_seconds INTEGER,"
+            "target_weight_kg REAL,equipment_id TEXT,notes TEXT,"
+            "tracking_mode TEXT NOT NULL CHECK(tracking_mode IN('reps','duration')),"
+            "UNIQUE(session_row_id,position));"
+            "INSERT INTO session_exercises_v16("
+            "id,entry_id,session_row_id,exercise_row_id,recording_mode,data_fields,position,"
+            "load_mode,rest_seconds,target_sets,target_reps,target_duration_seconds,"
+            "target_weight_kg,equipment_id,notes,tracking_mode) "
+            "SELECT se.id,se.entry_id,se.session_row_id,se.exercise_row_id,se.recording_mode,"
+            "se.data_fields,se.position,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,"
+            "se.target_duration_seconds,se.target_weight_kg,se.equipment_id,se.notes,e.tracking_mode "
+            "FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id;"
+            "DROP TABLE session_exercises;"
+            "ALTER TABLE session_exercises_v16 RENAME TO session_exercises;") !=
+            TRAINLOG_STATUS_OK) goto rollback;
+    rc = sqlite3_prepare_v2(database->connection,
+        "SELECT COUNT(*) FROM session_exercises se LEFT JOIN exercises e "
+        "ON e.id=se.exercise_row_id WHERE e.id IS NULL OR "
+        "se.tracking_mode NOT IN('reps','duration') OR "
+        "se.tracking_mode<>e.tracking_mode;", -1, &statement, NULL);
+    if (rc != SQLITE_OK || sqlite3_step(statement) != SQLITE_ROW) goto rollback;
+    invalid = sqlite3_column_int(statement, 0);
+    if (sqlite3_finalize(statement) != SQLITE_OK) { statement = NULL; goto rollback; }
+    statement = NULL;
+    if (read_single_int_pragma(database,
+            "SELECT COUNT(*) FROM session_exercises;", &migrated_count) !=
+            TRAINLOG_STATUS_OK || migrated_count != source_count || invalid != 0 ||
+        read_single_int_pragma(database, "SELECT COUNT(*) FROM pragma_foreign_key_check;", &invalid) != TRAINLOG_STATUS_OK ||
+        invalid != 0 || execute_sql(database,
+            "PRAGMA user_version=16;COMMIT;") != TRAINLOG_STATUS_OK) goto rollback;
+    if (execute_sql(database, "PRAGMA foreign_keys=ON;") != TRAINLOG_STATUS_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    return TRAINLOG_STATUS_OK;
+rollback:
+    if (statement != NULL) (void)sqlite3_finalize(statement);
+    (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+    (void)sqlite3_exec(database->connection, "PRAGMA foreign_keys=ON;", NULL, NULL, NULL);
+    return TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+/* WHY: a current catalogue profile is mutable, but timestamps cannot establish
+ * ancestry across offline peers. CONTRACT: every v16 exercise starts at the
+ * same explicit legacy root; the first exchanged snapshot may therefore repair
+ * a pre-contract difference. Later edits store a deterministic child and its
+ * bounded revision chain, so transitive ancestor and sibling cases are unambiguous.
+ * INVARIANT: this migration changes no exercise or occurrence value. */
+static const char *const MIGRATE_V16_TO_V17_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE exercise_profile_state("
+    "exercise_row_id INTEGER PRIMARY KEY REFERENCES exercises(id) ON DELETE CASCADE,"
+    "revision_id TEXT NOT NULL,parent_revision_id TEXT,"
+    "legacy_seed INTEGER NOT NULL CHECK(legacy_seed IN(0,1)));"
+    "INSERT INTO exercise_profile_state(exercise_row_id,revision_id,parent_revision_id,legacy_seed) "
+    "SELECT id,'pr_legacy_v1',NULL,1 FROM exercises;"
+    "CREATE TABLE exercise_profile_revisions("
+    "exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,"
+    "revision_id TEXT NOT NULL,parent_revision_id TEXT,recording_mode TEXT NOT NULL,"
+    "tracking_mode TEXT NOT NULL,data_fields INTEGER NOT NULL,legacy_seed INTEGER NOT NULL CHECK(legacy_seed IN(0,1)),"
+    "PRIMARY KEY(exercise_row_id,revision_id));"
+    "INSERT INTO exercise_profile_revisions SELECT id,'pr_legacy_v1',NULL,recording_mode,tracking_mode,data_fields,1 FROM exercises;"
+    "CREATE TRIGGER exercise_profile_state_insert AFTER INSERT ON exercises BEGIN "
+    "INSERT INTO exercise_profile_state(exercise_row_id,revision_id,parent_revision_id,legacy_seed) "
+    "VALUES(NEW.id,trainlog_profile_revision('pr_legacy_v1',NEW.recording_mode,NEW.tracking_mode,NEW.data_fields),'pr_legacy_v1',0);"
+    "INSERT INTO exercise_profile_revisions VALUES(NEW.id,'pr_legacy_v1',NULL,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,1);"
+    "INSERT INTO exercise_profile_revisions VALUES(NEW.id,trainlog_profile_revision('pr_legacy_v1',NEW.recording_mode,NEW.tracking_mode,NEW.data_fields),'pr_legacy_v1',NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,0);END;"
+    "CREATE TRIGGER exercise_profile_state_update AFTER UPDATE OF recording_mode,tracking_mode,data_fields ON exercises "
+    "WHEN (OLD.recording_mode<>NEW.recording_mode OR OLD.tracking_mode<>NEW.tracking_mode OR OLD.data_fields<>NEW.data_fields) "
+    "AND NOT EXISTS(SELECT 1 FROM exercise_profile_state s JOIN exercise_profile_revisions r ON r.exercise_row_id=s.exercise_row_id AND r.revision_id=s.revision_id WHERE s.exercise_row_id=NEW.id AND r.recording_mode=NEW.recording_mode AND r.tracking_mode=NEW.tracking_mode AND r.data_fields=NEW.data_fields) BEGIN "
+    "SELECT CASE WHEN (SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=NEW.id)>=32 THEN RAISE(ABORT,'profile revision history limit') END;"
+    "INSERT OR IGNORE INTO exercise_profile_revisions SELECT NEW.id,s.revision_id,s.parent_revision_id,OLD.recording_mode,OLD.tracking_mode,OLD.data_fields,s.legacy_seed FROM exercise_profile_state s WHERE s.exercise_row_id=NEW.id;"
+    "UPDATE exercise_profile_state SET parent_revision_id=revision_id,revision_id=trainlog_profile_revision(revision_id,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields),legacy_seed=0 WHERE exercise_row_id=NEW.id;"
+    "INSERT INTO exercise_profile_revisions SELECT NEW.id,s.revision_id,s.parent_revision_id,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,0 FROM exercise_profile_state s WHERE s.exercise_row_id=NEW.id;END;"
+    "PRAGMA user_version=17;COMMIT;";
+
+/* WHY: the published-unreleased v17 prototype may already exist locally.
+ * CONTRACT: opening it adds the bounded durable lineage table without changing
+ * user_version or domain rows. INVARIANT: the guarded trigger records local
+ * edits, while an importer-selected known tip makes the trigger a no-op. */
+static const char *const ENSURE_V17_PROFILE_REVISIONS_SQL =
+    "DROP TRIGGER IF EXISTS exercise_profile_state_insert;"
+    "DROP TRIGGER IF EXISTS exercise_profile_state_update;"
+    "CREATE TABLE IF NOT EXISTS exercise_profile_revisions("
+    "exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,"
+    "revision_id TEXT NOT NULL,parent_revision_id TEXT,recording_mode TEXT NOT NULL,"
+    "tracking_mode TEXT NOT NULL,data_fields INTEGER NOT NULL,legacy_seed INTEGER NOT NULL CHECK(legacy_seed IN(0,1)),"
+    "PRIMARY KEY(exercise_row_id,revision_id));"
+    "INSERT OR IGNORE INTO exercise_profile_revisions "
+    "SELECT e.id,s.revision_id,s.parent_revision_id,e.recording_mode,e.tracking_mode,e.data_fields,s.legacy_seed "
+    "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id;"
+    "CREATE TRIGGER exercise_profile_state_insert AFTER INSERT ON exercises BEGIN "
+    "INSERT INTO exercise_profile_state VALUES(NEW.id,trainlog_profile_revision('pr_legacy_v1',NEW.recording_mode,NEW.tracking_mode,NEW.data_fields),'pr_legacy_v1',0);"
+    "INSERT INTO exercise_profile_revisions VALUES(NEW.id,'pr_legacy_v1',NULL,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,1);"
+    "INSERT INTO exercise_profile_revisions VALUES(NEW.id,trainlog_profile_revision('pr_legacy_v1',NEW.recording_mode,NEW.tracking_mode,NEW.data_fields),'pr_legacy_v1',NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,0);END;"
+    "CREATE TRIGGER exercise_profile_state_update AFTER UPDATE OF recording_mode,tracking_mode,data_fields ON exercises "
+    "WHEN (OLD.recording_mode<>NEW.recording_mode OR OLD.tracking_mode<>NEW.tracking_mode OR OLD.data_fields<>NEW.data_fields) "
+    "AND NOT EXISTS(SELECT 1 FROM exercise_profile_state s JOIN exercise_profile_revisions r ON r.exercise_row_id=s.exercise_row_id AND r.revision_id=s.revision_id WHERE s.exercise_row_id=NEW.id AND r.recording_mode=NEW.recording_mode AND r.tracking_mode=NEW.tracking_mode AND r.data_fields=NEW.data_fields) BEGIN "
+    "SELECT CASE WHEN (SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=NEW.id)>=32 THEN RAISE(ABORT,'profile revision history limit') END;"
+    "INSERT OR IGNORE INTO exercise_profile_revisions SELECT NEW.id,s.revision_id,s.parent_revision_id,OLD.recording_mode,OLD.tracking_mode,OLD.data_fields,s.legacy_seed FROM exercise_profile_state s WHERE s.exercise_row_id=NEW.id;"
+    "UPDATE exercise_profile_state SET parent_revision_id=revision_id,revision_id=trainlog_profile_revision(revision_id,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields),legacy_seed=0 WHERE exercise_row_id=NEW.id;"
+    "INSERT INTO exercise_profile_revisions SELECT NEW.id,s.revision_id,s.parent_revision_id,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,0 FROM exercise_profile_state s WHERE s.exercise_row_id=NEW.id;END;";
+
+/* CONTRACT: normalize only the exact unpublished pr1 current-state shape.
+ * Validation precedes every mutation, and the caller owns one transaction
+ * covering compatibility-table setup, conversion, and trigger replacement. */
+static TrainlogStatus normalize_v17_prototype_profiles(TrainlogDatabase *database)
+{
+    int invalid = 0;
+    static const char *const VALIDATION_SQL =
+        "SELECT ("
+        "(SELECT COUNT(*) FROM exercise_profile_state s JOIN exercises e ON e.id=s.exercise_row_id "
+        " WHERE s.revision_id GLOB 'pr1*' AND (s.parent_revision_id IS NOT NULL OR s.legacy_seed<>1 OR "
+        " trainlog_pr1_valid(s.revision_id,e.recording_mode,e.tracking_mode,e.data_fields)<>1)) +"
+        "(SELECT COUNT(*) FROM exercise_profile_revisions r LEFT JOIN exercise_profile_state s "
+        " ON s.exercise_row_id=r.exercise_row_id AND s.revision_id=r.revision_id "
+        " WHERE r.revision_id GLOB 'pr1*' AND (s.exercise_row_id IS NULL OR r.parent_revision_id IS NOT NULL OR "
+        " r.legacy_seed<>1 OR r.recording_mode<>(SELECT recording_mode FROM exercises WHERE id=r.exercise_row_id) OR "
+        " r.tracking_mode<>(SELECT tracking_mode FROM exercises WHERE id=r.exercise_row_id) OR "
+        " r.data_fields<>(SELECT data_fields FROM exercises WHERE id=r.exercise_row_id))) +"
+        "(SELECT COUNT(*) FROM exercise_profile_state s WHERE s.revision_id GLOB 'pr1*' AND "
+        " (SELECT COUNT(*) FROM exercise_profile_revisions r WHERE r.exercise_row_id=s.exercise_row_id)<>1)"
+        ");";
+    static const char *const NORMALIZE_SQL =
+        "DELETE FROM exercise_profile_revisions WHERE revision_id GLOB 'pr1*';"
+        "INSERT INTO exercise_profile_revisions "
+        "SELECT e.id,'pr_legacy_v1',NULL,e.recording_mode,e.tracking_mode,e.data_fields,1 "
+        "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id "
+        "WHERE s.revision_id GLOB 'pr1*';"
+        "INSERT INTO exercise_profile_revisions "
+        "SELECT e.id,trainlog_profile_revision('pr_legacy_v1',e.recording_mode,e.tracking_mode,e.data_fields),"
+        "'pr_legacy_v1',e.recording_mode,e.tracking_mode,e.data_fields,0 "
+        "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id "
+        "WHERE s.revision_id GLOB 'pr1*';"
+        "UPDATE exercise_profile_state SET parent_revision_id='pr_legacy_v1',legacy_seed=0,"
+        "revision_id=trainlog_profile_revision('pr_legacy_v1',"
+        "(SELECT recording_mode FROM exercises WHERE id=exercise_row_id),"
+        "(SELECT tracking_mode FROM exercises WHERE id=exercise_row_id),"
+        "(SELECT data_fields FROM exercises WHERE id=exercise_row_id)) "
+        "WHERE revision_id GLOB 'pr1*';";
+    if (read_single_int_pragma(database, VALIDATION_SQL, &invalid) != TRAINLOG_STATUS_OK ||
+        invalid != 0) return TRAINLOG_STATUS_DATABASE_ERROR;
+    return execute_sql(database, NORMALIZE_SQL);
+}
+
 static const char *const MIGRATE_V1_TO_V3_SQL =
     "BEGIN IMMEDIATE;"
     "ALTER TABLE sessions "
@@ -1145,13 +1379,6 @@ static TrainlogStatus initialize_or_validate_schema(
             TRAINLOG_STATUS_SCHEMA_UNSUPPORTED;
     }
 
-    if (
-        version ==
-        TRAINLOG_DATABASE_SCHEMA_VERSION
-    ) {
-        return TRAINLOG_STATUS_OK;
-    }
-
     if (version == 0) {
         status =
             execute_sql(
@@ -1197,7 +1424,8 @@ static TrainlogStatus initialize_or_validate_schema(
         status = execute_sql(database, MIGRATE_V9_TO_V10_SQL);
     } else if (version == 10) {
         status = TRAINLOG_STATUS_OK;
-    } else if (version == 11 || version == 12 || version == 13 || version == 14) {
+    } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
+               version == 15 || version == 16 || version == 17) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1352,6 +1580,16 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 15) {
         status = execute_sql(database, MIGRATE_V14_TO_V15_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 16) {
+        status = migrate_v15_to_v16(database);
+    }
+    if (status == TRAINLOG_STATUS_OK && version < 17) {
+        status = execute_sql(database, MIGRATE_V16_TO_V17_SQL);
+    }
+    if (status == TRAINLOG_STATUS_OK) status = execute_sql(database, "BEGIN IMMEDIATE;");
+    if (status == TRAINLOG_STATUS_OK) status = execute_sql(database, ENSURE_V17_PROFILE_REVISIONS_SQL);
+    if (status == TRAINLOG_STATUS_OK) status = normalize_v17_prototype_profiles(database);
+    if (status == TRAINLOG_STATUS_OK) status = execute_sql(database, "COMMIT;");
 
     if (
         status !=
@@ -1360,7 +1598,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v15" : "migrate database to schema v15",
+            version == 0 ? "create schema v17" : "migrate database to schema v17",
             database->connection,
             SQLITE_ERROR
         );
@@ -1452,6 +1690,22 @@ TrainlogStatus trainlog_database_open_with_diagnostic(
             database->connection,
             rc
         );
+        trainlog_database_close(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    if (sqlite3_create_function(database->connection, "trainlog_profile_revision", 4,
+            SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, sqlite_profile_revision, NULL, NULL) != SQLITE_OK) {
+        set_open_diagnostic(output_diagnostic, output_diagnostic_capacity,
+            "register profile revision function", database->connection, SQLITE_ERROR);
+        trainlog_database_close(database);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (sqlite3_create_function(database->connection, "trainlog_pr1_valid", 4,
+            SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL, sqlite_prototype_profile_valid,
+            NULL, NULL) != SQLITE_OK) {
+        set_open_diagnostic(output_diagnostic, output_diagnostic_capacity,
+            "register prototype profile validator", database->connection, SQLITE_ERROR);
         trainlog_database_close(database);
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
@@ -1957,7 +2211,6 @@ TrainlogStatus trainlog_database_update_exercise_profiled(
     sqlite3_int64 row_id;
     TrainlogStatus status;
     int rc;
-    bool profile_changed;
     const char *tracking;
     const char *recording;
 
@@ -1973,43 +2226,9 @@ TrainlogStatus trainlog_database_update_exercise_profiled(
     if (execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK)
         return TRAINLOG_STATUS_DATABASE_ERROR;
 
-    rc = sqlite3_prepare_v2(database->connection,
-        "SELECT tracking_mode,recording_mode,data_fields FROM exercises WHERE id=?1;",
-        -1, &statement, NULL);
-    if (rc != SQLITE_OK || sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK ||
-        sqlite3_step(statement) != SQLITE_ROW) {
-        status = TRAINLOG_STATUS_DATABASE_ERROR;
-        goto rollback;
-    }
-    profile_changed = strcmp((const char *)sqlite3_column_text(statement, 0), tracking) != 0 ||
-        strcmp((const char *)sqlite3_column_text(statement, 1), recording) != 0 ||
-        sqlite3_column_int64(statement, 2) != (sqlite3_int64)data_fields;
-    if (sqlite3_finalize(statement) != SQLITE_OK) {
-        statement = NULL;
-        status = TRAINLOG_STATUS_DATABASE_ERROR;
-        goto rollback;
-    }
-    statement = NULL;
-    if (profile_changed) {
-        rc = sqlite3_prepare_v2(database->connection,
-            "SELECT 1 FROM session_exercises WHERE exercise_row_id=?1 LIMIT 1;",
-            -1, &statement, NULL);
-        if (rc != SQLITE_OK || sqlite3_bind_int64(statement, 1, row_id) != SQLITE_OK) {
-            status = TRAINLOG_STATUS_DATABASE_ERROR;
-            goto rollback;
-        }
-        rc = sqlite3_step(statement);
-        if (rc == SQLITE_ROW) {
-            status = TRAINLOG_STATUS_CONFLICT;
-            goto rollback;
-        }
-        if (rc != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
-            statement = NULL;
-            status = TRAINLOG_STATUS_DATABASE_ERROR;
-            goto rollback;
-        }
-        statement = NULL;
-    }
+    /* CONTRACT: schema v16 makes tracking semantics occurrence-owned. A
+     * catalogue profile update therefore controls future occurrences only;
+     * this transaction never updates session_exercises snapshots. */
     rc = sqlite3_prepare_v2(database->connection,
         "UPDATE exercises SET name=?1,normalized_name=?2,tracking_mode=?3,"
         "recording_mode=?4,data_fields=?5 WHERE id=?6;", -1, &statement, NULL);
@@ -3050,6 +3269,7 @@ static TrainlogStatus insert_session_exercise(
     sqlite3_int64 exercise_row_id;
     const char *load_mode;
     const char *recording_mode;
+    const char *tracking_mode;
     char generated_entry_id[TRAINLOG_GENERATED_ID_CAPACITY];
     const char *entry_id;
     int rc;
@@ -3093,8 +3313,11 @@ static TrainlogStatus insert_session_exercise(
             input->recording_mode
         );
 
+    tracking_mode = tracking_mode_to_sql(input->tracking_mode);
+
     if (load_mode == NULL ||
-        recording_mode == NULL) {
+        recording_mode == NULL ||
+        tracking_mode == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
@@ -3195,14 +3418,14 @@ static TrainlogStatus insert_session_exercise(
         database->connection,
         "INSERT INTO session_exercises("
         "entry_id, session_row_id, exercise_row_id, "
-        "recording_mode, data_fields, "
+        "recording_mode, tracking_mode, data_fields, "
         "position, load_mode, rest_seconds, "
         "target_sets, target_reps, "
         "target_duration_seconds, "
         "target_weight_kg, notes, equipment_id"
         ") VALUES("
-        "?1, ?2, ?3, ?4, ?5, ?6, ?7, "
-        "?8, ?9, ?10, ?11, ?12, ?13, ?14"
+        "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, "
+        "?9, ?10, ?11, ?12, ?13, ?14, ?15"
         ");",
         -1,
         &statement,
@@ -3242,9 +3465,13 @@ static TrainlogStatus insert_session_exercise(
     }
 
     if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(statement, 5, tracking_mode, -1, SQLITE_STATIC);
+    }
+
+    if (rc == SQLITE_OK) {
         rc = sqlite3_bind_int64(
             statement,
-            5,
+            6,
             (sqlite3_int64)input->data_fields
         );
     }
@@ -3252,7 +3479,7 @@ static TrainlogStatus insert_session_exercise(
     if (rc == SQLITE_OK) {
         rc = sqlite3_bind_int64(
             statement,
-            6,
+            7,
             (sqlite3_int64)position
         );
     }
@@ -3260,7 +3487,7 @@ static TrainlogStatus insert_session_exercise(
     if (rc == SQLITE_OK) {
         rc = sqlite3_bind_text(
             statement,
-            7,
+            8,
             load_mode,
             -1,
             SQLITE_STATIC
@@ -3270,7 +3497,7 @@ static TrainlogStatus insert_session_exercise(
     if (rc == SQLITE_OK) {
         rc = sqlite3_bind_int(
             statement,
-            8,
+            9,
             input->rest_seconds
         );
     }
@@ -3279,21 +3506,8 @@ static TrainlogStatus insert_session_exercise(
         rc = input->target_sets > 0
             ? sqlite3_bind_int(
                 statement,
-                9,
-                input->target_sets
-            )
-            : sqlite3_bind_null(
-                statement,
-                9
-            );
-    }
-
-    if (rc == SQLITE_OK) {
-        rc = input->target_reps > 0
-            ? sqlite3_bind_int(
-                statement,
                 10,
-                input->target_reps
+                input->target_sets
             )
             : sqlite3_bind_null(
                 statement,
@@ -3302,11 +3516,11 @@ static TrainlogStatus insert_session_exercise(
     }
 
     if (rc == SQLITE_OK) {
-        rc = input->target_duration_seconds > 0
+        rc = input->target_reps > 0
             ? sqlite3_bind_int(
                 statement,
                 11,
-                input->target_duration_seconds
+                input->target_reps
             )
             : sqlite3_bind_null(
                 statement,
@@ -3315,15 +3529,28 @@ static TrainlogStatus insert_session_exercise(
     }
 
     if (rc == SQLITE_OK) {
-        rc = input->target_has_weight
-            ? sqlite3_bind_double(
+        rc = input->target_duration_seconds > 0
+            ? sqlite3_bind_int(
                 statement,
                 12,
-                input->target_weight_kg
+                input->target_duration_seconds
             )
             : sqlite3_bind_null(
                 statement,
                 12
+            );
+    }
+
+    if (rc == SQLITE_OK) {
+        rc = input->target_has_weight
+            ? sqlite3_bind_double(
+                statement,
+                13,
+                input->target_weight_kg
+            )
+            : sqlite3_bind_null(
+                statement,
+                13
             );
     }
 
@@ -3333,22 +3560,22 @@ static TrainlogStatus insert_session_exercise(
             input->notes[0] != '\0'
                 ? sqlite3_bind_text(
                     statement,
-                    13,
+                    14,
                     input->notes,
                     -1,
                     SQLITE_TRANSIENT
                 )
                 : sqlite3_bind_null(
                     statement,
-                    13
+                    14
                 );
     }
 
     if (rc == SQLITE_OK) {
         rc = input->equipment_id[0] != '\0'
-            ? sqlite3_bind_text(statement, 14, input->equipment_id, -1,
+            ? sqlite3_bind_text(statement, 15, input->equipment_id, -1,
                                 SQLITE_TRANSIENT)
-            : sqlite3_bind_null(statement, 14);
+            : sqlite3_bind_null(statement, 15);
     }
 
     if (rc != SQLITE_OK) {
@@ -4717,7 +4944,7 @@ TrainlogStatus trainlog_database_get_session_details(
 
     static const char *const EXERCISE_SQL =
         "SELECT "
-        "e.name, e.tracking_mode, "
+        "e.name, se.tracking_mode, "
         "se.recording_mode, se.data_fields, "
         "se.load_mode, se.rest_seconds, "
         "COALESCE(se.target_sets, 0), "
@@ -5451,7 +5678,7 @@ TrainlogStatus trainlog_database_list_exercise_performance(
         "s.session_id, "
         "s.started_at, "
         "s.session_type, "
-        "e.tracking_mode, "
+        "se.tracking_mode, "
         "se.load_mode, "
         "ps.id, "
         "ps.reps, "
@@ -5800,7 +6027,7 @@ TrainlogStatus trainlog_database_load_session_editable(
         "se.id, "
         "e.exercise_id, "
         "e.name, "
-        "e.tracking_mode, "
+        "se.tracking_mode, "
         "se.load_mode, "
         "se.rest_seconds, "
         "se.target_sets, "
@@ -7093,7 +7320,7 @@ TrainlogStatus trainlog_database_list_exercise_occurrences_page(
         "WHERE e.exercise_id=?1;";
     static const char *const HYDRATE_SQL =
         "SELECT s.session_id,se.entry_id,e.exercise_id,s.started_at,COALESCE(se.equipment_id,''),"
-        "s.session_type,e.tracking_mode,se.recording_mode,se.data_fields,se.load_mode,"
+        "s.session_type,se.tracking_mode,se.recording_mode,se.data_fields,se.load_mode,"
         "(SELECT COUNT(*) FROM performed_sets ps WHERE ps.session_exercise_row_id=se.id),"
         "ca.duration_seconds,ca.speed_kmh,ca.distance_km FROM session_exercises se "
         "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id "

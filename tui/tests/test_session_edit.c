@@ -75,6 +75,9 @@ static void bind_reps_exercise(
     exercise->load_mode =
         TRAINLOG_LOAD_EXTERNAL;
 
+    exercise->recording_mode = TRAINLOG_RECORDING_SETS;
+    exercise->tracking_mode = TRAINLOG_TRACKING_REPS;
+
     exercise->rest_seconds = 90;
     exercise->target_sets = 3;
     exercise->target_reps = 10;
@@ -235,6 +238,7 @@ static bool test_load_replace_and_rollback(void)
     );
     CHECK(loaded_exercises[0].set_offset == 0U);
     CHECK(loaded_exercises[0].set_count == 3U);
+    CHECK(loaded_exercises[0].tracking_mode == TRAINLOG_TRACKING_REPS);
     CHECK(loaded_sets[0].reps == 10);
     CHECK(loaded_sets[2].reps == 8);
     CHECK(loaded_sets[0].weight_kg > 79.99);

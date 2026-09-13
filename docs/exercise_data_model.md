@@ -68,6 +68,14 @@ CONTINUOUS + REPS
 
 UI behavior must never be inferred from an exercise display name.
 
+An explicitly confirmed unweighted static plank uses `SETS + DURATION`, no
+supplemental field, bodyweight exercise semantics, and ordinary occurrence
+`load_mode=none`. A plan of three 30-second holds stores `target_sets=3` and
+`target_duration_seconds=30`; each performed set owns its actual
+`duration_seconds`. Trainlog does not infer reps, external kilograms, or a
+kilogram MAX. Existing repetition facts remain repetitions until the user
+explicitly corrects those completed occurrences.
+
 ## 2. Examples
 
 ```text

@@ -9,24 +9,58 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.labfytools.trainlog.data.CatalogInboxResult
 import com.labfytools.trainlog.data.SyncCatalogInbox
+import com.labfytools.trainlog.data.SyncExporter
+import com.labfytools.trainlog.data.SyncExportResult
 import com.labfytools.trainlog.data.SyncReceiptResult
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.SyncRequestResult
+import com.labfytools.trainlog.data.logExchangeMediaStore
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/* Package-visible for orchestration tests: this is the production ordering
+ * boundary, not a duplicate test-only implementation. */
+internal suspend fun publishBundleAndRequest(
+    exporter: SyncExporter,
+    requestOutbox: SyncRequestOutbox,
+): SyncRequestResult = withContext(Dispatchers.IO) {
+    logExchangeMediaStore("SYNC_BUNDLE", "coordinator.export.begin")
+    when (val opened = exporter.openSafSnapshot()) {
+        is com.labfytools.trainlog.data.ExchangeSafSnapshotResult.Error ->
+            SyncRequestResult.Error("Préparation Android → PC : ${opened.message}")
+        is com.labfytools.trainlog.data.ExchangeSafSnapshotResult.Ready ->
+            when (val publication = exporter.exportMobileBundle(opened.snapshot)) {
+                SyncExportResult.Unsupported -> SyncRequestResult.Unsupported
+                is SyncExportResult.Error -> SyncRequestResult.Error(
+                    "Préparation Android → PC : ${publication.message}",
+                )
+                is SyncExportResult.Exported -> {
+                    logExchangeMediaStore("SYNC_BUNDLE", "coordinator.export.success")
+                    logExchangeMediaStore("trainlog-sync-request-v1.json", "coordinator.request.begin")
+                    requestOutbox.requestSync(opened.snapshot)
+                }
+            }
+    }
+}
 
 @Composable
 fun SyncScreen(
     inbox: SyncCatalogInbox,
+    exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
     onCatalogChanged: () -> Unit,
     onBack: () -> Unit,
 ) {
     val colors =
         LocalTrainlogColors.current
+    val coroutineScope = rememberCoroutineScope()
 
     var status by
         remember {
@@ -54,6 +88,8 @@ fun SyncScreen(
             )
         }
 
+    var syncRunning by remember { mutableStateOf(false) }
+
     LaunchedEffect(
         pendingRequestId
     ) {
@@ -63,10 +99,9 @@ fun SyncScreen(
 
         repeat(60) {
             when (
-                val receipt =
-                    inbox.readSyncReceipt(
-                        requestId
-                    )
+                val receipt = withContext(Dispatchers.IO) {
+                    inbox.readSyncReceipt(requestId)
+                }
             ) {
                 SyncReceiptResult.Pending -> {
                     delay(1000)
@@ -109,8 +144,9 @@ fun SyncScreen(
                     }
 
                     when (
-                        val catalog =
+                        val catalog = withContext(Dispatchers.IO) {
                             inbox.importPcCatalog()
+                        }
                     ) {
                         is CatalogInboxResult.Imported -> {
                             success = true
@@ -199,10 +235,8 @@ fun SyncScreen(
                         }
 
                     if (saved) {
-                        when (
-                            val result =
-                                inbox.importPcCatalog()
-                        ) {
+                        coroutineScope.launch {
+                        when (val result = withContext(Dispatchers.IO) { inbox.importPcCatalog() }) {
                             is CatalogInboxResult.Imported -> {
                                 success = true
 
@@ -228,6 +262,7 @@ fun SyncScreen(
                                 /* Keep permission state. */
                             }
                         }
+                        }
                     }
                 }
         }
@@ -249,8 +284,7 @@ fun SyncScreen(
             TrainlogAction(
                 label =
                     if (
-                        pendingRequestId !=
-                        null
+                        pendingRequestId != null || syncRunning
                     ) {
                         "Synchronisation en cours..."
                     } else {
@@ -262,8 +296,7 @@ fun SyncScreen(
                     colors.success,
                 onClick = {
                     if (
-                        pendingRequestId !=
-                        null
+                        pendingRequestId != null || syncRunning
                     ) {
                         return@TrainlogAction
                     }
@@ -277,33 +310,31 @@ fun SyncScreen(
                         return@TrainlogAction
                     }
 
-                    when (
-                        val result =
-                            requestOutbox
-                                .requestSync()
-                    ) {
-                        is SyncRequestResult.Requested -> {
-                            success = true
-
-                            pendingRequestId =
-                                result.requestId
-
-                            status =
-                                "Demande envoyée · attente du PC..."
-                        }
-
-                        SyncRequestResult.Unsupported -> {
-                            success = false
-
-                            status =
-                                "Android non supporté."
-                        }
-
-                        is SyncRequestResult.Error -> {
-                            success = false
-
-                            status =
-                                result.message
+                    /* WHY: the request file is the PC daemon's start signal.
+                     * CONTRACT: every current Android-origin companion must be
+                     * published from one prepared repository snapshot before
+                     * that signal becomes visible; otherwise the PC can mix a
+                     * fresh V3 file with stale or absent causal companions. */
+                    syncRunning = true
+                    coroutineScope.launch {
+                        try {
+                            when (val result = publishBundleAndRequest(exporter, requestOutbox)) {
+                                is SyncRequestResult.Requested -> {
+                                    success = true
+                                    pendingRequestId = result.requestId
+                                    status = "Demande envoyée · attente du PC..."
+                                }
+                                SyncRequestResult.Unsupported -> {
+                                    success = false
+                                    status = "Android non supporté."
+                                }
+                                is SyncRequestResult.Error -> {
+                                    success = false
+                                    status = result.message
+                                }
+                            }
+                        } finally {
+                            syncRunning = false
                         }
                     }
                 },
@@ -346,10 +377,8 @@ fun SyncScreen(
                 description =
                     "Action de récupération manuelle si nécessaire.",
                 onClick = {
-                    when (
-                        val result =
-                            inbox.importPcCatalog()
-                    ) {
+                    coroutineScope.launch {
+                    when (val result = withContext(Dispatchers.IO) { inbox.importPcCatalog() }) {
                         is CatalogInboxResult.Imported -> {
                             success = true
 
@@ -384,6 +413,7 @@ fun SyncScreen(
                             status =
                                 result.message
                         }
+                    }
                     }
                 },
             )
