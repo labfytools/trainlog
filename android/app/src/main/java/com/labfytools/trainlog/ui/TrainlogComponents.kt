@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
@@ -204,6 +205,27 @@ fun TrainlogIconAction(
     }
 }
 
+/**
+ * CONTRACT: the icon is the only visible destructive label; the contextual
+ * accessible name remains mandatory and the caller retains confirmation and
+ * mutation ownership.
+ */
+@Composable
+fun TrainlogDeleteButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalTrainlogColors.current
+    Button(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().heightIn(min = 52.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = colors.error),
+    ) {
+        Icon(TrainlogIcons.DeleteOutline, contentDescription = contentDescription)
+    }
+}
+
 @Composable
 fun TrainlogPrimaryAction(label: String, description: String, onClick: () -> Unit) {
     val colors = LocalTrainlogColors.current
@@ -218,6 +240,58 @@ fun TrainlogPrimaryAction(label: String, description: String, onClick: () -> Uni
                 TrainlogTypography.small.copy(color = colors.muted),
             )
         }
+    }
+}
+
+/**
+ * CONTRACT: a visual tile keeps the supplied callback as the sole action; it
+ * adds no navigation or business state. Equal weights are supplied by callers
+ * when sibling tiles must share a row on narrow screens.
+ */
+@Composable
+fun TrainlogActionTile(
+    label: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalTrainlogColors.current
+    Column(
+        modifier
+            .heightIn(min = 112.dp)
+            .background(colors.surface, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.accent)
+        Text(label, color = colors.accent, fontWeight = FontWeight.Bold)
+        BasicText(description, style = TrainlogTypography.small.copy(color = colors.text))
+    }
+}
+
+/** Prominent action whose modifier controls full-width or equal-row sizing. */
+@Composable
+fun TrainlogButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    containerColor: Color? = null,
+    maxLines: Int = 1,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 52.dp),
+        colors = containerColor?.let { ButtonDefaults.buttonColors(containerColor = it) }
+            ?: ButtonDefaults.buttonColors(),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        icon?.let {
+            Icon(it, contentDescription = null, modifier = Modifier.padding(end = 6.dp))
+        }
+        Text(label, maxLines = maxLines)
     }
 }
 
@@ -370,7 +444,7 @@ fun TrainlogInfo(
 }
 
 /** Shared destructive commit gate. CONTRACT: dismissal and Back are safe,
- * outside taps cannot confirm, and only the explicit labelled button invokes
+ * outside taps cannot confirm, and only the explicit accessible button invokes
  * the destructive callback. */
 @Composable
 fun DestructiveConfirmationDialog(
@@ -379,6 +453,7 @@ fun DestructiveConfirmationDialog(
     confirmLabel: String,
     onCancel: () -> Unit,
     dismissOnClickOutside: Boolean = false,
+    deleteContentDescription: String? = null,
     onConfirm: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
@@ -388,10 +463,18 @@ fun DestructiveConfirmationDialog(
         text = { Text(detail) },
         dismissButton = { TextButton(onClick = onCancel) { Text("Annuler") } },
         confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
-            ) { Text(confirmLabel) }
+            if (deleteContentDescription != null) {
+                TrainlogDeleteButton(
+                    deleteContentDescription,
+                    onConfirm,
+                    Modifier.testTag("confirm-destructive-delete"),
+                )
+            } else {
+                TextButton(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
+                ) { Text(confirmLabel) }
+            }
         },
         properties = DialogProperties(
             dismissOnBackPress = true,

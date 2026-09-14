@@ -103,12 +103,19 @@ class SyncCatalogInbox(
                         is ExerciseProfileStateImportResult.Conflict -> return CatalogInboxResult.Error("Conflit de profil : ${profile.exerciseId}")
                         ExerciseProfileStateImportResult.DatabaseError -> return CatalogInboxResult.Error("Erreur base locale profils.")
                     }
-                    /* Catalogue identities now exist and the strict second pass
-                     * has either installed or verified their causal state. */
+                    /* WHY: body zones are reconstruction prerequisites, not a
+                     * best-effort downstream decoration. If a later companion
+                     * rejects the inbox, a freshly catalogued database must
+                     * not remain unzoned and subsequently publish that empty
+                     * state as a valid bidirectional edit.
+                     * CONTRACT: catalog, flattened aliases and strict profile
+                     * state establish every canonical identity before zones;
+                     * all session/equipment/AI companions follow them.
+                     * INVARIANT: zone identity resolution is ID/alias-only. */
+                    importPcBodyZones(directory)?.let { return CatalogInboxResult.Error(it) }
                     importPcSessions(directory)?.let { return CatalogInboxResult.Error(it) }
                     importPcEquipmentAssociations(directory)?.let { return CatalogInboxResult.Error(it) }
                     importAiSessionDrafts(directory)?.let { return CatalogInboxResult.Error(it) }
-                    importPcBodyZones(directory)?.let { return CatalogInboxResult.Error(it) }
                     importTrainingFeedback(directory)?.let { return CatalogInboxResult.Error(it) }
                     CatalogInboxResult.Imported(
                         imported = result.imported,

@@ -791,7 +791,13 @@ explicit canonical-name conflict without writing a wrongly named target.
 `DirectExchangeStorageTest` verifies the manifest permission and settings
 action, refusal without an authorized backend, directory creation, real
 temporary-file replacement and truncation, ten publications without suffixes,
-and preservation of legacy Download and recovery fixtures.
+and preservation of legacy Download and recovery fixtures. It also reconstructs
+a truly fresh Android database from catalog, alias, profile-state and body-zone
+companions, including an old zone `exercise_id` resolved through the durable
+alias. A deliberately malformed downstream session companion proves zones are
+already durable before the error; the repaired pass imports the one-sync AI
+draft, and replay preserves three canonical identities and exactly seven zone
+rows without duplicates.
 `AiSessionDraftUiWiringTest` additionally requires the delete action to expose
 the titled confirmation before mutation, verifies Cancel and Back dismissal,
 then proves that only confirmation removes the pending proposal while retaining

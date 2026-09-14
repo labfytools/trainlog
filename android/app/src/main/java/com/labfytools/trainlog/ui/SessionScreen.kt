@@ -10,8 +10,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -378,10 +382,8 @@ fun SessionScreen(
                         }
 
                         if (currentDraft.sourceSessionId == null) {
-                            TrainlogIconAction(
-                                icon = TrainlogIcons.DeleteOutline,
+                            TrainlogDeleteButton(
                                 contentDescription = "Supprimer cet exercice",
-                                accent = colors.error,
                                 modifier = Modifier.testTag("delete-draft-exercise-${draft.entryId}"),
                                 onClick = {
                                     pendingRemoval = index to draft
@@ -459,33 +461,16 @@ fun SessionScreen(
         }
 
         TrainlogFrame(
-            title = "Exercices"
-        ) {
-            TrainlogAction(
-                label =
-                    "Créer un nouvel exercice",
-                description =
-                    "Créer l'exercice sans quitter la saisie de séance.",
-                onClick =
-                    onCreateExercise,
-                accent =
-                    colors.success,
-            )
-        }
-
-        TrainlogFrame(
-            title = "Enregistrement",
+            title = "Actions",
             active =
                 currentDraft.exercises.isNotEmpty(),
         ) {
-            TrainlogAction(
-                label =
-                    "Enregistrer la séance",
-                description =
-                    "${currentDraft.exercises.size} exercice(s) dans la séance.",
-                accent =
-                    colors.success,
-                onClick = {
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("active-session-actions-row"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TrainlogButton("Créer un nouvel exercice", onCreateExercise,
+                    Modifier.weight(1f).fillMaxHeight().testTag("active-session-create-exercise"),
+                    containerColor = colors.surfaceAlt, maxLines = 2)
+                TrainlogButton("Enregistrer la séance", onClick = {
                     when (
                         val result =
                             repository.finalizeActiveSessionDraft()
@@ -505,13 +490,13 @@ fun SessionScreen(
                                     result.message
                         }
                     }
-                },
-            )
+                }, modifier = Modifier.weight(1f).fillMaxHeight().testTag("active-session-save"),
+                    containerColor = colors.success, maxLines = 2)
+            }
+            TrainlogInfo("${currentDraft.exercises.size} exercice(s) dans la séance.", colors.muted)
 
-            TrainlogIconAction(
-                icon = TrainlogIcons.DeleteOutline,
+            TrainlogDeleteButton(
                 contentDescription = "Supprimer la séance en cours",
-                accent = colors.error,
                 modifier = Modifier.testTag("delete-active-draft"),
                 onClick = {
                     confirmingDiscard = true
@@ -524,6 +509,7 @@ fun SessionScreen(
                     detail = "Cette action supprimera le brouillon, ses ${currentDraft.exercises.size} exercice(s) et toutes leurs données enregistrées.",
                     confirmLabel = "Abandonner",
                     onCancel = { confirmingDiscard = false },
+                    deleteContentDescription = "Supprimer la séance en cours",
                     onConfirm = {
                         when (
                             val result =
@@ -578,6 +564,7 @@ fun SessionScreen(
                     "Cette action supprimera :\n- " + facts.joinToString("\n- "),
                 confirmLabel = "Supprimer",
                 onCancel = { pendingRemoval = null },
+                deleteContentDescription = "Supprimer cet exercice",
                 onConfirm = {
                     persistDraft(currentDraft.copy(exercises = currentDraft.exercises.filterIndexed { i, _ -> i != index }),
                         "Exercice retiré de la séance.")
@@ -1139,10 +1126,8 @@ private fun SessionExerciseForm(
                             )
                         },
                     )
-                    TrainlogIconAction(
-                        icon = TrainlogIcons.DeleteOutline,
+                    TrainlogDeleteButton(
                         contentDescription = "Supprimer cette série",
-                        accent = colors.error,
                         modifier = Modifier.testTag("delete-set-${index + 1}"),
                         onClick = {
                             pendingSetRemoval = index
@@ -1387,6 +1372,7 @@ private fun SessionExerciseForm(
                 detail = "Ses répétitions, sa durée et sa charge saisies seront supprimées.",
                 confirmLabel = "Supprimer",
                 onCancel = { pendingSetRemoval = null },
+                deleteContentDescription = "Supprimer cette série",
                 onConfirm = {
                     val updated=setRows.filterIndexed { rowIndex, _ -> rowIndex != index }
                     setRows=updated;repsText=encodeRawReps(updated);weightText=encodeRawWeights(updated);error=null

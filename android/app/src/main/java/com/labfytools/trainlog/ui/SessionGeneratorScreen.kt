@@ -287,9 +287,9 @@ fun SessionGeneratorScreen(
                     TrainlogAction("Descendre", "Déplacer cet exercice après le suivant.", onClick = {
                         if (!busy) preview = SessionGeneratorPreviewController.move(current, index, 1)
                     }, accent = colors.muted)
-                    TrainlogAction("Retirer", "Retirer cet exercice de la proposition uniquement.", onClick = {
+                    TrainlogDeleteButton("Retirer cet exercice de la proposition", onClick = {
                         if (!busy) preview = SessionGeneratorPreviewController.remove(current, index)
-                    }, accent = colors.error)
+                    })
                 }
             }
             TrainlogAction("Régénérer", "Relancer les mêmes entrées et le même instant de référence.", onClick = { generate(current.request) })

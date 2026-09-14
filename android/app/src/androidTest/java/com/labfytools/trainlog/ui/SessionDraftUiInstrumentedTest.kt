@@ -233,7 +233,7 @@ class SessionDraftUiInstrumentedTest {
         compose.onNodeWithTag("delete-set-1").performScrollTo().performClick()
         compose.onNodeWithText("Supprimer la série 1 ?").assertIsDisplayed()
         compose.onNodeWithTag("session-set-0-reps").assertTextEquals("4")
-        compose.onNodeWithText("Supprimer").performClick()
+        compose.onNodeWithTag("confirm-destructive-delete").performClick()
         compose.onNodeWithText("Ajouter une série").performScrollTo().performClick()
 
         compose.onNodeWithTag("session-set-0-reps").performScrollTo().assertTextEquals("9")

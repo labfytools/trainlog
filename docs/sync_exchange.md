@@ -536,6 +536,12 @@ p   PC -> Android: Drive AI draft midpoint -> AI-drafts companion -> profile
 b   bidirectional: complete inbound sequence -> Drive AI draft midpoint -> complete outbound sequence
 ```
 
+Android consumes that PC publication by reconciling definitions, catalog,
+flattened aliases and strict profile-state before body zones. Sessions,
+equipment associations, AI drafts and feedback follow zone reconstruction, so
+a later companion failure cannot expose a newly catalogued but accidentally
+unclassified database as a valid outbound zone edit.
+
 In both directions, definitions are reconciled before V2 artifacts that may
 reference their IDs. A mode retains normal validation, transactions, conflict
 reporting, and structured history for the work it performs.

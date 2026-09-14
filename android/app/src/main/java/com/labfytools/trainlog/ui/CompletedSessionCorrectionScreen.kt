@@ -88,17 +88,17 @@ fun CompletedSessionCorrectionScreen(
                         if (set.weightKg != null) TrainlogInputField("Charge (kg)", set.weightKg.toString(), { raw -> raw.toDoubleOrNull()?.let { value ->
                             replaceSet(drafts, occurrenceIndex, setIndex, set.copy(weightKg = value)) { drafts = it }
                         } })
-                        TrainlogIconAction(TrainlogIcons.DeleteOutline, "Supprimer cette série",
+                        TrainlogDeleteButton("Supprimer cette série",
                             { pendingSetRemoval = occurrenceIndex to setIndex },
-                            Modifier.testTag("remove-completed-set-${draft.entryId}-$setIndex"), colors.error)
+                            Modifier.testTag("remove-completed-set-${draft.entryId}-$setIndex"))
                     }
                     TrainlogAction("+ Ajouter une série", "Ajouter explicitement un fait réalisé.", {
                         replaceDraft(drafts, occurrenceIndex, draft.copy(sets = draft.sets + SessionSetDraft())) { drafts = it }
                     }, accent = colors.success)
                 }
-                TrainlogIconAction(TrainlogIcons.DeleteOutline, "Supprimer cette occurrence",
+                TrainlogDeleteButton("Supprimer cette occurrence",
                     { pendingOccurrenceRemoval = occurrenceIndex },
-                    Modifier.testTag("remove-completed-occurrence-${draft.entryId}"), colors.error)
+                    Modifier.testTag("remove-completed-occurrence-${draft.entryId}"))
             }
         }
         message?.let { TrainlogInfo(it, colors.error) }
@@ -112,7 +112,8 @@ fun CompletedSessionCorrectionScreen(
         TrainlogAction("Annuler", "Quitter sans modifier la base.", { onFinished(false) }, accent = colors.muted)
     }
     pendingSetRemoval?.let { (occurrence, set) ->
-        DestructiveConfirmationDialog("Supprimer cette série ?", "Ce fait réalisé disparaîtra de la séance corrigée.", "Supprimer", { pendingSetRemoval = null }) {
+        DestructiveConfirmationDialog("Supprimer cette série ?", "Ce fait réalisé disparaîtra de la séance corrigée.", "Supprimer", { pendingSetRemoval = null },
+            deleteContentDescription = "Supprimer cette série") {
             val draft = drafts[occurrence]
             replaceDraft(drafts, occurrence, draft.copy(sets = draft.sets.filterIndexed { index, _ -> index != set })) { drafts = it }
             pendingSetRemoval = null
@@ -122,7 +123,8 @@ fun CompletedSessionCorrectionScreen(
         val draft = drafts[occurrence]
         DestructiveConfirmationDialog("Supprimer cette occurrence ?",
             "Impact : ${draft.sets.size} série(s) réalisée(s)${if (draft.continuousDurationSeconds > 0) ", activité continue" else ""}${if (draft.maxWeightKg != null) ", MAX" else ""}. Ses ressentis et révisions seront supprimés avec leur parent.",
-            "Supprimer", { pendingOccurrenceRemoval = null }) {
+            "Supprimer", { pendingOccurrenceRemoval = null },
+            deleteContentDescription = "Supprimer cette occurrence") {
             drafts = drafts.filterIndexed { index, _ -> index != occurrence }
             pendingOccurrenceRemoval = null
         }

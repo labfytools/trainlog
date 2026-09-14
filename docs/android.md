@@ -103,6 +103,22 @@ canonical route and exposes selected semantics; it is not maintained as a
 second navigation state. The drawer itself scrolls when vertical space is
 limited.
 
+The section screens use the same dark semantic theme and existing typed-route
+callbacks. Home presents Synchronisation and Mensurations as two equal quick
+action tiles. Sessions presents manual creation and imported drafts in one
+row, with completed history below. The exercise catalogue keeps its search and
+zone filters visible above a bounded, internally scrollable result viewport.
+The active-session create/save actions share one button row, while completed
+session edit, exercise feedback, and session follow-up actions use prominent
+full-width buttons. These are presentation rules only; they do not introduce
+navigation, repository, draft, synchronization, or persistence behavior.
+All user-facing removal triggers use the shared full-width destructive button:
+its only visible content is the trash icon, its container uses the semantic
+error color, and its context-specific accessible name remains exposed to
+TalkBack. Existing confirmation gates and their mutation callbacks are
+unchanged. Side-by-side action rows use equal weights and an intrinsic common
+height so the shorter action stretches to match its sibling.
+
 ## STATS_V1
 
 The Statistics landing page defaults to 30 days and is a Material 3 dashboard using the existing
@@ -528,6 +544,14 @@ the publisher's shared baseline. A one-sided change is applied transactionally,
 and simultaneous divergence returns an explicit conflict without changing
 local relations. The unclassified state contains neither a primary nor orphan
 secondaries.
+
+On PC → Android inbox import, zone reconstruction is a prerequisite: the app
+applies catalog identities, flattened aliases and profile-state first, then the
+body-zone companion before sessions, equipment associations, AI drafts and
+feedback. Thus a later companion error cannot leave a freshly catalogued
+database with an accidental empty zone state ready to be republished. Zone
+resolution remains exclusively by stable `exercise_id` and the durable alias
+mapping; display names are never used.
 
 The user does not need a separate manual export step before synchronization.
 

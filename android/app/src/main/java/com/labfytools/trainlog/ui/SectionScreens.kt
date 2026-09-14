@@ -7,6 +7,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import com.labfytools.trainlog.data.CreateEquipmentResult
 import com.labfytools.trainlog.data.CatalogInboxResult
@@ -37,14 +46,17 @@ fun SessionsHub(
             else TrainlogAction("Reprendre", "${draft.exercises.size} exercice(s) · le brouillon durable est conservé.", onResume, accent = colors.success)
         }
         TrainlogFrame("Préparer") {
-            TrainlogAction("Nouvelle séance manuelle", if (draft == null) "Créer explicitement un brouillon de séance." else "Ouvrir la séance en cours sans l'écraser.", onManual)
-            TrainlogAction(
-                "Brouillons",
-                "$pendingAiDraftCount séance(s) préparée(s) · consulter les propositions importées depuis le PC.",
-                onDrafts,
-            )
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("sessions-prepare-row"),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TrainlogActionTile("Nouvelle séance manuelle", "Créer ou reprendre", TrainlogIcons.Edit,
+                    onManual, Modifier.weight(1f).fillMaxHeight().testTag("sessions-manual-action"))
+                TrainlogActionTile("Brouillons", "$pendingAiDraftCount séance(s) préparée(s)",
+                    TrainlogIcons.Drafts, onDrafts,
+                    Modifier.weight(1f).fillMaxHeight().testTag("sessions-drafts-action"))
+            }
         }
-        TrainlogAction("Séances effectuées", "Consulter les actuals, plans et MAX enregistrés.", onHistory)
+        TrainlogButton("Séances effectuées", onHistory,
+            Modifier.fillMaxWidth().testTag("sessions-history-action"))
     }
 }
 
@@ -93,13 +105,12 @@ fun AiSessionDraftsScreen(
                         is StartAiSessionDraftResult.Error -> message = result.message
                     }
                 }
-                TrainlogAction(
-                    "Supprimer",
-                    "Conserver un tombstone pour empêcher sa réapparition lors d'un replay.",
+                TrainlogDeleteButton(
+                    contentDescription = "Supprimer ce brouillon",
+                    modifier = Modifier.testTag("delete-ai-draft-${draft.draftId}"),
                     onClick = {
                         pendingDeletion = draft.draftId to (draft.title ?: "Proposition de séance")
                     },
-                    accent = colors.error,
                 )
             }
         }
@@ -111,6 +122,7 @@ fun AiSessionDraftsScreen(
             confirmLabel = "Supprimer",
             onCancel = { pendingDeletion = null },
             dismissOnClickOutside = true,
+            deleteContentDescription = "Supprimer ce brouillon",
         ) {
             /* CONTRACT: dialog confirmation is the sole UI path to the existing
              * tombstone mutation. Dismissal never reaches the repository. */

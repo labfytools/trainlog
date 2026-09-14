@@ -5,8 +5,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performKeyInput
@@ -15,6 +19,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
+import com.labfytools.trainlog.data.ActiveDraftMutationResult
 import com.labfytools.trainlog.data.AiSessionDraftImportResult
 import com.labfytools.trainlog.data.CreateExerciseResult
 import com.labfytools.trainlog.data.TrainlogRepository
@@ -70,18 +75,54 @@ class AiSessionDraftUiWiringTest {
     @Test
     fun sessionsHubShowsPendingCountAndPreservesManualAndHistoryActions() {
         var manualCalls = 0
+        var draftCalls = 0
         var historyCalls = 0
         compose.setContent { TrainlogTheme {
-            SessionsHub(null, 2, {}, { manualCalls++ }, {}, { historyCalls++ })
+            SessionsHub(null, 2, {}, { manualCalls++ }, { draftCalls++ }, { historyCalls++ })
         } }
 
         compose.onNodeWithText("2 séance(s) préparée(s)", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Nouvelle séance manuelle").performClick()
+        compose.onNodeWithText("Brouillons").performClick()
         compose.onNodeWithText("Séances effectuées").performClick()
         compose.runOnIdle {
             assertEquals(1, manualCalls)
+            assertEquals(1, draftCalls)
             assertEquals(1, historyCalls)
         }
+    }
+
+    @Test
+    fun sessionsHubKeepsPrepareActionsTogetherAndHistoryBelow() {
+        compose.setContent { TrainlogTheme { SessionsHub(null, 2, {}, {}, {}, {}) } }
+
+        val manual = compose.onNodeWithTag("sessions-manual-action").fetchSemanticsNode().boundsInRoot
+        val drafts = compose.onNodeWithTag("sessions-drafts-action").fetchSemanticsNode().boundsInRoot
+        val history = compose.onNodeWithTag("sessions-history-action").fetchSemanticsNode().boundsInRoot
+        assertEquals(manual.top, drafts.top, 1f)
+        assertEquals(manual.height, drafts.height, 1f)
+        assertEquals(manual.width, drafts.width, 1f)
+        assertTrue(history.top > manual.bottom)
+    }
+
+    @Test
+    fun activeSessionActionsAreEqualHeightButtonsAndKeepCreateCallback() {
+        assertEquals(ActiveDraftMutationResult.Saved, repository.startActiveSessionDraft())
+        var createCalls = 0
+        compose.setContent { TrainlogTheme {
+            SessionScreen(repository, 0, {}, { createCalls++ }, {})
+        } }
+
+        val create = compose.onNodeWithTag("active-session-create-exercise")
+            .fetchSemanticsNode().boundsInRoot
+        val save = compose.onNodeWithTag("active-session-save")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(create.top, save.top, 1f)
+        assertEquals(create.height, save.height, 1f)
+        assertEquals(create.width, save.width, 1f)
+        compose.onNodeWithTag("active-session-create-exercise")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.runOnIdle { assertEquals(1, createCalls) }
     }
 
     @Test
@@ -158,9 +199,11 @@ class AiSessionDraftUiWiringTest {
             AiSessionDraftsScreen(repository, externalRevision = 0, onStarted = {})
         } }
 
-        compose.onNodeWithText("Supprimer").performClick()
+        compose.onNodeWithText("Supprimer").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Supprimer ce brouillon").performClick()
 
         compose.onNodeWithText("Supprimer ce brouillon ?").assertIsDisplayed()
+        compose.onNodeWithTag("confirm-destructive-delete").assertIsDisplayed()
         compose.onNodeWithText("Le brouillon « Dos + biceps » sera supprimé.", substring = true)
             .assertIsDisplayed()
         compose.runOnIdle { assertEquals(1, repository.listAiSessionDrafts().size) }
@@ -173,7 +216,7 @@ class AiSessionDraftUiWiringTest {
             AiSessionDraftsScreen(repository, externalRevision = 0, onStarted = {})
         } }
 
-        compose.onNodeWithText("Supprimer").performClick()
+        compose.onNodeWithContentDescription("Supprimer ce brouillon").performClick()
         compose.onNodeWithText("Annuler").performClick()
 
         compose.onNodeWithText("Dos + biceps").assertIsDisplayed()
@@ -187,7 +230,7 @@ class AiSessionDraftUiWiringTest {
             AiSessionDraftsScreen(repository, externalRevision = 0, onStarted = {})
         } }
 
-        compose.onNodeWithText("Supprimer").performClick()
+        compose.onNodeWithContentDescription("Supprimer ce brouillon").performClick()
         compose.onNodeWithText("Supprimer ce brouillon ?").performKeyInput {
             pressKey(Key.Back)
         }
@@ -203,7 +246,7 @@ class AiSessionDraftUiWiringTest {
             AiSessionDraftsScreen(repository, externalRevision = 0, onStarted = {})
         } }
 
-        compose.onNodeWithText("Supprimer").performClick()
+        compose.onNodeWithContentDescription("Supprimer ce brouillon").performClick()
         compose.onNodeWithText("Supprimer ce brouillon ?").performTouchInput {
             click(Offset(-40f, -40f))
         }
@@ -225,9 +268,9 @@ class AiSessionDraftUiWiringTest {
             )
         } }
 
-        compose.onNodeWithText("Supprimer").performClick()
+        compose.onNodeWithContentDescription("Supprimer ce brouillon").performClick()
         compose.onNodeWithText("Supprimer ce brouillon ?").assertIsDisplayed()
-        compose.onAllNodesWithText("Supprimer")[1].performClick()
+        compose.onNodeWithTag("confirm-destructive-delete").performClick()
 
         compose.onNodeWithText("Aucun brouillon importé.").assertIsDisplayed()
         compose.runOnIdle {

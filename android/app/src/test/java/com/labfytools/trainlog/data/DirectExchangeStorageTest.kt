@@ -3,6 +3,7 @@ package com.labfytools.trainlog.data
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
@@ -117,6 +118,125 @@ class DirectExchangeStorageTest {
         } finally {
             repository.close()
             context.deleteDatabase(databaseName)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun `fresh database reconstructs aliased body zones in one inbox pass and replay`() {
+        val directory = Files.createTempDirectory("trainlog-direct-zones-").toFile()
+        val sourceName = "direct-zones-source-${UUID.randomUUID()}.db"
+        val destinationName = "direct-zones-destination-${UUID.randomUUID()}.db"
+        val interruptedName = "direct-zones-interrupted-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        val interrupted = TrainlogRepository(context, interruptedName)
+        val retiredId = "ex_33333333-3333-4333-8333-333333333333"
+        try {
+            fun create(name: String, primary: String, secondary: List<String> = emptyList()) =
+                source.createExercise(com.labfytools.trainlog.model.NewExerciseProfile(
+                    name = name,
+                    recordingMode = com.labfytools.trainlog.model.RecordingMode.SETS,
+                    trackingMode = com.labfytools.trainlog.model.TrackingMode.REPS,
+                    dataFields = 0,
+                    primaryZoneId = primary,
+                    secondaryZoneIds = secondary,
+                )) as CreateExerciseResult.Created
+
+            val canonical = create("Presse canonique", "thighs", listOf("glutes")).exercise
+            val second = create("Tirage canonique", "back", listOf("arms")).exercise
+            val third = create("Développé canonique", "chest", listOf("shoulders", "arms")).exercise
+            val aliasJson = JSONObject().put("format", "trainlog-exercise-aliases")
+                .put("version", 1).put("aliases", JSONArray().put(JSONObject()
+                    .put("source_exercise_id", retiredId)
+                    .put("canonical_exercise_id", canonical.exerciseId))).toString()
+            assertEquals(ExerciseAliasImportResult.Applied(1, 0),
+                source.applyExerciseAliasesJson(aliasJson))
+
+            fun catalogExercise(exercise: com.labfytools.trainlog.model.ExerciseProfile) = JSONObject()
+                .put("exercise_id", exercise.exerciseId).put("name", exercise.name)
+                .put("recording_mode", exercise.recordingMode.wireValue)
+                .put("tracking_mode", exercise.trackingMode.wireValue)
+                .put("data_fields", exercise.dataFields)
+            File(directory, "trainlog-pc-catalog-v1.json").writeText(
+                JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+                    .put("exercises", JSONArray().put(catalogExercise(canonical))
+                        .put(catalogExercise(second)).put(catalogExercise(third))).toString(),
+            )
+            File(directory, "trainlog-exercise-aliases-v1.json").writeText(aliasJson)
+            File(directory, "trainlog-exercise-profile-state-v1.json")
+                .writeText(source.buildExerciseProfileStateJson())
+            val zones = JSONObject(source.buildExerciseBodyZonesJson())
+            val zoneItems = zones.getJSONArray("exercises")
+            for (index in 0 until zoneItems.length()) {
+                val item = zoneItems.getJSONObject(index)
+                if (item.getString("exercise_id") == canonical.exerciseId) {
+                    item.put("exercise_id", retiredId)
+                }
+            }
+            File(directory, "trainlog-exercise-body-zones-v1.json").writeText(zones.toString())
+            val target = JSONObject().put("sets", 3).put("reps", 10)
+                .put("duration_seconds", JSONObject.NULL).put("weight_kg", JSONObject.NULL)
+            val draftEntry = JSONObject().put("entry_id", "sxe_abcdefab-cdef-4abc-8abc-abcdefabcdef")
+                .put("position", 0).put("exercise_id", retiredId)
+                .put("recording_mode", "sets").put("tracking_mode", "reps")
+                .put("data_fields", 0).put("equipment_id", JSONObject.NULL)
+                .put("load_mode", "none").put("rest_seconds", 90).put("target", target)
+            val draft = JSONObject().put("draft_id", "aid_12345678-1234-4abc-8abc-123456789abc")
+                .put("created_at", "2026-09-14T08:00:00Z").put("planned_for", "2026-09-15")
+                .put("session_type", "training").put("title", "Reconstruction")
+                .put("notes", "Test one-sync").put("entries", JSONArray().put(draftEntry))
+            File(directory, "trainlog-ai-session-drafts-v1.json").writeText(
+                JSONObject().put("format", "trainlog-ai-session-drafts").put("version", 1)
+                    .put("generated_at", "2026-09-14T08:00:00Z")
+                    .put("drafts", JSONArray().put(draft)).toString(),
+            )
+            val malformedSessions = File(directory, "trainlog-pc-mobile-export-v3.json")
+            malformedSessions.writeText("{\"format\":\"trainlog-mobile-export\",\"version\":3}")
+
+            val inbox = SyncCatalogInbox(context, destination)
+            /* A downstream failure must not leave a freshly catalogued peer
+             * unzoned: otherwise its next bidirectional publication can make
+             * that accidental empty state authoritative. */
+            assertTrue(SyncCatalogInbox(context, interrupted)
+                .importPcCatalogFromDirectoryForTest(directory) is CatalogInboxResult.Error)
+            assertEquals(listOf("thighs", "back", "chest"), interrupted.listExercises()
+                .associateBy { it.exerciseId }.let { exercises -> listOf(
+                    exercises.getValue(canonical.exerciseId).primaryZoneId,
+                    exercises.getValue(second.exerciseId).primaryZoneId,
+                    exercises.getValue(third.exerciseId).primaryZoneId,
+                ) })
+
+            assertTrue(malformedSessions.delete())
+            assertTrue(inbox.importPcCatalogFromDirectoryForTest(directory) is CatalogInboxResult.Imported)
+            val first = destination.listExercises().associateBy { it.exerciseId }
+            assertEquals(setOf(canonical.exerciseId, second.exerciseId, third.exerciseId), first.keys)
+            assertEquals("thighs", first.getValue(canonical.exerciseId).primaryZoneId)
+            assertEquals(listOf("glutes"), first.getValue(canonical.exerciseId).secondaryZoneIds)
+            assertEquals("back", first.getValue(second.exerciseId).primaryZoneId)
+            assertEquals(listOf("arms"), first.getValue(second.exerciseId).secondaryZoneIds)
+            assertEquals("chest", first.getValue(third.exerciseId).primaryZoneId)
+            assertEquals(listOf("shoulders", "arms"), first.getValue(third.exerciseId).secondaryZoneIds)
+            assertEquals(canonical.exerciseId,
+                destination.listAiSessionDrafts().single().entries.single().exercise.exerciseId)
+
+            assertTrue(inbox.importPcCatalogFromDirectoryForTest(directory) is CatalogInboxResult.Imported)
+            val replayed = destination.listExercises().associateBy { it.exerciseId }
+            assertEquals(first, replayed)
+            assertFalse(replayed.containsKey(retiredId))
+            SQLiteDatabase.openDatabase(context.getDatabasePath(destinationName).path, null,
+                SQLiteDatabase.OPEN_READONLY).use { db ->
+                db.rawQuery("SELECT COUNT(*) FROM exercise_body_zones", null).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(7, cursor.getInt(0))
+                }
+            }
+        } finally {
+            source.close()
+            destination.close()
+            interrupted.close()
+            context.deleteDatabase(sourceName)
+            context.deleteDatabase(destinationName)
+            context.deleteDatabase(interruptedName)
             directory.deleteRecursively()
         }
     }

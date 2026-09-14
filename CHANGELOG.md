@@ -1,5 +1,20 @@
 # Changelog
 
+- Fixed fresh Android database body-zone reconstruction by applying the
+  PC-published body-zone companion immediately after catalog, flattened aliases
+  and strict profile-state, before fallible downstream session, equipment, AI
+  draft and feedback imports. Regression coverage rebuilds several mappings in
+  one inbox pass, resolves a retired exercise ID only through its durable alias,
+  preserves the one-sync AI draft, and proves idempotent replay without identity
+  mutation or duplicate zone rows.
+
+- Redesigned the Android Home, Sessions, Exercise Catalogue, active-session
+  and completed-session-detail action layouts with balanced icon tiles,
+  bounded internal catalogue scrolling, and prominent accessible buttons,
+  plus uniform full-width icon-only destructive actions with contextual
+  TalkBack labels, without changing confirmation, navigation callbacks, or
+  domain/storage/sync behavior.
+
 - Added an Android confirmation dialog before deleting an imported AI session
   draft. Cancel, Back and outside dismissal are non-mutating; only the
   destructive confirmation invokes the existing deleted-tombstone operation.

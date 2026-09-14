@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.fillMaxWidth
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.SaveFeedbackResult
 import com.labfytools.trainlog.data.exerciseFeedbackElapsedLabel
@@ -104,12 +105,8 @@ fun SessionDetailScreen(
                 "${detail.summary.exerciseCount} exercice(s)"
             )
 
-            TrainlogAction(
-                label = "Modifier la séance",
-                description = "Corriger les faits enregistrés sans changer l'identité de la séance.",
-                accent = colors.accent,
-                onClick = onCorrect,
-            )
+            TrainlogButton("Modifier la séance", onCorrect,
+                Modifier.fillMaxWidth().testTag("edit-completed-session"))
 
             if (detail.summary.sessionType == SessionType.MAX_TEST) {
                 TrainlogAction(
@@ -154,10 +151,8 @@ fun SessionDetailScreen(
                             value = equipmentQuery,
                             onValueChange = { equipmentQuery = it },
                         )
-                        TrainlogIconAction(
-                            icon = TrainlogIcons.DeleteOutline,
+                        TrainlogDeleteButton(
                             contentDescription = "Retirer la machine de cet exercice",
-                            accent = colors.warning,
                             modifier = Modifier.testTag("delete-completed-equipment-${exercise.entryId}"),
                             onClick = {
                                 pendingEquipmentChange = exercise.entryId to null
@@ -228,12 +223,9 @@ fun SessionDetailScreen(
                             }
                         }, onCancel = { feedbackEntryId = null })
                     } else {
-                        TrainlogAction(
-                            label = if (exercise.feedback.isEmpty()) "🎙 Ressenti" else "+ Ajouter un ressenti",
-                            description = "Ajouter une observation subjective à cette occurrence.",
-                            accent = colors.accent,
-                            onClick = { feedbackEntryId = exercise.entryId },
-                        )
+                        TrainlogButton("Ajouter un ressenti", { feedbackEntryId = exercise.entryId },
+                            Modifier.fillMaxWidth().testTag("add-exercise-feedback-${exercise.entryId}"),
+                            icon = TrainlogIcons.Mic)
                     }
                 }
             }
@@ -260,9 +252,9 @@ fun SessionDetailScreen(
                         is SaveFeedbackResult.DatabaseError -> result.message
                     }
                 }, onCancel = { addingFollowUp = false })
-            } else TrainlogAction("+ Ajouter un enregistrement",
-                "Ajouter une observation chronologique sans l’attribuer à un exercice.",
-                onClick = { addingFollowUp = true }, accent = colors.success)
+            } else TrainlogButton("Ajouter un enregistrement", { addingFollowUp = true },
+                Modifier.fillMaxWidth().testTag("add-session-follow-up"), icon = TrainlogIcons.Mic,
+                containerColor = colors.success)
         }
         pendingEquipmentChange?.let { (entryId, equipmentId) ->
             DestructiveConfirmationDialog(
@@ -270,6 +262,9 @@ fun SessionDetailScreen(
                 detail = "L’association de machine actuellement enregistrée sera perdue. Les séries, MAX et ressentis restent inchangés.",
                 confirmLabel = if (equipmentId == null) "Retirer" else "Remplacer",
                 onCancel = { pendingEquipmentChange = null },
+                deleteContentDescription = if (equipmentId == null) {
+                    "Retirer la machine de cet exercice"
+                } else null,
                 onConfirm = {
                     if (repository.setCompletedSessionEquipment(detail.summary.sessionId,entryId,equipmentId)) {
                         revision++;editingEntryId=null;equipmentQuery="";pendingEquipmentChange=null

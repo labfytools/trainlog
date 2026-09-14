@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -88,8 +90,13 @@ fun HomeScreen(
             TrainlogInfo("Dernier MAX · ${maximum.exerciseName} · $weight kg · ${maximum.startedAt.take(10)}", colors.warning)
         }
         TrainlogFrame("Accès rapides", active = false) {
-            TrainlogAction("Mensurations", "Ajouter ou consulter les relevés locaux.", onBody)
-            TrainlogAction("Synchronisation", "Consulter l'état connu et lancer une action explicite.", onSync)
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("home-quick-actions-row"),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TrainlogActionTile("Synchronisation", "État et actions", TrainlogIcons.Refresh,
+                    onSync, Modifier.weight(1f).fillMaxHeight().testTag("home-sync-action"))
+                TrainlogActionTile("Mensurations", "Suivi corporel", TrainlogIcons.BodyMeasurements,
+                    onBody, Modifier.weight(1f).fillMaxHeight().testTag("home-body-action"))
+            }
         }
     }
 }

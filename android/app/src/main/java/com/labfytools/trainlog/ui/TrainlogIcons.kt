@@ -6,8 +6,62 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
-/** The two voice glyphs are local to avoid shipping the large extended icon catalog. */
+/** Local UI glyphs avoid shipping the large extended Material icon catalog. */
 internal object TrainlogIcons {
+    val Refresh: ImageVector by lazy {
+        ImageVector.Builder("Refresh", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(17.65f, 6.35f); curveTo(16.2f, 4.9f, 14.21f, 4f, 12f, 4f)
+                curveTo(7.58f, 4f, 4.01f, 7.58f, 4.01f, 12f)
+                reflectiveCurveTo(7.58f, 20f, 12f, 20f)
+                curveTo(15.73f, 20f, 18.84f, 17.45f, 19.73f, 14f)
+                horizontalLineTo(17.65f); curveTo(16.83f, 16.33f, 14.61f, 18f, 12f, 18f)
+                curveTo(8.69f, 18f, 6f, 15.31f, 6f, 12f); reflectiveCurveTo(8.69f, 6f, 12f, 6f)
+                curveTo(13.66f, 6f, 15.14f, 6.69f, 16.22f, 7.78f)
+                lineTo(13f, 11f); horizontalLineTo(20f); verticalLineTo(4f); close()
+            }
+        }.build()
+    }
+
+    val BodyMeasurements: ImageVector by lazy {
+        ImageVector.Builder("BodyMeasurements", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(7f, 3f); horizontalLineTo(17f); curveTo(19.21f, 3f, 21f, 4.79f, 21f, 7f)
+                verticalLineTo(17f); curveTo(21f, 19.21f, 19.21f, 21f, 17f, 21f)
+                horizontalLineTo(7f); curveTo(4.79f, 21f, 3f, 19.21f, 3f, 17f)
+                verticalLineTo(7f); curveTo(3f, 4.79f, 4.79f, 3f, 7f, 3f); close()
+                moveTo(12f, 6f); curveTo(9.79f, 6f, 8f, 7.79f, 8f, 10f)
+                horizontalLineTo(10f); curveTo(10f, 8.9f, 10.9f, 8f, 12f, 8f)
+                reflectiveCurveTo(14f, 8.9f, 14f, 10f); horizontalLineTo(16f)
+                curveTo(16f, 7.79f, 14.21f, 6f, 12f, 6f); close()
+            }
+        }.build()
+    }
+
+    val Edit: ImageVector by lazy {
+        ImageVector.Builder("Edit", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(3f, 17.25f); verticalLineTo(21f); horizontalLineTo(6.75f)
+                lineTo(17.81f, 9.94f); lineTo(14.06f, 6.19f); close()
+                moveTo(20.71f, 7.04f); curveTo(21.1f, 6.65f, 21.1f, 6.02f, 20.71f, 5.63f)
+                lineTo(18.37f, 3.29f); curveTo(17.98f, 2.9f, 17.35f, 2.9f, 16.96f, 3.29f)
+                lineTo(15.13f, 5.12f); lineTo(18.88f, 8.87f); close()
+            }
+        }.build()
+    }
+
+    val Drafts: ImageVector by lazy {
+        ImageVector.Builder("Drafts", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(14f, 2f); horizontalLineTo(6f); curveTo(4.9f, 2f, 4f, 2.9f, 4f, 4f)
+                verticalLineTo(20f); curveTo(4f, 21.1f, 4.9f, 22f, 6f, 22f)
+                horizontalLineTo(18f); curveTo(19.1f, 22f, 20f, 21.1f, 20f, 20f)
+                verticalLineTo(8f); close(); moveTo(13f, 9f); verticalLineTo(3.5f)
+                lineTo(18.5f, 9f); close()
+            }
+        }.build()
+    }
+
     val Mic: ImageVector by lazy {
         ImageVector.Builder(
             name = "Mic",
