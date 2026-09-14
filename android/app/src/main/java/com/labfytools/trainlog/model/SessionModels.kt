@@ -104,6 +104,20 @@ data class ActiveSessionDraft(
     val updatedAt: String = "",
 )
 
+/**
+ * A desktop-authored proposal is inert until the user explicitly starts it.
+ * INVARIANT: entries contain targets only; performed values remain owned by
+ * [ActiveSessionDraft] after an atomic start operation.
+ */
+data class AiSessionDraft(
+    val draftId: String,
+    val createdAt: String,
+    val plannedFor: String? = null,
+    val title: String? = null,
+    val notes: String? = null,
+    val entries: List<SessionExerciseDraft>,
+)
+
 data class SessionSummary(
     val sessionId: String,
     val startedAt: String,

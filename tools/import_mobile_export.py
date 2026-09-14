@@ -813,9 +813,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
         raise ImportFailure(
-            f"base desktop schema v5 à v17 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v18 attendue, version trouvée: {version}"
         )
 
 

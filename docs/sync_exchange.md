@@ -2,7 +2,7 @@
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v17 and Android schema v16 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v18 and Android schema v17 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -43,6 +43,7 @@ EXPLICIT_MAX_RESULTS_V2=PASS
 SESSION_GENERATOR_V1=PASS
 BODY_ZONE_SYNC_V1=PASS
 BODY_ZONE_SYNC_V1_LIVE_DEVICE=PASS
+TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
@@ -63,13 +64,22 @@ v1 format.
 Canonical Android shared-storage directory:
 
 ```text
-Download/Trainlog
+Documents/Trainlog
 ```
 
 Desktop accesses this directory through direct MTP.
 
-Android accesses PC-created artifacts through a persistent Storage Access
-Framework folder grant.
+Android accesses this exact public directory directly after the user enables
+`MANAGE_EXTERNAL_STORAGE` in Android settings. It checks
+`Environment.isExternalStorageManager()`, creates the directory when necessary,
+and never uses a SAF tree URI, directory picker, `DocumentFile`, or
+`DocumentsContract` for Trainlog artifacts.
+
+The desktop resolves `Documents` and its direct `Trainlog` child for the whole
+run. All outbound publications target that folder exclusively. A historical
+`Download/Trainlog` tree may remain on the device for manual recovery and may
+be inspected by explicitly bounded legacy tooling, but the active sync engine
+does not publish to it or let it override an artifact in the new endpoint.
 
 ## 3. Artifact table
 
@@ -87,6 +97,7 @@ Framework folder grant.
 | PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | PC -> Android | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
+| PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1 companion |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
@@ -115,7 +126,8 @@ falls back to an older candidate when the newest one is malformed. Definitions
 reconcile before the V2 snapshot, so a valid custom `equipment_id` is known
 before a session may reference it. This prevents an older canonical object from
 being mistaken for Android's current data while preserving every file in
-`Download/Trainlog`.
+the historical `Download/Trainlog` tree without selecting it as the active
+publication endpoint.
 
 V2 is a separate format: every session entry has an `entry_id`, `position`,
 metrics, actual loads and optional equipment identity. This permits two
@@ -451,6 +463,25 @@ PC -> Android catalog count
 Android accepts a receipt only when its `request_id` matches the pending
 request.
 
+For `TRAINLOG_AI_SESSION_DRAFT_V1`, Drive—not `Documents/Trainlog`—is the
+single inbound source: `TrainLog Gdrive:Trainlog/AI/inbox/trainlog_ai_session_draft_v1.json`.
+The desktop fetches it shell-free, parses the strict one-draft source, and
+commits it idempotently before copying the exact validated local snapshot with
+shell-free `rclone copyto` to
+`TrainLog Gdrive:Trainlog/AI/archive/<aid>.json`. The mutable inbox object is
+never moved or deleted, so same-name replacement cannot alter the archived
+bytes or be removed by archiving. A missing source, transport failure, or
+archive failure is reported explicitly; logical inbox replay retains a
+retryable desktop status and never undoes the committed import. The desktop
+outbound companion selects at most 256 not-yet-published proposals in stable
+creation/identity order. Successful MTP publication transactionally marks only
+that exact batch; failure leaves it unchanged for retry, while later normal
+syncs drain further batches. The permanent Drive import ledger is independent.
+The inbound outcome (`NONE`, `IMPORTED`, `ALREADY_IMPORTED`, `REJECTED`,
+`DRIVE_FAIL`, or `ARCHIVE_FAIL`) is retained in the successful sync report and
+history; fetched-invalid, Drive, and archive outcomes do not fail an otherwise
+successful Android/PC synchronization.
+
 ## 10. Shared desktop engine
 
 Canonical implementation:
@@ -472,16 +503,37 @@ Android-triggered path:
 Android request
 -> trainlog-syncd
 -> shared engine
+-> Drive AI draft fetch/import/archive attempt
+-> PC -> Android AI draft companion publication
 -> receipt
 ```
+
+Only after either path has fully succeeded, the same desktop engine runs:
+
+```text
+SYNC=PASS
+-> tools/export_ai_history.py
+-> AI_EXPORT=PASS
+-> rclone copyto trainlog_ai_export_v1.json
+   "TrainLog Gdrive:Trainlog/AI/trainlog_ai_export_v1.json"
+-> GDRIVE_UPLOAD=PASS|FAIL
+```
+
+`AI_EXPORT=FAIL` skips Drive publication so an older artifact cannot be
+uploaded as the result of the new synchronization. Export and Drive are
+best-effort post-sync operations: either may fail visibly while the completed
+Trainlog synchronization remains successful. Android never executes rclone,
+and Trainlog stores neither its configuration nor Google OAuth secrets.
 
 The engine has three explicit modes:
 
 ```text
-a   Android -> PC: definition V1 -> mobile V3 -> body zones V1 -> association V2; no publish
-p   PC -> Android: definition V1 -> catalog V1 -> body zones V1 -> mobile V3
-    (including bodies) -> association V2; no receive
-b   bidirectional: complete inbound sequence, then complete outbound sequence
+a   Android -> PC: definition V1 -> mobile V3 -> body zones V1 -> association V2
+    -> Drive AI draft midpoint; no Android publish
+p   PC -> Android: Drive AI draft midpoint -> AI-drafts companion -> profile
+    state/aliases/feedback -> definition V1 -> catalog V1 -> body zones V1 ->
+    mobile V3 (including bodies) -> association V2; no Android receive
+b   bidirectional: complete inbound sequence -> Drive AI draft midpoint -> complete outbound sequence
 ```
 
 In both directions, definitions are reconciled before V2 artifacts that may
@@ -731,3 +783,12 @@ the importer prepares `UPDATE exercises`; the persisted guarded profile trigger
 therefore remains valid even when the authoritative incoming tip makes its body
 a no-op. Replaying the same artifact neither changes the current revision nor
 adds history rows.
+
+Desktop Python companions, including the alias importer, receive the explicit
+XDG-resolved database path. Their scripts resolve from the Meson-configured
+repository tools directory rather than from the installed executable's parent
+layout; `TRAINLOG_TOOLS_DIR` may explicitly override that directory for a
+packaged user-session deployment. Before every invocation the bounded combined
+stdout/stderr result is truncated. Resolution, launch, argparse, exception,
+signal, and non-zero-exit diagnostics therefore describe only the current run
+and are retained in the synchronization error/history when the run fails.

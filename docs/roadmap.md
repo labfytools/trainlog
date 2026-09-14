@@ -17,6 +17,21 @@ Historical implementation detail belongs in Git history and `docs/reviews`.
 The published Trainlog JSON v1 compatibility boundary remains frozen unless a
 future feature explicitly introduces a new version.
 
+## TRAINLOG_AI_SESSION_DRAFT_V1 — implementation validation pending
+
+The implemented proposal path is deliberately separate from completed-session
+exchange and the singleton capture draft. A strict single Drive source,
+`TRAINLOG_AI_SESSION_DRAFT` V1, imports target-only SETS proposals into desktop
+schema v18, archive-copies the exact fetched snapshot only after commit while
+retaining the inbox object for logical replay, then produces the bounded
+`trainlog-ai-session-drafts` V1 Android companion in deterministic batches of
+at most 256 unpublished proposals. Only successful MTP publication advances
+the desktop cursor; replay identities remain permanent. Android v17 retains a
+pending collection, while explicit start/delete creates durable tombstones so
+replay is idempotent and cannot resurrect proposals. The remaining gate is one
+real Drive plus Android-triggered bidirectional synchronization smoke test;
+therefore this item is `VALIDATION_PENDING` and is not PASS.
+
 ## Completed foundation
 
 ```text

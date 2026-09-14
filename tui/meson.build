@@ -79,6 +79,7 @@ session_generation_policy_generated = custom_target(
 
 strict_c_args = [
   '-D_POSIX_C_SOURCE=200809L',
+  '-DTRAINLOG_TOOLS_DIR="@0@"'.format(meson.project_source_root() / 'tools'),
   '-Wconversion',
   '-Wformat=2',
   '-Wshadow',
@@ -673,6 +674,24 @@ test_feedback_correction = executable(
   c_args: strict_c_args,
 )
 test('feedback_correction', test_feedback_correction)
+
+test(
+  'ai_history_export',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_ai_history_export.py'],
+)
+
+test(
+  'post_sync_ai_drive',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_post_sync_ai_drive.py'],
+)
+
+test(
+  'ai_session_draft',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_ai_session_draft.py'],
+)
 
 test_schema_v16_migration = executable(
   'test_schema_v16_migration',

@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -377,14 +378,24 @@ fun DestructiveConfirmationDialog(
     detail: String,
     confirmLabel: String,
     onCancel: () -> Unit,
+    dismissOnClickOutside: Boolean = false,
     onConfirm: () -> Unit,
 ) {
+    val colors = LocalTrainlogColors.current
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text(title) },
         text = { Text(detail) },
         dismissButton = { TextButton(onClick = onCancel) { Text("Annuler") } },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
-        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false),
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
+            ) { Text(confirmLabel) }
+        },
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = dismissOnClickOutside,
+        ),
     )
 }

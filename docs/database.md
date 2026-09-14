@@ -16,8 +16,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=17
-DATABASE_SCHEMA_V17=PASS
+TRAINLOG_DATABASE_SCHEMA_VERSION=18
+DATABASE_SCHEMA_V18=IMPLEMENTED_VALIDATION_PENDING
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -36,7 +36,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-12
+18
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -89,6 +89,25 @@ direct zones, and rejects profile or primary-zone conflicts before mutation.
 
 A schema fixture must represent the real historical structure. Rewriting only
 `user_version` is not an acceptable migration test.
+
+Version 18 is additive and transactional. It creates `ai_session_drafts`,
+`ai_session_draft_entries`, and `ai_session_draft_imports` for the strict
+`TRAINLOG_AI_SESSION_DRAFT_V1` Drive inbox. A desktop row retains the source
+`aid_<uuid-v4>` ID, canonical payload SHA-256 digest, source exercise identity,
+archive status/error, and nullable successful-publication timestamp separately
+from target-only plan values. Entry rows do not store notes. The
+`(draft_id, digest)` identity makes an exact replay a skip and makes a changed
+payload under the same identity an explicit conflict. A failed child insert
+rolls back header, entries, and identity together. No completed session,
+performed set, MAX, feedback, active draft, or frozen exchange artifact is
+rewritten.
+
+Android schema v17 is likewise additive but has different local ownership:
+its `ai_session_drafts` pending collection and entries coexist with—not replace—
+the exactly-one `active_session_draft`. `started` and `deleted` state rows are
+durable tombstones. Starting or deleting a pending proposal atomically removes
+its entries while retaining that state row, so companion replay cannot recreate
+it.
 
 Schema v14 adds `exercise_feedback` and `session_followups` without rewriting
 v13 facts. Both use stable immutable IDs, exact timestamps, non-empty bounded
@@ -447,7 +466,7 @@ distance              km
 
 The Android SQLite database is independent.
 
-Current Android-local version: **10**. The explicit migration chain adds the
+Current Android-local version: **17**. The explicit migration chain adds the
 durable draft in v4, equipment references in v5, per-set load in v6, occurrence
 identity/multi-occurrence support in v7, and the widened custom-equipment
 definition graph in v8. Version 9 adds completed/draft explicit max rows, raw

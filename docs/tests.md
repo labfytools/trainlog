@@ -1,5 +1,11 @@
 # Tests and validation
 
+The `ai_history_export` test covers an empty database, a simple session,
+distinct multi-occurrences of one exercise, ordered sets, exact occurrence
+feedback, session-owned follow-up feedback, JSON escaping/UTF-8, MAX history,
+body measurements, deterministic content, and byte-for-byte database
+immutability.
+
 ## 1. Principle
 
 A Trainlog feature is not complete without relevant validation.
@@ -115,7 +121,7 @@ app_shell
 ```
 
 The current desktop suite, including APP_SHELL_V1 production-transition
-coverage, is 48/48. The following generator-specific checkpoint counts remain
+coverage and the AI-draft exchange regressions, is 56/56. The following generator-specific checkpoint counts remain
 historical evidence:
 
 ```text
@@ -388,6 +394,43 @@ reprocessing one request as a new one.
 The TUI also invokes the same engine manually and exposes structured run
 details.
 
+`post_sync_ai_drive` validates strict export-before-upload ordering, skips
+upload after export failure, and reports unavailable/failing rclone. The
+production sync wiring test exercises successful TUI and Android triggers
+through `trainlog_sync_run()`, uses an isolated fake rclone, and proves that
+failed sync runs do not invoke Drive publication. Post-sync failures are
+non-fatal to the already successful Trainlog sync by contract.
+
+`ai_session_draft` validates the strict desktop source parser and schema v18
+transaction: exact/unknown-key rejection, `aid_` identity, alias resolution,
+target-only SETS compatibility, 64-entry/99-set/999-rep bounds, exact replay
+skip, changed-payload conflict, deterministic 256-at-a-time publication across
+257 drafts, failed-publication retry, permanent import ledger, and full rollback on
+an injected child failure. Its fake-rclone seam also verifies that the exact
+fetched bytes are archive-copied only after import, same-name inbox replacement
+is preserved, stale temporary content cannot import, and archive/status failure
+converges through idempotent logical replay. Production orchestration
+tests retain `DRIVE_FAIL`, fetched-invalid `REJECTED`, and `ARCHIVE_FAIL` in a
+successful report/history. Android repository tests cover the 256-proposal
+companion limit, full validation before replay skip, strict optional-text
+trimming, replay idempotence, start/delete
+tombstones, target-only copy to the unchanged singleton active draft, and
+catalog/profile/equipment prerequisite ordering. Focused Android UI wiring tests
+also cover pending-only deterministic listing, started/deleted exclusion, the
+always-visible **Brouillons** count without losing manual/history actions,
+proposal title/target details, inert display with no automatic active draft,
+external-revision refresh after companion import, and the existing transactional
+start path. These are automated fake
+transport tests; no real Drive automated test exists. The final real Drive plus
+Android-triggered bidirectional smoke test remains manual and
+`TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING`.
+
+A September 2026 connected-device inspection established that the previously
+installed 2026-09-13 APK still owned a schema-v16 database without
+`ai_session_drafts`; it could not import the companion. Installing the current
+APK and synchronizing once is therefore a prerequisite for the remaining real
+acceptance test, not evidence that the acceptance test has passed.
+
 ## 9. Sanitizers
 
 For meaningful C checkpoints:
@@ -462,7 +505,7 @@ Coverage proves:
   and footer F6/F7 single-occurrence output at 120x35, 100x30, 80x24, and
   72x20.
 
-Historical validation checkpoint (the current desktop suite is 48/48):
+Historical validation checkpoint (the current desktop suite is 56/56):
 
 ```text
 39/39 Meson tests PASS
@@ -496,12 +539,17 @@ Historical validation checkpoint (the current desktop suite is 48/48):
 ## 13. Android session draft v1
 
 Android schema v4 introduced one durable active draft; the current additive
-chain reaches schema v13 without clearing completed history or the draft. The
+chain reaches schema v17 without clearing completed history or the draft. The
 explicit v10 -> v11 migration adds optional planning metadata while preserving
 existing rows with `load_mode=none`, zero rest and NULL targets. The
 v11 -> v12 migration adds the durable flattened exercise-alias table. Its exact
 physical-v11 fixture compares every pre-existing table cell before and after
 migration, requires the new alias table to be empty, and checks foreign keys.
+The dedicated physical v16 -> v17 fixture preserves representative completed
+history and the active draft, adds empty AI proposal tables, and checks SQLite
+integrity and foreign keys. AI companion parser coverage accepts title/notes
+at their 120/2,000 Unicode-code-point limits (including non-BMP characters)
+and rejects 121/2,001 code points atomically.
 Host coverage includes exercise shapes and raw partial text, fresh repository
 restore, remove/discard, atomic
 finalization and repeated-finalize rejection, rollback, catalog reconciliation,
@@ -728,23 +776,48 @@ import with equal and evolved tracking/recording/data-field profiles, strict
 snapshot-local payload rejection, unknown identity rejection, unchanged
 historical values, unchanged current profile history, and idempotent replay.
 `SyncBundlePublicationTest` exercises the production request coordinator and a
-synthetic user-authorized SAF directory whose exact BODY ZONES canonical is
-deliberately unavailable through MediaStore. The exact SAF object is rewritten
-beside 31 preserved historical copies, no MediaStore insert/pending publication
-or `(32)` copy occurs, all seven Android-origin companions precede the request
-signal, and replay reuses canonical objects without stable-feedback churn.
+synthetic direct exchange directory. The exact BODY ZONES file is rewritten
+beside 31 preserved historical copies, no `(32)` copy occurs, all seven
+Android-origin companions precede the request signal, and replay reuses
+canonical names without stable-feedback churn.
 It also requires one direct-child enumeration for the entire export-plus-request
 transaction, one additional enumeration for each later synchronization, index
 update after a create without rescan, one write per canonical artifact, and
-non-main dispatcher ownership for snapshot and stream operations.
+non-main dispatcher ownership for snapshot and stream operations. Focused
+publisher cases additionally cover an empty directory, exact rewrite,
+ten successive publications without numbered copies, historical numbered
+copies alone and beside a canonical object, exact final content, and an
+explicit canonical-name conflict without writing a wrongly named target.
+`DirectExchangeStorageTest` verifies the manifest permission and settings
+action, refusal without an authorized backend, directory creation, real
+temporary-file replacement and truncation, ten publications without suffixes,
+and preservation of legacy Download and recovery fixtures.
+`AiSessionDraftUiWiringTest` additionally requires the delete action to expose
+the titled confirmation before mutation, verifies Cancel and Back dismissal,
+then proves that only confirmation removes the pending proposal while retaining
+its replay-blocking deleted tombstone. Its existing Start coverage remains.
 Native `sync_body_zone_wiring` verifies the
 profile pre-pass before mobile import, strict post-pass gating, replay, legacy
 peer compatibility, and the explicit missing-companion diagnostic even when a
-stale local temporary profile artifact exists.
-Every Android outbound artifact and the request use the shared exact-name SAF
-resolver; app-scoped MediaStore visibility is not part of canonical selection.
+stale local temporary profile artifact exists. It also receives a valid alias
+V1 companion through the production MTP orchestration, imports it into an
+isolated database through the production Python argv path, and proves that the
+sync continues. Negative cases cover an unresolved helper, argparse failure,
+Python exception/stderr propagation, sync-history visibility, and rejection of
+a stale result-file `PASS`; the successful flow exercises the other shared
+Python helper callers as well.
+Every Android outbound artifact and the request use the shared direct-storage
+exact-name resolver; app-scoped MediaStore visibility is irrelevant.
 `profile_state_sync` includes the production persisted update-trigger dependency
 on `trainlog_profile_revision`, imports through the same Python connection path
 used by the PC sync worker, and requires first import plus identical replay to
 pass without revision-state or history-count churn. It also checks that the
 central factory installs both profile-revision schema functions.
+
+`TRAINLOG_ANDROID_DIRECT_STORAGE_V1` coverage fixes Android storage at
+`/storage/emulated/0/Documents/Trainlog`, preserves canonical rewrite/no-suffix
+behavior, ignores legacy Download trees, and gives the MTP fixture both
+Documents and Download roots while failing on any legacy access.
+Android unit tests and any instrumented tests run on an emulator; the primary
+personal phone is reserved for manual, non-destructive install-and-sync smoke
+validation and must not run `connectedDebugAndroidTest`.

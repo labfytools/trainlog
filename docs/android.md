@@ -25,23 +25,51 @@ historical occurrence values; later local edits and peer reconciliation advance
 lineage explicitly inside the same repository transaction as the current-profile
 change. The insert trigger owns only initial root creation.
 
+Android schema v17 adds the separate `trainlog-ai-session-drafts` V1 proposal
+collection. It is not a second active workout: the existing
+`active_session_draft(id=1)` remains the exactly-one durable capture draft.
+The companion is imported only after definitions, aliases, profile state,
+catalogue, sessions, and equipment associations have been reconciled. It
+accepts at most 256 strict, idempotent `aid_<uuid-v4>` proposals; each has at
+most 64 contiguous ordered SETS entries, target sets 1..99 and REPS targets
+1..999 (or the profile-required duration target). Entries must match the
+resolved exercise profile and known equipment.
+
+Pending proposals can be explicitly started or deleted. Start is one local
+transaction: it refuses when the singleton active draft exists, copies targets
+only, marks the proposal `started`, and removes its proposal entries. Delete
+is gated by a destructive confirmation naming the proposal; Cancel, Back and
+outside dismissal perform no mutation. Only explicit confirmation invokes the
+existing repository operation, which marks it `deleted` and removes entries.
+Both retained state rows are tombstones,
+so an unchanged companion replay is a skip and cannot resurrect a started or
+deleted proposal. Neither action manufactures performed sets, completed history,
+MAX, or feedback.
+
 The manual synchronization action publishes one prepared Android→PC bundle
 before it exposes `trainlog-sync-request-v1.json`. The bundle contains mobile
 V3, mobile equipment definitions, equipment associations V2, exercise aliases
 V1, BODY ZONES V1, Training Feedback V2, and Exercise Profile State V1. The
-request is not written if any required publication fails. The persisted,
-user-authorized `Download/Trainlog` SAF tree is the canonical authority for
-both inbound and outbound exchange: MediaStore ownership and app-scoped row
-visibility are not consulted. Exact display names are rewritten through their
-SAF document URI; absence creates the exact name once, and multiple exact names
-fail conservatively. Conflict copies such as `name (1).json` are historical
-objects, never aliases of `name.json`, and are neither selected nor deleted.
-One synchronization enumerates the direct SAF children once, builds a bounded
-exact-name multimap, and shares that transaction-local snapshot across all
-outbound artifacts and the request. Newly created documents update that map.
-The next synchronization enumerates again so PC/MTP changes are never hidden by
-a long-lived cache. Snapshot, create and stream operations run on the I/O
-dispatcher; Compose only launches the suspend coordinator and applies results.
+request is not written if any required publication fails. After the user
+enables `MANAGE_EXTERNAL_STORAGE` in Android settings, the fixed direct path
+`/storage/emulated/0/Documents/Trainlog` is the sole authority for inbound and
+outbound exchange. Trainlog creates it if absent and requires a readable,
+writable directory. No tree URI, persisted URI permission, directory picker,
+`DocumentFile`, `DocumentsContract`, or MediaStore row participates.
+
+Each JSON payload is written to a uniquely named temporary file in that same
+directory, flushed and fsync'd, then moved over the exact canonical filename
+with atomic replacement where the filesystem supports it. This prevents SAF
+provider suffixes. Existing `name (N).json` files are unrelated historical
+objects and are never selected, overwritten, moved, or deleted. The next sync
+enumerates again so PC/MTP changes are not hidden by a long-lived cache.
+
+When permission is absent, synchronization fails before publication and the UI
+offers **Autoriser l'accès au dossier Trainlog**. This opens the package-scoped
+all-files settings screen, falling back to the global all-files screen only if
+the OEM exposes no package activity. Android itself grants the permission; the
+application never does. Legacy SAF preferences are ignored and removed without
+touching `Download/Trainlog` or its recovery backup.
 
 V3 preserves ordinary plan metadata atomically with occurrence identity,
 equipment, actual sets and MAX. V1/V2 remain readable legacy artifacts and are
@@ -475,7 +503,7 @@ bo_<uuid-v4>
 Android maintains:
 
 ```text
-Download/Trainlog/trainlog-mobile-export-v3.json
+Documents/Trainlog/trainlog-mobile-export-v3.json
 ```
 
 The V3 snapshot is refreshed after relevant local changes, including exercise,
@@ -511,16 +539,17 @@ exact transferred completed rows are exported after finalization.
 
 ## 10. PC catalog access
 
-PC-created files are accessed through a persistent Storage Access Framework
-grant.
+PC-created files are accessed directly after the user enables Android's
+all-files access for Trainlog.
 
 The selected folder must be:
 
 ```text
-Download/Trainlog
+Documents/Trainlog
 ```
 
-The Sync screen always permits changing the stored folder selection.
+The Sync screen always exposes the system authorization settings. There is no
+stored folder selection.
 
 No application-data reset is required to fix a wrong folder choice.
 
@@ -538,10 +567,9 @@ Android writes:
 trainlog-sync-request-v1.json
 ```
 
-The request is resolved and rewritten through the same persisted SAF tree as
-the bundle. Android does not create a numbered request sibling merely because
-MediaStore cannot expose an MTP- or peer-created canonical object. The stable
-`request_id` remains the replay boundary.
+The request is replaced through the same direct `Documents/Trainlog` directory
+as the bundle. No document provider can manufacture a numbered request sibling.
+The stable `request_id` remains the replay boundary.
 
 The application-start catalog import does not publish an outbound bundle.
 Exactly one explicit `Synchroniser maintenant` action invokes one export and

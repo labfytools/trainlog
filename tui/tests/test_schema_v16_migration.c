@@ -84,7 +84,7 @@ static bool run_test(void)
         (void)fprintf(stderr, "open diagnostic: %s\n", diagnostic);
         CHECK(false);
     }
-    CHECK(trainlog_database_schema_version(db, &version) == TRAINLOG_STATUS_OK && version == 17);
+    CHECK(trainlog_database_schema_version(db, &version) == TRAINLOG_STATUS_OK && version == 18);
     trainlog_database_close(db); db = NULL;
     CHECK(sqlite3_open_v2(path, &raw, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM exercises e LEFT JOIN exercise_profile_state s ON s.exercise_row_id=e.id WHERE s.revision_id IS NULL OR s.revision_id<>'pr_legacy_v1' OR s.legacy_seed<>1", 0));
@@ -97,6 +97,10 @@ static bool run_test(void)
     CHECK(scalar(raw, "SELECT COUNT(*) FROM exercise_feedback_revisions WHERE revision_id='fr_old'", 1));
     CHECK(scalar(raw, "SELECT COUNT(*) FROM session_followups WHERE id=23", 1));
     CHECK(scalar(raw, "SELECT COUNT(*) FROM session_followup_revisions WHERE revision_id='ur_old'", 1));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_table_info('ai_session_drafts') WHERE name='archive_status'", 1));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_table_info('ai_session_draft_entries') WHERE name='target_sets'", 1));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_table_info('ai_session_draft_imports') WHERE name='payload_sha256'", 1));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM ai_session_drafts", 0));
     CHECK(sqlite3_close(raw) == SQLITE_OK); raw = NULL;
     CHECK(trainlog_database_open(path, &db) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_update_exercise_profiled(db, "ex_b35fff35-9c97-4c82-9053-7d1f2a23d3ac", "Planche face sol",

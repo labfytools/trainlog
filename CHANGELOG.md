@@ -1,5 +1,44 @@
 # Changelog
 
+- Added an Android confirmation dialog before deleting an imported AI session
+  draft. Cancel, Back and outside dismissal are non-mutating; only the
+  destructive confirmation invokes the existing deleted-tombstone operation.
+
+- Replaced Android SAF folder grants with user-enabled
+  `MANAGE_EXTERNAL_STORAGE` access to the single fixed path
+  `/storage/emulated/0/Documents/Trainlog`. Android opens the system all-files
+  permission screen, writes canonical artifacts through fsync plus
+  same-directory replacement, reads PC artifacts directly, and removes stale
+  tree-URI preferences. Desktop publication remains `Documents/Trainlog`; the
+  historical Download tree and recovery backup remain untouched.
+
+- Added `TRAINLOG_AI_SESSION_DRAFT_V1` as a separate strict proposal path:
+  desktop schema v18 imports one Drive source with `aid_` identity/digest
+  idempotence and post-commit archive bookkeeping, then publishes the bounded
+  `trainlog-ai-session-drafts` V1 Android companion in durable deterministic
+  batches, marking only successful MTP publications. Entry notes are rejected;
+  only draft-level notes belong to the source contract. Inbound helper outcomes
+  remain visible without turning Drive/archive/fetched-invalid results into a
+  failed device sync. Android schema v17 keeps
+  those proposals separate from its singleton active capture draft and retains
+  start/delete tombstones against replay. Automated contract coverage exists;
+  the required real Drive and Android-triggered bidirectional smoke validation
+  remains pending.
+
+- Fixed automatic Android→PC exercise-alias imports when the desktop binary is
+  installed outside the repository build tree. Python sync helpers now resolve
+  from Meson's authoritative tools directory, stale result files are truncated
+  before resolution, and bounded child stderr/exit diagnostics reach sync
+  history instead of collapsing to a generic import failure.
+- Added `TRAINLOG_AI_EXPORT_V1`, a deterministic local JSON history export for
+  manual external analysis. It opens desktop SQLite explicitly read-only,
+  preserves occurrence-owned immediate feedback and session-owned follow-ups,
+  and emits no inferred recommendations or progression.
+- Added the shared desktop post-sync publication: successful TUI and
+  Android-requested sync runs regenerate the AI export and invoke external
+  `rclone copyto` for Google Drive. Export/Drive failures remain visible but do
+  not invalidate an already successful Trainlog synchronization.
+
 - Fixed Android-triggered synchronization so the complete current Android→PC
   companion bundle is published before the request signal, including Training
   Feedback V2 and Exercise Profile State V1. Desktop orchestration now refuses
@@ -8,6 +47,16 @@
 - Made Android exchange-file reuse exact and directory-scoped: pending,
   trashed, unrelated, and conflict-numbered MediaStore rows no longer enter
   canonical selection, while genuine duplicate exact names fail closed.
+- Hardened the shared Android SAF publisher so every outbound companion and
+  sync request rewrites an existing exact canonical document with truncation,
+  never selects historical `(N)` copies, and reports
+  `SAF_CANONICAL_NAME_CONFLICT` before writing when a provider renames a newly
+  created document.
+- Added an exact-document fallback for Samsung Android 16
+  `ExternalStorageProvider`, whose child query can omit ownerless MTP files even
+  though creation detects their names. Canonical rows are reconstructed only
+  beneath the granted tree and verified by exact provider display name;
+  historical suffixes remain untouched.
 
 ## Unreleased — Desktop historical tracking snapshot
 

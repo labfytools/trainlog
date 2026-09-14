@@ -7,21 +7,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import com.labfytools.trainlog.data.CreateEquipmentResult
 import com.labfytools.trainlog.data.CatalogInboxResult
+import com.labfytools.trainlog.data.ActiveDraftMutationResult
 import com.labfytools.trainlog.data.EquipmentCatalogEntry
 import com.labfytools.trainlog.data.EquipmentLoadSemantics
 import com.labfytools.trainlog.data.KnowledgeConfidence
 import com.labfytools.trainlog.data.SyncCatalogInbox
+import com.labfytools.trainlog.data.StartAiSessionDraftResult
 import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 
 @Composable
 fun SessionsHub(
     draft: ActiveSessionDraft?,
+    pendingAiDraftCount: Int,
     onResume: () -> Unit,
     onManual: () -> Unit,
+    onDrafts: () -> Unit,
     onHistory: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
@@ -32,8 +38,91 @@ fun SessionsHub(
         }
         TrainlogFrame("Préparer") {
             TrainlogAction("Nouvelle séance manuelle", if (draft == null) "Créer explicitement un brouillon de séance." else "Ouvrir la séance en cours sans l'écraser.", onManual)
+            TrainlogAction(
+                "Brouillons",
+                "$pendingAiDraftCount séance(s) préparée(s) · consulter les propositions importées depuis le PC.",
+                onDrafts,
+            )
         }
         TrainlogAction("Séances effectuées", "Consulter les actuals, plans et MAX enregistrés.", onHistory)
+    }
+}
+
+@Composable
+fun AiSessionDraftsScreen(
+    repository: TrainlogRepository,
+    externalRevision: Int,
+    onPendingChanged: () -> Unit = {},
+    onStarted: () -> Unit,
+) {
+    val colors = LocalTrainlogColors.current
+    var revision by remember { mutableStateOf(0) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var pendingDeletion by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val drafts = remember(externalRevision, revision) { repository.listAiSessionDrafts() }
+    TrainlogScreen("Brouillons") {
+        message?.let { TrainlogInfo(it) }
+        if (drafts.isEmpty()) TrainlogInfo("Aucun brouillon importé.")
+        drafts.forEach { draft ->
+            TrainlogFrame(draft.title ?: "Proposition de séance", active = true) {
+                TrainlogInfo(listOfNotNull(
+                    draft.plannedFor?.let { "Prévue le $it" },
+                    "${draft.entries.size} exercice(s)",
+                ).joinToString(" · "))
+                draft.notes?.let { TrainlogInfo(it) }
+                draft.entries.forEach { entry ->
+                    val plan = checkNotNull(entry.plan)
+                    val metric = plan.reps?.let { "$it répétitions" }
+                        ?: "${plan.durationSeconds} secondes"
+                    val weight = plan.weightKg?.let { " · $it kg" }.orEmpty()
+                    TrainlogInfo("${entry.exercise.name} · ${plan.sets} × $metric$weight · repos ${plan.restSeconds} s")
+                }
+                TrainlogPrimaryAction("Démarrer", "Copier cette proposition dans la séance en cours.") {
+                    when (val result = repository.startAiSessionDraft(draft.draftId)) {
+                        StartAiSessionDraftResult.Started -> {
+                            onPendingChanged()
+                            onStarted()
+                        }
+                        StartAiSessionDraftResult.ExistingActiveDraft ->
+                            message = "Une séance est déjà en cours. Le brouillon importé a été conservé."
+                        StartAiSessionDraftResult.NotPending -> {
+                            message = "Ce brouillon n'est plus disponible."
+                            revision++
+                            onPendingChanged()
+                        }
+                        is StartAiSessionDraftResult.Error -> message = result.message
+                    }
+                }
+                TrainlogAction(
+                    "Supprimer",
+                    "Conserver un tombstone pour empêcher sa réapparition lors d'un replay.",
+                    onClick = {
+                        pendingDeletion = draft.draftId to (draft.title ?: "Proposition de séance")
+                    },
+                    accent = colors.error,
+                )
+            }
+        }
+    }
+    pendingDeletion?.let { (draftId, title) ->
+        DestructiveConfirmationDialog(
+            title = "Supprimer ce brouillon ?",
+            detail = "Le brouillon « $title » sera supprimé.\nCette action est irréversible.",
+            confirmLabel = "Supprimer",
+            onCancel = { pendingDeletion = null },
+            dismissOnClickOutside = true,
+        ) {
+            /* CONTRACT: dialog confirmation is the sole UI path to the existing
+             * tombstone mutation. Dismissal never reaches the repository. */
+            pendingDeletion = null
+            when (val result = repository.deleteAiSessionDraft(draftId)) {
+                        ActiveDraftMutationResult.Saved -> {
+                            revision++
+                            onPendingChanged()
+                        }
+                        is ActiveDraftMutationResult.Error -> message = result.message
+            }
+        }
     }
 }
 
@@ -155,13 +244,13 @@ private fun equipmentSemanticsLabel(value: EquipmentLoadSemantics) = when (value
 @Composable
 fun SettingsScreen(inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
     val colors = LocalTrainlogColors.current
+    val context = LocalContext.current
     var authorized by remember { mutableStateOf(inbox.hasFolderAccess()) }
     var message by remember { mutableStateOf<String?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            authorized = inbox.saveTreeUri(uri)
-            message = if (authorized) "Dossier d'échange autorisé." else "Autorisation du dossier impossible."
-            if (authorized) {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        authorized = inbox.hasFolderAccess()
+        message = if (authorized) "Accès fichiers autorisé." else "Accès fichiers toujours requis."
+        if (authorized) {
                 when (val result = inbox.importPcCatalog()) {
                     is CatalogInboxResult.Imported -> {
                         message = "Dossier autorisé · ${result.imported} exercice(s) importé(s), ${result.reconciled} réconcilié(s)."
@@ -171,13 +260,12 @@ fun SettingsScreen(inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
                     CatalogInboxResult.FolderNotAuthorized -> message = "Le dossier n'est plus autorisé."
                     is CatalogInboxResult.Error -> message = result.message
                 }
-            }
         }
     }
     TrainlogScreen("Paramètres") {
         TrainlogFrame("DOSSIER D'ÉCHANGE") {
-            TrainlogInfo(if (authorized) "Téléchargements/Trainlog autorisé." else "Aucun dossier Trainlog autorisé.", if (authorized) colors.success else colors.warning)
-            TrainlogAction(if (authorized) "Changer de dossier" else "Autoriser le dossier", "Choisir le dossier d'échange avec le sélecteur Android.", { launcher.launch(null) })
+            TrainlogInfo(if (authorized) "Dossier d'échange : Documents/Trainlog\nAccès fichiers : autorisé" else "Accès fichiers requis", if (authorized) colors.success else colors.warning)
+            TrainlogAction(if (authorized) "Ouvrir les réglages d'accès" else "Autoriser", "Autoriser l'accès au dossier Trainlog dans Android.", { launcher.launch(directStoragePermissionIntent(context)) })
             if (authorized) TrainlogAction("Relire le catalogue PC", "Appliquer explicitement le catalogue présent dans le dossier autorisé.", {
                 when (val result = inbox.importPcCatalog()) {
                     is CatalogInboxResult.Imported -> { message = "Catalogue relu · ${result.imported} nouveau(x), ${result.reconciled} réconcilié(s)."; onCatalogChanged() }

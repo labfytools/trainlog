@@ -15,6 +15,7 @@ desktop.
 
 ```text
 TRAINLOG_FORMAT_V1=FROZEN
+TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING
 
 DESKTOP_SCHEMA_V11=PASS
 ANDROID_LOCAL_WORKFLOWS=PASS
@@ -67,7 +68,7 @@ Android occurrence pages and latest-MAX context share the settled exact-instant
 ordering and source-text cursor contract. The independent temporal review
 returned PASS with no findings. The initial full-tranche audit's four findings
 were resolved by one bounded repair chain and independently verified. Fresh
-validation passed: strict build, 42 Meson tests, Python knowledge/temporal
+validation passed: strict build, 56 Meson tests, Python knowledge/temporal
 tests, validators, headers, sanitizers, 12-form temporal probes, Android 56
 tests with one known fixture skip, and Java 17 debug assembly.
 The [temporal correction record](docs/reviews/training_knowledge_v1_temporal_contract.md)
@@ -82,7 +83,7 @@ defines the accepted grammar, regression evidence and remaining review boundary.
              automatic mobile snapshot
                        |
                        v
-        Download/Trainlog on Android storage
+        Documents/Trainlog on Android storage
                        |
                        | direct MTP / libmtp
                        v
@@ -192,6 +193,58 @@ python tools/validate_import_contract.py
 git diff --check
 ```
 
+## Local history export for external analysis
+
+Create the read-only `TRAINLOG_AI_EXPORT_V1` artifact in the current directory:
+
+```bash
+python tools/export_ai_history.py --database ~/.local/share/trainlog/trainlog.db
+```
+
+The default output is `trainlog_ai_export_v1.json`. It is ignored by Git
+because it contains user data. After every completely successful desktop sync,
+the shared sync engine regenerates this artifact and asks the external desktop
+`rclone` command to copy it to
+`TrainLog Gdrive:Trainlog/AI/trainlog_ai_export_v1.json`. Export or Drive
+failure is reported without changing the successful Trainlog sync result.
+Android never runs `rclone`, and its configuration/OAuth credentials remain in
+the user's normal `~/.config/rclone/` location outside this repository and the
+APK. See [the exchange documentation](docs/exchange_format.md) for the
+versioned raw-data contract and feedback ownership rules.
+
+## AI session-draft exchange
+
+`TRAINLOG_AI_SESSION_DRAFT_V1` is a separate, strict proposal exchange; it
+does not alter `TRAINLOG_FORMAT_V1`, the mobile export, or the existing
+read-only `TRAINLOG_AI_EXPORT_V1` history export. An external producer places
+one source object at
+`TrainLog Gdrive:Trainlog/AI/inbox/trainlog_ai_session_draft_v1.json`. The desktop
+fetches it during synchronization, validates and imports it transactionally,
+then copies those exact fetched bytes after that commit to
+`TrainLog Gdrive:Trainlog/AI/archive/` under its stable `aid_<uuid-v4>`
+identity. The mutable inbox object is never moved or deleted: its logical
+replay is idempotent, and an archive failure is visible and retryable without
+undoing the committed import.
+
+The desktop then publishes the distinct PC-to-Android companion
+`trainlog-ai-session-drafts-v1.json` in `Documents/Trainlog`. Android keeps its
+pending proposals as a collection, separate from its exactly-one active
+capture draft. Starting one proposal copies targets only into that singleton
+draft and atomically tombstones the proposal; deleting a proposal also leaves
+a tombstone, so replay cannot recreate it. No proposal creates performed work,
+history, MAX, or feedback.
+
+The source and companion are bounded and strict: UUIDv4 `aid_` identities,
+nonempty trimmed text when supplied (title 120 and draft notes 2,000 characters;
+entries have no notes), at most 64 ordered entries, target sets 1..99, target
+reps 1..999, and at most 256 unpublished drafts per deterministic publication.
+Successful MTP publication advances the durable batch cursor; failure retries
+the same batch. Only `SETS` plans are
+allowed; the selected exercise's REPS-or-DURATION profile determines the one
+valid target metric. The final real Google Drive and Android-triggered
+bidirectional smoke test remains manual, so this checkpoint is documented as
+`VALIDATION_PENDING`, not PASS. See [AI draft exchange](docs/exchange_format.md).
+
 ## Android build
 
 Android keeps one durable in-progress workout in its local SQLite database.
@@ -205,7 +258,7 @@ export or desktop synchronization as completed sessions.
 Schema migrations are additive and preserve existing capture data. See
 [Android behavior](docs/android.md) and [validation](docs/tests.md).
 
-The current Android schema is v14. Its additive v4 -> v14 chain adds the shared
+The current Android schema is v17. Its additive v4 -> v17 chain adds the shared
 equipment catalogue, per-occurrence equipment links, durable occurrence
 identities, custom-equipment definition support, explicit MAX results and
 stable-source Test max resumption, then direct primary/secondary body-zone

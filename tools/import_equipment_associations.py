@@ -173,7 +173,7 @@ def main():
         fail("clés extension équipement invalides")
     connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
             fail("schema desktop v8 à v16 requis")
         known = load_catalog(args.catalog)
         known.update(row[0] for row in connection.execute(

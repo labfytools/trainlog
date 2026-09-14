@@ -13,6 +13,9 @@ GATE_1_TRAINLOG_FORMAT_V1=PASS/FROZEN
 GATE_2_PERSISTENCE_AND_USABLE_TUI=PASS
 
 TRAINLOG_FORMAT_V1=FROZEN
+TRAINLOG_AI_EXPORT_V1=PASS
+TRAINLOG_AI_GDRIVE_SYNC_V1=PASS
+TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING
 
 DESKTOP_SCHEMA_V11=PASS
 ANDROID_LOCAL_DATABASE_V10=PASS
@@ -81,7 +84,7 @@ Implemented:
   F7 actions, and restored focus after overlays/routes);
 - UTF-8 cell-aware scrolling training-knowledge screen, tested at the 72x20
   minimum terminal;
-- SQLite schema v17, with stable ordered `session_exercises.entry_id`, an
+- SQLite schema v18, with stable ordered `session_exercises.entry_id`, an
   immutable occurrence-owned `tracking_mode` snapshot,
   bounded durable current-profile revision ancestry,
   occurrence-level equipment identity, and desktop-local custom-equipment
@@ -110,6 +113,35 @@ Implemented:
 - manual Android -> PC, PC -> Android, and bidirectional synchronization;
 - structured synchronization history and detail.
 
+`TRAINLOG_AI_SESSION_DRAFT_V1` is implemented but awaits one real external
+Drive/Android-triggered bidirectional smoke test. The Drive source is the
+single strict `TRAINLOG_AI_SESSION_DRAFT` V1 object at
+`TrainLog Gdrive:Trainlog/AI/inbox/trainlog_ai_session_draft_v1.json`; after a
+transactional, idempotent desktop import its exact fetched bytes are copied to
+the archive by stable `aid_` ID. The inbox object remains available for logical
+replay and archive/status convergence.
+Desktop exports the separate `trainlog-ai-session-drafts-v1.json` companion to
+Android in deterministic batches of at most 256 unpublished proposals. It
+marks exactly a batch successfully published over MTP and retries an unchanged
+batch after publication failure; source replay identities remain permanent.
+The Android pending proposal collection is not the durable singleton
+active capture draft: explicit start copies targets only and tombstones the
+proposal in one transaction; explicit deletion tombstones it too. The 64-entry,
+99-set, 999-rep and 256-proposal limits, profile compatibility and replay rules
+are enforced. The always-visible **Brouillons** action reports the pending
+proposal count, and a successful catalogue/companion import invalidates the
+pending-screen query so newly imported proposals appear without restarting the
+application. Inbound `NONE`, `IMPORTED`, `ALREADY_IMPORTED`, `REJECTED`,
+`DRIVE_FAIL`, and `ARCHIVE_FAIL` outcomes remain visible in successful sync
+history. A transport/archive failure never rolls back a committed import.
+
+The September 2026 connected-device diagnosis found that the installed APK was
+the older 2026-09-13 build: its copied local database was still schema v16 and
+had no `ai_session_drafts` table. That APK therefore could not have imported the
+Android companion. After a current APK is installed, one new synchronization is
+required to import the still-pending companion. This diagnosis is not the real
+Drive/Android acceptance smoke test, which remains pending.
+
 Primary navigation is now shared with Android:
 
 ```text
@@ -130,7 +162,7 @@ status can advance.
 Implemented:
 
 - native Kotlin/Compose application;
-- local SQLite database v11, with non-destructive v3 -> v11 migration;
+- local SQLite database v17, with non-destructive migrations through v17;
 - one durable active-session draft, Home resume and raw-form restoration;
 - `BODY_FOCUS_HOME_V1`: a compact accessible Home front/back BODY ZONES map,
   textual top-three exposure ranking and Catalogue/Statistics drill-through;
@@ -151,7 +183,8 @@ Implemented:
 - local session history/detail;
 - body measurements;
 - automatic mobile snapshot maintenance;
-- PC catalog application through a persistent SAF folder grant;
+- PC catalog application through user-enabled direct all-files access to the
+  fixed `Documents/Trainlog` directory;
 - Android-triggered synchronization request;
 - synchronization receipt handling.
 
@@ -189,7 +222,7 @@ The implemented read-only training-knowledge layer loads shared versioned JSON
 catalogs as the sole authored scientific source, generates the immutable C
 catalog representation, and loads the same assets on Android. It has no
 database migration, no auto-seeding, and no synchronization artifact. The
-desktop database is schema v17 and Android is schema v16. Schema v13 is additive: exercise
+desktop database is schema v18 and Android is schema v17. Schema v13 is additive: exercise
 rows own machine-facing load semantics, optional legacy equipment provenance,
 an optional scientific profile, and an explicit resolved/unresolved science
 state. Legacy equipment tables and occurrence columns remain intact.
@@ -217,7 +250,7 @@ and a C role-only query mismatch (HIGH). One bounded repair chain resolved all
 four findings; independent repair verification returned
 `FINAL_REVIEW_REPAIR_VERIFICATION=PASS` and
 `TRAINING_KNOWLEDGE_V1_ENGINEERING_REVIEW=PASS`. Fresh final validation passed:
-strict build, 42 Meson tests, eight knowledge and four temporal Python tests,
+strict build, 56 Meson tests, eight knowledge and four temporal Python tests,
 knowledge/JSON/import validators, three C17 headers, affected C knowledge and
 context tests under ASan/UBSan plus Python timestamp validation, normal and
 sanitized 12-form temporal probes, and Android 56 tests with zero failures or
@@ -237,7 +270,7 @@ visual validation or manual MTP validation is claimed for this tranche.
 Canonical exchange directory:
 
 ```text
-Download/Trainlog
+Documents/Trainlog
 ```
 
 Artifacts:
@@ -267,6 +300,15 @@ The desktop TUI and `trainlog-syncd` share `trainlog_sync_run()`. Its explicit
 `a`, `p`, and `b` modes perform Android -> PC only, PC -> Android only, and
 inbound-then-outbound respectively. Each direction reconciles equipment
 definitions V1 before V2 artifacts that reference them.
+
+After the shared engine has reached a definitive successful result (including
+publication of an Android-request receipt when applicable), the desktop runs
+`TRAINLOG_AI_EXPORT_V1` and then the external `rclone copyto` publication to
+`TrainLog Gdrive:Trainlog/AI/trainlog_ai_export_v1.json`. The TUI summary and
+`trainlog-syncd` log expose `SYNC`, `AI_EXPORT`, and `GDRIVE_UPLOAD` separately.
+An export or Drive failure never retroactively changes the successful Trainlog
+sync result. Android does not execute `rclone`; all rclone/OAuth configuration
+remains external under the user's normal `~/.config/rclone/` directory.
 
 Each structured local sync-history run persists its selected `a`, `p`, or `b`
 direction. `direction inconnue` is reserved for legacy history rows whose
@@ -428,12 +470,19 @@ unchanged. Live sync runs `sy_0b00dc46-d899-4865-8718-c95085a380b2` and
 second run reported zero additions/reconciliations, both stores retained the
 same 32-relation stable-ID hash, and Android application tables plus companion
 exercise states compared equal to the first pass. Android now resolves the
-exact request and every outbound artifact through the persisted authorized SAF
-tree, independently of MediaStore ownership visibility. Historical numbered
-copies remain untouched. One transaction-local exact-name snapshot is shared
+exact request and every outbound artifact through direct filesystem access to
+`Documents/Trainlog`. Historical numbered copies remain untouched. One
+transaction-local exact-name snapshot is shared
 by the complete export and request on the I/O dispatcher; each later sync takes
 a fresh snapshot. The redundant application-start export was removed, and
 request-ID replay protection remains authoritative.
+
+`TRAINLOG_ANDROID_DIRECT_STORAGE_V1=PASS`. Android no longer uses SAF for
+exchange artifacts. User-enabled all-files access gates the fixed
+`/storage/emulated/0/Documents/Trainlog` directory; direct temporary-file
+replacement preserves canonical names. A physical Samsung Android 16 one-sync
+and its identical second run completed successfully without suffixes, and the
+recovered `Dos + biceps` proposal remained visible after replay.
 
 ## Current implementation cursor
 

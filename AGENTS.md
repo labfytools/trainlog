@@ -192,7 +192,7 @@ Do not introduce a mandatory GVFS/FUSE mount.
 Canonical exchange folder:
 
 ```text
-Download/Trainlog
+Documents/Trainlog
 ```
 
 The shared desktop synchronization engine is:

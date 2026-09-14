@@ -33,7 +33,7 @@ class RealAndroidV14FeedbackRevisionMigrationTest {
         }
         TrainlogRepository(context,name).let { repository -> repository.listExercises(); repository.close() }
         SQLiteDatabase.openDatabase(target.path,null,SQLiteDatabase.OPEN_READONLY).use{db->
-            assertEquals(16,scalar(db,"PRAGMA user_version"));assertEquals("ok",string(db,"PRAGMA integrity_check"));db.rawQuery("PRAGMA foreign_key_check",null).use{assertFalse(it.moveToFirst())}
+            assertEquals(17,scalar(db,"PRAGMA user_version"));assertEquals("ok",string(db,"PRAGMA integrity_check"));db.rawQuery("PRAGMA foreign_key_check",null).use{assertFalse(it.moveToFirst())}
             assertEquals(scalar(db,"SELECT COUNT(*) FROM exercises"),scalar(db,"SELECT COUNT(*) FROM exercise_profile_state WHERE revision_id='pr_legacy_v1' AND legacy_seed=1"))
             assertEquals(scalar(db,"SELECT COUNT(*) FROM exercises"),scalar(db,"SELECT COUNT(*) FROM exercise_profile_revisions WHERE revision_id='pr_legacy_v1' AND legacy_seed=1"))
             assertEquals(before.first,values(db,"SELECT entry_id FROM draft_session_exercises ORDER BY entry_id"));assertEquals(before.second,values(db,"SELECT feedback_id||'|'||observed_at||'|'||raw_text FROM draft_exercise_feedback ORDER BY feedback_id"))

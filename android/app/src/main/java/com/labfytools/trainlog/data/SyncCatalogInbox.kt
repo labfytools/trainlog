@@ -1,9 +1,7 @@
 package com.labfytools.trainlog.data
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
+import java.io.File
 import org.json.JSONObject
 
 sealed interface CatalogInboxResult {
@@ -50,96 +48,34 @@ class SyncCatalogInbox(
     private val appContext =
         context.applicationContext
 
-    private val preferences =
-        appContext.getSharedPreferences(
-            SYNC_PREFERENCES_NAME,
-            Context.MODE_PRIVATE,
-        )
-
     fun hasFolderAccess(): Boolean =
-        savedTreeUri() != null
-
-    fun saveTreeUri(
-        uri: Uri,
-    ): Boolean {
-        return try {
-            appContext
-                .contentResolver
-                .takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
-
-            preferences
-                .edit()
-                .putString(
-                    SYNC_TREE_URI_KEY,
-                    uri.toString(),
-                )
-                .apply()
-
-            true
-        } catch (
-            error: SecurityException
-        ) {
-            false
-        }
-    }
+        directExchangeDirectory() != null
 
     fun importPcCatalog():
         CatalogInboxResult {
-        val treeUri =
-            savedTreeUri()
-                ?: return CatalogInboxResult
-                    .FolderNotAuthorized
+        val directory = directExchangeDirectory()
+            ?: return CatalogInboxResult.FolderNotAuthorized
 
-        val directory =
-            DocumentFile
-                .fromTreeUri(
-                    appContext,
-                    treeUri,
-                )
-                ?: return CatalogInboxResult.Error(
-                    "Dossier Trainlog inaccessible."
-                )
+        return importPcCatalogFromDirectory(directory)
+    }
+
+    /** Test seam for the production companion ordering on a fresh database. */
+    internal fun importPcCatalogFromDirectoryForTest(directory: File): CatalogInboxResult =
+        importPcCatalogFromDirectory(directory)
+
+    private fun importPcCatalogFromDirectory(directory: File): CatalogInboxResult {
 
         val file =
-            directory.findFile(
-                "trainlog-pc-catalog-v1.json"
-            )
+            directory.findDirectFile("trainlog-pc-catalog-v1.json")
                 ?: return CatalogInboxResult.FileNotFound
 
         return try {
-            val stream =
-                appContext
-                    .contentResolver
-                    .openInputStream(
-                        file.uri
-                    )
-                    ?: return CatalogInboxResult.Error(
-                        "Lecture du catalogue impossible."
-                    )
-
-            val json =
-                stream.bufferedReader(
-                    Charsets.UTF_8
-                )
-                    .use {
-                        it.readText()
-                    }
+            val json = file.readText(Charsets.UTF_8)
 
             val definitionsError = importPcEquipmentDefinitions(directory)
             if (definitionsError != null) return CatalogInboxResult.Error(definitionsError)
-            val aliasesError = importExerciseAliases(directory)
-            if (aliasesError != null) return CatalogInboxResult.Error(aliasesError)
-            val profileFile = directory.findFile("trainlog-exercise-profile-state-v1.json")
-            val profileJson = profileFile?.let { candidate ->
-                appContext.contentResolver.openInputStream(candidate.uri)
-                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-            }
-            if (profileFile != null && profileJson == null)
-                return CatalogInboxResult.Error("Lecture profile-state impossible.")
+            val profileFile = directory.findDirectFile("trainlog-exercise-profile-state-v1.json")
+            val profileJson = profileFile?.readText(Charsets.UTF_8)
             if (profileJson != null) when(val profile=repository.applyExerciseProfileStateJson(profileJson,allowPending=true)) {
                 is ExerciseProfileStateImportResult.Applied -> Unit
                 is ExerciseProfileStateImportResult.Invalid -> return CatalogInboxResult.Error(profile.message)
@@ -155,6 +91,12 @@ class SyncCatalogInbox(
                         )
             ) {
                 is PcCatalogImportResult.Applied -> {
+                    /* WHY: a fresh Android database cannot validate an alias
+                     * target until the catalog has created that canonical
+                     * exercise. CONTRACT: aliases still precede session import
+                     * so retired creator IDs resolve during the same sync. */
+                    val aliasesError = importExerciseAliases(directory)
+                    if (aliasesError != null) return CatalogInboxResult.Error(aliasesError)
                     if (profileJson != null) when(val profile=repository.applyExerciseProfileStateJson(profileJson)) {
                         is ExerciseProfileStateImportResult.Applied -> Unit
                         is ExerciseProfileStateImportResult.Invalid -> return CatalogInboxResult.Error(profile.message)
@@ -163,23 +105,16 @@ class SyncCatalogInbox(
                     }
                     /* Catalogue identities now exist and the strict second pass
                      * has either installed or verified their causal state. */
-                    when (val sessions = importPcSessions(directory)) {
-                        null -> when (val equipment = importPcEquipmentAssociations(directory)) {
-                            null -> when (val bodyZones = importPcBodyZones(directory)) {
-                                null -> when (val feedback = importTrainingFeedback(directory)) {
-                                    null -> CatalogInboxResult.Imported(
-                                        imported = result.imported,
-                                        reconciled = result.reconciled,
-                                        skipped = result.skipped,
-                                    )
-                                    else -> CatalogInboxResult.Error(feedback)
-                                }
-                                else -> CatalogInboxResult.Error(bodyZones)
-                            }
-                            else -> CatalogInboxResult.Error(equipment)
-                        }
-                        else -> CatalogInboxResult.Error(sessions)
-                    }
+                    importPcSessions(directory)?.let { return CatalogInboxResult.Error(it) }
+                    importPcEquipmentAssociations(directory)?.let { return CatalogInboxResult.Error(it) }
+                    importAiSessionDrafts(directory)?.let { return CatalogInboxResult.Error(it) }
+                    importPcBodyZones(directory)?.let { return CatalogInboxResult.Error(it) }
+                    importTrainingFeedback(directory)?.let { return CatalogInboxResult.Error(it) }
+                    CatalogInboxResult.Imported(
+                        imported = result.imported,
+                        reconciled = result.reconciled,
+                        skipped = result.skipped,
+                    )
                 }
 
                 is PcCatalogImportResult.Invalid ->
@@ -202,15 +137,13 @@ class SyncCatalogInbox(
         }
     }
 
-    private fun importPcSessions(directory: DocumentFile): String? {
+    private fun importPcSessions(directory: File): String? {
         /* CONTRACT: a present V3 artifact is authoritative. Invalid V3 must
          * surface its error and never fall back to a stale V2 snapshot. */
-        val v3 = directory.findFile("trainlog-pc-mobile-export-v3.json")
-        val file = v3 ?: directory.findFile("trainlog-pc-mobile-export-v2.json") ?: return null
+        val v3 = directory.findDirectFile("trainlog-pc-mobile-export-v3.json")
+        val file = v3 ?: directory.findDirectFile("trainlog-pc-mobile-export-v2.json") ?: return null
         return try {
-            val json = appContext.contentResolver.openInputStream(file.uri)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: return "Lecture snapshot séances impossible."
+            val json = file.readText(Charsets.UTF_8)
             val result = if (v3 != null) repository.applyPcMobileExportV3Json(json)
                 else repository.applyPcMobileExportV2Json(json)
             when (result) {
@@ -221,14 +154,13 @@ class SyncCatalogInbox(
         } catch (error: Exception) { error.message ?: "Import séances impossible." }
     }
 
-    private fun importTrainingFeedback(directory: DocumentFile): String? {
+    private fun importTrainingFeedback(directory: File): String? {
         /* V2 is authoritative for revision history. V1 remains a fallback for
          * an older peer and can only add deterministic initial revisions. */
-        val file = directory.findFile("trainlog-training-feedback-v2.json")
-            ?: directory.findFile("trainlog-training-feedback-v1.json") ?: return null
+        val file = directory.findDirectFile("trainlog-training-feedback-v2.json")
+            ?: directory.findDirectFile("trainlog-training-feedback-v1.json") ?: return null
         return try {
-            val json = appContext.contentResolver.openInputStream(file.uri)?.bufferedReader(Charsets.UTF_8)
-                ?.use { it.readText() } ?: return "Lecture des ressentis impossible."
+            val json = file.readText(Charsets.UTF_8)
             when (val result = repository.applyTrainingFeedbackJson(json)) {
                 is TrainingFeedbackImportResult.Applied -> null
                 is TrainingFeedbackImportResult.Invalid -> result.message
@@ -239,15 +171,31 @@ class SyncCatalogInbox(
     }
 
     /** Test seam for the real filename-priority boundary; production uses the same method. */
-    internal fun importPcSessionsFromDirectoryForTest(directory: DocumentFile): String? =
+    internal fun importPcSessionsFromDirectoryForTest(directory: File): String? =
         importPcSessions(directory)
 
-    private fun importPcBodyZones(directory: DocumentFile): String? {
-        val file = directory.findFile("trainlog-exercise-body-zones-v1.json") ?: return null
+    private fun importAiSessionDrafts(directory: File): String? {
+        val file = directory.findDirectFile("trainlog-ai-session-drafts-v1.json") ?: return null
         return try {
-            val json = appContext.contentResolver.openInputStream(file.uri)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: return "Lecture zones corporelles impossible."
+            val json = file.readText(Charsets.UTF_8)
+            when (val result = repository.applyAiSessionDraftsJson(json)) {
+                is AiSessionDraftImportResult.Applied -> null
+                is AiSessionDraftImportResult.Invalid -> result.message
+                AiSessionDraftImportResult.DatabaseError -> "Erreur base locale brouillons IA."
+            }
+        } catch (error: Exception) {
+            error.message ?: "Import des brouillons IA impossible."
+        }
+    }
+
+    /** Test seam for the production one-sync prerequisite ordering. */
+    internal fun importAiSessionDraftsFromDirectoryForTest(directory: File): String? =
+        importAiSessionDrafts(directory)
+
+    private fun importPcBodyZones(directory: File): String? {
+        val file = directory.findDirectFile("trainlog-exercise-body-zones-v1.json") ?: return null
+        return try {
+            val json = file.readText(Charsets.UTF_8)
             when (val result = repository.applyExerciseBodyZonesJson(json)) {
                 is ExerciseBodyZoneImportResult.Applied -> null
                 is ExerciseBodyZoneImportResult.Invalid -> result.message
@@ -261,12 +209,10 @@ class SyncCatalogInbox(
         }
     }
 
-    private fun importExerciseAliases(directory: DocumentFile): String? {
-        val file = directory.findFile("trainlog-exercise-aliases-v1.json") ?: return null
+    private fun importExerciseAliases(directory: File): String? {
+        val file = directory.findDirectFile("trainlog-exercise-aliases-v1.json") ?: return null
         return try {
-            val json = appContext.contentResolver.openInputStream(file.uri)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: return "Lecture des alias exercice impossible."
+            val json = file.readText(Charsets.UTF_8)
             when (val result = repository.applyExerciseAliasesJson(json)) {
                 is ExerciseAliasImportResult.Applied -> null
                 is ExerciseAliasImportResult.Invalid -> result.message
@@ -280,12 +226,10 @@ class SyncCatalogInbox(
         }
     }
 
-    private fun importPcEquipmentDefinitions(directory: DocumentFile): String? {
-        val file = directory.findFile("trainlog-pc-equipment-definitions-v1.json") ?: return null
+    private fun importPcEquipmentDefinitions(directory: File): String? {
+        val file = directory.findDirectFile("trainlog-pc-equipment-definitions-v1.json") ?: return null
         return try {
-            val json = appContext.contentResolver.openInputStream(file.uri)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: return "Lecture définitions équipement impossible."
+            val json = file.readText(Charsets.UTF_8)
             when (val result = repository.applyPcEquipmentDefinitionsJson(json)) {
                 is EquipmentDefinitionImportResult.Applied -> null
                 is EquipmentDefinitionImportResult.Invalid -> result.message
@@ -294,14 +238,12 @@ class SyncCatalogInbox(
         } catch (error: Exception) { error.message ?: "Import définitions équipement impossible." }
     }
 
-    private fun importPcEquipmentAssociations(directory: DocumentFile): String? {
-        val file = directory.findFile("trainlog-equipment-associations-v2.json")
-            ?: directory.findFile("trainlog-equipment-associations-v1.json")
+    private fun importPcEquipmentAssociations(directory: File): String? {
+        val file = directory.findDirectFile("trainlog-equipment-associations-v2.json")
+            ?: directory.findDirectFile("trainlog-equipment-associations-v1.json")
             ?: return null /* Historic PC sync: absence means no information. */
         return try {
-            val json = appContext.contentResolver.openInputStream(file.uri)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: return "Lecture extension équipement impossible."
+            val json = file.readText(Charsets.UTF_8)
             when (val result = repository.applyPcEquipmentAssociationsJson(json)) {
                 is EquipmentAssociationImportResult.Applied -> null
                 is EquipmentAssociationImportResult.Invalid -> result.message
@@ -315,45 +257,15 @@ class SyncCatalogInbox(
 fun readSyncReceipt(
         requestId: String,
     ): SyncReceiptResult {
-        val treeUri =
-            savedTreeUri()
-                ?: return SyncReceiptResult
-                    .FolderNotAuthorized
-
-        val directory =
-            DocumentFile
-                .fromTreeUri(
-                    appContext,
-                    treeUri,
-                )
-                ?: return SyncReceiptResult.Error(
-                    "Dossier Trainlog inaccessible."
-                )
+        val directory = directExchangeDirectory()
+            ?: return SyncReceiptResult.FolderNotAuthorized
 
         val file =
-            directory.findFile(
-                "trainlog-sync-receipt-v1.json"
-            )
+            directory.findDirectFile("trainlog-sync-receipt-v1.json")
                 ?: return SyncReceiptResult.Pending
 
         return try {
-            val stream =
-                appContext
-                    .contentResolver
-                    .openInputStream(
-                        file.uri
-                    )
-                    ?: return SyncReceiptResult.Error(
-                        "Lecture du reçu impossible."
-                    )
-
-            val json =
-                stream.bufferedReader(
-                    Charsets.UTF_8
-                )
-                    .use {
-                        it.readText()
-                    }
+            val json = file.readText(Charsets.UTF_8)
 
             val root =
                 JSONObject(json)
@@ -418,14 +330,17 @@ fun readSyncReceipt(
         }
     }
 
-    private fun savedTreeUri(): Uri? =
-        preferences
-            .getString(
-                SYNC_TREE_URI_KEY,
-                null,
-            )
-            ?.let {
-                Uri.parse(it)
-            }
+    private fun directExchangeDirectory(): File? {
+        clearLegacyExchangeTreePreference(appContext)
+        if (!hasDirectExchangePermission()) return null
+        val directory = canonicalExchangeDirectory()
+        if (!directory.exists() && !directory.mkdirs()) return null
+        return directory.takeIf { it.isDirectory && it.canRead() && it.canWrite() }
+    }
+
+    private fun File.findDirectFile(name: String): File? {
+        require('/' !in name && '\\' !in name)
+        return File(this, name).takeIf(File::isFile)
+    }
 
 }

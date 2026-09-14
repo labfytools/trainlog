@@ -1,5 +1,65 @@
 # Trainlog Exchange Format v1
 
+## TRAINLOG_AI_SESSION_DRAFT_V1
+
+`TRAINLOG_AI_SESSION_DRAFT_V1` is a separately versioned AI-proposal contract,
+not an extension of frozen `TRAINLOG_FORMAT_V1`. Its one-object Drive source is
+`TrainLog Gdrive:Trainlog/AI/inbox/trainlog_ai_session_draft_v1.json` with exact root
+`{"format":"TRAINLOG_AI_SESSION_DRAFT","version":1,"draft":...}`.
+The source `draft_id` is an `aid_<uuid-v4>` identity, `created_at` is canonical
+UTC, `session_type` is exactly `training`, and all object keys are exact.
+
+Text is optional only where stated and, when present, nonempty and trimmed:
+title is limited to 120 characters and draft notes to 2,000. Entries have no
+notes field; it is rejected as an unknown key. A source has 1..64 contiguous
+ordered entries. Each entry resolves a
+known exercise (or explicit alias) and is a target-only `SETS` plan: 1..99
+sets, 1..999 reps for REPS tracking or a 1..86,400-second duration for DURATION
+tracking, optional positive weight no greater than 10,000, and 0..86,400 rest.
+Continuous exercises and a target metric inconsistent with the resolved
+profile are rejected. This contract cannot encode performed sets.
+
+Desktop records the source digest with its `aid_` identity. The exact same
+payload is an idempotent skip; changed content with that identity is a conflict.
+After a successful import commit only, the exact validated local snapshot is
+copied to `TrainLog Gdrive:Trainlog/AI/archive/<aid>.json`. The mutable inbox
+source is not moved or deleted; logical replay makes archive copy and local
+status failures retryable without undoing the import. The outbound
+`trainlog-ai-session-drafts` V1 companion is a distinct strict object for
+Android, with at most 256 unpublished drafts per publication. Only after that
+artifact is published successfully does desktop transactionally mark its exact
+IDs published; a failed publication resends the same deterministic batch, and
+later normal syncs deliver the remainder. The permanent source import ledger is
+not pruned by publication. Android's durable `started` and `deleted`
+tombstones prevent an unchanged companion replay from recreating a proposal.
+The required real Drive/Android-triggered smoke validation is still pending.
+
+## TRAINLOG_AI_EXPORT_V1
+
+`TRAINLOG_AI_EXPORT_V1` is a local, user-controlled JSON export of raw desktop
+history for manual external analysis. It is not a synchronization format and
+contains no recommendation, progression, or inferred attribution.
+
+Create `trainlog_ai_export_v1.json` in the current directory with:
+
+```bash
+python tools/export_ai_history.py --database ~/.local/share/trainlog/trainlog.db
+```
+
+An explicit destination may be supplied as the final argument. The exporter
+opens SQLite with `mode=ro` and `PRAGMA query_only=ON`; it performs no migration
+and no persistent write. Format `TRAINLOG_AI_EXPORT`, version `1`, uses
+`generated_at` as an RFC 3339 UTC instant at whole-second precision, rendered
+as `YYYY-MM-DDTHH:MM:SSZ`. All arrays have explicit deterministic ordering;
+only `generated_at` varies between runs.
+
+Immediate raw feedback is nested under the exact occurrence identified by
+`session_id` (the owning session), `entry_id`, and `exercise_id`. Session
+follow-ups remain in `session_followups` at session scope. The exporter never
+infers that an occurrence caused a next-day observation. The current schema
+stores revisioned free text, not structured soreness, intensity, body-zone, or
+suspected-exercise fields, so those absent facts are not invented in V1.
+
 ## 1. Status
 
 ```text

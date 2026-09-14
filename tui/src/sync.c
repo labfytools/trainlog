@@ -63,6 +63,8 @@ static const char *const TRAINING_FEEDBACK_V1_NAME =
     "trainlog-training-feedback-v1.json";
 static const char *const EXERCISE_PROFILE_STATE_NAME =
     "trainlog-exercise-profile-state-v1.json";
+static const char *const AI_SESSION_DRAFTS_NAME =
+    "trainlog-ai-session-drafts-v1.json";
 
 static const char *const SYNC_REQUEST_NAME =
     "trainlog-sync-request-v1.json";
@@ -100,6 +102,8 @@ static const char *const TRAINING_FEEDBACK_LOCAL =
     "/tmp/trainlog-training-feedback-v2.json";
 static const char *const EXERCISE_PROFILE_STATE_LOCAL =
     "/tmp/trainlog-exercise-profile-state-v1.json";
+static const char *const AI_SESSION_DRAFTS_LOCAL =
+    "/tmp/trainlog-ai-session-drafts-v1.json";
 
 static const char *const EXERCISE_BODY_ZONES_RESULT =
     "/tmp/trainlog-exercise-body-zones-result.txt";
@@ -125,6 +129,11 @@ static const char *const PC_CATALOG_RESULT =
 
 static const char *const EQUIPMENT_ASSOCIATIONS_RESULT =
     "/tmp/trainlog-equipment-associations-result.txt";
+
+static const char *const AI_POST_SYNC_RESULT =
+    "/tmp/trainlog-ai-post-sync-result.txt";
+static const char *const AI_SESSION_DRAFT_RESULT =
+    "/tmp/trainlog-ai-session-draft-result.txt";
 
 typedef struct SyncSilence {
     int saved_stdout;
@@ -163,6 +172,60 @@ static void sync_compose_diagnostic(
         }
     }
     output[written] = '\0';
+}
+
+static const char *sync_ai_inbound_status_text(TrainlogAiInboundStatus status)
+{
+    switch (status) {
+    case TRAINLOG_AI_INBOUND_NONE: return "NONE";
+    case TRAINLOG_AI_INBOUND_IMPORTED: return "IMPORTED";
+    case TRAINLOG_AI_INBOUND_ALREADY_IMPORTED: return "ALREADY_IMPORTED";
+    case TRAINLOG_AI_INBOUND_REJECTED: return "REJECTED";
+    case TRAINLOG_AI_INBOUND_DRIVE_FAIL: return "DRIVE_FAIL";
+    case TRAINLOG_AI_INBOUND_ARCHIVE_FAIL: return "ARCHIVE_FAIL";
+    case TRAINLOG_AI_INBOUND_NOT_RUN: default: return "NOT_RUN";
+    }
+}
+
+static TrainlogAiInboundStatus sync_parse_ai_inbound_status(const char *text)
+{
+    static const struct {
+        const char *marker;
+        TrainlogAiInboundStatus status;
+    } values[] = {
+        {"AI_SESSION_DRAFT_INBOUND=ALREADY_IMPORTED", TRAINLOG_AI_INBOUND_ALREADY_IMPORTED},
+        {"AI_SESSION_DRAFT_INBOUND=ARCHIVE_FAIL", TRAINLOG_AI_INBOUND_ARCHIVE_FAIL},
+        {"AI_SESSION_DRAFT_INBOUND=DRIVE_FAIL", TRAINLOG_AI_INBOUND_DRIVE_FAIL},
+        {"AI_SESSION_DRAFT_INBOUND=IMPORTED", TRAINLOG_AI_INBOUND_IMPORTED},
+        {"AI_SESSION_DRAFT_INBOUND=REJECTED", TRAINLOG_AI_INBOUND_REJECTED},
+        {"AI_SESSION_DRAFT_INBOUND=NONE", TRAINLOG_AI_INBOUND_NONE},
+    };
+    TrainlogAiInboundStatus result = TRAINLOG_AI_INBOUND_NOT_RUN;
+    const char *line;
+    size_t index;
+
+    if (text == NULL) return TRAINLOG_AI_INBOUND_NOT_RUN;
+
+    /* WHY: helper diagnostics are untrusted text and may quote a status marker.
+     * CONTRACT: only a complete marker line is a helper result; CRLF is accepted.
+     * INVARIANT: scanning through all lines makes the last valid result authoritative. */
+    line = text;
+    while (*line != '\0') {
+        const char *newline = strchr(line, '\n');
+        size_t length = newline != NULL ? (size_t)(newline - line) : strlen(line);
+
+        if (length > 0U && line[length - 1U] == '\r') length -= 1U;
+        for (index = 0U; index < sizeof(values) / sizeof(values[0]); ++index) {
+            size_t marker_length = strlen(values[index].marker);
+            if (length == marker_length &&
+                memcmp(line, values[index].marker, marker_length) == 0) {
+                result = values[index].status;
+            }
+        }
+        if (newline == NULL) break;
+        line = newline + 1;
+    }
+    return result;
 }
 
 TrainlogSyncDirectionPlan trainlog_sync_direction_plan(
@@ -909,7 +972,7 @@ static TrainlogStatus sync_find_exchange_folder(
     uint32_t *output_folder_id
 )
 {
-    uint32_t download_id = 0U;
+    uint32_t documents_id = 0U;
     uint64_t ignored_size = 0U;
     TrainlogStatus status;
 
@@ -920,13 +983,16 @@ static TrainlogStatus sync_find_exchange_folder(
             TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
+    /* CONTRACT: Documents/Trainlog is the only writable exchange endpoint.
+     * The historical Download/Trainlog tree may remain on the device, but no
+     * publication path may resolve or mutate it. */
     status =
         sync_find_child(
             device,
             UINT32_MAX,
-            "Download",
+            "Documents",
             true,
-            &download_id,
+            &documents_id,
             &ignored_size
         );
 
@@ -940,7 +1006,7 @@ static TrainlogStatus sync_find_exchange_folder(
     return
         sync_find_child(
             device,
-            download_id,
+            documents_id,
             "Trainlog",
             true,
             output_folder_id,
@@ -1117,6 +1183,7 @@ static bool sync_resolve_repo_tool(
     size_t output_size
 )
 {
+    const char *configured_directory;
     char executable[
         PATH_MAX + 1U
     ];
@@ -1133,6 +1200,29 @@ static bool sync_resolve_repo_tool(
     ) {
         return false;
     }
+
+    /* WHY: installed TUI binaries are not necessarily nested under the source
+     * tree, whereas the Python sync helpers remain repository-owned assets.
+     * CONTRACT: an explicit process-local override is accepted for packaged
+     * deployments and tests; otherwise Meson's absolute source tools path is
+     * authoritative. INVARIANT: resolution never invokes a shell and accepts
+     * only the caller-supplied fixed helper filename. */
+    configured_directory = getenv("TRAINLOG_TOOLS_DIR");
+    if (configured_directory != NULL && configured_directory[0] != '\0') {
+        written = snprintf(output, output_size, "%s/%s",
+                           configured_directory, tool_name);
+        return written >= 0 && (size_t)written < output_size &&
+            access(output, R_OK) == 0;
+    }
+    configured_directory = TRAINLOG_TOOLS_DIR;
+    written = snprintf(output, output_size, "%s/%s",
+                       configured_directory, tool_name);
+    if (written >= 0 && (size_t)written < output_size &&
+        access(output, R_OK) == 0) {
+        return true;
+    }
+
+    /* Compatibility for binaries from older or relocated build trees. */
 
     length =
         readlink(
@@ -1273,17 +1363,6 @@ static TrainlogStatus sync_run_python_tool(
 
     output[0] = '\0';
 
-    if (
-        !sync_resolve_repo_tool(
-            tool_name,
-            tool,
-            sizeof(tool)
-        )
-    ) {
-        return
-            TRAINLOG_STATUS_NOT_FOUND;
-    }
-
     result_fd =
         open(
             result_path,
@@ -1295,8 +1374,19 @@ static TrainlogStatus sync_run_python_tool(
         );
 
     if (result_fd < 0) {
+        (void)snprintf(output, output_size,
+                       "résultat outil Python inaccessible (errno=%d)", errno);
         return
             TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+
+    /* INVARIANT: a prior run can never satisfy the current run's PASS check,
+     * including when helper resolution fails before a child is started. */
+    if (!sync_resolve_repo_tool(tool_name, tool, sizeof(tool))) {
+        (void)close(result_fd);
+        (void)snprintf(output, output_size,
+                       "outil Python introuvable: %s", tool_name);
+        return TRAINLOG_STATUS_NOT_FOUND;
     }
 
     child = fork();
@@ -1306,8 +1396,9 @@ static TrainlogStatus sync_run_python_tool(
             result_fd
         );
 
-        return
-            TRAINLOG_STATUS_SYSTEM_ERROR;
+        (void)snprintf(output, output_size,
+                       "lancement outil Python échoué (errno=%d)", errno);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
 
     if (child == (pid_t)0) {
@@ -1366,6 +1457,8 @@ static TrainlogStatus sync_run_python_tool(
             );
         }
 
+        (void)dprintf(STDERR_FILENO,
+                      "python3: exécution impossible (errno=%d)\n", errno);
         _exit(127);
     }
 
@@ -1380,15 +1473,16 @@ static TrainlogStatus sync_run_python_tool(
             0
         ) < (pid_t)0
     ) {
-        return
-            TRAINLOG_STATUS_SYSTEM_ERROR;
+        (void)snprintf(output, output_size,
+                       "attente outil Python échouée (errno=%d)", errno);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
 
-    (void)sync_read_text(
-        result_path,
-        output,
-        output_size
-    );
+    if (!sync_read_text(result_path, output, output_size)) {
+        (void)snprintf(output, output_size,
+                       "lecture diagnostic outil Python échouée");
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
 
     if (
         !WIFEXITED(
@@ -1398,6 +1492,18 @@ static TrainlogStatus sync_run_python_tool(
             child_status
         ) != 0
     ) {
+        if (output[0] == '\0') {
+            if (WIFSIGNALED(child_status)) {
+                (void)snprintf(output, output_size,
+                               "outil Python interrompu par signal %d",
+                               WTERMSIG(child_status));
+            } else {
+                (void)snprintf(output, output_size,
+                               "outil Python terminé avec code %d",
+                               WIFEXITED(child_status)
+                                   ? WEXITSTATUS(child_status) : -1);
+            }
+        }
         return
             TRAINLOG_STATUS_DATABASE_ERROR;
     }
@@ -2354,6 +2460,13 @@ bool trainlog_sync_record_local_run(
         return false;
     }
 
+    (void)fputs(",\n  \"ai_inbound_status\":", json_file);
+    if (!sync_json_write_escaped(json_file,
+            sync_ai_inbound_status_text(report->ai_inbound_status))) {
+        (void)fclose(json_file);
+        return false;
+    }
+
     (void)fprintf(
         json_file,
         ",\n  \"android_to_pc\":{"
@@ -2422,6 +2535,11 @@ bool trainlog_sync_record_local_run(
             "Requête     : %s\n",
             report->request_id
         );
+    }
+
+    if (report->ai_inbound_status != TRAINLOG_AI_INBOUND_NOT_RUN) {
+        (void)fprintf(detail_file, "AI entrant  : %s\n",
+            sync_ai_inbound_status_text(report->ai_inbound_status));
     }
 
     (void)fprintf(
@@ -2543,6 +2661,58 @@ void trainlog_sync_build_summary(
             report->error[0] != '\0'
                 ? report->error
                 : "Synchronisation échouée."
+        );
+    }
+    if (report->ai_inbound_status != TRAINLOG_AI_INBOUND_NOT_RUN) {
+        size_t used = strlen(report->summary);
+        if (used < sizeof(report->summary)) {
+            (void)snprintf(report->summary + used,
+                sizeof(report->summary) - used, " · AI_INBOUND=%s",
+                sync_ai_inbound_status_text(report->ai_inbound_status));
+        }
+    }
+}
+
+static void sync_append_post_sync_summary(
+    TrainlogSyncReport *report,
+    const char *tool_output
+)
+{
+    char export_status[96] = "AI_EXPORT=FAIL";
+    char upload_status[96] = "GDRIVE_UPLOAD=SKIPPED";
+    const char *line;
+    size_t used;
+
+    if (report == NULL) {
+        return;
+    }
+    line = tool_output != NULL ? strstr(tool_output, "AI_EXPORT=") : NULL;
+    if (line != NULL) {
+        size_t length = strcspn(line, "\r\n");
+        (void)snprintf(export_status, sizeof(export_status), "%.*s",
+                       (int)(length < sizeof(export_status) - 1U
+                           ? length : sizeof(export_status) - 1U), line);
+    }
+    line = tool_output != NULL ? strstr(tool_output, "GDRIVE_UPLOAD=") : NULL;
+    if (line != NULL) {
+        size_t length = strcspn(line, "\r\n");
+        (void)snprintf(upload_status, sizeof(upload_status), "%.*s",
+                       (int)(length < sizeof(upload_status) - 1U
+                           ? length : sizeof(upload_status) - 1U), line);
+    }
+
+    used = strlen(report->summary);
+    if (used < sizeof(report->summary)) {
+        /* WHY: post-sync publication is operational follow-up, not part of
+         * the already committed Trainlog synchronization. CONTRACT: expose
+         * each outcome while preserving report.success and the sync return
+         * status. INVARIANT: the fixed report buffer remains terminated. */
+        (void)snprintf(
+            report->summary + used,
+            sizeof(report->summary) - used,
+            " · SYNC=PASS %s %s",
+            export_status,
+            upload_status
         );
     }
 }
@@ -2750,7 +2920,7 @@ TrainlogStatus trainlog_sync_run(
         (void)snprintf(
             output->error,
             sizeof(output->error),
-            "Résolution de Download/Trainlog échouée (status=%d).",
+            "Résolution de Documents/Trainlog échouée (status=%d).",
             (int)status
         );
 
@@ -2882,7 +3052,7 @@ TrainlogStatus trainlog_sync_run(
     }
 
     if (direction == TRAINLOG_SYNC_PC_TO_ANDROID) {
-        goto outbound;
+        goto ai_draft_midpoint;
     }
 
     /* WHY: aliases must exist before the frozen session/catalog snapshot is
@@ -3196,13 +3366,67 @@ TrainlogStatus trainlog_sync_run(
         goto finalize;
     }
 
+ai_draft_midpoint:
+    /* WHY: an Android-triggered bidirectional run must publish a newly fetched
+     * AI draft immediately, not one synchronization later. CONTRACT: the
+     * shell-free helper owns Drive fetch, strict transactional import, and
+     * post-commit archive; transport/archive failures are explicitly nonfatal.
+     * INVARIANT: this midpoint precedes every PC→Android artifact and receipt. */
+    status = sync_run_python_tool("sync_ai_session_draft_drive.py",
+        "trainlog_ai_session_draft_v1.json", database_path, NULL,
+        AI_SESSION_DRAFT_RESULT, tool_output, sizeof(tool_output));
+    output->ai_inbound_status = sync_parse_ai_inbound_status(tool_output);
+    if (status != TRAINLOG_STATUS_OK) {
+        char useful[TRAINLOG_SYNC_ERROR_MAX + 1U];
+        sync_last_nonempty_line(tool_output, useful, sizeof(useful));
+        sync_compose_diagnostic(output->error, sizeof(output->error),
+            "AI→PC : brouillon séance : ",
+            useful[0] != '\0' ? useful : "import échoué");
+        final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto finalize;
+    }
+    if (output->ai_inbound_status == TRAINLOG_AI_INBOUND_NOT_RUN) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "AI→PC : statut du brouillon séance absent.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+
     if (direction == TRAINLOG_SYNC_ANDROID_TO_PC) {
         output->success = true;
         final_status = TRAINLOG_STATUS_OK;
         goto finalize;
     }
 
-outbound:
+    status = sync_run_python_tool("export_ai_session_drafts.py",
+        AI_SESSION_DRAFTS_LOCAL, database_path, NULL,
+        AI_SESSION_DRAFT_RESULT, tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "AI_SESSION_DRAFT_EXPORT=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : export brouillons IA échoué.");
+        final_status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finalize;
+    }
+    status = sync_publish_named(&device, folder_id,
+        AI_SESSION_DRAFTS_LOCAL, AI_SESSION_DRAFTS_NAME);
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : publication brouillons IA échouée.");
+        final_status = status;
+        goto finalize;
+    }
+    status = sync_run_python_tool("mark_ai_session_drafts_published.py",
+        AI_SESSION_DRAFTS_LOCAL, database_path, NULL,
+        AI_SESSION_DRAFT_RESULT, tool_output, sizeof(tool_output));
+    if (status != TRAINLOG_STATUS_OK ||
+        strstr(tool_output, "AI_SESSION_DRAFT_PUBLISH_MARK=PASS") == NULL) {
+        (void)snprintf(output->error, sizeof(output->error),
+            "PC→Android : enregistrement publication brouillons IA échoué.");
+        final_status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto finalize;
+    }
+
     status = sync_run_python_tool("export_exercise_profile_state.py",
         EXERCISE_PROFILE_STATE_LOCAL, database_path, NULL,
         EXERCISE_PROFILE_STATE_RESULT, tool_output, sizeof(tool_output));
@@ -3468,11 +3692,6 @@ finalize:
         }
     }
 
-    (void)trainlog_sync_record_local_run(
-        trigger,
-        output
-    );
-
     if (
         output->request_present &&
         receipt_published
@@ -3481,6 +3700,32 @@ finalize:
             output->request_id
         );
     }
+
+    if (final_status == TRAINLOG_STATUS_OK && output->success) {
+        TrainlogStatus post_status = sync_run_python_tool(
+            "post_sync_ai_drive.py",
+            "trainlog_ai_export_v1.json",
+            database_path,
+            NULL,
+            AI_POST_SYNC_RESULT,
+            tool_output,
+            sizeof(tool_output)
+        );
+
+        /* A launcher failure has no script output, but it must still remain a
+         * visible post-sync failure rather than changing Trainlog sync state. */
+        if (post_status != TRAINLOG_STATUS_OK && tool_output[0] == '\0') {
+            (void)snprintf(tool_output, sizeof(tool_output),
+                           "AI_EXPORT=FAIL launcher status=%d\n"
+                           "GDRIVE_UPLOAD=SKIPPED\n", (int)post_status);
+        }
+        sync_append_post_sync_summary(output, tool_output);
+    }
+
+    (void)trainlog_sync_record_local_run(
+        trigger,
+        output
+    );
 
 done:
     if (silence_active) {

@@ -9,6 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.util.JsonReader
 import android.util.JsonToken
 import com.labfytools.trainlog.model.ActiveSessionDraft
+import com.labfytools.trainlog.model.AiSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.BodyObservationSummary
 import com.labfytools.trainlog.model.ExerciseDataFields
@@ -273,6 +274,19 @@ sealed interface ActiveDraftMutationResult {
     data class Error(
         val message: String,
     ) : ActiveDraftMutationResult
+}
+
+sealed interface AiSessionDraftImportResult {
+    data class Applied(val imported: Int, val skipped: Int) : AiSessionDraftImportResult
+    data class Invalid(val message: String) : AiSessionDraftImportResult
+    data object DatabaseError : AiSessionDraftImportResult
+}
+
+sealed interface StartAiSessionDraftResult {
+    data object Started : StartAiSessionDraftResult
+    data object ExistingActiveDraft : StartAiSessionDraftResult
+    data object NotPending : StartAiSessionDraftResult
+    data class Error(val message: String) : StartAiSessionDraftResult
 }
 
 sealed interface FinalizeActiveDraftResult {
@@ -1318,7 +1332,20 @@ class TrainlogRepository(
                     if(!c.moveToFirst()) null else (0..12).map{if(c.isNull(it)) null else c.getString(it)}}
                 if(row==null){if(allowPending){skipped++;continue};return ExerciseProfileStateImportResult.Invalid("Identité exercice inconnue : $id")}
                 val incomingAdj=arrayOf("load_semantics","machine_variant","machine_provenance","scientific_profile_id","science_state","legacy_equipment_id").map{key->if(x.value(key)===JSONObject.NULL)null else x.value(key) as String}
-                if((4..9).map{row[it]}!=incomingAdj)return ExerciseProfileStateImportResult.Conflict(id)
+                val localAdj=(4..9).map{row[it]}
+                /* WHY: the V1 catalog intentionally omits machine/science
+                 * identity. A fresh peer therefore creates a completely
+                 * unresolved row before this companion can establish it.
+                 * CONTRACT: only that all-null/unresolved bootstrap may adopt
+                 * PC identity metadata. science_state may remain unresolved;
+                 * any row carrying identity metadata is thereafter immutable. */
+                val adoptsInitialIdentity = localAdj != incomingAdj &&
+                    localAdj == listOf<String?>(null,null,null,null,"unresolved",null)
+                if(localAdj!=incomingAdj && !adoptsInitialIdentity)return ExerciseProfileStateImportResult.Conflict(id)
+                if(adoptsInitialIdentity) db.execSQL(
+                    "UPDATE exercises SET load_semantics=?,machine_variant=?,machine_provenance=?,scientific_profile_id=?,science_state=?,legacy_equipment_id=? WHERE id=?",
+                    arrayOf<Any?>(*incomingAdj.toTypedArray(), row[0]!!.toLong()),
+                )
                 val localRevision=row[10]!!;val localParent=row[11];val localLegacy=row[12]=="1"
                 val sameProfile=row[1]==recording&&row[2]==tracking&&row[3]?.toInt()==fields
                 val accept = when {
@@ -1328,7 +1355,7 @@ class TrainlogRepository(
                     db.rawQuery("SELECT 1 FROM exercise_profile_revisions WHERE exercise_row_id=? AND revision_id=?",arrayOf(row[0],revision)).use{it.moveToFirst()} -> false
                     else -> return ExerciseProfileStateImportResult.Conflict(id)
                 }
-                if(!accept){skipped++;continue}
+                if(!accept){if(adoptsInitialIdentity)updated++ else skipped++;continue}
                 val knownCount=db.rawQuery("SELECT COUNT(*) FROM exercise_profile_revisions WHERE exercise_row_id=?",arrayOf(row[0])).use{it.moveToFirst();it.getInt(0)}
                 val additions=revisions.count { revisionRow -> db.rawQuery("SELECT 1 FROM exercise_profile_revisions WHERE exercise_row_id=? AND revision_id=?",arrayOf(row[0],revisionRow[0] as String)).use{!it.moveToFirst()} }
                 if(knownCount+additions>PROFILE_HISTORY_MAX)return ExerciseProfileStateImportResult.Invalid("Historique profile-state hors limite : $id")
@@ -1571,6 +1598,248 @@ class TrainlogRepository(
             arrayOf<Any>(rowId, state),
         )
     }
+
+    /**
+     * Imports inert desktop proposals only after catalog/profile/equipment
+     * prerequisites have been reconciled by [SyncCatalogInbox].
+     */
+    fun applyAiSessionDraftsJson(json: String): AiSessionDraftImportResult {
+        if (!hasStrictJsonShape(json))
+            return AiSessionDraftImportResult.Invalid("Artifact de brouillons IA JSON invalide.")
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return AiSessionDraftImportResult.Invalid("Artifact de brouillons IA JSON invalide.")
+        }
+        if (!root.hasExactKeys(setOf("format", "version", "generated_at", "drafts")) ||
+            root.value("format") != "trainlog-ai-session-drafts" ||
+            !root.value("version").isExactJsonInteger(1) ||
+            !root.value("generated_at").isNonemptyJsonString() || root.value("drafts") !is JSONArray ||
+            !isUtcTimestamp(root.optString("generated_at"))) {
+            return AiSessionDraftImportResult.Invalid("Artifact de brouillons IA v1 non supporté.")
+        }
+        val drafts = root.getJSONArray("drafts")
+        if (drafts.length() > MAX_AI_DRAFTS)
+            return AiSessionDraftImportResult.Invalid("Trop de brouillons IA.")
+
+        val db = database.writableDatabase
+        var imported = 0
+        var skipped = 0
+        val seenDrafts = mutableSetOf<String>()
+        val seenEntries = mutableSetOf<String>()
+        return try {
+            db.beginTransaction()
+            for (draftIndex in 0 until drafts.length()) {
+                val item = drafts.opt(draftIndex) as? JSONObject
+                    ?: throw IllegalArgumentException("Brouillon IA invalide.")
+                val draftKeys = setOf("draft_id", "created_at", "planned_for", "session_type", "title", "notes", "entries")
+                if (!item.hasExactKeys(draftKeys))
+                    throw IllegalArgumentException("Champs de brouillon IA invalides.")
+                val draftId = item.value("draft_id") as? String
+                    ?: throw IllegalArgumentException("draft_id invalide.")
+                val createdAt = item.value("created_at") as? String
+                    ?: throw IllegalArgumentException("created_at invalide.")
+                val entries = item.value("entries") as? JSONArray
+                    ?: throw IllegalArgumentException("Entrées de brouillon IA invalides.")
+                if (!draftId.matches(AI_DRAFT_ID_V4_PATTERN) || !seenDrafts.add(draftId) ||
+                    !isUtcTimestamp(createdAt) || item.value("session_type") != "training" ||
+                    entries.length() !in 1..MAX_AI_DRAFT_ENTRIES)
+                    throw IllegalArgumentException("En-tête de brouillon IA invalide.")
+                val plannedFor = optionalJsonString(item, "planned_for", 10)
+                if (plannedFor != null && runCatching { LocalDate.parse(plannedFor) }.getOrNull()?.toString() != plannedFor)
+                    throw IllegalArgumentException("planned_for invalide.")
+                val title = optionalJsonString(item, "title", 120)
+                val notes = optionalJsonString(item, "notes", 2000)
+
+                val priorState = db.rawQuery(
+                    "SELECT state FROM ai_session_drafts WHERE draft_id=?;", arrayOf(draftId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                if (priorState == null) {
+                    db.insertOrThrow("ai_session_drafts", null, ContentValues().apply {
+                        put("draft_id", draftId); put("created_at", createdAt)
+                        putOptionalString("planned_for", plannedFor); putOptionalString("title", title)
+                        putOptionalString("notes", notes); put("state", "pending")
+                        put("state_changed_at", OffsetDateTime.now(java.time.ZoneOffset.UTC).toString())
+                    })
+                }
+                for (entryIndex in 0 until entries.length()) {
+                    val entry = entries.opt(entryIndex) as? JSONObject
+                        ?: throw IllegalArgumentException("Entrée de brouillon IA invalide.")
+                    val base = setOf("entry_id", "position", "exercise_id", "recording_mode",
+                        "tracking_mode", "data_fields", "equipment_id", "load_mode", "rest_seconds", "target")
+                    if (!entry.hasExactKeys(base))
+                        throw IllegalArgumentException("Champs d'entrée IA invalides.")
+                    val entryId = entry.value("entry_id") as? String
+                        ?: throw IllegalArgumentException("entry_id invalide.")
+                    val exerciseId = entry.value("exercise_id") as? String
+                        ?: throw IllegalArgumentException("exercise_id invalide.")
+                    if (!entryId.matches(SESSION_ENTRY_ID_V4_PATTERN) || !seenEntries.add(entryId) ||
+                        !entry.value("position").isExactJsonInteger(entryIndex) ||
+                        !exerciseId.matches(EXERCISE_ID_V4_PATTERN) ||
+                        entry.value("recording_mode") != "sets" ||
+                        !entry.value("data_fields").isExactJsonInteger() ||
+                        entry.value("tracking_mode") !in setOf("reps", "duration"))
+                        throw IllegalArgumentException("Profil d'entrée IA invalide.")
+                    val dataFields = (entry.value("data_fields") as Number).toInt()
+                    if (dataFields !in 0..3)
+                        throw IllegalArgumentException("data_fields IA invalide : $exerciseId")
+                    val canonicalId = resolveExerciseId(db, exerciseId)
+                    val exercise = findExerciseRow(db, "exercise_id=?", arrayOf(canonicalId))
+                        ?: throw IllegalArgumentException("Exercice IA inconnu : $exerciseId")
+                    if (exercise.recordingMode != RecordingMode.SETS ||
+                        exercise.trackingMode.wireValue != entry.optString("tracking_mode") || exercise.dataFields != dataFields)
+                        throw IllegalArgumentException("Profil IA divergent : $exerciseId")
+                    val equipmentId = optionalJsonString(entry, "equipment_id", 512)
+                    val equipmentRowId = lookupEquipmentRowIdOrNull(db, equipmentId)
+                    if (equipmentId != null && equipmentRowId == null)
+                        throw IllegalArgumentException("Équipement IA inconnu : $equipmentId")
+                    val loadMode = entry.value("load_mode") as? String
+                        ?: throw IllegalArgumentException("load_mode invalide.")
+                    val rest = entry.value("rest_seconds")
+                    if (loadMode !in setOf("none", "external") || !rest.isExactJsonInteger() ||
+                        (rest as Number).toInt() !in 0..MAX_PLAN_REST_SECONDS)
+                        throw IllegalArgumentException("Plan IA invalide.")
+                    val target = entry.value("target") as? JSONObject
+                        ?: throw IllegalArgumentException("Cible IA manquante.")
+                    val metric = if (exercise.trackingMode == TrackingMode.REPS) "reps" else "duration_seconds"
+                    val targetKeys = setOf("sets", "reps", "duration_seconds", "weight_kg")
+                    if (!target.hasExactKeys(targetKeys) ||
+                        !target.value("sets").isExactJsonInteger() ||
+                        (target.value("sets") as Number).toInt() !in 1..MAX_AI_TARGET_SETS ||
+                        !target.value(metric).isExactJsonInteger() ||
+                        (target.value(metric) as Number).toInt() !in 1..(if (metric == "reps") MAX_AI_TARGET_REPS else MAX_PLAN_DURATION_SECONDS) ||
+                        !target.isNull(if (metric == "reps") "duration_seconds" else "reps"))
+                        throw IllegalArgumentException("Cible IA invalide.")
+                    val weight = if (target.isNull("weight_kg")) null else target.value("weight_kg")
+                    if (weight != null && (!weight.isPositiveJsonNumber() || (weight as Number).toDouble() > 10000.0))
+                        throw IllegalArgumentException("Charge cible IA invalide.")
+                    if ((weight == null && loadMode != "none") ||
+                        (weight != null && loadMode != "external"))
+                        throw IllegalArgumentException("Mode de charge IA incohérent.")
+                    if (priorState == null) {
+                        db.insertOrThrow("ai_session_draft_entries", null, ContentValues().apply {
+                            put("draft_id", draftId); put("entry_id", entryId); put("position", entryIndex)
+                            put("exercise_row_id", exercise.rowId); put("recording_mode", "sets")
+                            put("tracking_mode", exercise.trackingMode.wireValue); put("data_fields", dataFields)
+                            if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
+                            put("load_mode", loadMode); put("rest_seconds", rest.toInt())
+                            put("target_sets", (target.value("sets") as Number).toInt())
+                            if (metric == "reps") { put("target_reps", (target.value(metric) as Number).toInt()); putNull("target_duration_seconds") }
+                            else { putNull("target_reps"); put("target_duration_seconds", (target.value(metric) as Number).toInt()) }
+                            if (weight == null) putNull("target_weight_kg") else put("target_weight_kg", weight.toDouble())
+                        })
+                    }
+                }
+                if (priorState == null) imported++ else {
+                    /* CONTRACT: validate the complete companion before replay
+                     * suppression. INVARIANT: started/deleted identities remain
+                     * permanent tombstones and never recreate their children. */
+                    skipped++
+                }
+            }
+            db.setTransactionSuccessful()
+            AiSessionDraftImportResult.Applied(imported, skipped)
+        } catch (error: IllegalArgumentException) {
+            AiSessionDraftImportResult.Invalid(error.message ?: "Brouillon IA invalide.")
+        } catch (_: Exception) {
+            AiSessionDraftImportResult.DatabaseError
+        } finally {
+            if (db.inTransaction()) db.endTransaction()
+        }
+    }
+
+    fun listAiSessionDrafts(): List<AiSessionDraft> {
+        val db = database.readableDatabase
+        val output = mutableListOf<AiSessionDraft>()
+        db.rawQuery(
+            "SELECT draft_id,created_at,planned_for,title,notes FROM ai_session_drafts " +
+                "WHERE state='pending' ORDER BY COALESCE(planned_for,'9999-12-31'),created_at,draft_id;", null,
+        ).use { drafts -> while (drafts.moveToNext()) {
+            val draftId = drafts.getString(0)
+            output += AiSessionDraft(draftId, drafts.getString(1),
+                if (drafts.isNull(2)) null else drafts.getString(2),
+                if (drafts.isNull(3)) null else drafts.getString(3),
+                if (drafts.isNull(4)) null else drafts.getString(4),
+                readAiSessionDraftEntries(db, draftId))
+        }}
+        return output
+    }
+
+    fun deleteAiSessionDraft(draftId: String): ActiveDraftMutationResult = try {
+        val db = database.writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("UPDATE ai_session_drafts SET state='deleted',state_changed_at=? WHERE draft_id=? AND state='pending';",
+                arrayOf(OffsetDateTime.now(java.time.ZoneOffset.UTC).toString(), draftId))
+            db.delete("ai_session_draft_entries", "draft_id=?", arrayOf(draftId))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        ActiveDraftMutationResult.Saved
+    } catch (error: Exception) {
+        ActiveDraftMutationResult.Error(error.message ?: "Suppression du brouillon IA impossible.")
+    }
+
+    fun startAiSessionDraft(draftId: String): StartAiSessionDraftResult {
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            try {
+                val active = db.rawQuery("SELECT 1 FROM active_session_draft WHERE id=1;", null).use { it.moveToFirst() }
+                if (active) return StartAiSessionDraftResult.ExistingActiveDraft
+                val state = db.rawQuery("SELECT state FROM ai_session_drafts WHERE draft_id=?;", arrayOf(draftId))
+                    .use { if (it.moveToFirst()) it.getString(0) else null }
+                if (state != "pending") return StartAiSessionDraftResult.NotPending
+                val entries = readAiSessionDraftEntries(db, draftId)
+                check(entries.isNotEmpty()) { "Brouillon IA vide." }
+                /* CONTRACT: copying targets and marking the proposal started is
+                 * one transaction. No performed rows, history, MAX or feedback
+                 * are manufactured by this transition. */
+                persistActiveSessionDraft(db, ActiveSessionDraft(exercises = entries, sessionType = SessionType.TRAINING))
+                db.execSQL("UPDATE ai_session_drafts SET state='started',state_changed_at=? WHERE draft_id=?;",
+                    arrayOf(OffsetDateTime.now(java.time.ZoneOffset.UTC).toString(), draftId))
+                db.delete("ai_session_draft_entries", "draft_id=?", arrayOf(draftId))
+                db.setTransactionSuccessful()
+                StartAiSessionDraftResult.Started
+            } finally { db.endTransaction() }
+        } catch (error: Exception) {
+            StartAiSessionDraftResult.Error(error.message ?: "Démarrage du brouillon IA impossible.")
+        }
+    }
+
+    private fun readAiSessionDraftEntries(db: SQLiteDatabase, draftId: String): List<SessionExerciseDraft> {
+        val output = mutableListOf<SessionExerciseDraft>()
+        db.rawQuery(
+            "SELECT de.entry_id,e.exercise_id,e.name,e.normalized_name,de.recording_mode,de.tracking_mode,de.data_fields," +
+                "eq.equipment_id,de.load_mode,de.rest_seconds,de.target_sets,de.target_reps,de.target_duration_seconds,de.target_weight_kg " +
+                "FROM ai_session_draft_entries de JOIN exercises e ON e.id=de.exercise_row_id " +
+                "LEFT JOIN equipment eq ON eq.id=de.equipment_row_id WHERE de.draft_id=? ORDER BY de.position;",
+            arrayOf(draftId),
+        ).use { cursor -> while (cursor.moveToNext()) {
+            val profile = ExerciseProfile(cursor.getString(1), cursor.getString(2), cursor.getString(3),
+                recordingModeFromWire(cursor.getString(4)), trackingModeFromWire(cursor.getString(5)), cursor.getInt(6))
+            output += SessionExerciseDraft(entryId = cursor.getString(0), exercise = profile,
+                equipmentId = if (cursor.isNull(7)) null else cursor.getString(7),
+                plan = SessionExercisePlan(cursor.getInt(10),
+                    reps = if (cursor.isNull(11)) null else cursor.getInt(11),
+                    durationSeconds = if (cursor.isNull(12)) null else cursor.getInt(12),
+                    weightKg = if (cursor.isNull(13)) null else cursor.getDouble(13),
+                    loadMode = SessionLoadMode.fromWire(cursor.getString(8)), restSeconds = cursor.getInt(9)))
+        }}
+        return output
+    }
+
+    private fun optionalJsonString(item: JSONObject, key: String, maximumLength: Int): String? {
+        if (!item.has(key) || item.isNull(key)) return null
+        val value = item.value(key) as? String ?: throw IllegalArgumentException("$key invalide.")
+        if (value.isEmpty() || value != value.trim() ||
+            value.codePointCount(0, value.length) > maximumLength)
+            throw IllegalArgumentException("$key invalide.")
+        return value
+    }
+
+    private fun isUtcTimestamp(value: String): Boolean = try {
+        if (!Regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$").matches(value)) return false
+        val parsed = OffsetDateTime.parse(value)
+        parsed.offset.totalSeconds == 0 && value.endsWith("Z")
+    } catch (_: Exception) { false }
 
     fun loadActiveSessionDraft():
         ActiveDraftLoadResult =
@@ -6604,6 +6873,16 @@ private const val DESKTOP_LEG_PRESS_CANONICAL_ID =
 private val EXERCISE_ID_V4_PATTERN = Regex(
     "^ex_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
 )
+private val AI_DRAFT_ID_V4_PATTERN = Regex(
+    "^aid_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+)
+private val SESSION_ENTRY_ID_V4_PATTERN = Regex(
+    "^sxe_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+)
+private const val MAX_AI_DRAFTS = 256
+private const val MAX_AI_DRAFT_ENTRIES = 64
+private const val MAX_AI_TARGET_SETS = 99
+private const val MAX_AI_TARGET_REPS = 999
 
 private class TrainlogDatabaseHelper(
     private val appContext: Context,
@@ -6612,7 +6891,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    16,
+    17,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -6653,6 +6932,7 @@ private class TrainlogDatabaseHelper(
         createTrainingFeedbackTables(db)
         createTrainingFeedbackRevisionTables(db)
         createExerciseProfileStateTable(db, seedLegacy = false)
+        createAiSessionDraftTables(db)
         seedEquipment(db)
     }
 
@@ -6780,12 +7060,47 @@ private class TrainlogDatabaseHelper(
             version = 16
         }
 
+        if (version < 17 && newVersion >= 17) {
+            /* WHY: PC-authored proposals must survive replay without entering
+             * the singleton capture draft. CONTRACT: v17 is additive.
+             * INVARIANT: existing active and completed sessions are untouched. */
+            createAiSessionDraftTables(db)
+            version = 17
+        }
+
         if (version != newVersion) {
             error(
                 "Unsupported Android DB upgrade " +
                     "$oldVersion -> $newVersion"
             )
         }
+    }
+
+    private fun createAiSessionDraftTables(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS ai_session_drafts(" +
+                "draft_id TEXT PRIMARY KEY,created_at TEXT NOT NULL,planned_for TEXT," +
+                "title TEXT,notes TEXT,state TEXT NOT NULL DEFAULT 'pending' " +
+                "CHECK(state IN('pending','started','deleted')),state_changed_at TEXT NOT NULL);",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS ai_session_draft_entries(" +
+                "id INTEGER PRIMARY KEY,draft_id TEXT NOT NULL REFERENCES ai_session_drafts(draft_id) ON DELETE CASCADE," +
+                "entry_id TEXT NOT NULL UNIQUE,position INTEGER NOT NULL CHECK(position>=0)," +
+                "exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT," +
+                "recording_mode TEXT NOT NULL CHECK(recording_mode='sets')," +
+                "tracking_mode TEXT NOT NULL CHECK(tracking_mode IN('reps','duration'))," +
+                "data_fields INTEGER NOT NULL CHECK(data_fields>=0 AND (data_fields & ~3)=0)," +
+                "equipment_row_id INTEGER REFERENCES equipment(id) ON DELETE RESTRICT," +
+                "load_mode TEXT NOT NULL CHECK(load_mode IN('none','external'))," +
+                "rest_seconds INTEGER NOT NULL CHECK(rest_seconds BETWEEN 0 AND 86400)," +
+                "target_sets INTEGER NOT NULL CHECK(target_sets BETWEEN 1 AND 99)," +
+                "target_reps INTEGER CHECK(target_reps BETWEEN 1 AND 999)," +
+                "target_duration_seconds INTEGER CHECK(target_duration_seconds BETWEEN 1 AND 86400)," +
+                "target_weight_kg REAL CHECK(target_weight_kg>0.0)," +
+                "CHECK((target_reps IS NULL)!=(target_duration_seconds IS NULL))," +
+                "UNIQUE(draft_id,position));",
+        )
     }
 
     private fun createBodyZoneTables(db: SQLiteDatabase) {

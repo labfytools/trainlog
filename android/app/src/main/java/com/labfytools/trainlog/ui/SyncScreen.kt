@@ -4,6 +4,7 @@ package com.labfytools.trainlog.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,7 +19,8 @@ import com.labfytools.trainlog.data.SyncExportResult
 import com.labfytools.trainlog.data.SyncReceiptResult
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.SyncRequestResult
-import com.labfytools.trainlog.data.logExchangeMediaStore
+import com.labfytools.trainlog.data.logDirectExchange
+import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -31,19 +33,19 @@ internal suspend fun publishBundleAndRequest(
     exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
 ): SyncRequestResult = withContext(Dispatchers.IO) {
-    logExchangeMediaStore("SYNC_BUNDLE", "coordinator.export.begin")
-    when (val opened = exporter.openSafSnapshot()) {
-        is com.labfytools.trainlog.data.ExchangeSafSnapshotResult.Error ->
+    logDirectExchange("SYNC_BUNDLE", "coordinator.export.begin")
+    when (val opened = exporter.openStorageSnapshot()) {
+        is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error ->
             SyncRequestResult.Error("Préparation Android → PC : ${opened.message}")
-        is com.labfytools.trainlog.data.ExchangeSafSnapshotResult.Ready ->
+        is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready ->
             when (val publication = exporter.exportMobileBundle(opened.snapshot)) {
                 SyncExportResult.Unsupported -> SyncRequestResult.Unsupported
                 is SyncExportResult.Error -> SyncRequestResult.Error(
                     "Préparation Android → PC : ${publication.message}",
                 )
                 is SyncExportResult.Exported -> {
-                    logExchangeMediaStore("SYNC_BUNDLE", "coordinator.export.success")
-                    logExchangeMediaStore("trainlog-sync-request-v1.json", "coordinator.request.begin")
+                    logDirectExchange("SYNC_BUNDLE", "coordinator.export.success")
+                    logDirectExchange("trainlog-sync-request-v1.json", "coordinator.request.begin")
                     requestOutbox.requestSync(opened.snapshot)
                 }
             }
@@ -61,6 +63,7 @@ fun SyncScreen(
     val colors =
         LocalTrainlogColors.current
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var status by
         remember {
@@ -208,63 +211,32 @@ fun SyncScreen(
             null
     }
 
-    val folderLauncher =
+    val permissionLauncher =
         rememberLauncherForActivityResult(
-            contract =
-                ActivityResultContracts
-                    .OpenDocumentTree(),
+            contract = ActivityResultContracts.StartActivityForResult(),
         ) {
-            uri ->
-                if (uri != null) {
-                    val saved =
-                        inbox.saveTreeUri(
-                            uri
-                        )
-
-                    folderAuthorized =
-                        saved
-
-                    success =
-                        saved
-
-                    status =
-                        if (saved) {
-                            "Dossier Trainlog autorisé."
-                        } else {
-                            "Autorisation du dossier impossible."
+            folderAuthorized = inbox.hasFolderAccess()
+            success = folderAuthorized
+            status = if (folderAuthorized) {
+                "Accès fichiers autorisé · Documents/Trainlog prêt."
+            } else {
+                "Accès fichiers requis. Activez l'autorisation dans Android."
+            }
+            if (folderAuthorized) {
+                coroutineScope.launch {
+                    when (val result = withContext(Dispatchers.IO) { inbox.importPcCatalog() }) {
+                        is CatalogInboxResult.Imported -> {
+                            status = "Accès autorisé · catalogue PC : ${result.imported} nouveau(x), " +
+                                "${result.reconciled} réconcilié(s)."
+                            onCatalogChanged()
                         }
-
-                    if (saved) {
-                        coroutineScope.launch {
-                        when (val result = withContext(Dispatchers.IO) { inbox.importPcCatalog() }) {
-                            is CatalogInboxResult.Imported -> {
-                                success = true
-
-                                status =
-                                    (
-                                        "Dossier autorisé · catalogue PC : " +
-                                        "${result.imported} nouveau(x), " +
-                                        "${result.reconciled} réconcilié(s)."
-                                    )
-
-                                onCatalogChanged()
-                            }
-
-                            CatalogInboxResult.FileNotFound -> {
-                                success = true
-
-                                status =
-                                    "Dossier autorisé · aucun catalogue PC reçu."
-                            }
-
-                            CatalogInboxResult.FolderNotAuthorized,
-                            is CatalogInboxResult.Error -> {
-                                /* Keep permission state. */
-                            }
-                        }
-                        }
+                        CatalogInboxResult.FileNotFound ->
+                            status = "Accès autorisé · aucun catalogue PC reçu."
+                        CatalogInboxResult.FolderNotAuthorized -> folderAuthorized = false
+                        is CatalogInboxResult.Error -> status = result.message
                     }
                 }
+            }
         }
 
     TrainlogScreen(
@@ -305,7 +277,7 @@ fun SyncScreen(
                         success = false
 
                         status =
-                            "Autorisez d'abord Téléchargements/Trainlog."
+                            "Accès fichiers requis. Autorisez d'abord Documents/Trainlog."
 
                         return@TrainlogAction
                     }
@@ -347,7 +319,7 @@ fun SyncScreen(
         ) {
             if (folderAuthorized) {
                 TrainlogInfo(
-                    "Téléchargements/Trainlog autorisé.",
+                    "Dossier d'échange : Documents/Trainlog\nAccès fichiers : autorisé",
                     color =
                         colors.success,
                 )
@@ -355,17 +327,11 @@ fun SyncScreen(
 
             TrainlogAction(
                 label =
-                    if (folderAuthorized) {
-                        "Changer le dossier Trainlog"
-                    } else {
-                        "Autoriser le dossier Trainlog"
-                    },
+                    if (folderAuthorized) "Ouvrir les réglages d'accès" else "Autoriser l'accès au dossier Trainlog",
                 description =
-                    "Choisir Téléchargements/Trainlog.",
+                    "Autoriser l'accès pour gérer tous les fichiers dans Android.",
                 onClick = {
-                    folderLauncher.launch(
-                        null
-                    )
+                    permissionLauncher.launch(directStoragePermissionIntent(context))
                 },
                 accent =
                     colors.warning,
@@ -397,7 +363,7 @@ fun SyncScreen(
                             success = false
 
                             status =
-                                "Autorisez d'abord Téléchargements/Trainlog."
+                                "Accès fichiers requis pour Documents/Trainlog."
                         }
 
                         CatalogInboxResult.FileNotFound -> {

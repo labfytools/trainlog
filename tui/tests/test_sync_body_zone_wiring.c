@@ -29,6 +29,75 @@ static const char *remote_mobile_name = "trainlog-mobile-export-v2.json";
 static unsigned int remote_mobile_version = 2U;
 static const char *remote_tracking_mode = "reps";
 static bool remote_profile_available = true;
+static bool remote_alias_available = false;
+static char rclone_log[4096];
+
+static bool install_fake_rclone(const char *root)
+{
+    char bin[4096];
+    char executable[4096];
+    char path[8192];
+    const char *old_path = getenv("PATH");
+    FILE *file;
+
+    CHECK(snprintf(bin, sizeof(bin), "%s/bin", root) > 0);
+    CHECK(mkdir(bin, 0700) == 0);
+    CHECK(snprintf(executable, sizeof(executable), "%s/rclone", bin) > 0);
+    file = fopen(executable, "wb");
+    CHECK(file != NULL);
+    CHECK(fputs("#!/bin/sh\n"
+                "if test \"$1\" = lsf; then\n"
+                "  test \"$2\" = 'TrainLog Gdrive:Trainlog/AI/inbox' || exit 65\n"
+                "  case \"${TRAINLOG_TEST_AI_INBOUND_MODE:-drive_fail}\" in\n"
+                "    invalid|archive_fail|imported|already) printf 'trainlog_ai_session_draft_v1.json\\n'; exit 0 ;;\n"
+                "    marker_prefix) printf 'diagnostic AI_SESSION_DRAFT_INBOUND=IMPORTED\\n' >&2; exit 65 ;;\n"
+                "    marker_suffix) printf 'AI_SESSION_DRAFT_INBOUND=IMPORTED diagnostic\\n' >&2; exit 65 ;;\n"
+                "    none) exit 0 ;;\n"
+                "    *) exit 65 ;;\n"
+                "  esac\n"
+                "fi\n"
+                "test \"$1\" = copyto || exit 64\n"
+                "case \"$2\" in\n"
+                "  'TrainLog Gdrive:Trainlog/AI/inbox/trainlog_ai_session_draft_v1.json')\n"
+                "    case \"${TRAINLOG_TEST_AI_INBOUND_MODE:-drive_fail}\" in\n"
+                "      invalid) printf '{}\\n' > \"$3\"; exit 0 ;;\n"
+                "      archive_fail|imported|already) cp \"$TRAINLOG_TEST_AI_SOURCE\" \"$3\"; exit 0 ;;\n"
+                "      *) exit 65 ;;\n"
+                "    esac ;;\n"
+                "esac\n"
+                "test -f \"$2\" || exit 65\n"
+                "case \"$3\" in\n"
+                "  'TrainLog Gdrive:Trainlog/AI/archive/'*)\n"
+                "    test \"${TRAINLOG_TEST_AI_INBOUND_MODE:-drive_fail}\" != archive_fail || exit 9 ;;\n"
+                "esac\n"
+                "printf '%s\\n' \"$3\" >> \"$TRAINLOG_TEST_RCLONE_LOG\"\n",
+                file) >= 0);
+    CHECK(fclose(file) == 0);
+    CHECK(chmod(executable, 0700) == 0);
+    CHECK(snprintf(rclone_log, sizeof(rclone_log), "%s/rclone.log", root) > 0);
+    CHECK(setenv("TRAINLOG_TEST_RCLONE_LOG", rclone_log, 1) == 0);
+    CHECK(snprintf(path, sizeof(path), "%s:%s", bin,
+                   old_path != NULL ? old_path : "") > 0);
+    CHECK(setenv("PATH", path, 1) == 0);
+    return true;
+}
+
+static size_t rclone_upload_count(void)
+{
+    FILE *file = fopen(rclone_log, "rb");
+    size_t count = 0U;
+    int byte;
+    if (file == NULL) {
+        return 0U;
+    }
+    while ((byte = fgetc(file)) != EOF) {
+        if (byte == '\n') {
+            count += 1U;
+        }
+    }
+    CHECK(fclose(file) == 0);
+    return count;
+}
 
 static bool copy_file(const char *source, const char *target)
 {
@@ -134,12 +203,19 @@ TrainlogStatus trainlog_mtp_list_folder(
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
     if (parent_folder_id == UINT32_MAX) {
-        if (capacity < 1U) {
+        if (capacity < 2U) {
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
         }
-        set_entry(&output[0], 1U, UINT32_MAX, "Download", true);
-        *output_count = 1U;
+        set_entry(&output[0], 1U, UINT32_MAX, "Documents", true);
+        /* CONTRACT fixture: the historical exchange tree remains present but
+         * must never be selected for reads or publications after migration. */
+        set_entry(&output[1], 90U, UINT32_MAX, "Download", true);
+        *output_count = 2U;
         return TRAINLOG_STATUS_OK;
+    }
+    if (parent_folder_id == 90U) {
+        fprintf(stderr, "legacy Download tree was accessed\n");
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
     if (parent_folder_id == 1U) {
         if (capacity < 1U) {
@@ -150,7 +226,9 @@ TrainlogStatus trainlog_mtp_list_folder(
         return TRAINLOG_STATUS_OK;
     }
     if (parent_folder_id == 2U) {
-        size_t count = remote_profile_available ? 4U : 3U;
+        size_t count = 3U + (remote_profile_available ? 1U : 0U) +
+            (remote_alias_available ? 1U : 0U);
+        size_t next = 3U;
         if (capacity < count) {
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
         }
@@ -160,8 +238,13 @@ TrainlogStatus trainlog_mtp_list_folder(
         set_entry(&output[2], 12U, 2U,
                   "trainlog-equipment-associations-v2.json", false);
         if (remote_profile_available) {
-            set_entry(&output[3], 13U, 2U,
+            set_entry(&output[next], 13U, 2U,
                       "trainlog-exercise-profile-state-v1.json", false);
+            next += 1U;
+        }
+        if (remote_alias_available) {
+            set_entry(&output[next], 14U, 2U,
+                      "trainlog-exercise-aliases-v1.json", false);
         }
         *output_count = count;
         return TRAINLOG_STATUS_OK;
@@ -186,7 +269,8 @@ TrainlogStatus trainlog_mtp_receive_file(
     name = item_id == 10U ? remote_mobile_name :
         item_id == 11U ? "trainlog-exercise-body-zones-v1.json" :
         item_id == 12U ? "trainlog-equipment-associations-v2.json" :
-        item_id == 13U ? "trainlog-exercise-profile-state-v1.json" : NULL;
+        item_id == 13U ? "trainlog-exercise-profile-state-v1.json" :
+        item_id == 14U ? "trainlog-exercise-aliases-v1.json" : NULL;
     if (name == NULL || local_path == NULL) {
         return TRAINLOG_STATUS_NOT_FOUND;
     }
@@ -290,6 +374,18 @@ static bool write_artifacts(
     CHECK(fclose(file) == 0);
 
     written = snprintf(path, sizeof(path),
+        "%s/trainlog-exercise-aliases-v1.json", remote_root);
+    CHECK(written >= 0 && (size_t)written < sizeof(path));
+    file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fprintf(file,
+        "{\"format\":\"trainlog-exercise-aliases\",\"version\":1,"
+        "\"aliases\":[{\"source_exercise_id\":\"%s\","
+        "\"canonical_exercise_id\":\"%s\"}]}",
+        SOURCE_ID, CANONICAL_ID) > 0);
+    CHECK(fclose(file) == 0);
+
+    written = snprintf(path, sizeof(path),
         "%s/trainlog-exercise-profile-state-v1.json", remote_root);
     CHECK(written >= 0 && (size_t)written < sizeof(path));
     file = fopen(path, "wb");
@@ -382,6 +478,18 @@ static bool prepare_database(
     return true;
 }
 
+static bool add_live_source_exercise(const char *database_path)
+{
+    TrainlogDatabase *database = NULL;
+    CHECK(trainlog_database_open(database_path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(
+        database, SOURCE_ID, "Retired sync wiring exercise",
+        "retired sync wiring exercise", TRAINLOG_TRACKING_REPS,
+        TRAINLOG_RECORDING_SETS, UINT32_C(0)) == TRAINLOG_STATUS_OK);
+    trainlog_database_close(database);
+    return true;
+}
+
 static bool database_state(
     const char *database_path,
     bool source_should_resolve,
@@ -466,6 +574,24 @@ static bool successful_journal(const char *case_root, const char *sync_id)
     return true;
 }
 
+static bool history_contains(const char *case_root, const char *needle)
+{
+    char path[4096];
+    char content[65536];
+    FILE *file;
+    size_t count;
+    CHECK(snprintf(path, sizeof(path), "%s/trainlog/sync_history.log",
+                   case_root) > 0);
+    file = fopen(path, "rb");
+    CHECK(file != NULL);
+    count = fread(content, 1U, sizeof(content) - 1U, file);
+    CHECK(ferror(file) == 0);
+    CHECK(fclose(file) == 0);
+    content[count] = '\0';
+    CHECK(strstr(content, needle) != NULL);
+    return true;
+}
+
 static bool file_contains(const char *name, const char *needle, bool expected)
 {
     char path[4096];
@@ -521,7 +647,9 @@ static bool run_success_case(
                            database_path, sizeof(database_path)));
     CHECK(write_artifacts(SOURCE_ID, SOURCE_ID, persistent_alias));
     {
-        TrainlogStatus status = trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+        TrainlogSyncTrigger trigger = persistent_alias
+            ? TRAINLOG_SYNC_TRIGGER_ANDROID : TRAINLOG_SYNC_TRIGGER_TUI;
+        TrainlogStatus status = trainlog_sync_run(trigger, false,
             persistent_alias ? TRAINLOG_SYNC_BIDIRECTIONAL :
                 TRAINLOG_SYNC_ANDROID_TO_PC, &report);
         if (status != TRAINLOG_STATUS_OK) {
@@ -530,6 +658,9 @@ static bool run_success_case(
         CHECK(status == TRAINLOG_STATUS_OK);
     }
     CHECK(report.success);
+    CHECK(strstr(report.summary, "AI_INBOUND=DRIVE_FAIL") != NULL);
+    CHECK(strstr(report.summary,
+                 "SYNC=PASS AI_EXPORT=PASS GDRIVE_UPLOAD=PASS") != NULL);
     CHECK(database_state(database_path, persistent_alias, "back", "arms", 2U));
     CHECK(successful_journal(case_root, report.sync_id));
     if (persistent_alias) {
@@ -551,10 +682,13 @@ static bool run_success_case(
     }
 
     /* Replay exercises the same production argv path and sync baseline. */
-    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+    CHECK(trainlog_sync_run(persistent_alias ? TRAINLOG_SYNC_TRIGGER_ANDROID :
+                            TRAINLOG_SYNC_TRIGGER_TUI, false,
         persistent_alias ? TRAINLOG_SYNC_BIDIRECTIONAL :
             TRAINLOG_SYNC_ANDROID_TO_PC, &report) == TRAINLOG_STATUS_OK);
     CHECK(report.success);
+    CHECK(strstr(report.summary,
+                 "SYNC=PASS AI_EXPORT=PASS GDRIVE_UPLOAD=PASS") != NULL);
     CHECK(database_state(database_path, persistent_alias, "back", "arms", 2U));
     CHECK(successful_journal(case_root, report.sync_id));
     if (persistent_alias) {
@@ -628,7 +762,7 @@ static bool run_missing_profile_companion_case(const char *case_root)
     remote_profile_available = false;
     CHECK(prepare_database(case_root, false, false,
                            database_path, sizeof(database_path)));
-    CHECK(write_artifacts(CANONICAL_ID, CANONICAL_ID, false));
+    CHECK(write_artifacts(SOURCE_ID, SOURCE_ID, false));
     CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
         TRAINLOG_SYNC_ANDROID_TO_PC, &report) ==
         TRAINLOG_STATUS_DATABASE_ERROR);
@@ -642,6 +776,139 @@ static bool run_missing_profile_companion_case(const char *case_root)
     return true;
 }
 
+static bool run_incoming_alias_case(const char *case_root)
+{
+    TrainlogSyncReport report;
+    char database_path[4096];
+    remote_alias_available = true;
+    remote_mobile_name = "trainlog-mobile-export-v3.json";
+    remote_mobile_version = 3U;
+    CHECK(prepare_database(case_root, false, false,
+                           database_path, sizeof(database_path)));
+    CHECK(add_live_source_exercise(database_path));
+    CHECK(write_artifacts(SOURCE_ID, SOURCE_ID, true));
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_ANDROID, false,
+        TRAINLOG_SYNC_ANDROID_TO_PC, &report) == TRAINLOG_STATUS_OK);
+    CHECK(report.success);
+    CHECK(database_state(database_path, true, "back", "arms", 2U));
+    CHECK(successful_journal(case_root, report.sync_id));
+    remote_alias_available = false;
+    remote_mobile_name = "trainlog-mobile-export-v2.json";
+    remote_mobile_version = 2U;
+    return true;
+}
+
+static bool write_fake_alias_tool(const char *directory, const char *source)
+{
+    char path[4096];
+    FILE *file;
+    CHECK(snprintf(path, sizeof(path), "%s/import_exercise_aliases.py",
+                   directory) > 0);
+    file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fputs(source, file) >= 0);
+    CHECK(fclose(file) == 0);
+    return true;
+}
+
+static bool run_alias_diagnostic_case(
+    const char *case_root,
+    const char *tools_directory,
+    const char *script,
+    const char *expected
+)
+{
+    static const char *const result_path =
+        "/tmp/trainlog-exercise-aliases-result.txt";
+    TrainlogSyncReport report;
+    char database_path[4096];
+    char result[256];
+    FILE *file;
+    size_t count;
+
+    CHECK(prepare_database(case_root, false, false,
+                           database_path, sizeof(database_path)));
+    CHECK(write_artifacts(CANONICAL_ID, CANONICAL_ID, false));
+    if (script != NULL) {
+        CHECK(write_fake_alias_tool(tools_directory, script));
+    }
+    file = fopen(result_path, "wb");
+    CHECK(file != NULL);
+    CHECK(fputs("EXERCISE_ALIAS_EXPORT=PASS aliases=99\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+    CHECK(setenv("TRAINLOG_TOOLS_DIR", tools_directory, 1) == 0);
+    remote_alias_available = true;
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+        TRAINLOG_SYNC_ANDROID_TO_PC, &report) ==
+        TRAINLOG_STATUS_DATABASE_ERROR);
+    CHECK(!report.success);
+    CHECK(strstr(report.error, expected) != NULL);
+    CHECK(history_contains(case_root, expected));
+    file = fopen(result_path, "rb");
+    CHECK(file != NULL);
+    count = fread(result, 1U, sizeof(result) - 1U, file);
+    CHECK(ferror(file) == 0);
+    CHECK(fclose(file) == 0);
+    result[count] = '\0';
+    CHECK(strstr(result, "EXERCISE_ALIAS_EXPORT=PASS") == NULL);
+    CHECK(unsetenv("TRAINLOG_TOOLS_DIR") == 0);
+    remote_alias_available = false;
+    return true;
+}
+
+static bool run_ai_inbound_diagnostic_case(
+    const char *case_root,
+    const char *mode,
+    const char *expected,
+    bool repeat
+)
+{
+    TrainlogSyncReport report;
+    char database_path[4096];
+    char source_path[4096];
+    FILE *file;
+
+    CHECK(prepare_database(case_root, false, false,
+                           database_path, sizeof(database_path)));
+    CHECK(write_artifacts(SOURCE_ID, SOURCE_ID, false));
+    CHECK(snprintf(source_path, sizeof(source_path), "%s/ai-source.json",
+                   case_root) > 0);
+    file = fopen(source_path, "wb");
+    CHECK(file != NULL);
+    CHECK(fprintf(file,
+        "{\"format\":\"TRAINLOG_AI_SESSION_DRAFT\",\"version\":1,\"draft\":{"
+        "\"draft_id\":\"aid_12345678-1234-4abc-8abc-123456789abc\","
+        "\"created_at\":\"2032-01-01T02:00:00Z\",\"planned_for\":null,"
+        "\"session_type\":\"training\",\"title\":null,\"notes\":null,"
+        "\"entries\":[{\"position\":0,\"exercise_id\":\"%s\","
+        "\"target_sets\":3,\"target_reps\":8,"
+        "\"target_duration_seconds\":null,\"target_weight_kg\":null,"
+        "\"rest_seconds\":60}]}}", CANONICAL_ID) > 0);
+    CHECK(fclose(file) == 0);
+    CHECK(setenv("TRAINLOG_TEST_AI_SOURCE", source_path, 1) == 0);
+    CHECK(setenv("TRAINLOG_TEST_AI_INBOUND_MODE", mode, 1) == 0);
+    {
+        TrainlogStatus status = trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI,
+            false, TRAINLOG_SYNC_ANDROID_TO_PC, &report);
+        if (status != TRAINLOG_STATUS_OK)
+            (void)fprintf(stderr, "AI diagnostic sync failure: %s\n", report.error);
+        CHECK(status == TRAINLOG_STATUS_OK);
+    }
+    CHECK(report.success);
+    CHECK(strstr(report.summary, expected) != NULL);
+    CHECK(history_contains(case_root, expected));
+    if (repeat) {
+        CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+            TRAINLOG_SYNC_ANDROID_TO_PC, &report) == TRAINLOG_STATUS_OK);
+        CHECK(report.success);
+        CHECK(strstr(report.summary, "AI_INBOUND=ALREADY_IMPORTED") != NULL);
+        CHECK(history_contains(case_root, "AI_INBOUND=ALREADY_IMPORTED"));
+    }
+    CHECK(unsetenv("TRAINLOG_TEST_AI_INBOUND_MODE") == 0);
+    CHECK(unsetenv("TRAINLOG_TEST_AI_SOURCE") == 0);
+    return true;
+}
+
 static bool run_all(void)
 {
     char temporary[] = "/tmp/trainlog-sync-body-zone-wiring-XXXXXX";
@@ -650,9 +917,21 @@ static bool run_all(void)
     char case_c[4096];
     char case_d[4096];
     char case_e[4096];
+    char case_f[4096];
+    char case_g[4096];
+    char case_h[4096];
+    char case_i[4096];
+    char case_j[4096];
+    char case_k[4096];
+    char case_l[4096];
+    char case_m[4096];
+    char case_n[4096];
+    char case_o[4096];
+    char fake_tools[4096];
     char *root = mkdtemp(temporary);
 
     CHECK(root != NULL);
+    CHECK(install_fake_rclone(root));
     CHECK(snprintf(remote_root, sizeof(remote_root), "%s/remote", root) > 0);
     CHECK(mkdir(remote_root, 0700) == 0);
     CHECK(snprintf(case_a, sizeof(case_a), "%s/case-a", root) > 0);
@@ -660,12 +939,51 @@ static bool run_all(void)
     CHECK(snprintf(case_c, sizeof(case_c), "%s/case-c", root) > 0);
     CHECK(snprintf(case_d, sizeof(case_d), "%s/case-d", root) > 0);
     CHECK(snprintf(case_e, sizeof(case_e), "%s/case-e", root) > 0);
+    CHECK(snprintf(case_f, sizeof(case_f), "%s/case-f", root) > 0);
+    CHECK(snprintf(case_g, sizeof(case_g), "%s/case-g", root) > 0);
+    CHECK(snprintf(case_h, sizeof(case_h), "%s/case-h", root) > 0);
+    CHECK(snprintf(case_i, sizeof(case_i), "%s/case-i", root) > 0);
+    CHECK(snprintf(case_j, sizeof(case_j), "%s/case-j", root) > 0);
+    CHECK(snprintf(case_k, sizeof(case_k), "%s/case-k", root) > 0);
+    CHECK(snprintf(case_l, sizeof(case_l), "%s/case-l", root) > 0);
+    CHECK(snprintf(case_m, sizeof(case_m), "%s/case-m", root) > 0);
+    CHECK(snprintf(case_n, sizeof(case_n), "%s/case-n", root) > 0);
+    CHECK(snprintf(case_o, sizeof(case_o), "%s/case-o", root) > 0);
+    CHECK(snprintf(fake_tools, sizeof(fake_tools), "%s/fake-tools", root) > 0);
+    CHECK(mkdir(fake_tools, 0700) == 0);
 
     CHECK(run_success_case(case_a, false));
     CHECK(run_success_case(case_b, true));
+    CHECK(rclone_upload_count() == 4U);
+    CHECK(run_ai_inbound_diagnostic_case(case_j, "invalid",
+                                         "AI_INBOUND=REJECTED", false));
+    CHECK(run_ai_inbound_diagnostic_case(case_k, "archive_fail",
+                                         "AI_INBOUND=ARCHIVE_FAIL", false));
+    CHECK(run_ai_inbound_diagnostic_case(case_l, "none",
+                                         "AI_INBOUND=NONE", false));
+    CHECK(run_ai_inbound_diagnostic_case(case_m, "already",
+                                         "AI_INBOUND=IMPORTED", true));
+    /* Marker-like diagnostic text is not a result line; the final exact
+     * helper marker, including a later failure, remains authoritative. */
+    CHECK(run_ai_inbound_diagnostic_case(case_n, "marker_prefix",
+                                         "AI_INBOUND=DRIVE_FAIL", false));
+    CHECK(run_ai_inbound_diagnostic_case(case_o, "marker_suffix",
+                                         "AI_INBOUND=DRIVE_FAIL", false));
     CHECK(run_unknown_without_proof_case(case_c));
     CHECK(run_v3_unknown_with_stale_v2_proof_case(case_d));
     CHECK(run_missing_profile_companion_case(case_e));
+    CHECK(run_incoming_alias_case(case_f));
+    CHECK(run_alias_diagnostic_case(case_g, fake_tools, NULL,
+                                    "outil Python introuvable"));
+    CHECK(run_alias_diagnostic_case(case_h, fake_tools,
+        "import argparse\nargparse.ArgumentParser().parse_args()\n",
+        "unrecognized arguments"));
+    CHECK(run_alias_diagnostic_case(case_i, fake_tools,
+        "raise RuntimeError('alias importer synthetic exception')\n",
+        "RuntimeError: alias importer synthetic exception"));
+    /* INVARIANT: none of the three failed synchronization paths may start a
+     * post-sync Drive upload, even when an older export remains on disk. */
+    CHECK(rclone_upload_count() == 14U);
     (void)puts("PASS production sync body-zone V2 proof wiring");
     return true;
 }

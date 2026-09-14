@@ -41,6 +41,16 @@ typedef struct TrainlogSyncDeviceInfo {
     TrainlogMtpStorage storage;
 } TrainlogSyncDeviceInfo;
 
+typedef enum TrainlogAiInboundStatus {
+    TRAINLOG_AI_INBOUND_NOT_RUN = 0,
+    TRAINLOG_AI_INBOUND_NONE,
+    TRAINLOG_AI_INBOUND_IMPORTED,
+    TRAINLOG_AI_INBOUND_ALREADY_IMPORTED,
+    TRAINLOG_AI_INBOUND_REJECTED,
+    TRAINLOG_AI_INBOUND_DRIVE_FAIL,
+    TRAINLOG_AI_INBOUND_ARCHIVE_FAIL
+} TrainlogAiInboundStatus;
+
 typedef struct TrainlogSyncReport {
     bool success;
     bool request_present;
@@ -72,6 +82,7 @@ typedef struct TrainlogSyncReport {
     size_t equipment_definitions_skipped;
 
     size_t catalog_published;
+    TrainlogAiInboundStatus ai_inbound_status;
 
     char summary[
         TRAINLOG_SYNC_SUMMARY_MAX + 1U

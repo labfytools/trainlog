@@ -189,7 +189,7 @@ int main(void)
 
     size_t device_count = 0U;
     size_t storage_count = 0U;
-    uint32_t download_id = 0U;
+    uint32_t documents_id = 0U;
     uint32_t trainlog_id = 0U;
     uint32_t export_id = 0U;
     uint64_t export_size = 0U;
@@ -240,14 +240,14 @@ int main(void)
             &devices[0],
             storages[0].storage_id,
             UINT32_MAX,
-            "Download",
-            &download_id
+            "Documents",
+            &documents_id
         );
 
     if (status != TRAINLOG_STATUS_OK) {
         (void)fprintf(
             stderr,
-            "Download folder not found\n"
+            "Documents folder not found\n"
         );
 
         return 1;
@@ -257,7 +257,7 @@ int main(void)
         find_child_folder(
             &devices[0],
             storages[0].storage_id,
-            download_id,
+            documents_id,
             "Trainlog",
             &trainlog_id
         );
@@ -265,7 +265,7 @@ int main(void)
     if (status != TRAINLOG_STATUS_OK) {
         (void)fprintf(
             stderr,
-            "Download/Trainlog not found\n"
+            "Documents/Trainlog not found\n"
         );
 
         return 1;
@@ -329,7 +329,7 @@ int main(void)
     );
 
     (void)printf(
-        "remote=Download/Trainlog/"
+        "remote=Documents/Trainlog/"
         "trainlog-mobile-export-v1.json\n"
     );
 

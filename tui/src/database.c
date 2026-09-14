@@ -772,6 +772,77 @@ static const char *const MIGRATE_V16_TO_V17_SQL =
     "INSERT INTO exercise_profile_revisions SELECT NEW.id,s.revision_id,s.parent_revision_id,NEW.recording_mode,NEW.tracking_mode,NEW.data_fields,0 FROM exercise_profile_state s WHERE s.exercise_row_id=NEW.id;END;"
     "PRAGMA user_version=17;COMMIT;";
 
+/* WHY: generated plans are untrusted inbox data and must never masquerade as
+ * completed occurrence history. CONTRACT: v18 adds an isolated durable inbox,
+ * target-only SETS children, canonical import identity, bounded publication
+ * state, and post-commit Drive archive state. INVARIANT: no existing domain
+ * table or frozen exchange column is changed. */
+static const char *const MIGRATE_V17_TO_V18_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE ai_session_drafts("
+    "id INTEGER PRIMARY KEY,draft_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL,"
+    "planned_for TEXT,session_type TEXT NOT NULL CHECK(session_type='training'),"
+    "title TEXT,notes TEXT,archive_status TEXT NOT NULL DEFAULT 'pending' "
+    "CHECK(archive_status IN('pending','archived','failed')),"
+    "archived_at TEXT,archive_error TEXT,published_at TEXT);"
+    "CREATE TABLE ai_session_draft_entries("
+    "id INTEGER PRIMARY KEY,draft_row_id INTEGER NOT NULL REFERENCES ai_session_drafts(id) ON DELETE CASCADE,"
+    "entry_id TEXT NOT NULL UNIQUE,position INTEGER NOT NULL CHECK(position>=0),exercise_row_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,"
+    "source_exercise_id TEXT NOT NULL,recording_mode TEXT NOT NULL CHECK(recording_mode='sets'),"
+    "tracking_mode TEXT NOT NULL CHECK(tracking_mode IN('reps','duration')),data_fields INTEGER NOT NULL,"
+    "equipment_id TEXT,load_mode TEXT NOT NULL CHECK(load_mode IN('none','external')),"
+    "target_sets INTEGER NOT NULL CHECK(target_sets BETWEEN 1 AND 99),"
+    "target_reps INTEGER,target_duration_seconds INTEGER,target_weight_kg REAL,"
+    "rest_seconds INTEGER NOT NULL CHECK(rest_seconds BETWEEN 0 AND 86400),"
+    "UNIQUE(draft_row_id,position));"
+    "CREATE INDEX ai_session_draft_entries_exercise ON ai_session_draft_entries(exercise_row_id);"
+    "CREATE TABLE ai_session_draft_imports("
+    "draft_row_id INTEGER PRIMARY KEY,"
+    "draft_id TEXT NOT NULL UNIQUE,payload_sha256 TEXT NOT NULL UNIQUE,imported_at TEXT NOT NULL);"
+    "CREATE TRIGGER ai_session_draft_import_identity_guard BEFORE DELETE ON ai_session_drafts "
+    "WHEN EXISTS(SELECT 1 FROM ai_session_draft_imports i WHERE i.draft_id=OLD.draft_id) "
+    "BEGIN SELECT RAISE(ABORT,'AI draft import identity is permanent');END;"
+    "PRAGMA user_version=18;COMMIT;";
+
+/* CONTRACT: v18 was already deployed before bounded draft publication was
+ * added. Keep its version number and add only the nullable lifecycle cursor;
+ * NULL deliberately means retryable/not yet published. */
+static TrainlogStatus ensure_v18_ai_draft_publication_state(
+    TrainlogDatabase *database
+)
+{
+    sqlite3_stmt *statement = NULL;
+    int rc;
+    bool found = false;
+
+    rc = sqlite3_prepare_v2(database->connection,
+        "PRAGMA table_info(ai_session_drafts);", -1, &statement, NULL);
+    if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        const unsigned char *name = sqlite3_column_text(statement, 1);
+        if (name != NULL && strcmp((const char *)name, "published_at") == 0) {
+            found = true;
+            break;
+        }
+    }
+    if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK)
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    if (!found && execute_sql(database,
+        "ALTER TABLE ai_session_drafts ADD COLUMN published_at TEXT;") !=
+        TRAINLOG_STATUS_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
+    /* INVARIANT: older v18 tables may still declare a cascading FK. This
+     * guard runs before it and makes replay identity durable for both shapes. */
+    return execute_sql(database,
+        "CREATE TRIGGER IF NOT EXISTS ai_session_draft_import_identity_guard "
+        "BEFORE DELETE ON ai_session_drafts WHEN EXISTS(SELECT 1 FROM "
+        "ai_session_draft_imports i WHERE i.draft_id=OLD.draft_id) BEGIN "
+        "SELECT RAISE(ABORT,'AI draft import identity is permanent');END;");
+}
+
 /* WHY: the published-unreleased v17 prototype may already exist locally.
  * CONTRACT: opening it adds the bounded durable lineage table without changing
  * user_version or domain rows. INVARIANT: the guarded trigger records local
@@ -1425,7 +1496,7 @@ static TrainlogStatus initialize_or_validate_schema(
     } else if (version == 10) {
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
-               version == 15 || version == 16 || version == 17) {
+               version == 15 || version == 16 || version == 17 || version == 18) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1586,6 +1657,12 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 17) {
         status = execute_sql(database, MIGRATE_V16_TO_V17_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 18) {
+        status = execute_sql(database, MIGRATE_V17_TO_V18_SQL);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = ensure_v18_ai_draft_publication_state(database);
+    }
     if (status == TRAINLOG_STATUS_OK) status = execute_sql(database, "BEGIN IMMEDIATE;");
     if (status == TRAINLOG_STATUS_OK) status = execute_sql(database, ENSURE_V17_PROFILE_REVISIONS_SQL);
     if (status == TRAINLOG_STATUS_OK) status = normalize_v17_prototype_profiles(database);
@@ -1598,7 +1675,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v17" : "migrate database to schema v17",
+            version == 0 ? "create schema v18" : "migrate database to schema v18",
             database->connection,
             SQLITE_ERROR
         );

@@ -22,24 +22,24 @@ sealed interface SyncRequestResult {
 }
 
 class SyncRequestOutbox private constructor(
-    private val safPublisher: ExchangeSafPublisher,
+    private val publisher: DirectExchangePublisher,
 ) {
     constructor(context: Context) : this(
-        ExchangeSafPublisher { persistedExchangeSafDirectory(context) },
+        DirectExchangePublisher { directExchangeDirectory(context) },
     )
 
-    internal constructor(directoryProvider: () -> ExchangeSafDirectory?) : this(
-        ExchangeSafPublisher(directoryProvider),
+    internal constructor(directoryProvider: () -> DirectExchangeDirectoryAccess?) : this(
+        DirectExchangePublisher(directoryProvider),
     )
 
     suspend fun requestSync(): SyncRequestResult = withContext(Dispatchers.IO) {
-        when (val opened = safPublisher.snapshot()) {
-            is ExchangeSafSnapshotResult.Ready -> requestSync(opened.snapshot)
-            is ExchangeSafSnapshotResult.Error -> SyncRequestResult.Error(opened.message)
+        when (val opened = publisher.snapshot()) {
+            is DirectExchangeSnapshotResult.Ready -> requestSync(opened.snapshot)
+            is DirectExchangeSnapshotResult.Error -> SyncRequestResult.Error(opened.message)
         }
     }
 
-    internal fun requestSync(snapshot: ExchangeSafSnapshot): SyncRequestResult {
+    internal fun requestSync(snapshot: DirectExchangeSnapshot): SyncRequestResult {
         if (
             Build.VERSION.SDK_INT <
             Build.VERSION_CODES.Q

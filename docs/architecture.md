@@ -13,7 +13,7 @@ Android capture client
                     |
                     v
              Android shared storage
-             Download/Trainlog
+             Documents/Trainlog
                     |
                     | direct MTP
                     v
@@ -168,7 +168,7 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v17 is canonical long-term history. Its v15 -> v16
+Desktop SQLite schema v18 is canonical long-term history. Its v15 -> v16
 transactional rebuild adds the occurrence-owned `tracking_mode` snapshot; the
 one-time backfill copies the linked catalogue mode without changing child rows
 or stable identities. The additive v16 -> v17 migration adds deterministic
@@ -181,6 +181,19 @@ be finite `>= 0`; the column already existed and targets/max results retain
 their strictly-positive contracts. `session_exercises`
 stores a stable occurrence `entry_id`; a catalogue `exercise_id` can therefore
 occur more than once in one session without identity fusion.
+
+The additive v17 -> v18 migration adds a desktop-private AI proposal inbox:
+imported headers, ordered target-only entries, an immutable `(aid_ draft_id,
+payload digest)` import identity, and a nullable successful-publication cursor.
+The cursor drains deterministic batches without deleting replay identity. It is
+intentionally not the desktop TUI's
+in-progress session state and it never creates actual sets. The separate
+Android v17 migration adds a pending AI-proposal collection and permanent
+`started`/`deleted` tombstones; the pre-existing
+`active_session_draft(id=1)` remains the one capture draft. An explicit start
+transaction copies a pending proposal's targets into that singleton and
+tombstones the proposal; a delete transaction tombstones it. This keeps replay
+idempotent without silently resurrecting user-dismissed work.
 
 The additive v10 -> v11 migration creates direct exercise/body-zone relations
 and a private synchronization baseline, then seeds only stable-ID mappings
@@ -336,7 +349,7 @@ No GVFS/FUSE mount is required.
 Canonical exchange directory:
 
 ```text
-Download/Trainlog
+Documents/Trainlog
 ```
 
 ## 7. Shared synchronization engine

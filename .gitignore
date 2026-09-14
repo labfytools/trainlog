@@ -25,6 +25,7 @@ local.properties
 /data/
 exports/
 .local-backups/
+/trainlog_ai_export_v1.json
 
 # Python helpers
 __pycache__/

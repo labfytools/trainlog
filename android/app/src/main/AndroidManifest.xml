@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Voice feedback stores recognition text only; no audio file is created. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Personal sideloaded app: permanent bidirectional MTP exchange uses one
+         user-visible directory, Documents/Trainlog, without a SAF provider. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
         android:allowBackup="false"

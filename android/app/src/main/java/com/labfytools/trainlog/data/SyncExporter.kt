@@ -22,31 +22,31 @@ sealed interface SyncExportResult {
 class SyncExporter private constructor(
     private val repository:
         TrainlogRepository,
-    private val safPublisher: ExchangeSafPublisher,
+    private val publisher: DirectExchangePublisher,
 ) {
     constructor(context: Context, repository: TrainlogRepository) : this(
         repository,
-        ExchangeSafPublisher { persistedExchangeSafDirectory(context) },
+        DirectExchangePublisher { directExchangeDirectory(context) },
     )
 
     internal constructor(
         context: Context,
         repository: TrainlogRepository,
-        directoryProvider: () -> ExchangeSafDirectory?,
-    ) : this(repository, ExchangeSafPublisher(directoryProvider))
+        directoryProvider: () -> DirectExchangeDirectoryAccess?,
+    ) : this(repository, DirectExchangePublisher(directoryProvider))
 
-    /* CONTRACT: repository snapshot construction and every SAF operation are
+    /* CONTRACT: repository snapshot construction and every filesystem operation are
      * blocking I/O work and must never execute on the Compose/main thread. */
     suspend fun exportMobileBundle(): SyncExportResult = withContext(Dispatchers.IO) {
-        when (val opened = openSafSnapshot()) {
-            is ExchangeSafSnapshotResult.Ready -> exportMobileBundle(opened.snapshot)
-            is ExchangeSafSnapshotResult.Error -> SyncExportResult.Error(opened.message)
+        when (val opened = openStorageSnapshot()) {
+            is DirectExchangeSnapshotResult.Ready -> exportMobileBundle(opened.snapshot)
+            is DirectExchangeSnapshotResult.Error -> SyncExportResult.Error(opened.message)
         }
     }
 
-    internal fun openSafSnapshot(): ExchangeSafSnapshotResult = safPublisher.snapshot()
+    internal fun openStorageSnapshot(): DirectExchangeSnapshotResult = publisher.snapshot()
 
-    internal fun exportMobileBundle(snapshot: ExchangeSafSnapshot): SyncExportResult {
+    internal fun exportMobileBundle(snapshot: DirectExchangeSnapshot): SyncExportResult {
         if (
             Build.VERSION.SDK_INT <
             Build.VERSION_CODES.Q
@@ -89,9 +89,8 @@ class SyncExporter private constructor(
             "trainlog-training-feedback-v2.json" to feedbackJson,
             "trainlog-exercise-profile-state-v1.json" to profileStateJson,
         )
-        /* CONTRACT: the persisted user-authorized SAF tree is the sole
-         * outbound directory authority. MediaStore ownership must neither hide
-         * a canonical document nor cause creation of a numbered conflict. */
+        /* CONTRACT: the fixed direct-storage directory is the sole outbound
+         * authority. Same-directory atomic replacement preserves exact names. */
         artifacts.forEach { (displayName, json) ->
             snapshot.writeJson(displayName, json)?.let { error ->
                 return SyncExportResult.Error(error)
@@ -120,7 +119,7 @@ class SyncExporter private constructor(
             associationsJson,
         )?.let { return SyncExportResult.Error(it) }
         return SyncExportResult.Exported(
-            displayPath = "Download/Trainlog/trainlog-mobile-export-v3.json",
+            displayPath = "Documents/Trainlog/trainlog-mobile-export-v3.json",
             bytes = mobileJson.toByteArray(Charsets.UTF_8).size,
         )
     }

@@ -199,7 +199,7 @@ static int migration_preserves_identity_and_history(void)
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
     CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
-    CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK && version == 17);
+    CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK && version == 18);
     CHECK(trainlog_database_list_exercise_body_zones(database,
         "ex_b432623f-bfe9-4daf-a653-60ec7fdffbde", relations, 4U, &count) == TRAINLOG_STATUS_OK);
     CHECK(count == 2U);

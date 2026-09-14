@@ -1,7 +1,6 @@
 package com.labfytools.trainlog.ui
 
 import android.content.Context
-import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.data.SaveFeedbackResult
 import com.labfytools.trainlog.data.SaveSessionResult
@@ -9,21 +8,23 @@ import com.labfytools.trainlog.data.SyncExporter
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.SyncRequestResult
 import com.labfytools.trainlog.data.TrainlogRepository
-import com.labfytools.trainlog.data.ExchangeSafDirectory
-import com.labfytools.trainlog.data.ExchangeSafDocument
-import com.labfytools.trainlog.data.EXCHANGE_MEDIASTORE_LOG_TAG
-import com.labfytools.trainlog.data.ExchangeSafPublisher
-import com.labfytools.trainlog.data.ExchangeSafSnapshotResult
+import com.labfytools.trainlog.data.DirectExchangeDirectoryAccess
+import com.labfytools.trainlog.data.DirectExchangeDocument
+import com.labfytools.trainlog.data.DIRECT_EXCHANGE_LOG_TAG
+import com.labfytools.trainlog.data.DirectExchangePublisher
+import com.labfytools.trainlog.data.DirectExchangeSnapshotResult
 import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
 import java.util.UUID
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
+import java.io.File
 import org.json.JSONObject
 import org.json.JSONArray
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -134,27 +135,20 @@ class SyncBundlePublicationTest {
         val writesBeforeSecondClick = directory.writeCounts.toMap()
         assertTrue(publishBundleAndRequest(exporter, outbox) is SyncRequestResult.Requested)
         assertEquals(3, directory.enumerationCount)
-        val phases = ShadowLog.getLogsForTag(EXCHANGE_MEDIASTORE_LOG_TAG).map { it.msg }
+        val phases = ShadowLog.getLogsForTag(DIRECT_EXCHANGE_LOG_TAG).map { it.msg }
         assertEquals(1, phases.count { it.startsWith("SYNC_BUNDLE coordinator.export.begin") })
-        val snapshotPhases = phases.filter { it.startsWith("SAF_TREE snapshot.success ") }
+        val snapshotPhases = phases.filter { it.startsWith("DIRECT_STORAGE snapshot.success ") }
         assertEquals(1, snapshotPhases.size)
         assertTrue("SAF snapshot ran on main: $snapshotPhases",
             snapshotPhases.none { it.contains("thread=main") })
-        val writeBegins = phases.filter { it.contains(" saf.write.begin ") }
+        val writeBegins = phases.filter { it.contains(" direct.write.success") }
         assertEquals(required.size, writeBegins.size)
         assertTrue("SAF write ran on main: $writeBegins",
             writeBegins.none { it.contains("thread=main") })
-        val bodyResolve = phases.indexOfFirst { it.startsWith("BODY_ZONES saf.resolve.existing ") }
-        val bodyWrite = phases.indexOfFirst { it.startsWith("BODY_ZONES saf.write.begin ") }
-        val bodyWritten = phases.indexOfFirst { it.startsWith("BODY_ZONES saf.write.success ") }
+        val bodyWritten = phases.indexOfFirst { it.startsWith("BODY_ZONES direct.write.success") }
         val requestStart = phases.indexOfFirst { it == "SYNC_REQUEST coordinator.request.begin" }
-        assertTrue("production coordinator did not resolve existing BODY ZONES", bodyResolve >= 0)
-        assertTrue("BODY ZONES must open only after exact resolution", bodyWrite > bodyResolve)
-        assertTrue("BODY ZONES write did not complete", bodyWritten > bodyWrite)
+        assertTrue("BODY ZONES write did not complete", bodyWritten >= 0)
         assertTrue("request must be published after the complete export", requestStart > bodyWritten)
-        val beforeBodyOpen = phases.subList(bodyResolve + 1, bodyWrite)
-        assertTrue("existing BODY ZONES unexpectedly created: $beforeBodyOpen",
-            beforeBodyOpen.none { it.startsWith("BODY_ZONES saf.create.") })
         assertTrue("outbound path must not call MediaStore insert/update/pending: $phases",
             phases.none { it.contains(" insert.") || it.contains(" publish.") || it.contains("IS_PENDING") })
         assertEquals(bodyCreatesBefore, directory.createCount("trainlog-exercise-body-zones-v1.json"))
@@ -173,8 +167,8 @@ class SyncBundlePublicationTest {
     }
 
     @Test fun `created exact document updates transaction index without rescan`() {
-        val publisher = ExchangeSafPublisher { directory }
-        val opened = publisher.snapshot() as ExchangeSafSnapshotResult.Ready
+        val publisher = DirectExchangePublisher { directory }
+        val opened = publisher.snapshot() as DirectExchangeSnapshotResult.Ready
         assertEquals(1, directory.enumerationCount)
         assertEquals(null, opened.snapshot.writeJson("foo.json", "first"))
         assertEquals(null, opened.snapshot.writeJson("foo.json", "second"))
@@ -185,34 +179,135 @@ class SyncBundlePublicationTest {
         assertEquals(0, directory.canonicalCount("foo (1).json"))
     }
 
+    @Test fun `empty directory creates exact canonical name and final content`() {
+        val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+
+        assertEquals(null, opened.snapshot.writeJson("artifact.json", "new export"))
+
+        assertEquals(1, directory.canonicalCount("artifact.json"))
+        assertEquals("new export", directory.read("artifact.json"))
+        assertFalse(directory.names().any { it.matches(Regex("artifact \\(\\d+\\)\\.json")) })
+    }
+
+    @Test fun `ten publications rewrite one canonical document without numbered copies`() {
+        repeat(10) { publication ->
+            val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+            assertEquals(null, opened.snapshot.writeJson("artifact.json", "export-$publication"))
+        }
+
+        assertEquals(1, directory.createCount("artifact.json"))
+        assertEquals(10, directory.writeCount("artifact.json"))
+        assertEquals("export-9", directory.read("artifact.json"))
+        assertEquals(setOf("artifact.json"), directory.names())
+    }
+
+    @Test fun `historical numbered copies are never selected instead of canonical`() {
+        directory.seed("artifact (1).json", "history one")
+        directory.seed("artifact (2).json", "history two")
+        directory.seed("artifact.json", "old canonical")
+        val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+
+        assertEquals(null, opened.snapshot.writeJson("artifact.json", "new canonical"))
+
+        assertEquals("new canonical", directory.read("artifact.json"))
+        assertEquals("history one", directory.read("artifact (1).json"))
+        assertEquals("history two", directory.read("artifact (2).json"))
+        assertEquals(0, directory.writeCount("artifact (1).json"))
+        assertEquals(0, directory.writeCount("artifact (2).json"))
+    }
+
+    @Test fun `historical numbered copy alone does not become canonical target`() {
+        directory.seed("artifact (1).json", "history")
+        val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+
+        assertEquals(null, opened.snapshot.writeJson("artifact.json", "canonical"))
+
+        assertEquals("canonical", directory.read("artifact.json"))
+        assertEquals("history", directory.read("artifact (1).json"))
+    }
+
+    @Test fun `provider rename fails explicitly before writing conflict copy`() {
+        directory.createdNameOverride = "artifact (1).json"
+        val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+
+        assertEquals(
+            "DIRECT_STORAGE_CANONICAL_NAME_CONFLICT: attendu=artifact.json obtenu=artifact (1).json",
+            opened.snapshot.writeJson("artifact.json", "must not be written"),
+        )
+
+        assertEquals(0, directory.writeCount("artifact (1).json"))
+        assertEquals(0, directory.canonicalCount("artifact.json"))
+    }
+
+    @Test fun `raw exact lookup recovers canonical omitted from ordinary discovery`() {
+        directory.seedRawOnly("artifact.json", "old canonical")
+        directory.seed("artifact (1).json", "history")
+        repeat(10) { publication ->
+            val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+            assertEquals(null, opened.snapshot.writeJson("artifact.json", "export-$publication"))
+        }
+        assertEquals(0, directory.createCount("artifact.json"))
+        assertEquals(10, directory.writeCount("artifact.json"))
+        assertEquals("export-9", directory.read("artifact.json"))
+        assertEquals("history", directory.read("artifact (1).json"))
+        assertFalse(directory.names().contains("artifact (2).json"))
+    }
+
+    @Test fun `multiple raw exact canonical rows fail deterministically`() {
+        directory.seedRawOnly("artifact.json", "one")
+        directory.rawExactDuplicates = 2
+        val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
+        assertEquals(
+            "DIRECT_STORAGE_DUPLICATE_CANONICAL: nom=artifact.json count=2",
+            opened.snapshot.writeJson("artifact.json", "new"),
+        )
+        assertEquals(0, directory.writeCount("artifact.json"))
+    }
+
     private fun readCanonical(name: String): String = directory.read(name)
 
-    private class FakeSafDirectory : ExchangeSafDirectory {
+    private class FakeSafDirectory : DirectExchangeDirectoryAccess {
         private val contents = linkedMapOf<String, ByteArray>()
         private val creates = mutableMapOf<String, Int>()
         val writeCounts = mutableMapOf<String, Int>()
         var enumerationCount = 0
             private set
+        var createdNameOverride: String? = null
+        var rawExactDuplicates = 1
+        private val discoveryHidden = mutableSetOf<String>()
 
         fun seed(name: String, value: String) { contents[name] = value.toByteArray() }
+        fun seedRawOnly(name: String, value: String) {
+            seed(name, value)
+            discoveryHidden += name
+        }
         fun read(name: String): String = contents.getValue(name).toString(Charsets.UTF_8)
         fun canonicalCount(name: String): Int = if (contents.containsKey(name)) 1 else 0
         fun createCount(name: String): Int = creates[name] ?: 0
         fun writeCount(name: String): Int = writeCounts[name] ?: 0
+        fun names(): Set<String> = contents.keys
 
-        override fun listDirectChildren(): List<ExchangeSafDocument> {
+        override fun listDirectChildren(): List<DirectExchangeDocument> {
             enumerationCount++
-            return contents.keys.map(::document)
+            return contents.keys.filterNot(discoveryHidden::contains).map(::document)
         }
 
-        override fun createJson(displayName: String): ExchangeSafDocument {
-            check(!contents.containsKey(displayName))
+        override fun findExact(displayName: String): List<DirectExchangeDocument> =
+            if (contents.containsKey(displayName)) {
+                List(rawExactDuplicates) { document(displayName) }
+            } else {
+                emptyList()
+            }
+
+        override fun createJson(displayName: String): DirectExchangeDocument {
+            val actualName = createdNameOverride ?: displayName
+            check(!contents.containsKey(actualName))
             creates[displayName] = createCount(displayName) + 1
-            contents[displayName] = byteArrayOf()
-            return document(displayName)
+            contents[actualName] = byteArrayOf()
+            return document(actualName)
         }
 
-        override fun openForRewrite(document: ExchangeSafDocument): OutputStream =
+        override fun openForRewrite(document: DirectExchangeDocument): OutputStream =
             object : ByteArrayOutputStream() {
                 override fun close() {
                     super.close()
@@ -221,8 +316,8 @@ class SyncBundlePublicationTest {
                 }
             }
 
-        private fun document(name: String) = ExchangeSafDocument(
-            Uri.parse("content://trainlog-test/tree/Download%2FTrainlog/document/$name"),
+        private fun document(name: String) = DirectExchangeDocument(
+            File("/storage/emulated/0/Documents/Trainlog", name),
             name,
         )
     }

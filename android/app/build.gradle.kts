@@ -78,8 +78,6 @@ dependencies {
         "androidx.compose.ui:ui-tooling-preview"
     )
 
-    implementation("androidx.documentfile:documentfile:1.1.0")
-
     debugImplementation(
         "androidx.compose.ui:ui-tooling"
     )

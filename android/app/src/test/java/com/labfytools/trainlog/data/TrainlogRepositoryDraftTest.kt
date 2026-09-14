@@ -3,7 +3,6 @@ package com.labfytools.trainlog.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
-import androidx.documentfile.provider.DocumentFile
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
@@ -1669,7 +1668,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(16, cursor.getInt(0))
+                assertEquals(17, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1796,7 +1795,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(16, cursor.getInt(0))
+                assertEquals(17, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -2287,12 +2286,11 @@ class TrainlogRepositoryDraftTest {
             v3File.writeText(malformedV3.toString())
             File(directory, "trainlog-pc-mobile-export-v2.json").writeText(validV2.toString())
             val inbox = SyncCatalogInbox(context, destination)
-            val documentDirectory = DocumentFile.fromFile(directory)
-            val error = inbox.importPcSessionsFromDirectoryForTest(documentDirectory)
+            val error = inbox.importPcSessionsFromDirectoryForTest(directory)
             assertTrue(error!!.contains("started_at"))
             assertTrue(destination.listSessions().isEmpty())
             assertTrue(v3File.delete())
-            assertEquals(null, inbox.importPcSessionsFromDirectoryForTest(documentDirectory))
+            assertEquals(null, inbox.importPcSessionsFromDirectoryForTest(directory))
             assertEquals(1, destination.listSessions().size)
         } finally {
             directory.deleteRecursively()

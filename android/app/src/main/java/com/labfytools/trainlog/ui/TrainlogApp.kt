@@ -53,6 +53,9 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
 
     val draftLoad = remember(draftRevision, catalogRevision) { repository.loadActiveSessionDraft() }
     val activeDraft = (draftLoad as? ActiveDraftLoadResult.Loaded)?.draft
+    val pendingAiDraftCount = remember(draftRevision, catalogRevision) {
+        repository.listAiSessionDrafts().size
+    }
 
     fun open(route: AppRoute) { navigationController.open(route) }
     fun openSection(section: AppSection) { navigationController.openSection(section) }
@@ -94,7 +97,8 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 { open(AppRoute.Statistics) },
                 { open(AppRoute.BodyMeasurements) }, { open(AppRoute.SessionDetail(it)) }, { open(AppRoute.Sync) },
             )
-            AppRoute.Sessions -> SessionsHub(activeDraft, { open(AppRoute.SessionEditor) }, ::openManualSession, { open(AppRoute.CompletedSessions) })
+            AppRoute.Sessions -> SessionsHub(activeDraft, pendingAiDraftCount, { open(AppRoute.SessionEditor) }, ::openManualSession,
+                { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) })
             AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exportSnapshot(); draftRevision++ })
             AppRoute.SessionGenerator -> SessionGeneratorScreen(repository, generatorState, { back() }, { generatorState.abandon(); draftRevision++; open(AppRoute.SessionEditor) }, {
                 draftMessage = "Une séance est déjà en cours. Reprenez-la ou revenez à la proposition conservée."
@@ -105,6 +109,12 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                  * Back and drawer navigation. */
                 openSection(AppSection.SESSIONS)
             })
+            AppRoute.AiSessionDrafts -> AiSessionDraftsScreen(
+                repository = repository,
+                externalRevision = catalogRevision,
+                onPendingChanged = { draftRevision++ },
+                onStarted = { open(AppRoute.SessionEditor) },
+            )
             AppRoute.CompletedSessions -> HistoryScreen(repository, { back() }) { open(AppRoute.SessionDetail(it)) }
             is AppRoute.SessionDetail -> SessionDetailScreen(repository, route.sessionId, { back() }, { open(AppRoute.SessionCorrection(route.sessionId)) }) { draftRevision++; open(AppRoute.SessionEditor) }
             is AppRoute.SessionCorrection -> CompletedSessionCorrectionScreen(repository, route.sessionId) { saved ->
