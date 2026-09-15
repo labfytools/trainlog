@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for sync history.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -1,3 +1,8 @@
+/*
+ * Trainlog session generation interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_SESSION_GENERATION_H
 #define TRAINLOG_SESSION_GENERATION_H
 

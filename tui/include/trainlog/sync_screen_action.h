@@ -1,3 +1,8 @@
+/*
+ * Trainlog sync screen action interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_SYNC_SCREEN_ACTION_H
 #define TRAINLOG_SYNC_SCREEN_ACTION_H
 

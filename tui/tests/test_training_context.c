@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for training context.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include "trainlog/training_context.h"
 
 #include <stdio.h>

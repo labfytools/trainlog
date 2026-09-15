@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for FeedbackElapsedLabelTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.data
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

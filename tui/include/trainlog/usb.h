@@ -1,3 +1,8 @@
+/*
+ * Trainlog usb interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_USB_H
 #define TRAINLOG_USB_H
 

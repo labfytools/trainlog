@@ -1,3 +1,8 @@
+/*
+ * Trainlog session generation implementation.
+ *
+ * Owns this module's bounded behavior and does not redefine persistence, synchronization, or UI contracts owned elsewhere.
+ */
 #include "trainlog/session_generation.h"
 
 #include "trainlog/body_zone_catalog.h"

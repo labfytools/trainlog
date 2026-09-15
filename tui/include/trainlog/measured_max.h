@@ -1,3 +1,8 @@
+/*
+ * Trainlog measured max interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_MEASURED_MAX_H
 #define TRAINLOG_MEASURED_MAX_H
 

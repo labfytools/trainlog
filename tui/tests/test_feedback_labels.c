@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for feedback labels.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include "trainlog/timeutil.h"
 #include <stdio.h>
 #include <string.h>

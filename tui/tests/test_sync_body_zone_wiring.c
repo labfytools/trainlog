@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for sync body zone wiring.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

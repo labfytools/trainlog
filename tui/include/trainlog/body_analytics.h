@@ -1,3 +1,8 @@
+/*
+ * Trainlog body analytics interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_BODY_ANALYTICS_H
 #define TRAINLOG_BODY_ANALYTICS_H
 

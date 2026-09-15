@@ -1,3 +1,8 @@
+/*
+ * Android TrainlogTheme.
+ *
+ * Owns shared presentation tokens without changing domain, persistence, or synchronization semantics.
+ */
 package com.labfytools.trainlog.ui.theme
 
 import androidx.compose.runtime.Composable

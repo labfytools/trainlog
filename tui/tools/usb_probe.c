@@ -1,3 +1,8 @@
+/*
+ * Trainlog usb probe diagnostic tool.
+ *
+ * Exercises a bounded production boundary without owning application state or protocol semantics.
+ */
 #include <stdio.h>
 
 #include "trainlog/status.h"

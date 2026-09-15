@@ -1,3 +1,8 @@
+/*
+ * Debug-only DraftUiTestActivity.
+ *
+ * Supports isolated Android UI validation and does not participate in release behavior.
+ */
 package com.labfytools.trainlog.ui
 
 import android.os.Bundle

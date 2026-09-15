@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for body zones.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <sqlite3.h>
 
 #include <stdio.h>

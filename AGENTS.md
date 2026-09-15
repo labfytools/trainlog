@@ -164,7 +164,7 @@ It is not the canonical analytics store.
 The Android UI is driven by exercise metadata, never by exercise-name
 heuristics.
 
-Android local SQLite schema v12 retains the exactly-one durable active-session
+Android local SQLite schema v17 retains the exactly-one durable active-session
 draft introduced in v4.
 Every meaningful draft/form mutation is persisted by the repository. Back,
 backgrounding and process death never delete the draft. Home offers explicit
@@ -177,7 +177,9 @@ Android schema v11 additionally stores optional planning metadata separately
 from actual occurrence data after the additive v10 -> v11 migration. Existing
 rows retain `load_mode=none`, zero rest and NULL targets. Android v12 adds the
 durable flattened exercise-alias mapping used to resolve retired creator IDs.
-Desktop schema v12 owns the same alias compatibility boundary. The active
+Desktop schema v12 owns the same alias compatibility boundary. Later additive
+desktop migrations reach v18 and Android migrations reach v17 without changing
+that identity contract. The active
 completed-session exchange is the separate strict
 `trainlog-mobile-export` V3; V1/V2 remain readable and `TRAINLOG_FORMAT_V1`
 remains unchanged.
@@ -230,9 +232,11 @@ Desktop SQLite schema is versioned with:
 PRAGMA user_version;
 ```
 
-The current desktop schema is v12. Schema v9 added an occurrence-owned explicit
-maximum result; v10/v11 added body-zone and planning metadata, and v12 adds
-durable flattened exercise aliases. None changes `TRAINLOG_FORMAT_V1`.
+The current desktop schema is v18. Schema v9 added an occurrence-owned explicit
+maximum result; v10/v11 added body-zone and planning metadata; v12 added durable
+flattened exercise aliases; v13-v18 add machine metadata, feedback and
+revisions, occurrence tracking snapshots, causal profile state, and AI proposal
+storage/publication state. None changes `TRAINLOG_FORMAT_V1`.
 
 Every incompatible schema evolution requires an explicit migration and
 regression coverage.
@@ -276,6 +280,11 @@ Canonical documents:
 - `docs/roadmap.md`;
 - `CHANGELOG.md`.
 
+`README.md` is the concise repository entry point. `docs/README.md` is the
+canonical documentation index. `docs/current_state.md` owns current implemented
+status; `docs/roadmap.md` owns future work. Design and review records are
+historical evidence and must not override those current owners.
+
 Checkpoint history belongs in Git history and `docs/reviews`; canonical
 documents describe the current state rather than accumulating obsolete
 `NEXT` sections.
@@ -301,6 +310,10 @@ When Android code changes:
 cd android
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
 ```
+
+Run Android unit and instrumented automation on the host/emulator. The primary
+personal phone is reserved for manual, non-destructive install and sync smoke
+tests; do not run `connectedDebugAndroidTest` on it.
 
 Run ASan/UBSan at meaningful C implementation checkpoints.
 

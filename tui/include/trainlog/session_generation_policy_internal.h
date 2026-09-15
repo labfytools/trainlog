@@ -1,3 +1,8 @@
+/*
+ * Trainlog session generation policy internal interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_SESSION_GENERATION_POLICY_INTERNAL_H
 #define TRAINLOG_SESSION_GENERATION_POLICY_INTERNAL_H
 

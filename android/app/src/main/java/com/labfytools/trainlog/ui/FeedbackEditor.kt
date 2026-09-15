@@ -1,3 +1,8 @@
+/*
+ * Android FeedbackEditor.
+ *
+ * Owns this Compose presentation boundary; durable state and domain rules remain in repository and model layers.
+ */
 package com.labfytools.trainlog.ui
 
 import android.Manifest

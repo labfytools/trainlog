@@ -1,3 +1,8 @@
+/*
+ * Android ExerciseProfile model.
+ *
+ * Defines in-memory capture semantics without owning persistence, synchronization, or presentation.
+ */
 package com.labfytools.trainlog.model
 
 enum class RecordingMode(

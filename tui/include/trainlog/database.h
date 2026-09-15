@@ -1,3 +1,8 @@
+/*
+ * Trainlog database interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_DATABASE_H
 #define TRAINLOG_DATABASE_H
 

@@ -1,3 +1,8 @@
+/*
+ * Trainlog body zone catalog interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_BODY_ZONE_CATALOG_H
 #define TRAINLOG_BODY_ZONE_CATALOG_H
 

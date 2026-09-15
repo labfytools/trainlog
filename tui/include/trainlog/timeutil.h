@@ -1,3 +1,8 @@
+/*
+ * Trainlog timeutil interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_TIMEUTIL_H
 #define TRAINLOG_TIMEUTIL_H
 

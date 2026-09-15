@@ -548,7 +548,7 @@ meson test -C build --print-errorlogs
 Validated current normal suite:
 
 ```text
-39/39 Meson tests PASS
+39/39 Meson tests PASS (historical checkpoint)
 ```
 
 ## 16. Measured max view

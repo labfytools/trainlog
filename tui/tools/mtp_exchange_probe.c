@@ -1,3 +1,8 @@
+/*
+ * Trainlog mtp exchange probe diagnostic tool.
+ *
+ * Exercises a bounded production boundary without owning application state or protocol semantics.
+ */
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

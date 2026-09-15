@@ -120,8 +120,9 @@ tui_workflows
 app_shell
 ```
 
-The current desktop suite, including APP_SHELL_V1 production-transition
-coverage and the AI-draft exchange regressions, is 56/56. The following generator-specific checkpoint counts remain
+The desktop suite includes APP_SHELL_V1 production-transition coverage and the
+AI-draft exchange regressions. The configured suite size and latest result are
+recorded once in `current_state.md`; the following generator-specific checkpoint counts remain
 historical evidence:
 
 ```text
@@ -233,6 +234,28 @@ Notable regression coverage:
   synchronization-run prefix.
 
 ## 5. Build
+
+Stable-release validation additionally builds the signed release variant and
+checks the packaged product versions and binary linkage:
+
+```bash
+meson compile -C build
+meson test -C build --print-errorlogs
+
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
+
+file trainlog-tui-linux-x86_64-v0.1.0
+ldd trainlog-tui-linux-x86_64-v0.1.0
+sha256sum trainlog-android-v0.1.0.apk \
+          trainlog-tui-linux-x86_64-v0.1.0
+```
+
+An unsigned release APK is build evidence only and must not be published as the
+canonical stable Android artifact. Release assets must come from the exact
+tagged source state, and the tag, Android `versionName`, Meson project version,
+TUI product version, asset names, and release title must agree.
 
 ```bash
 meson setup --reconfigure build
@@ -533,7 +556,7 @@ Coverage proves:
   and footer F6/F7 single-occurrence output at 120x35, 100x30, 80x24, and
   72x20.
 
-Historical validation checkpoint (the current desktop suite is 56/56):
+Historical validation checkpoint (not the current suite size):
 
 ```text
 39/39 Meson tests PASS

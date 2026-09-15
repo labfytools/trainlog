@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for ExerciseProfileStateSyncTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.data
 
 import android.content.Context

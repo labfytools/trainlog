@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for bodyviz.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <stdbool.h>
 #include <stdio.h>
 

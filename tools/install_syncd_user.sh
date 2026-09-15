@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Trainlog install syncd user helper.
+# Owns this command-line workflow while preserving the versioned database and exchange contracts it consumes.
 set -euo pipefail
 
 ROOT="$(

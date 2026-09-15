@@ -1,3 +1,8 @@
+/*
+ * Android BodyZoneHomeOverview.
+ *
+ * Owns this data-layer boundary while keeping UI state, canonical desktop history, and exchange contracts separate.
+ */
 package com.labfytools.trainlog.data
 
 enum class BodyZoneHomeState(val label: String) {

@@ -1,3 +1,8 @@
+/*
+ * Trainlog duration interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_DURATION_H
 #define TRAINLOG_DURATION_H
 

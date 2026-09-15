@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for mtp.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <limits.h>
 #include <stdio.h>
 

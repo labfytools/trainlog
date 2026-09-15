@@ -1,3 +1,8 @@
+/*
+ * Trainlog reps interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_REPS_H
 #define TRAINLOG_REPS_H
 

@@ -1,3 +1,8 @@
+/*
+ * Trainlog bodyviz implementation.
+ *
+ * Owns this module's bounded behavior and does not redefine persistence, synchronization, or UI contracts owned elsewhere.
+ */
 #include "trainlog/bodyviz.h"
 
 #include <math.h>

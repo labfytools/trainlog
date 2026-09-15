@@ -1,3 +1,8 @@
+/*
+ * Android MainActivity.
+ *
+ * Connects the application lifecycle to Trainlog UI without owning domain or persistence behavior.
+ */
 package com.labfytools.trainlog
 
 import android.os.Bundle

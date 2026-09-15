@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for session generation.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include "trainlog/session_generation.h"
 #include "trainlog/database.h"
 

@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for training knowledge.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include "trainlog/training_knowledge.h"
 
 #include <stdio.h>

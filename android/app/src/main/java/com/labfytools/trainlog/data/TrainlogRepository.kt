@@ -1,3 +1,8 @@
+/*
+ * Android TrainlogRepository.
+ *
+ * Owns this data-layer boundary while keeping UI state, canonical desktop history, and exchange contracts separate.
+ */
 package com.labfytools.trainlog.data
 
 import android.content.ContentValues
@@ -62,6 +67,13 @@ internal fun exerciseProfileRevision(parent: String, recording: String, tracking
     return "pr2_" + UUID(bytes.long, bytes.long).toString()
 }
 
+/*
+ * Advances one exercise profile along its bounded causal revision chain.
+ *
+ * The transaction-owning caller supplies the database. This function mutates
+ * only profile-state ancestry, returns false for missing/exhausted state, and
+ * never rewrites historical occurrence snapshots.
+ */
 private fun advanceExerciseProfileRevision(
     db: SQLiteDatabase, rowId: Long, recording: String, tracking: String, fields: Int,
 ): Boolean {
@@ -6884,6 +6896,13 @@ private const val MAX_AI_DRAFT_ENTRIES = 64
 private const val MAX_AI_TARGET_SETS = 99
 private const val MAX_AI_TARGET_REPS = 999
 
+/*
+ * Owns creation and ordered migration of the Android-local capture database.
+ *
+ * SQLiteOpenHelper serializes lifecycle callbacks. Each additive migration
+ * preserves completed history and the singleton active draft; desktop schema
+ * numbering and synchronization remain separate contracts.
+ */
 private class TrainlogDatabaseHelper(
     private val appContext: Context,
     databaseName: String,

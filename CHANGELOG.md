@@ -1,5 +1,18 @@
 # Changelog
 
+- Documented stable-release distribution through GitHub Releases, including
+  prebuilt Android and architecture-specific dynamically linked Linux assets,
+  SHA-256 verification, runtime/build/optional dependencies, and the release
+  signing and exact-tag requirements. No v0.1.0 release is claimed until a
+  signed APK and authenticated GitHub publication path are available.
+
+- Completed `TRAINLOG_FULL_REPOSITORY_DOCUMENTATION_AUDIT_V2`: added the
+  canonical documentation index, made README a concise entry point, separated
+  current state from future roadmap ownership, corrected current schema and
+  validation descriptions, and added concise English ownership headers across
+  previously undocumented C, Kotlin, Python, and shell sources. The audit
+  changes documentation comments only and introduces no functional behavior.
+
 - Fixed fresh Android database body-zone reconstruction by applying the
   PC-published body-zone companion immediately after catalog, flattened aliases
   and strict profile-state, before fallible downstream session, equipment, AI

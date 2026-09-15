@@ -1,3 +1,8 @@
+/*
+ * Trainlog theme interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_THEME_H
 #define TRAINLOG_THEME_H
 

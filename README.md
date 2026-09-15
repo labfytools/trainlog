@@ -1,405 +1,249 @@
 # Trainlog
 
-Trainlog is a local-first workout and body-tracking system with two user
-interfaces:
+Trainlog is a local-first workout and body-data system. Its native Android app
+is the lightweight field companion for fast capture and glanceable summaries;
+its C17/Notcurses desktop TUI is the detailed surface for correction,
+catalogue management, analytics, graphs, and long-term follow-up.
 
-- a native Android application optimized for fast data entry during training;
-- a C17/Notcurses TUI used for durable history, editing, visualization,
-  statistics, and synchronization.
+Android and desktop each own a local SQLite database. The desktop database is
+the canonical long-term history. Trainlog synchronizes versioned JSON artifacts
+over direct MTP; it never copies SQLite database files between devices.
 
-The desktop SQLite database is the canonical long-term history. Android keeps
-its own local SQLite database so recording remains usable independently from the
-desktop.
+## Product split
 
-## Current status
+| Surface | Primary responsibility |
+|---|---|
+| Android | Capture sets, repetitions, loads, durations, continuous activities, feedback, J+1 follow-ups, body measurements, active drafts, and AI proposals; trigger sync; show quick summaries. |
+| Desktop TUI | Consult and correct canonical history; manage exercises and equipment; analyze body data, MAX results, training statistics, body zones, calendar periods, and longitudinal graphs. |
 
-```text
-TRAINLOG_FORMAT_V1=FROZEN
-TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING
+In short: **Android captures and summarizes. The TUI analyzes and tracks over
+time.** Android intentionally remains lightweight for analytics.
 
-DESKTOP_SCHEMA_V11=PASS
-ANDROID_LOCAL_WORKFLOWS=PASS
-ANDROID_LOCAL_DATABASE_V10=PASS
-ANDROID_LOCAL_DATABASE_V11=PASS
-ANDROID_SESSION_DRAFT_V1=PASS
-EXERCISE_EDIT_V1=PASS
-ANDROID_BANNER_PARITY_V1=PASS
+## Release links
 
-VARIABLE_REPETITION_SETS=PASS
-CONTINUOUS_ACTIVITY_TRACKING=PASS
+- [Download the latest release](https://github.com/labfytools/trainlog/releases/latest)
+- [Documentation](docs/README.md)
+- [Changelog](CHANGELOG.md)
 
-DIRECT_MTP_TRANSPORT=PASS
-COMMON_SYNC_ENGINE=PASS
-TRAINLOG_SYNCD=PASS
-ANDROID_TRIGGERED_SYNC=PASS
-ANDROID_SYNC_RECEIPT=PASS
-BIDIRECTIONAL_SYNC_V1=PASS
-MULTI_OCCURRENCE_SESSION_V2=PASS
-EQUIPMENT_ASSOCIATIONS_V2=PASS
-EQUIPMENT_DEFINITIONS_V1=PASS
-EXERCISE_RECONCILIATION_V2=PASS
-EXPLICIT_MAX_RESULTS_V1=PASS
-BODY_ZONES_V1=PASS
-BODY_ZONE_SYNC_V1=PASS
-BODY_ZONES_DESKTOP_REAL_MIGRATION=PASS
-BODY_ZONES_ANDROID_DEVICE_VALIDATION=PASS
+## Installation
 
-DESKTOP_TESTS=58/58 PASS (latest validated checkpoint)
-ANDROID_BUILD=PASS
+### Download a prebuilt release
 
-TRAINING_KNOWLEDGE_V1=PASS
-SESSION_GENERATOR_V1=PASS
-APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2
-```
+Stable releases publish an Android APK, an x86-64 Linux TUI executable, and a
+`SHA256SUMS` file on [GitHub Releases](https://github.com/labfytools/trainlog/releases).
+Verify the downloaded binary against `SHA256SUMS` before installing it.
 
-`APP_SHELL_V1` provides the shared seven-section application shell on both
-platforms: **Accueil**, **Séances**, **Exercices**,
-**Statistiques**, **Synchronisation**, and **Paramètres**. Completed history
-and the existing generator now live under **Séances**; existing body and MAX
-views live under **Statistiques**. It records no new statistics, schema, or
-synchronization protocol. Automated review repairs are recorded, but the
-status remains awaiting human visual/accessibility review; see
-[the APP_SHELL_V1 review record](docs/reviews/app_shell_v1.md).
-
-`TRAINING_KNOWLEDGE_V1` has passed its bounded scientific review, independent
-temporal delta review, final engineering audit, repair verification, and final
-executable validation. Its C and
-Android occurrence pages and latest-MAX context share the settled exact-instant
-ordering and source-text cursor contract. The independent temporal review
-returned PASS with no findings. The initial full-tranche audit's four findings
-were resolved by one bounded repair chain and independently verified. Fresh
-validation passed: strict build, 56 Meson tests, Python knowledge/temporal
-tests, validators, headers, sanitizers, 12-form temporal probes, Android 56
-tests with one known fixture skip, and Java 17 debug assembly.
-The [temporal correction record](docs/reviews/training_knowledge_v1_temporal_contract.md)
-defines the accepted grammar, regression evidence and remaining review boundary.
-
-## Architecture
-
-```text
-                Android application
-                local SQLite store
-                       |
-             automatic mobile snapshot
-                       |
-                       v
-        Documents/Trainlog on Android storage
-                       |
-                       | direct MTP / libmtp
-                       v
-                trainlog_sync_run()
-                  /             \
-                 /               \
-        Android -> PC         PC -> Android
-        snapshot import       catalog publish
-                 \               /
-                  \             /
-                   sync receipt
-                       |
-                       v
-                    Android
-
-Desktop TUI --------------------+
-    |                           |
-    +-- same sync engine -------+
-    |
-    v
-desktop SQLite
-canonical long-term history
-```
-
-No SQLite database file is copied between devices. The desktop does not require
-a GVFS/FUSE mount of the phone.
-
-## Exercise model
-
-Trainlog does not infer behavior from exercise names.
-
-```text
-recording_mode = SETS | CONTINUOUS
-tracking_mode  = REPS | DURATION
-data_fields    = SPEED_KMH | DISTANCE_KM
-```
-
-Valid model-v1 combinations are:
-
-```text
-SETS + REPS
-SETS + DURATION
-CONTINUOUS + DURATION
-```
-
-Actual repetition sets are stored independently. The Notcurses desktop flow
-collects planning only, then creates actual work in an ordered table: the user
-explicitly adds every row and enters its actual repetitions (or duration) and
-optional load. It does not accept compact performed-repetition input; normal
-set sessions cannot finish with zero actual rows.
-
-A session may contain several ordered occurrences of the same catalogue
-exercise. Each occurrence has a stable `entry_id`, distinct from the stable
-`exercise_id` of the catalogue item. Equipment selection belongs to that
-occurrence, as do its actual per-set loads. `external` records an applied or
-machine-displayed load; `assistance` records assistance and is not interpreted
-as increasing strength. An actual load is either absent or finite and
-non-negative, so an explicit zero remains distinct from no recorded load;
-planned targets remain strictly positive and are never substituted for actuals.
-
-In a `max_test` session, an occurrence may instead own one explicit positive
-`max_weight_kg`. This result has no performed set, repetitions, or target-set
-count. Its identity remains the movement's `exercise_id` plus the occurrence's
-`entry_id`; optional equipment is context and never owns a shared maximum.
-
-During V2 synchronization, a different-ID normalized-name collision is merged
-only when recording/tracking modes match, every other known invariant is
-compatible, and one `data_fields` mask contains the other. The desktop identity
-is retained as canonical, the bit-mask union preserves the richer capability,
-and historical occurrence snapshots remain unchanged; absent optional values
-stay absent. Incomparable profiles remain explicit conflicts. Name equality
-alone is never sufficient.
-
-Exercise body zones are independent metadata sourced from the single canonical
-[`catalog/body-zones-v1.json`](catalog/body-zones-v1.json) manifest. An exercise
-may have one primary assignable zone and several distinct secondary zones.
-Secondary relations require that primary; the explicit unclassified state has
-no relations at all.
-`upper_body` and `lower_body` are hierarchy groups used for display and
-descendant-aware filtering; they are never duplicated as stored relations.
-`full_body` and `core` remain autonomous. Historical exercises without an
-objective stable-ID mapping remain visible as **Non renseignés**.
-
-## Repository layout
-
-```text
-android/        native Kotlin/Compose Android client
-tui/            C17 Notcurses desktop application and core
-docs/           canonical project documentation
-format/         frozen Trainlog JSON v1 schema material
-catalog/        canonical versioned equipment and body-zone manifests
-examples/       valid frozen-format examples
-tests/          fixtures and cross-component tests
-tools/          validators, import/export helpers, sync daemon tooling
-```
-
-## Desktop build and validation
+The Linux TUI artifact is architecture-specific and dynamically linked. It is
+not a universally portable Linux binary: the host must provide compatible
+runtime libraries listed under [Dependencies](#dependencies).
 
 ```bash
-meson setup --reconfigure build
+chmod +x trainlog-tui-linux-x86_64-v0.1.0
+./trainlog-tui-linux-x86_64-v0.1.0
+```
+
+The executable can remain in the download directory. Moving it into a directory
+on `PATH`, such as a user-managed `~/.local/bin`, is optional.
+
+For Android, download the release APK, allow installation from the browser or
+file manager when Android requests it, and install the package. Android 8.0
+(API 26) or later is required. Grant Trainlog all-files access only when direct
+`Documents/Trainlog` synchronization is needed. Desktop synchronization also
+requires the Linux side and its MTP dependencies to be installed and configured.
+
+Android and the TUI in one GitHub Release share the same Trainlog product
+version. Database schemas and JSON protocol versions are independent.
+
+### Build from source
+
+Desktop:
+
+```bash
+meson setup build
 meson compile -C build
 meson test -C build --print-errorlogs
-
-python tools/validate_json.py
-python tools/validate_import_contract.py
-
-git diff --check
 ```
 
-## Local history export for external analysis
-
-Create the read-only `TRAINLOG_AI_EXPORT_V1` artifact in the current directory:
-
-```bash
-python tools/export_ai_history.py --database ~/.local/share/trainlog/trainlog.db
-```
-
-The default output is `trainlog_ai_export_v1.json`. It is ignored by Git
-because it contains user data. After every completely successful desktop sync,
-the shared sync engine regenerates this artifact and asks the external desktop
-`rclone` command to copy it to
-`TrainLog Gdrive:Trainlog/AI/trainlog_ai_export_v1.json`. Export or Drive
-failure is reported without changing the successful Trainlog sync result.
-Android never runs `rclone`, and its configuration/OAuth credentials remain in
-the user's normal `~/.config/rclone/` location outside this repository and the
-APK. See [the exchange documentation](docs/exchange_format.md) for the
-versioned raw-data contract and feedback ownership rules.
-
-## AI session-draft exchange
-
-`TRAINLOG_AI_SESSION_DRAFT_V1` is a separate, strict proposal exchange; it
-does not alter `TRAINLOG_FORMAT_V1`, the mobile export, or the existing
-read-only `TRAINLOG_AI_EXPORT_V1` history export. An external producer places
-one source object at
-`TrainLog Gdrive:Trainlog/AI/inbox/trainlog_ai_session_draft_v1.json`. The desktop
-fetches it during synchronization, validates and imports it transactionally,
-then copies those exact fetched bytes after that commit to
-`TrainLog Gdrive:Trainlog/AI/archive/` under its stable `aid_<uuid-v4>`
-identity. The mutable inbox object is never moved or deleted: its logical
-replay is idempotent, and an archive failure is visible and retryable without
-undoing the committed import.
-
-The desktop then publishes the distinct PC-to-Android companion
-`trainlog-ai-session-drafts-v1.json` in `Documents/Trainlog`. Android keeps its
-pending proposals as a collection, separate from its exactly-one active
-capture draft. Starting one proposal copies targets only into that singleton
-draft and atomically tombstones the proposal; deleting a proposal also leaves
-a tombstone, so replay cannot recreate it. No proposal creates performed work,
-history, MAX, or feedback.
-
-The source and companion are bounded and strict: UUIDv4 `aid_` identities,
-nonempty trimmed text when supplied (title 120 and draft notes 2,000 characters;
-entries have no notes), at most 64 ordered entries, target sets 1..99, target
-reps 1..999, and at most 256 unpublished drafts per deterministic publication.
-Successful MTP publication advances the durable batch cursor; failure retries
-the same batch. Only `SETS` plans are
-allowed; the selected exercise's REPS-or-DURATION profile determines the one
-valid target metric. The final real Google Drive and Android-triggered
-bidirectional smoke test remains manual, so this checkpoint is documented as
-`VALIDATION_PENDING`, not PASS. See [AI draft exchange](docs/exchange_format.md).
-
-## Android build
-
-Android keeps one durable in-progress workout in its local SQLite database.
-Home offers **Reprendre la séance en cours** after navigation, app switching,
-Activity recreation, process death or force-stop/relaunch. Added exercises and
-raw unfinished form text are retained. Removing an exercise affects only the
-draft; abandoning the draft requires confirmation. Final save atomically
-creates completed history and clears the draft. Drafts never enter mobile
-export or desktop synchronization as completed sessions.
-
-Schema migrations are additive and preserve existing capture data. See
-[Android behavior](docs/android.md) and [validation](docs/tests.md).
-
-The current Android schema is v17. Its additive v4 -> v17 chain adds the shared
-equipment catalogue, per-occurrence equipment links, durable occurrence
-identities, custom-equipment definition support, explicit MAX results and
-stable-source Test max resumption, then direct primary/secondary body-zone
-relations and occurrence planning, without recreating completed history or
-discarding the active draft. The additive v11 -> v12 migration stores flattened
-exercise aliases used to resolve retired IDs during synchronization.
-
-Exercises can be renamed in place from Android. The `ex_<uuid-v4>` identity is
-unchanged; completed history, an active draft, and synchronization therefore
-continue to resolve the same logical exercise. Referenced profiles are locked;
-only unreferenced catalog exercises may change their recording/tracking profile.
-
-The local Android SDK is intentionally not committed. Configure it with either
-`ANDROID_HOME` or `android/local.properties`.
-
-Example:
+Android:
 
 ```bash
 cd android
-
-printf 'sdk.dir=%s\n' "$HOME/Android/Sdk" > local.properties
-
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk \
-./gradlew testDebugUnitTest assembleDebug
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
 ```
 
-## Android-triggered synchronization
+`assembleRelease` produces a distributable stable APK only when release signing
+is configured by the release operator. The repository does not contain signing
+credentials and does not silently generate them.
 
-Launch the desktop TUI from this built checkout with:
+## Dependencies
 
-```bash
-cd /home/fy59/Documents/trainlog
-./build/tui/trainlog
-```
+### Linux runtime dependencies
 
-The desktop database is `$XDG_DATA_HOME/trainlog/trainlog.db`, or
-`~/.local/share/trainlog/trainlog.db` when `XDG_DATA_HOME` is unset.
+The published x86-64 TUI is dynamically linked. The current build directly
+requires compatible versions of:
 
-Build the desktop first, then install the user service:
+- glibc and the GCC support runtime;
+- SQLite 3;
+- libuuid;
+- utf8proc;
+- libudev;
+- libmtp;
+- Notcurses Core;
+- the standard math library.
 
-```bash
-bash tools/install_syncd_user.sh
-```
+Distribution packages may pull additional transitive libraries, including
+libusb, ncursesw, unistring, gpm, libgcrypt, libgpg-error, and libdeflate.
+Package names and ABI versions vary by distribution; inspect the release's
+`ldd` evidence and install packages from the target distribution rather than
+assuming one universal package command.
 
-Check it with:
+### Optional runtime and integration dependencies
 
-```bash
-systemctl --user is-active trainlog-syncd.service
-tail -f ~/.local/state/trainlog/syncd.log
-```
+- Android is optional when using the desktop TUI alone. USB/MTP synchronization
+  requires the Android companion, libudev, libmtp, and an unlocked connected
+  device.
+- `trainlog-syncd` installation expects a systemd user session. Manual TUI
+  synchronization does not require the user service.
+- `rclone` is required only for automatic AI history upload and Drive
+  inbox/archive workflows. Core capture, local history, analytics, and direct
+  MTP synchronization work without `rclone`.
 
-On Android:
+### Build dependencies
 
-```text
-Sync
--> Synchroniser maintenant
-```
+Desktop builds require:
 
-The request is consumed by `trainlog-syncd`, the shared bidirectional engine
-runs, a receipt is returned to Android, and the PC catalog is applied locally.
-The active completed-session exchange is V3 and preserves occurrence
-`entry_id`, per-set weights and equipment associations. Frozen V1 artifacts
-remain readable as legacy artifacts; they are not silently redefined as V2.
-Exercise-zone metadata travels separately in the sole bidirectional
-`trainlog-exercise-body-zones-v1.json` companion.
+- Meson and Ninja;
+- a C17 compiler toolchain;
+- `pkg-config`;
+- Notcurses Core development headers;
+- SQLite, libuuid, utf8proc, libudev, and libmtp development headers;
+- Python 3 for generated sources, validators, import/export helpers, and tests.
+
+Android builds require JDK 17, an Android SDK supporting the configured API
+levels, and the Gradle wrapper committed in this repository. People installing
+the APK do not need Java, Gradle, or the Android SDK.
 
 ## Documentation
 
-- `docs/current_state.md`: compact canonical implementation snapshot;
-- `docs/architecture.md`: component and ownership boundaries;
-- `docs/exercise_data_model.md`: exercise semantics;
-- `docs/database.md`: desktop SQLite schema and migrations;
-- `docs/android.md`: Android behavior;
-- `docs/tui.md`: desktop TUI behavior;
-- `docs/sync_exchange.md`: MTP synchronization artifacts and protocol;
-- `docs/exchange_format.md`: frozen Trainlog JSON v1 contract;
-- `docs/tests.md`: validation strategy;
-- `docs/roadmap.md`: completed gates and future cursor;
-- `docs/domain/knowledge_system.md`: read-only scientific knowledge system,
-  runtime-context boundary and documented future planning pipeline;
-- `AGENTS.md`: development contract.
+| Topic | Document | Purpose |
+|---|---|---|
+| Documentation map | [docs/README.md](docs/README.md) | Canonical index and ownership map. |
+| Current state | [docs/current_state.md](docs/current_state.md) | Current implemented schemas, capabilities, validation, and limitations. |
+| Architecture | [docs/architecture.md](docs/architecture.md) | Component, storage, process, and ownership boundaries. |
+| Android | [docs/android.md](docs/android.md) | Field-companion behavior and local persistence. |
+| Desktop TUI | [docs/tui.md](docs/tui.md) | Notcurses workflows, correction, and analytics. |
+| Database | [docs/database.md](docs/database.md) | Desktop persistence schema and migration contracts. |
+| Exercise model | [docs/exercise_data_model.md](docs/exercise_data_model.md) | Exercise, occurrence, load, and MAX semantics. |
+| Synchronization | [docs/sync_exchange.md](docs/sync_exchange.md) | Active MTP flow and companion artifacts. |
+| Exchange formats | [docs/exchange_format.md](docs/exchange_format.md) | Frozen and separately versioned JSON contracts. |
+| Training feedback | [docs/training_feedback.md](docs/training_feedback.md) | Immediate feedback, revisions, and J+1 follow-ups. |
+| Tests | [docs/tests.md](docs/tests.md) | Durable validation commands and coverage strategy. |
+| Roadmap | [docs/roadmap.md](docs/roadmap.md) | Current cursor and future work only. |
+| Development contract | [AGENTS.md](AGENTS.md) | Repository invariants and contribution rules. |
+| Change history | [CHANGELOG.md](CHANGELOG.md) | Chronological implementation history. |
+
+## Architecture overview
+
+```text
+Android local SQLite
+        |
+        | versioned JSON snapshots and requests
+        v
+Documents/Trainlog on Android storage
+        |
+        | direct MTP / libmtp
+        v
+trainlog_sync_run() <---- trainlog-syncd or desktop TUI
+        |
+        +---- import Android snapshot into desktop SQLite
+        +---- publish desktop catalog companions to Android
+        +---- write a synchronization receipt
+
+desktop SQLite = canonical long-term history
+```
+
+The optional desktop AI flow exports read-only history and exchanges session
+proposals through Google Drive via the external `rclone` process. Android does
+not contain cloud credentials and does not run `rclone`.
+
+## Current status
+
+As of 2026-09-15:
+
+- `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
+- desktop SQLite schema v18 and Android SQLite schema v17;
+- Notcurses is the only active desktop terminal backend;
+- direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
+  all-files access setting;
+- mobile export V3 is active; V1/V2 remain readable legacy inputs;
+- `STATS_V1=IMPLEMENTED`, `TRAINING_KNOWLEDGE_V1=PASS`, and
+  `SESSION_GENERATOR_V1=PASS` (the generator is hidden pending V2);
+- `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`;
+- `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
+  Android-triggered bidirectional smoke test.
+
+The latest executable result belongs in
+[current state](docs/current_state.md), not in multiple README narratives.
+
+## Desktop development quick start
+
+Requirements include Meson, Ninja, SQLite3, utf8proc, libuuid, libudev,
+libmtp, and Notcurses.
+
+```bash
+meson setup build
+meson compile -C build
+meson test -C build --print-errorlogs
+./build/tui/trainlog
+```
+
+The database path is `$XDG_DATA_HOME/trainlog/trainlog.db`, or
+`~/.local/share/trainlog/trainlog.db` when `XDG_DATA_HOME` is unset.
+
+## Android development quick start
+
+Use Java 17 and provide the Android SDK through `ANDROID_HOME` or the untracked
+`android/local.properties` file.
+
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
+```
+
+Instrumented tests belong on an emulator. Do not run
+`connectedDebugAndroidTest` on the primary personal phone.
+
+## Synchronization quick start
+
+```bash
+meson compile -C build
+bash tools/install_syncd_user.sh
+systemctl --user is-active trainlog-syncd.service
+```
+
+On Android, grant all-files access for the fixed `Documents/Trainlog`
+directory, then use **Synchronisation → Synchroniser maintenant**. Hardware MTP
+validation requires an unlocked connected device and remains an explicit manual
+check.
 
 ## Development principles
 
-- local-first;
-- no mandatory cloud account;
-- user-owned data;
-- versioned persistent and exchange formats;
-- stable identities;
-- idempotent synchronization;
-- no fake data representation to force incompatible models together;
-- strict compiler warnings;
-- documentation and tests are part of feature completion.
+- Preserve frozen, versioned compatibility boundaries.
+- Use stable IDs; display names are not identities.
+- Keep performed work separate from plans and continuous activity separate
+  from fake sets.
+- Keep Android capture, desktop analytics, persistence, transport, and
+  rendering responsibilities distinct.
+- Prefer explicit failure to silent data loss or corruption.
+- Treat migrations, idempotence, tests, and documentation as part of feature
+  completion.
+- Keep scientific catalogs separate from runtime user data and preserve stated
+  uncertainty.
 
-## Measured max
+## License and project notes
 
-Explicit `max_test` sessions are the only source of measured maxima. Schema v9
-stores each new weight result in a one-to-one `max_results` row; it no longer
-encodes a maximum as a synthetic `1 × 1` set.
-
-Ordinary training best sets remain ordinary performance even when they exceed a
-previous max-test result.
-
-The desktop exercise catalog exposes a separate measured-max view with current
-result, same-mode record, test history, a dedicated graph, and 60/70/80/90%
-working loads for external resistance. Working loads are rounded to a selectable
-practical increment and are not calculated for assistance.
-
-Android and the TUI expose a dedicated `Test max` form containing exercise,
-optional equipment, and `Poids max (kg)`. Android can reopen an existing Test
-max and atomically replace its ordered entries while preserving the original
-session and occurrence identities.
-
-```text
-MEASURED_MAX_V1=PASS
-WORKING_LOAD_PERCENTAGES=PASS
-ANDROID_MAX_TEST_SESSION=PASS
-EXPLICIT_MAX_RESULTS_V1=PASS
-```
-
-## Body analytics
-
-Body analytics are desktop-only. Android remains a capture client.
-
-The TUI derives descriptive ratios, left/right asymmetry, and an optional
-circumference-based body-fat estimate from real body observations.
-
-The estimate requires a local desktop-only analytics profile containing the
-formula branch and height. Estimated fat mass and lean mass are calculated only
-when a real body weight is present.
-
-Estimated values are never persisted as direct measurements.
-
-```text
-BODY_ANALYTICS_V1=PASS
-BODY_COMPOSITION_ESTIMATE=PASS
-BODY_PROPORTION_RATIOS=PASS
-BODY_SYMMETRY_ANALYTICS=PASS
-DESKTOP_TESTS=39/39 PASS
-```
-
-`SESSION_GENERATOR_V1` remains implemented but is hidden from normal Android
-and TUI navigation pending V2. `catalog/exercise-names-v1.json` owns mapped
-exercise display metadata across sync while preserving stable IDs and history.
+See [LICENSE](LICENSE). Forgejo is the primary repository; GitHub is a mirror.
+Repository layout, detailed contracts, and historical review records are linked
+from [docs/README.md](docs/README.md).

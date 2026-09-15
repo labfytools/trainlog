@@ -1,3 +1,8 @@
+/*
+ * Trainlog exercise name catalog interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_EXERCISE_NAME_CATALOG_H
 #define TRAINLOG_EXERCISE_NAME_CATALOG_H
 

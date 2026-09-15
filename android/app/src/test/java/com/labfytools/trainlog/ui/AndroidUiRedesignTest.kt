@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for AndroidUiRedesignTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.ui
 
 import androidx.compose.ui.test.junit4.createComposeRule

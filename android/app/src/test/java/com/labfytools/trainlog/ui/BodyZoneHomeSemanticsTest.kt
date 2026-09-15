@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for BodyZoneHomeSemanticsTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.layout.Box

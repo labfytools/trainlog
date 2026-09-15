@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for FeedbackEditorVoiceUiTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.ui
 
 import android.Manifest

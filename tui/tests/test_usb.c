@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for usb.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <stdio.h>
 #include <string.h>
 

@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for SessionGeneratorPreviewControllerTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.ui
 
 import com.labfytools.trainlog.data.BodyZoneRecentExposure

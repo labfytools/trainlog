@@ -1,3 +1,8 @@
+/*
+ * Android StatisticsModels.
+ *
+ * Owns this data-layer boundary while keeping UI state, canonical desktop history, and exchange contracts separate.
+ */
 package com.labfytools.trainlog.data
 
 /** STATS_V1 is a read-only projection: none of these values are persisted as facts. */

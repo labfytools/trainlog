@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for AndroidV16AiSessionDraftMigrationTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.data
 
 import android.content.Context

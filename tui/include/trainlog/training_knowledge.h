@@ -1,3 +1,8 @@
+/*
+ * Trainlog training knowledge interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_TRAINING_KNOWLEDGE_H
 #define TRAINLOG_TRAINING_KNOWLEDGE_H
 

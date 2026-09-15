@@ -11,8 +11,10 @@ ANDROID_INLINE_EXERCISE_ROUTE=IMPLEMENTED
 ANDROID_EXERCISE_SHELL=IMPLEMENTED
 ANDROID_BODY_SHELL=IMPLEMENTED
 
-LOCAL_PERSISTENCE=NEXT
-MTP_SYNC=AFTER_LOCAL_WORKFLOW
+LOCAL_PERSISTENCE=IMPLEMENTED
+DIRECT_STORAGE=IMPLEMENTED
+MTP_SYNC=IMPLEMENTED
+ANDROID_SCHEMA=17
 ```
 
 ## Visual contract
@@ -68,10 +70,12 @@ minSdk       26
 JDK          17
 ```
 
-A Gradle wrapper is intentionally not committed by the scaffold script unless
-it can be generated locally. From this directory:
+The committed Gradle wrapper is the canonical entry point. From this directory:
 
 ```bash
-gradle wrapper --gradle-version 9.6.0
-./gradlew assembleDebug
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
 ```
+
+Instrumented tests run on an emulator. Do not run
+`connectedDebugAndroidTest` on the primary personal phone.

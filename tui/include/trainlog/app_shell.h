@@ -1,3 +1,8 @@
+/*
+ * Trainlog app shell interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_APP_SHELL_H
 #define TRAINLOG_APP_SHELL_H
 

@@ -1,3 +1,8 @@
+/*
+ * Android TrainlogApp.
+ *
+ * Owns this Compose presentation boundary; durable state and domain rules remain in repository and model layers.
+ */
 package com.labfytools.trainlog.ui
 
 /* TRAINLOG_PC_CATALOG_AUTO_APPLY */

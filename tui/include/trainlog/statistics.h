@@ -1,3 +1,8 @@
+/*
+ * Trainlog statistics interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_STATISTICS_H
 #define TRAINLOG_STATISTICS_H
 

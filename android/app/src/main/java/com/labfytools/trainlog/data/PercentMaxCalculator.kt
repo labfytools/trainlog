@@ -1,3 +1,8 @@
+/*
+ * Android PercentMaxCalculator.
+ *
+ * Owns this data-layer boundary while keeping UI state, canonical desktop history, and exchange contracts separate.
+ */
 package com.labfytools.trainlog.data
 
 enum class GeneratorLoadChoice { AUTOMATIC, PERCENT_MAX, NONE }

@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for exercise profile schema.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

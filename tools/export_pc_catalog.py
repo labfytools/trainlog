@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""Trainlog export pc catalog helper.
+
+Owns this command-line workflow while preserving the versioned database and exchange contracts it consumes."""
 import argparse
 import json
 import os

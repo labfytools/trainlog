@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for StatisticsScreenPresentationTest.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.layout.Column

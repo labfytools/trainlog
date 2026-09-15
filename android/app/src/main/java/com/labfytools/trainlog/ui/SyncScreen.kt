@@ -1,3 +1,8 @@
+/*
+ * Android SyncScreen.
+ *
+ * Owns this Compose presentation boundary; durable state and domain rules remain in repository and model layers.
+ */
 package com.labfytools.trainlog.ui
 
 /* TRAINLOG_ANDROID_TRIGGERED_SYNC_V1 */

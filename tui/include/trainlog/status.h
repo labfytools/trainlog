@@ -1,3 +1,8 @@
+/*
+ * Trainlog status interface.
+ *
+ * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ */
 #ifndef TRAINLOG_STATUS_H
 #define TRAINLOG_STATUS_H
 

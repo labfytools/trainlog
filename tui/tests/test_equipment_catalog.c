@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for equipment catalog.
+ *
+ * Exercises production contracts without owning runtime behavior or persistent formats.
+ */
 #include <assert.h>
 #include <string.h>
 

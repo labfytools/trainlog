@@ -1,3 +1,8 @@
+/*
+ * Android SessionScreen.
+ *
+ * Owns this Compose presentation boundary; durable state and domain rules remain in repository and model layers.
+ */
 package com.labfytools.trainlog.ui
 
 /* TRAINLOG_ANDROID_MAX_TEST_SESSION_V1 */
