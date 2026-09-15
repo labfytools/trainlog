@@ -98,6 +98,7 @@ trainlog_core_sources = files(
   'src/mtp.c',
   'src/reps.c',
   'src/session_generation.c',
+  'src/statistics.c',
   'src/measured_max.c',
   'src/sync.c',
   'src/sync_history.c',
@@ -140,6 +141,7 @@ trainlog_core_dep = declare_dependency(
 trainlog_tui_sources = files(
   'src/main.c',
   'src/app_shell.c',
+  'src/chart.c',
   'src/sync_screen_action.c',
   'src/terminal.c',
   'src/theme.c',
@@ -651,6 +653,7 @@ test_tui_workflows = executable(
   'test_tui_workflows',
   'tests/test_tui_workflows.c',
   'src/app_shell.c',
+  'src/chart.c',
   'src/theme.c',
   'src/sync_screen_action.c',
   dependencies: trainlog_core_dep,
@@ -658,6 +661,26 @@ test_tui_workflows = executable(
 )
 
 test('tui_workflows', test_tui_workflows)
+
+test_chart = executable(
+  'test_chart',
+  'tests/test_chart.c',
+  'src/chart.c',
+  include_directories: trainlog_include,
+  dependencies: m_dep,
+  c_args: strict_c_args,
+)
+
+test('chart', test_chart)
+
+test_statistics = executable(
+  'test_statistics',
+  'tests/test_statistics.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('statistics', test_statistics)
 
 test_feedback_labels = executable(
   'test_feedback_labels',

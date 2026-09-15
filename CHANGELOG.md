@@ -127,6 +127,50 @@ Detailed implementation chronology remains available in Git history and
 
 ### Added
 
+- `TRAINLOG_TUI_STATISTICS_CALENDAR_BUCKETS_V1=PASS`: Training `7j` now means
+  the current Monday–Sunday calendar week and compares calendar weeks; `30j`
+  means the current Gregorian month and compares calendar months. Membership
+  follows the civil date persisted in each timestamp, empty intermediate
+  periods remain zero bars, localized labels expose the calendar boundaries,
+  and exact month endpoints cover ordinary and leap-year February.
+
+- `TRAINLOG_TUI_STATISTICS_PERIOD_BUCKET_SIZE_FIX=PASS`: the selected Training
+  period now controls both summary depth and comparison-bucket size. `7j` uses
+  exact consecutive 7-day buckets, `30j` uses exact consecutive 30-day buckets
+  anchored on the current local date, and `Tout` selects one stable weekly or
+  calendar-month scale from total historical duration. Empty intervals remain
+  explicit zero bars and boundary observations are counted once.
+
+- `TRAINLOG_TUI_STATISTICS_PERIOD_BUCKETING_V1=PASS`: Training summaries keep
+  their rolling 7-day/30-day facts while charts compare consecutive exact
+  Monday–Sunday buckets. The 7-day view shows up to four available weeks, the
+  30-day view shows all intersecting weeks, empty periods remain zero bars, and
+  complete history adapts from weekly to monthly totals beyond 128 active
+  weeks without sampling away totals.
+
+- `TRAINLOG_TUI_STATISTICS_REFINEMENT_V1=PASS`: finite statistics windows now
+  retain their complete time domain; weekly totals use local Monday buckets,
+  explicit empty weeks, zero baselines and discrete Notcurses bars. Wide
+  training summaries are grouped into semantic panels, zone bars expose raw
+  counts on one shared scale, exercise lists show factual summaries, and MAX
+  defaults to exercises with an explicit recorded result while preserving an
+  opt-in all-compatible view and prefix search.
+
+- `TRAINLOG_TUI_STATISTICS_V1=PASS`: Statistiques is now the desktop analysis
+  center for body history, factual global training activity, canonical
+  exercise histories, persisted primary/secondary body-zone activity and
+  explicit MAX history. Read-only C17 aggregations feed responsive Notcurses
+  views and the shared Braille chart; valid loaded volume, planned/actual and
+  feedback ownership rules deliberately exclude unsupported inference. No
+  Android, database-schema, synchronization or exchange-format behavior changed.
+
+- `TRAINLOG_TUI_MEASUREMENTS_GRAPH_V1=PASS`: Statistiques / Mensurations now
+  uses a reusable Notcurses chart with true elapsed-time spacing, labelled
+  padded value scales, a 2x4 Unicode Braille line raster, distinct accent
+  markers for stored observations, responsive sparse-profile layout, and
+  terminal-free geometry/raster regressions. No database, measurement, Android,
+  or synchronization semantics changed.
+
 - `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`: a shared seven-root
   application shell—Accueil, Séances, Exercices, Équipements, Statistiques,
   Synchronisation and Paramètres—on the Notcurses TUI and Android Material 3

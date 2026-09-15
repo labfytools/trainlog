@@ -244,7 +244,7 @@ Strict warning flags remain active. Do not weaken warnings to make a change pass
 
 ## APP_SHELL_V1 production-transition coverage
 
-The active desktop suite has 46 tests. `app_shell` verifies layout thresholds,
+The active desktop suite has 58 tests. `app_shell` verifies layout thresholds,
 route/history bounds, overlays and focus restoration, bounded UTF-8 search and
 form input, stable-ID list selection, shared action ordering, and leave guards.
 `tui_workflows` covers the production single event-loop routes and controller
@@ -255,10 +255,38 @@ invalid arguments, offsets and corrupt values. This coverage replaces former
 nested-screen-loop workflow claims.
 
 The Mensurations workflow regression separates the selected observation's
-profile from its metric history: singleton circumference bars without a trend,
-independent kg/cm rendering, missing-field omission, a real two-date Unicode
-series, historical selection updates, availability-filtered metric navigation,
-and bounded 120x35, 100x30, 80x24 and 72x20 geometry without ASCII chart glyphs.
+profile from its metric history: singleton circumference bars, independent
+kg/cm rendering, missing-field omission, a real two-date high-resolution
+Unicode series, historical selection updates, availability-filtered metric
+navigation, and bounded 120x35, 100x30, 80x24 and 72x20 geometry without ASCII
+chart glyphs. The terminal-free `chart` regression exercises zero, one and two
+points; constant, increasing and decreasing series; irregular elapsed-time X
+mapping; Y headroom; clipping and compact rectangles; Braille 2x4 dot encoding;
+interpolated Braille output; and distinct stored-measurement markers.
+
+The terminal-free `statistics` regression covers empty, 7-day, 30-day and
+complete windows; actual-session and occurrence counts; sets, repetitions and
+duration; strict external-load volume; same-occurrence planned/actual totals;
+canonical alias reconciliation; primary and secondary persisted zones;
+immediate and session-global feedback scopes; and zero/one/multiple explicit
+MAX histories. `tui_workflows` additionally exercises the five-entry statistics
+hub, period and graph cycling, compact zone bars, canonical exercise detail,
+MAX facts, and bounded common-chart rendering without an interactive terminal.
+
+Statistics-refinement regressions distinguish identical observations plotted
+inside 7-day and 30-day domains, clamp non-negative scales to zero, render two
+weekly totals as independent bars, retain empty local-calendar weeks, compare
+unequal zone counts through one shared scale, and verify that the default MAX
+list excludes never-measured exercises until its explicit toggle is used.
+
+Period-bucketing regressions cover four consecutive 7-day comparison buckets,
+Monday/Sunday assignment, localized consecutive Gregorian months, retained
+empty middle periods, and boundary assignment without double counting.
+Ordinary February, leap-year February and exact first/last dates verify month
+length without fixed-day arithmetic. Offset-bearing fixtures verify persisted
+civil-date membership independently of the machine timezone. Current partial
+weeks/months, stable zero history, and duration-based adaptive full-history
+aggregation are also covered.
 
 The APP_SHELL PTY validation exercises six TUI sizes—72x20, 80x24, 100x25,
 100x30, 120x31 and 120x35—plus help, search clear/close, F6/F7, compact focus,

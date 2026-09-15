@@ -326,9 +326,14 @@ visibly distinct; `i` opens the resolved equipment detail.
   scaled to the largest circumference in that observation;
 - `←`/`→` selection among only metrics that exist in recorded observations,
   with weight selected by default when available;
-- an evolution section that reports no data for zero points, reports
-  `1 relevé · tendance indisponible` without a graph for one point, and draws a
-  Unicode time series from real dated values for two or more points;
+- a reusable Notcurses evolution chart whose X axis represents elapsed time,
+  whose labelled Y axis adds modest visible headroom, and whose 2x4 Braille
+  raster draws a fine piecewise-linear line between stored observations;
+- distinct accent diamonds for actual measurements, including one centered
+  point with a readable scale for a singleton series; zero points show
+  `Aucune donnée disponible.` without unnecessary axes;
+- first/last civil-date labels and a non-colliding intermediate graduation
+  when the available width permits it;
 - detail and correction;
 - body trend visualization;
 - normalized multi-metric overlay;
@@ -336,8 +341,10 @@ visibly distinct; `i` opens the resolved equipment detail.
 
 The profile and evolution sections are deliberately separate: kilograms never
 share a circumference scale, missing measurements are omitted, and the profile
-bars make no progress or trend claim. The sections stack responsively down to
-the supported 72x20 terminal.
+bars make no progress or trend claim. Sparse profiles donate unused rows to the
+chart. The current content-plane rectangle is recalculated on every render, so
+the sections resize responsively down to the supported 72x20 terminal without
+retaining stale coordinates.
 
 Editing preserves observation identity, timestamp, and optional session link.
 
@@ -638,7 +645,82 @@ Proportions can display:
 All estimates are explicitly labeled as estimates. No result is converted into
 a medical or diagnostic classification.
 
-## 18. Training knowledge infrastructure
+## 18. Statistics center
+
+`TRAINLOG_TUI_STATISTICS_V1=PASS` organizes the Notcurses statistics route as
+five keyboard-first views: Corps, Vue globale, Exercices, Zones and MAX. The
+body view retains recorded weight and circumference history. The other views
+use read-only aggregates over the existing desktop schema and never persist a
+derived score or cache.
+
+The global view switches between the current calendar week, current calendar
+month and complete history. It reports actual sessions, occurrences, sets, repetitions,
+available durations, active days/weeks and loaded volume. Loaded volume is
+strictly `repetitions × actual external load` when both the occurrence and the
+exercise declare external-load semantics; duration, cardio, assistance and
+  no-load work are excluded. Its common Notcurses chart cycles through bucketed
+  loaded volume, sessions, sets and immediate-feedback counts.
+
+Exercise statistics are selected by canonical `exercise_id`, include aliases
+already reconciled by persistence, and omit inapplicable load facts. Their
+graph cycles through recorded load, valid volume, repetitions, sets and
+explicit MAX values. The MAX detail displays only persisted explicit tests,
+including latest, previous, historical best and auditable deltas.
+
+Zone statistics count distinct actual sessions through persisted
+`exercise_body_zones` primary/secondary associations. Exercise names are never
+used to infer a zone. Planning comparisons are limited to targets and actuals
+owned by the same persisted occurrence. Immediate feedback remains attached
+to its occurrence; J+1 feedback remains session-global, and free text is not
+classified or attributed automatically.
+
+`TRAINLOG_TUI_STATISTICS_REFINEMENT_V1=PASS` keeps these five routes while
+making their visual semantics explicit. Finite 7-day and 30-day graphs retain
+the complete selected time domain, including inactive space. Weekly totals use
+Monday-based local calendar buckets, explicit empty weeks and discrete bars;
+non-negative counts and volumes use a zero baseline. Continuous observations,
+exercise progression and explicit MAX histories remain line graphs.
+
+On sufficiently large planes, the training summary is grouped into Activity,
+Work, Feedback and Planned/Performed panels; compact planes retain the bounded
+vertical form. Zone primary and secondary bars share one scale across every
+visible row and show their raw counts. The MAX catalogue defaults to exercises
+with an explicit result, shows latest value/date, and uses `a` to reveal all
+compatible set-based exercises. Prefix search and stable-ID drill-down are
+unchanged.
+
+`TRAINLOG_TUI_STATISTICS_PERIOD_BUCKETING_V1=PASS` separates the textual
+summary window from the comparison depth of its chart. `7j` summarizes the
+rolling last seven days but compares up to four available consecutive local
+calendar weeks.
+
+`TRAINLOG_TUI_STATISTICS_PERIOD_BUCKET_SIZE_FIX=PASS` is the historical
+checkpoint that first separated comparison sizes. Its duration-based `Tout`
+adaptation remains active; its finite rolling boundaries are superseded by the
+calendar contract below. `Tout` uses Monday-based 7-day buckets while its
+elapsed span fits the bounded graph, then switches the whole graph to calendar
+months. The decision uses historical duration, so sparse old activity is not
+silently discarded.
+
+Explicit zero buckets remain visible between represented boundaries. Each
+chart uses one bucket size and one zero-based scale, and its title explicitly
+states 7-day periods, 30-day periods, complete-history weeks, or
+complete-history months.
+
+`TRAINLOG_TUI_STATISTICS_CALENDAR_BUCKETS_V1=PASS` supersedes rolling bucket
+boundaries with calendar alignment. `7j` summarizes the current local calendar
+week and compares Monday–Sunday weeks. `30j` summarizes the current Gregorian
+calendar month and compares the current month with up to three preceding
+months. The current week or month remains partial until its calendar endpoint.
+
+Historical membership uses the `YYYY-MM-DD` civil date stored in each persisted
+timestamp. It is never reassigned by converting that timestamp through the
+current machine timezone. Month keys advance by Gregorian year/month, so
+28-day February, leap-year February, 30-day months and 31-day months all expose
+their exact exclusive chart endpoint. French abbreviated month labels and
+Monday–Sunday ranges make the aggregation visible in the TUI.
+
+## 19. Training knowledge infrastructure
 
 The desktop core includes immutable `training_knowledge.h` catalog access and
 read-only `training_context.h` composition. The context uses real persisted IDs

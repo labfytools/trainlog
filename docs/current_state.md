@@ -109,7 +109,30 @@ Implemented:
 - multiple occurrences of one catalogue exercise in a session;
 - per-set actual loads with distinct external/assistance semantics;
 - body-observation creation/history/editing;
-- body graphs and normalized overlays;
+- `TRAINLOG_TUI_MEASUREMENTS_GRAPH_V1=PASS`: a reusable Notcurses body-history
+  chart with elapsed-time X spacing, labelled and margined Y scale, Braille 2x4
+  line rasterization, distinct real-measurement markers, responsive geometry,
+  and terminal-free calculation/raster regressions;
+- `TRAINLOG_TUI_STATISTICS_V1=PASS`: the TUI statistics hub covers recorded
+  body history, global 7-day/30-day/all-time activity, canonical-exercise
+  facts and graphs, persisted primary/secondary body-zone activity, and
+  explicit MAX history. Aggregations are read-only and terminal-independent;
+  volume, planning and feedback scopes remain conservative and auditable;
+- `TRAINLOG_TUI_STATISTICS_REFINEMENT_V1=PASS`: finite graph windows preserve
+  their selected domain, weekly totals use zero-based discrete bars and local
+  Monday buckets, wide summaries use semantic panels, zone bars share one
+  numeric scale, and MAX defaults to explicitly measured exercises;
+- `TRAINLOG_TUI_STATISTICS_PERIOD_BUCKETING_V1=PASS`: the 7-day summary compares
+  up to four consecutive calendar-week buckets and preserves empty periods;
+- `TRAINLOG_TUI_STATISTICS_PERIOD_BUCKET_SIZE_FIX=PASS`: historical checkpoint
+  that separated bucket sizes before the subsequent calendar alignment. Its
+  duration-based full-history adaptation remains active;
+- `TRAINLOG_TUI_STATISTICS_CALENDAR_BUCKETS_V1=PASS`: the current `7j` summary
+  and bars are Monday–Sunday calendar weeks, while `30j` uses the current and
+  preceding Gregorian calendar months. Persisted civil dates determine bucket
+  membership without reinterpretation through the machine timezone; empty
+  weeks/months and partial current periods remain explicit;
+- normalized body overlays;
 - exercise performance history;
 - direct USB/MTP device access;
 - manual Android -> PC, PC -> Android, and bidirectional synchronization;
@@ -517,7 +540,7 @@ ASSISTANCE_DIRECTION_AWARE=PASS
 ANDROID_MAX_TEST_SESSION=PASS
 EXPLICIT_MAX_RESULTS_V1=PASS
 MAX_TEST_RESUME_STABLE_ID=PASS
-DESKTOP_TESTS=47/47 PASS
+DESKTOP_TESTS=58/58 PASS
 ```
 
 A measured maximum belongs to an exercise occurrence in an explicit `max_test`
@@ -556,7 +579,7 @@ BODY_COMPOSITION_ESTIMATE=PASS
 BODY_PROPORTION_RATIOS=PASS
 BODY_SYMMETRY_ANALYTICS=PASS
 NO_ESTIMATE_PERSISTENCE=PASS
-DESKTOP_TESTS=47/47 PASS
+DESKTOP_TESTS=58/58 PASS
 ```
 
 Android remains capture-only for this feature.

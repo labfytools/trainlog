@@ -517,7 +517,10 @@ const char *trainlog_route_title(TrainlogAppRoute route)
     case TRAINLOG_ROUTE_EQUIPMENT: return "Équipements / Catalogue";
     case TRAINLOG_ROUTE_EQUIPMENT_DETAIL: return "Équipements / Fiche";
     case TRAINLOG_ROUTE_STATS: return "Statistiques";
+    case TRAINLOG_ROUTE_STATS_TRAINING: return "Statistiques / Entraînement";
     case TRAINLOG_ROUTE_STATS_EXERCISE: return "Statistiques / Par exercice";
+    case TRAINLOG_ROUTE_STATS_EXERCISE_DETAIL: return "Statistiques / Exercice";
+    case TRAINLOG_ROUTE_STATS_ZONES: return "Statistiques / Zones";
     case TRAINLOG_ROUTE_BODY: return "Statistiques / Mensurations";
     case TRAINLOG_ROUTE_BODY_DETAIL: return "Mensurations / Relevé";
     case TRAINLOG_ROUTE_BODY_METRIC: return "Mensurations / Historique";
@@ -540,7 +543,10 @@ TrainlogAppRoute trainlog_route_section(TrainlogAppRoute route)
     if (route == TRAINLOG_ROUTE_EXERCISE_PERFORMANCE ||
         route == TRAINLOG_ROUTE_EXERCISE_MAX) return TRAINLOG_ROUTE_STATS;
     if (route == TRAINLOG_ROUTE_EQUIPMENT_DETAIL) return TRAINLOG_ROUTE_EQUIPMENT;
-    if (route == TRAINLOG_ROUTE_STATS_EXERCISE ||
+    if (route == TRAINLOG_ROUTE_STATS_TRAINING ||
+        route == TRAINLOG_ROUTE_STATS_EXERCISE ||
+        route == TRAINLOG_ROUTE_STATS_EXERCISE_DETAIL ||
+        route == TRAINLOG_ROUTE_STATS_ZONES ||
         (route >= TRAINLOG_ROUTE_BODY && route <= TRAINLOG_ROUTE_BODY_ANALYTICS) ||
         route == TRAINLOG_ROUTE_MAX) return TRAINLOG_ROUTE_STATS;
     return route;

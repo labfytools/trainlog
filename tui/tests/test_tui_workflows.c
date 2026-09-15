@@ -697,6 +697,7 @@ static bool test_shell_actions_overlay_executes_registered_search_action(void)
     trainlog_navigation_init(&app.navigation);
     app.navigation.current.route = TRAINLOG_ROUTE_EQUIPMENT;
     trainlog_search_init(&app.search);
+    app.exercise_zone_filter = -1;
     app_shell_refresh_list(&app);
     app_shell_actions(&app);
     search_action = trainlog_actions_find_key(&app.actions, '/');
@@ -1530,6 +1531,10 @@ static bool test_stats_dashboard_uses_real_exact_time_snapshots_responsively(voi
         "ex_77777777-7777-4777-8777-777777777777", "Marche test",
         "marche test", TRAINLOG_TRACKING_DURATION, TRAINLOG_RECORDING_CONTINUOUS,
         (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_99999999-9999-4999-8999-999999999999", "Sans MAX",
+        "sans max", TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
+        (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
     /* Raw text says 23:00 is later, but +15:00 makes it the older instant. */
     CHECK(dashboard_insert_completed_set(database,
         "se_11111111-1111-4111-8111-111111111111",
@@ -1597,6 +1602,25 @@ static bool test_stats_dashboard_uses_real_exact_time_snapshots_responsively(voi
     CHECK(app.dashboard.performed_set_count == 4U);
     CHECK(app.dashboard.distinct_exercise_count == 2U);
     CHECK(app.dashboard.explicit_max_count == 1U);
+    trainlog_list_init(&app.list);
+    trainlog_search_init(&app.search);
+    app.exercise_zone_filter = -1;
+    app.navigation.current.route = TRAINLOG_ROUTE_MAX;
+    app_shell_refresh_list(&app);
+    CHECK(!app.list_error && app.loaded_count == 1U);
+    CHECK(strcmp(app.exercises[0].exercise_id,
+        "ex_33333333-3333-4333-8333-333333333333") == 0);
+    app.max_show_all = true;
+    app_shell_refresh_list(&app);
+    CHECK(!app.list_error && app.loaded_count > 1U);
+    {
+        bool has_never_measured = false;
+        for (size_t exercise = 0U; exercise < app.loaded_count; ++exercise)
+            if (strcmp(app.exercises[exercise].exercise_id,
+                    "ex_99999999-9999-4999-8999-999999999999") == 0)
+                has_never_measured = true;
+        CHECK(has_never_measured);
+    }
 
     (void)memset(&terminal, 0, sizeof(terminal));
     surface.terminal = &terminal;
@@ -1652,14 +1676,17 @@ static bool test_stats_dashboard_uses_real_exact_time_snapshots_responsively(voi
     CHECK(strstr(terminal.output, "Fréquence") != NULL);
     CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
     trainlog_navigation_init(&app.navigation);
-    app.navigation.current.route = TRAINLOG_ROUTE_STATS;
+    app.navigation.current.route = TRAINLOG_ROUTE_STATS_TRAINING;
+    app.layout.usable = true;
+    app.focus = TRAINLOG_FOCUS_CONTENT;
     app.layout.usable = true;
     app.focus = TRAINLOG_FOCUS_CONTENT;
     app_shell_dispatch(&app, '1');
-    CHECK(app.dashboard.period == TRAINLOG_STATS_7_DAYS);
+    CHECK(app.statistics_window == TRAINLOG_STATISTICS_7_DAYS);
+    app.navigation.current.route = TRAINLOG_ROUTE_STATS;
     app.content_selected = 2U;
     app_shell_primary(&app);
-    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_SESSIONS_COMPLETED);
+    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_STATS_EXERCISE);
     trainlog_database_close(database);
     return true;
 }
@@ -1921,8 +1948,8 @@ static bool test_stats_detail_charts_and_global_zone_projection(void)
     dashboard_prepare_render(&app, &terminal, &surface, 72, 20, 72, 16);
 
     /* The sparse-state contract is deliberately exercised through the exact
-     * detail painters: empty and singleton series have prose only, while two
-     * real observations acquire Unicode points/segments rather than ASCII. */
+     * detail painters. Measurement charts keep a real singleton marker and
+     * two observations acquire Braille interpolation rather than ASCII. */
     app_shell_draw_performance_graph(&app, NULL, TRAINLOG_LOAD_EXTERNAL,
         TRAINLOG_TRACKING_REPS, 5, 4, false);
     CHECK(strstr(terminal.output, "Aucun point exploitable") != NULL);
@@ -1956,21 +1983,20 @@ static bool test_stats_detail_charts_and_global_zone_projection(void)
 
     (void)memset(body, 0, sizeof(body));
     (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
-    app_shell_draw_body_points(&app, body, 0U, 5, 4, "kg");
+    app_shell_draw_body_points(&app, body, 0U, 5, 9, "kg", "Évolution");
     CHECK(strstr(terminal.output, "Aucune donnée") != NULL);
     body[0].value = 80.0;
     (void)snprintf(body[0].observed_at, sizeof(body[0].observed_at), "%s",
         "2026-09-01T08:00:00Z");
     (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
-    app_shell_draw_body_points(&app, body, 1U, 5, 4, "kg");
-    CHECK(strstr(terminal.output, "1 relevé") != NULL);
-    CHECK(terminal.surface_draw_count == 0U);
+    app_shell_draw_body_points(&app, body, 1U, 5, 9, "kg", "Évolution");
+    CHECK(rendered_draw_column(&terminal, 0x25c6U, 0U) >= 0);
     body[1] = body[0]; body[1].value = 79.0;
     (void)snprintf(body[1].observed_at, sizeof(body[1].observed_at), "%s",
         "2026-09-02T08:00:00Z");
     (void)memset(&terminal, 0, sizeof(terminal)); surface.terminal = &terminal;
-    app_shell_draw_body_points(&app, body, 2U, 5, 4, "kg");
-    CHECK(rendered_draw_column(&terminal, 0x25cfU, 0U) >= 0);
+    app_shell_draw_body_points(&app, body, 2U, 5, 9, "kg", "Évolution");
+    CHECK(rendered_draw_column(&terminal, 0x25c6U, 0U) >= 0);
 
     CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_insert_exercise(database,
@@ -2136,9 +2162,9 @@ static bool test_stats_detail_charts_and_global_zone_projection(void)
     }
     trainlog_navigation_init(&app.navigation);
     app.navigation.current.route = TRAINLOG_ROUTE_STATS;
-    app.content_selected = 3U;
+    app.content_selected = 2U;
     app_shell_primary(&app);
-    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_EXERCISES);
+    CHECK(app.navigation.current.route == TRAINLOG_ROUTE_STATS_EXERCISE);
     trainlog_database_close(database);
     return true;
 }
@@ -2203,7 +2229,7 @@ static bool test_body_profile_snapshot_and_evolution_are_separate(void)
     CHECK(strstr(terminal.output, "Tour de taille") != NULL);
     CHECK(strstr(terminal.output, "85.0 cm") != NULL);
     CHECK(strstr(terminal.output, "Épaules") == NULL);
-    CHECK(strstr(terminal.output, "1 relevé · tendance indisponible") != NULL);
+    CHECK(rendered_draw_column(&terminal, 0x25c6U, 0U) >= 0);
     CHECK(rendered_draw_column(&terminal, 0x2586U, 0U) >= 0);
     for (drawn = 0U; drawn < terminal.drawn_count; ++drawn) {
         CHECK(terminal.drawn[drawn].row != 4);
@@ -2223,9 +2249,9 @@ static bool test_body_profile_snapshot_and_evolution_are_separate(void)
         "2026-08-10T08:00:00Z");
     dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 80, 20);
     app_shell_render_body_profile(&app);
-    CHECK(strstr(terminal.output, "2026-08-10") != NULL);
-    CHECK(strstr(terminal.output, "2026-09-10") != NULL);
-    CHECK(rendered_draw_column(&terminal, 0x25cfU, 0U) >= 0);
+    CHECK(strstr(terminal.output, "10/08") != NULL);
+    CHECK(strstr(terminal.output, "10/09") != NULL);
+    CHECK(rendered_draw_column(&terminal, 0x25c6U, 0U) >= 0);
 
     app_shell_dispatch(&app, TRAINLOG_KEY_DOWN);
     CHECK(app.list.selected_index == 1U);
@@ -2246,6 +2272,100 @@ static bool test_body_profile_snapshot_and_evolution_are_separate(void)
         CHECK(strstr(terminal.output, "ÉVOLUTION DANS LE TEMPS") != NULL);
         CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
     }
+    return true;
+}
+
+static bool test_statistics_center_renders_and_cycles_factual_views(void)
+{
+    TrainlogAppContext app;
+    TrainlogTerminal terminal;
+    TrainlogSurface surface;
+    (void)memset(&app, 0, sizeof(app));
+    (void)memset(&surface, 0, sizeof(surface));
+    dashboard_prepare_render(&app, &terminal, &surface, 100, 30, 96, 24);
+    app.statistics_window = TRAINLOG_STATISTICS_30_DAYS;
+    app.statistics.sessions = 2U;
+    app.statistics.distinct_exercises = 1U;
+    app.statistics.occurrences = 2U;
+    app.statistics.sets = 6U;
+    app.statistics.repetitions = 60U;
+    app.statistics.active_days = 2U;
+    app.statistics.active_weeks = 2U;
+    app.statistics.loaded_volume_kg = 3200.0;
+    app.statistics.bucket_kind = TRAINLOG_STATISTICS_BUCKET_CALENDAR_MONTH;
+    app.statistics.bucket_count = 2U;
+    app.statistics.buckets[0].timestamp = 1000;
+    app.statistics.buckets[0].loaded_volume_kg = 1200.0;
+    app.statistics.buckets[0].sessions = 1U;
+    app.statistics.buckets[0].sets = 2U;
+    app.statistics.buckets[1].timestamp = 2000;
+    app.statistics.buckets[1].loaded_volume_kg = 2000.0;
+    app.statistics.buckets[1].sessions = 1U;
+    app.statistics.buckets[1].sets = 4U;
+    app_shell_render_statistics_training(&app);
+    CHECK(strstr(terminal.output, "ACTIVITÉ") != NULL);
+    CHECK(strstr(terminal.output, "TRAVAIL") != NULL);
+    CHECK(strstr(terminal.output, "Volume 3200.0 kg") != NULL);
+    CHECK(strstr(terminal.output,
+        "Volume chargé · mois calendaires") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+
+    trainlog_navigation_init(&app.navigation);
+    app.navigation.current.route = TRAINLOG_ROUTE_STATS_TRAINING;
+    app.layout.usable = true;
+    app.focus = TRAINLOG_FOCUS_CONTENT;
+    app_shell_dispatch(&app, TRAINLOG_KEY_RIGHT);
+    CHECK(app.statistics_graph == 1U);
+    app_shell_dispatch(&app, TRAINLOG_KEY_LEFT);
+    CHECK(app.statistics_graph == 0U);
+
+    dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 76, 18);
+    app.statistics_zone_count = 2U;
+    (void)snprintf(app.statistics_zones[0].label,
+        sizeof(app.statistics_zones[0].label), "%s", "Dos");
+    app.statistics_zones[0].primary_7 = 3U;
+    app.statistics_zones[0].secondary_7 = 1U;
+    app.statistics_zones[0].primary_30 = 1U;
+    app.statistics_zones[0].secondary_30 = 2U;
+    (void)snprintf(app.statistics_zones[1].label,
+        sizeof(app.statistics_zones[1].label), "%s", "Bras");
+    app.statistics_zones[1].primary_30 = 2U;
+    app.statistics_zones[1].secondary_30 = 4U;
+    app_shell_render_statistics_zones(&app);
+    CHECK(strstr(terminal.output, "principal") != NULL);
+    CHECK(strstr(terminal.output, "secondaire") != NULL);
+    {
+        int zone0_end = -1;
+        int zone1_end = -1;
+        for (size_t drawn = 0U; drawn < terminal.drawn_count; ++drawn) {
+            if (terminal.drawn[drawn].codepoint != 0x2588U) continue;
+            if (terminal.drawn[drawn].row == 9 &&
+                terminal.drawn[drawn].column > zone0_end)
+                zone0_end = terminal.drawn[drawn].column;
+            if (terminal.drawn[drawn].row == 11 &&
+                terminal.drawn[drawn].column > zone1_end)
+                zone1_end = terminal.drawn[drawn].column;
+        }
+        CHECK(zone0_end >= 0 && zone1_end > zone0_end);
+    }
+
+    dashboard_prepare_render(&app, &terminal, &surface, 100, 30, 96, 24);
+    (void)snprintf(app.exercise_statistics.name,
+        sizeof(app.exercise_statistics.name), "%s", "Développé couché");
+    (void)snprintf(app.exercise_statistics.exercise_id,
+        sizeof(app.exercise_statistics.exercise_id), "%s", "ex_stats");
+    (void)snprintf(app.exercise_statistics.load_semantics,
+        sizeof(app.exercise_statistics.load_semantics), "%s", "external");
+    app.exercise_statistics.occurrences = 2U;
+    app.exercise_statistics.sessions = 2U;
+    app.exercise_statistics.series_count[TRAINLOG_EXERCISE_SERIES_LOAD] = 1U;
+    app.exercise_statistics.series[TRAINLOG_EXERCISE_SERIES_LOAD][0].timestamp = 1000;
+    app.exercise_statistics.series[TRAINLOG_EXERCISE_SERIES_LOAD][0].value = 50.0;
+    app.exercise_statistics_graph = TRAINLOG_EXERCISE_SERIES_LOAD;
+    app_shell_render_exercise_statistics(&app);
+    CHECK(strstr(terminal.output, "Développé couché") != NULL);
+    CHECK(strstr(terminal.output, "Charge observée") != NULL);
+    CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
     return true;
 }
 
@@ -2277,6 +2397,7 @@ int main(void)
         !test_stats_dashboard_exact_dose_strict_later_and_invalid_rows() ||
         !test_body_graphs_draw_inside_minimum_content_surface() ||
         !test_body_profile_snapshot_and_evolution_are_separate() ||
+        !test_statistics_center_renders_and_cycles_factual_views() ||
         !test_stats_detail_charts_and_global_zone_projection()) return 1;
     (void)printf("PASS tui_workflows\n");
     return 0;
