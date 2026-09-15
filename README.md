@@ -19,19 +19,36 @@ over direct MTP; it never copies SQLite database files between devices.
 In short: **Android captures and summarizes. The TUI analyzes and tracks over
 time.** Android intentionally remains lightweight for analytics.
 
-## Release links
+## Releases
 
-- [Download the latest release](https://github.com/labfytools/trainlog/releases/latest)
-- [Documentation](docs/README.md)
-- [Changelog](CHANGELOG.md)
+Prebuilt Trainlog releases are published on both official mirrors:
+
+- [GitHub Releases](https://github.com/labfytools/trainlog/releases)
+- [Forgejo Releases](https://git.labfytools.com/fy59/trainlog/releases)
+
+Each stable release provides:
+
+- a signed Android APK;
+- a Linux x86-64 TUI executable;
+- SHA-256 checksums.
+
+Both mirrors publish the same Trainlog version and release assets.
+
+See the [documentation](docs/README.md) and [changelog](CHANGELOG.md) for more
+details.
 
 ## Installation
 
 ### Download a prebuilt release
 
-Stable releases publish an Android APK, an x86-64 Linux TUI executable, and a
-`SHA256SUMS` file on [GitHub Releases](https://github.com/labfytools/trainlog/releases).
-Verify the downloaded binary against `SHA256SUMS` before installing it.
+You can download Trainlog from either official mirror:
+
+- [GitHub](https://github.com/labfytools/trainlog/releases)
+- [Forgejo](https://git.labfytools.com/fy59/trainlog/releases)
+
+Both mirrors contain the same Android APK, Linux x86-64 TUI binary, and SHA-256
+checksums for each stable Trainlog release. Verify the downloaded binaries
+against `SHA256SUMS` before installing them.
 
 The Linux TUI artifact is architecture-specific and dynamically linked. It is
 not a universally portable Linux binary: the host must provide compatible
@@ -51,8 +68,9 @@ file manager when Android requests it, and install the package. Android 8.0
 `Documents/Trainlog` synchronization is needed. Desktop synchronization also
 requires the Linux side and its MTP dependencies to be installed and configured.
 
-Android and the TUI in one GitHub Release share the same Trainlog product
-version. Database schemas and JSON protocol versions are independent.
+Android and the TUI in each stable release share the same Trainlog product
+version on both mirrors. Database schemas and JSON protocol versions are
+independent.
 
 ### Build from source
 
