@@ -42,6 +42,7 @@ parallel implementation of its rules.
 | TUI Dashboard adoption | `WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN` |
 | Web CLI/HTTP infrastructure | `WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN` |
 | Web frontend shell | `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` |
+| Web Dashboard grid | `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -191,6 +192,13 @@ The Dashboard data-contract tranche passes **71/71 normal and ASan/UBSan
 Meson tests**, including the bounded Core/JSON target, HTTP endpoint coverage
 and 12 Vitest tests for parsing and factual Footer integration.
 
+`WEB_DASHBOARD_GRID_V1=PASS/FROZEN` uses `react-grid-layout` 2.2.4 behind an
+independent Trainlog model/validator. Its 12-column desktop layout has seven
+stable tile IDs, bounded per-tile dimensions, vertical collision compaction,
+explicit edit/cancel/reset/session-only-save behavior, mouse drag/two-axis
+resize, an announced keyboard alternative, and derived six/one-column
+responsive projections. No layout is persisted yet.
+
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
 Android resource-parity, language-owner, typed sync-presentation, and
@@ -206,6 +214,9 @@ smoke test are not automated. The latter is why
 - `WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN`: the bounded Core snapshot,
   `/api/v1/dashboard`, explicit unavailable states and factual Footer data are
   implemented. The seven tile bodies intentionally retain shell placeholders.
+- `WEB_DASHBOARD_GRID_V1=PASS/FROZEN`: layout changes live only in current
+  React memory. Versioned disk/API persistence is the next tranche,
+  `WEB_DASHBOARD_LAYOUT_V1`.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

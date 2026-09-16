@@ -51,6 +51,8 @@ if web_assets_enabled
     '../web/src/components/Footer.tsx',
     '../web/src/components/Header.tsx',
     '../web/src/components/Tile.tsx',
+    '../web/src/dashboard/DashboardGrid.tsx',
+    '../web/src/dashboard/dashboardLayout.ts',
     '../web/src/routes/DashboardPage.tsx',
     '../web/src/routes/PlaceholderPage.tsx',
     '../web/src/theme/app.css',

@@ -47,6 +47,34 @@ h1, h2, p { margin-top: 0; }
 h1 { margin-bottom: 0; font-size: clamp(2.25rem, 5vw, 4.5rem); line-height: .96; letter-spacing: -.055em; font-weight: 720; }
 h2 { color: var(--text); font-size: 1.08rem; letter-spacing: -.02em; }
 .page-intro { max-width: 34rem; margin-bottom: .15rem; color: var(--subtext-0); font-size: clamp(.95rem, 1.4vw, 1.08rem); line-height: 1.65; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+.dashboard-layout { min-width: 0; }
+.layout-toolbar { min-height: 2.7rem; margin: -1rem 0 1rem; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .65rem; }
+.layout-action { min-height: 2.45rem; padding: .58rem .82rem; color: var(--subtext-0); background: var(--surface-0); border: 1px solid rgb(108 112 134 / 48%); border-radius: .55rem; font: 650 .74rem var(--font-mono); cursor: pointer; transition: color 140ms ease, border-color 140ms ease, background 140ms ease; }
+.layout-action:hover { color: var(--text); border-color: var(--surface-2); background: var(--surface-1); }
+.layout-action:focus-visible, .tile:focus-visible { outline: 2px solid var(--lavender); outline-offset: 3px; }
+.layout-action-primary { color: var(--crust); background: var(--lavender); border-color: transparent; }
+.layout-action-primary:hover { color: var(--crust); background: var(--blue); border-color: transparent; }
+.layout-help, .layout-breakpoint-note { margin: 0 auto 0 0; color: var(--subtext-0); font: 550 .7rem/1.4 var(--font-mono); }
+.layout-breakpoint-note { flex-basis: 100%; color: var(--yellow); }
+.dashboard-grid-frame { min-width: 0; }
+.dashboard-grid { min-width: 0; }
+.dashboard-grid > .react-grid-item { min-width: 0; }
+.dashboard-grid .tile { width: 100%; height: 100%; min-height: 0; }
+.dashboard-layout.is-editing .dashboard-grid-frame { margin: -.5rem; padding: .5rem; border-radius: calc(var(--radius) + .3rem); background-image: radial-gradient(circle, rgb(180 190 254 / 16%) 1px, transparent 1px); background-size: 1.5rem 1.5rem; }
+.dashboard-layout.is-editing .tile { border-color: rgb(180 190 254 / 38%); box-shadow: 0 1.2rem 3rem rgb(0 0 0 / 16%), inset 0 0 0 1px rgb(180 190 254 / 5%); }
+.dashboard-layout.is-editing .tile-drag-handle { cursor: grab; }
+.dashboard-layout.is-editing .react-draggable-dragging .tile-drag-handle { cursor: grabbing; }
+.dashboard-grid .react-grid-placeholder { background: var(--lavender); border-radius: var(--radius); opacity: .16; }
+.dashboard-grid .react-grid-item > .react-resizable-handle { display: none; width: 1.2rem; height: 1.2rem; opacity: .8; }
+.dashboard-layout.is-editing .dashboard-grid .react-grid-item > .react-resizable-handle { display: block; }
+.dashboard-grid .react-resizable-handle::after { width: .45rem; height: .45rem; border-color: var(--lavender); }
+.dashboard-grid .react-resizable-handle-e { top: 50%; right: -.15rem; transform: translateY(-50%) rotate(135deg); }
+.dashboard-grid .react-resizable-handle-s { bottom: -.15rem; left: 50%; transform: translateX(-50%) rotate(45deg); }
+.tile-compact .empty-glyph { display: none; }
+.tile-compact .empty-state p { margin-top: 0; font-size: .82rem; }
+.tile-large .tile-content { padding: 1rem; }
 
 .tile-grid { min-width: 0; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; }
 .tile { min-width: 0; grid-column: span 4; min-height: 17rem; padding: clamp(1.15rem, 2vw, 1.6rem); display: flex; flex-direction: column; background: var(--base); border: 1px solid rgb(69 71 90 / 38%); border-radius: var(--radius); box-shadow: 0 1.2rem 3rem rgb(0 0 0 / 12%); }
@@ -91,6 +119,8 @@ h2 { color: var(--text); font-size: 1.08rem; letter-spacing: -.02em; }
   .tile, .tile-wide, .tile-feature, .principle-panel { width: 100%; grid-column: auto; }
   .tile { min-height: 14rem; }
   .principle-panel { min-height: 17rem; }
+  .layout-toolbar { justify-content: flex-start; }
+  .layout-help { flex-basis: 100%; }
   .status-footer { grid-template-columns: 1fr 1fr; gap: .8rem 1.25rem; }
   .status-zone { grid-column: 1 / -1; }
   .backend-state { grid-column: 1 / -1; justify-self: start; }
@@ -105,4 +135,5 @@ h2 { color: var(--text); font-size: 1.08rem; letter-spacing: -.02em; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .react-grid-item { transition: none !important; }
 }

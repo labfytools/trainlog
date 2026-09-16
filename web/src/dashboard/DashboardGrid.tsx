@@ -1,0 +1,145 @@
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import GridLayout, { useContainerWidth, verticalCompactor, type Layout } from 'react-grid-layout'
+import { EmptyState } from '../components/EmptyState'
+import { Tile } from '../components/Tile'
+import {
+  cloneLayout,
+  DEFAULT_DASHBOARD_LAYOUT,
+  fromGridLayout,
+  moveTileByKeyboard,
+  projectDashboardLayout,
+  resizeTileByKeyboard,
+  tileSize,
+  TILE_IDS,
+  toGridLayout,
+  type TileId,
+  type TileLayout,
+} from './dashboardLayout'
+
+const dashboardTiles: Readonly<Record<TileId, { title: string, eyebrow: string, message: string }>> = {
+  'next-session': { title: 'Prochaine séance', eyebrow: 'Planification', message: 'Aucune séance préparée disponible.' },
+  activity: { title: 'Activité', eyebrow: 'Régularité', message: 'Les données d’activité ne sont pas encore exposées.' },
+  progression: { title: 'Progression', eyebrow: 'Évolution', message: 'La métrique de progression reste à définir.' },
+  'last-session': { title: 'Dernière séance', eyebrow: 'Historique', message: 'Aucune séance terminée disponible.' },
+  'max-records': { title: 'Records / MAX', eyebrow: 'Performances', message: 'Aucun MAX mesuré disponible.' },
+  'muscle-distribution': { title: 'Répartition musculaire', eyebrow: 'Zones', message: 'La répartition par zone n’est pas encore disponible.' },
+  'cardio-recovery': { title: 'Cardio / récupération', eyebrow: 'Physiologie', message: 'Aucune donnée cardio ou récupération disponible.' },
+}
+
+function breakpoint(width: number): { columns: 12 | 6 | 1, rowHeight: number } {
+  if (width < 700) return { columns: 1, rowHeight: 56 }
+  if (width < 1100) return { columns: 6, rowHeight: 54 }
+  return { columns: 12, rowHeight: 52 }
+}
+
+export function DashboardGrid() {
+  const [layout, setLayout] = useState<TileLayout[]>(() => cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
+  const [editing, setEditing] = useState(false)
+  const [announcement, setAnnouncement] = useState('')
+  const beforeEditing = useRef<TileLayout[]>(cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
+  // The viewport-derived seed prevents a wide first frame from overflowing on
+  // phones before ResizeObserver has measured the actual grid container.
+  const initialWidth = Math.max(288, window.innerWidth - 32)
+  const { width, containerRef } = useContainerWidth({ initialWidth })
+  const effectiveWidth = width > 0 ? width : initialWidth
+  const view = breakpoint(effectiveWidth)
+  const desktop = view.columns === 12
+  const visibleLayout = useMemo(
+    () => projectDashboardLayout(layout, view.columns),
+    [layout, view.columns],
+  )
+
+  function enterEditMode() {
+    beforeEditing.current = cloneLayout(layout)
+    setEditing(true)
+    setAnnouncement('Mode modification activé. Utilisez les flèches pour déplacer une tuile et Maj plus flèche pour la redimensionner.')
+  }
+
+  function cancelEditing() {
+    setLayout(cloneLayout(beforeEditing.current))
+    setEditing(false)
+    setAnnouncement('Modifications annulées.')
+  }
+
+  function resetEditing() {
+    setLayout(cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
+    setAnnouncement('Agencement par défaut restauré dans le brouillon.')
+  }
+
+  function saveEditing() {
+    setEditing(false)
+    setAnnouncement('Agencement appliqué pour cette session. Il reviendra à sa valeur par défaut après rechargement.')
+  }
+
+  function acceptLibraryLayout(next: Layout) {
+    if (!editing || !desktop) return
+    const converted = fromGridLayout(next)
+    if (converted !== null) setLayout(converted)
+  }
+
+  function onTileKeyDown(event: KeyboardEvent<HTMLElement>, id: TileId) {
+    if (!editing || !desktop || !event.key.startsWith('Arrow')) return
+    event.preventDefault()
+    const horizontal = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0
+    const vertical = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+    const next = event.shiftKey
+      ? resizeTileByKeyboard(layout, id, horizontal, vertical)
+      : moveTileByKeyboard(layout, id, horizontal, vertical)
+    setLayout(next)
+    const tile = next.find((candidate) => candidate.id === id)
+    if (tile !== undefined) {
+      setAnnouncement(`${dashboardTiles[id].title} : colonne ${tile.x + 1}, ligne ${tile.y + 1}, largeur ${tile.width}, hauteur ${tile.height}.`)
+    }
+  }
+
+  const libraryLayout = toGridLayout(visibleLayout, editing && desktop, view.columns)
+
+  return (
+    <div className={`dashboard-layout${editing ? ' is-editing' : ''}`}>
+      <div className="layout-toolbar" aria-label="Agencement du Dashboard">
+        {!editing ? (
+          <button className="layout-action layout-action-primary" type="button" onClick={enterEditMode}>Modifier l’agencement</button>
+        ) : (
+          <>
+            <p className="layout-help">Flèches : déplacer · Maj + flèches : redimensionner</p>
+            {!desktop && <p className="layout-breakpoint-note">Revenez sur un écran large pour modifier la grille canonique.</p>}
+            <button className="layout-action" type="button" onClick={cancelEditing}>Annuler</button>
+            <button className="layout-action" type="button" onClick={resetEditing}>Réinitialiser</button>
+            <button className="layout-action layout-action-primary" type="button" onClick={saveEditing}>Enregistrer pour cette session</button>
+          </>
+        )}
+      </div>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
+      <div ref={containerRef} className="dashboard-grid-frame" data-columns={view.columns}>
+        <GridLayout
+          width={effectiveWidth}
+          layout={libraryLayout}
+          gridConfig={{ cols: view.columns, rowHeight: view.rowHeight, margin: [16, 16], containerPadding: [0, 0], maxRows: 240 }}
+          dragConfig={{ enabled: editing && desktop, bounded: true, handle: '.tile-drag-handle', cancel: 'button, a, input, select, textarea', threshold: 3 }}
+          resizeConfig={{ enabled: editing && desktop, handles: editing && desktop ? ['e', 's', 'se'] : [] }}
+          compactor={verticalCompactor}
+          onLayoutChange={acceptLibraryLayout}
+          className="dashboard-grid"
+        >
+          {TILE_IDS.map((id) => {
+            const content = dashboardTiles[id]
+            const dimensions = visibleLayout.find((tile) => tile.id === id) ?? DEFAULT_DASHBOARD_LAYOUT[0]
+            return (
+              <div key={id} data-testid={`grid-item-${id}`}>
+                <Tile
+                  title={content.title}
+                  eyebrow={content.eyebrow}
+                  size={tileSize(dimensions)}
+                  editable={editing && desktop}
+                  onKeyDown={(event) => onTileKeyDown(event, id)}
+                >
+                  <EmptyState message={content.message} />
+                </Tile>
+              </div>
+            )
+          })}
+        </GridLayout>
+      </div>
+    </div>
+  )
+}

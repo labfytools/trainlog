@@ -67,6 +67,15 @@ CSP, CORS or unknown-route behavior. Vitest validates strict parsing, real
 Footer population, empty fallback, malformed snapshots and absence of invented
 tile metrics; the seven tile bodies remain placeholders.
 
+`WEB_DASHBOARD_GRID_V1` adds Vitest coverage for the seven stable identities,
+default validity/non-overlap, every min/max constraint, independent rejection
+of unknown/duplicate/out-of-grid/non-integral layouts, lossless library adapter
+round trips, deterministic collision compaction, horizontal/vertical keyboard
+resize, responsive six/one-column projections, normal-mode locking, absent
+normal-mode handles, edit actions, cancel/reset/session-only save, visible
+keyboard focus and live announcements. Existing shell tests continue to prove
+the factual Footer, navigation and absence of invented data.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:
