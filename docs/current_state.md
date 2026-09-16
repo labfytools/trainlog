@@ -48,6 +48,7 @@ parallel implementation of its rules.
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
+| Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -81,11 +82,20 @@ raw exchange or protocol format changed for interface language support.
   access. No GVFS/FUSE mount is required.
 - `trainlog_sync_run()` is shared by the TUI and `trainlog-syncd`.
 - The desktop imports Android snapshots, publishes catalog/profile/feedback/AI
-  companions, and returns a receipt. Stable IDs and tombstones make defined
-  replay paths idempotent.
+  companions, and returns a receipt. Stable IDs, artifact idempotence and the
+  few domain-specific explicit states make defined replay paths idempotent.
+  Current snapshots do not provide general tombstones, a common generation or
+  proof that Android durably consumed the desktop publication.
 - SQLite database files are never synchronized.
 - The desktop AI flow uses external `rclone` for Drive inbox/archive and
   read-only history export. Android owns no Drive credentials.
+
+The frozen [complete synchronization gap contract](design/sync_gap_contract_v1.md)
+documents the future target without implementing it. Mobile V3 still omits
+`ended_at`, session/occurrence/body-observation notes, the body-observation to
+session link and the active Android draft. Imports are transactional per
+artifact, not globally across a logical publication. A receipt records desktop
+processing; publication alone does not prove durable peer consumption.
 
 ## Android
 
@@ -171,9 +181,9 @@ browser launch or layout persistence exists yet.
 
 ## Validation status
 
-The durable commands are owned by [tests.md](tests.md). On 2026-09-15 final
-validation passed desktop compilation, **60/60 normal Meson tests** and
-**60/60 ASan/UBSan Meson tests**, Android debug assembly and **202 Android
+The durable commands are owned by [tests.md](tests.md). On 2026-09-16 final
+validation passed desktop compilation, **74/74 normal Meson tests** and
+**74/74 ASan/UBSan Meson tests**, Android debug assembly and **202 Android
 tests (198 passed, 4 skipped, 0 failed)**, the JSON validator, and the
 import-contract validator. The source-derived TUI
 `TRANSLATABLE_UI=0` check and Android resource parity also passed. Link and

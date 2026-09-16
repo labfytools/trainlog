@@ -720,6 +720,11 @@ between passes and the three explicit unclassified states remained intact.
 
 ## 18. Audited protocol limitations
 
+The future complete-sync semantics are frozen separately in
+[`TRAINLOG_SYNC_GAP_CONTRACT_V1`](design/sync_gap_contract_v1.md). That document
+is a non-implemented specification and does not extend any format described
+here.
+
 Each mutating importer validates strictly and owns a SQLite transaction. The
 V2 association companion only corroborates equipment already imported in the
 mobile snapshot and refuses divergent state. A complete

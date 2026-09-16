@@ -2,6 +2,16 @@
 
 ## Unreleased — 0.1.2
 
+- Froze `TRAINLOG_SYNC_GAP_CONTRACT_V1` without changing production sync,
+  schemas or published formats. The contract distinguishes current evidence
+  from future behavior and defines domain ownership, active-draft lifecycle,
+  lost fields, causal deletion, conflicts, coherent generations, verified
+  consumption/acknowledgement, compatibility, reporting, a future Web service
+  boundary and dependency-ordered implementation lots. Added isolated
+  production-path characterization of V3 field loss, snapshot resurrection and
+  per-artifact rollback; existing Android coverage remains the proof of draft
+  exclusion followed by finalized-session export.
+
 - Development opened after the stable `v0.1.1` release. The current
   implementation cursor remains `WEB_DASHBOARD_CHARACTERIZATION_V1`; no Web
   implementation has started.

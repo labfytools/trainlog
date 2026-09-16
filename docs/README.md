@@ -37,6 +37,10 @@ evidence and chronology.
 
 - [Synchronization exchange](sync_exchange.md) owns the active MTP workflow,
   artifact direction, replay, publication, receipts, and daemon behavior.
+- [Complete synchronization gap contract](design/sync_gap_contract_v1.md)
+  freezes the future lifecycle, causal deletion, generation, consumption,
+  acknowledgement and Web-service requirements. It is explicitly not an
+  implemented wire format.
 - [Exchange formats](exchange_format.md) owns frozen Trainlog JSON V1 and
   separately versioned contracts, including AI exchange definitions.
 
@@ -60,8 +64,9 @@ evidence and chronology.
 
 ## Design
 
-- [Design records](design/) retain proposals and design-gate evidence. They are
-  not the authority for current implementation status.
+- [Design records](design/) retain proposals and design-gate evidence. The
+  synchronization gap contract is normative for future implementation; design
+  records do not override `current_state.md` for implemented status.
 
 ## Reviews and history
 

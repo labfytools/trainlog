@@ -598,6 +598,16 @@ reimport and rejection of a missing custom definition.
 
 ## 8. Bidirectional synchronization validation
 
+`sync_gap_characterization` uses the production mobile V3 exporter/importer and
+temporary SQLite databases to prove the current gaps without blessing them: V3
+omits `ended_at`, three distinct note owners and the body-observation session
+link; the imported values are `NULL`; deleting a local session and replaying an
+old snapshot resurrects it; an invalid artifact rolls back while an earlier
+artifact remains independently committed. The existing Android test
+`TrainlogRepositoryDraftTest.finalizeIsAtomicAndDraftNeverExportsBeforeCompletion`
+proves that the active draft is absent before finalization and the completed
+session appears afterward. These tests do not implement the future contract.
+
 Validated workflow:
 
 ```text

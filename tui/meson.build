@@ -703,6 +703,12 @@ test(
 )
 
 test(
+  'sync_gap_characterization',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_sync_gap_characterization.py'],
+)
+
+test(
   'equipment_associations_exchange',
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_equipment_associations_exchange.py'],

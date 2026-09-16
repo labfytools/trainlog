@@ -32,8 +32,15 @@ tile rendering exist. Advanced visualizations remain a future slice.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_NEXT_MODULE_SELECTION_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_TEST_ENV_V1
 ```
+
+`TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
+defines the complete-sync target and its bounded dependency order. Its first
+implementation cursor is only `TRAINLOG_SYNC_TEST_ENV_V1`: make the isolated
+desktop/Android validation environment reproducible, including the documented
+JDK and resource gates. It does not authorize a protocol, schema, endpoint or
+button change. [Contract details](design/sync_gap_contract_v1.md).
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
 TypeScript and Vite shell with its five client routes, Catppuccin Mocha design
@@ -96,13 +103,20 @@ The slice order may be refined by the next contract, but it must preserve the
 existing Core ownership, keep visual layout outside business SQLite and frozen
 formats, and specify Activité/Progression before implementing those metrics.
 
-`WEB_NEXT_MODULE_SELECTION_V1` is the next documentary cursor. The current
+`WEB_NEXT_MODULE_SELECTION_V1` remains a future Web documentary cursor. The current
 roadmap does not yet establish a contract order between Analyse, Programmes,
 Séances and Exercices. This cursor must inventory their existing Core services,
 read/write boundaries and dependencies, then select one bounded module contract;
 it does not authorize silently implementing a page.
 
 ## Next
+
+### Complete synchronization implementation
+
+The frozen contract orders future bounded lots as environment/test,
+characterization, data/lifecycles, causal deletion, generation/consumption/ack,
+orchestrator/report, Web API, then button/refresh. No implementation lot is
+started. `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 
 ### Gym catalog V1
 
