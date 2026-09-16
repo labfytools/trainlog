@@ -43,6 +43,7 @@ parallel implementation of its rules.
 | Web CLI/HTTP infrastructure | `WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN` |
 | Web frontend shell | `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` |
 | Web Dashboard grid | `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` |
+| Web Dashboard layout | `WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -195,9 +196,15 @@ and 12 Vitest tests for parsing and factual Footer integration.
 `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` uses `react-grid-layout` 2.2.4 behind an
 independent Trainlog model/validator. Its 12-column desktop layout has seven
 stable tile IDs, bounded per-tile dimensions, vertical collision compaction,
-explicit edit/cancel/reset/session-only-save behavior, mouse drag/two-axis
+explicit edit/cancel/reset behavior, mouse drag/two-axis
 resize, an announced keyboard alternative, and derived six/one-column
-responsive projections. No layout is persisted yet.
+responsive projections. Persistence is supplied by the following frozen slice.
+
+`WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN` adds a strict versioned seven-tile file
+under the private XDG configuration directory, backend revalidation, atomic
+0600 replacement, ETag/If-Match conflict control, Origin plus ephemeral CSRF
+protection, and durable React load/save/reset behavior. Only the desktop
+12-column canon persists.
 
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
@@ -214,9 +221,9 @@ smoke test are not automated. The latter is why
 - `WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN`: the bounded Core snapshot,
   `/api/v1/dashboard`, explicit unavailable states and factual Footer data are
   implemented. The seven tile bodies intentionally retain shell placeholders.
-- `WEB_DASHBOARD_GRID_V1=PASS/FROZEN`: layout changes live only in current
-  React memory. Versioned disk/API persistence is the next tranche,
-  `WEB_DASHBOARD_LAYOUT_V1`.
+- `WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN`: versioned disk/API persistence is
+  complete. The seven tile bodies remain placeholders for
+  `WEB_DASHBOARD_TILES_V1`.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

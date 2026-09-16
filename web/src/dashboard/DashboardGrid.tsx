@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import GridLayout, { useContainerWidth, verticalCompactor, type Layout } from 'react-grid-layout'
 import { EmptyState } from '../components/EmptyState'
 import { Tile } from '../components/Tile'
+import { fetchDashboardLayout, saveDashboardLayout, type DashboardLayoutSnapshot } from '../api/dashboardLayout'
 import {
   cloneLayout,
   DEFAULT_DASHBOARD_LAYOUT,
@@ -12,6 +13,7 @@ import {
   tileSize,
   TILE_IDS,
   toGridLayout,
+  validateDashboardLayout,
   type TileId,
   type TileLayout,
 } from './dashboardLayout'
@@ -36,6 +38,10 @@ export function DashboardGrid() {
   const [layout, setLayout] = useState<TileLayout[]>(() => cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
   const [editing, setEditing] = useState(false)
   const [announcement, setAnnouncement] = useState('')
+  const [snapshot, setSnapshot] = useState<DashboardLayoutSnapshot | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [preferenceError, setPreferenceError] = useState('')
   const beforeEditing = useRef<TileLayout[]>(cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
   // The viewport-derived seed prevents a wide first frame from overflowing on
   // phones before ResizeObserver has measured the actual grid container.
@@ -48,6 +54,23 @@ export function DashboardGrid() {
     () => projectDashboardLayout(layout, view.columns),
     [layout, view.columns],
   )
+
+  async function reloadLayout() {
+    setLoading(true)
+    try {
+      const loaded = await fetchDashboardLayout()
+      setSnapshot(loaded)
+      setLayout(cloneLayout(loaded.tiles))
+      setPreferenceError(loaded.source === 'invalid_persisted'
+        ? 'L’agencement enregistré est invalide. Le défaut Trainlog est utilisé.' : '')
+    } catch {
+      setSnapshot(null)
+      setLayout(cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
+      setPreferenceError('Impossible de charger l’agencement enregistré. Le défaut Trainlog est utilisé.')
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { void reloadLayout() }, [])
 
   function enterEditMode() {
     beforeEditing.current = cloneLayout(layout)
@@ -66,9 +89,21 @@ export function DashboardGrid() {
     setAnnouncement('Agencement par défaut restauré dans le brouillon.')
   }
 
-  function saveEditing() {
-    setEditing(false)
-    setAnnouncement('Agencement appliqué pour cette session. Il reviendra à sa valeur par défaut après rechargement.')
+  async function saveEditing() {
+    if (!desktop || snapshot === null || validateDashboardLayout(layout).length !== 0) {
+      setPreferenceError('Impossible d’enregistrer cet agencement.')
+      return
+    }
+    setSaving(true); setPreferenceError('')
+    try {
+      const saved = await saveDashboardLayout(snapshot, layout)
+      setSnapshot(saved); setLayout(cloneLayout(saved.tiles)); setEditing(false)
+      setAnnouncement('Agencement enregistré durablement.')
+    } catch (error) {
+      if (error instanceof Error && error.message === 'revision_conflict')
+        setPreferenceError('L’agencement a été modifié dans un autre onglet. Rechargez l’agencement courant.')
+      else setPreferenceError('L’enregistrement de l’agencement a échoué.')
+    } finally { setSaving(false) }
   }
 
   function acceptLibraryLayout(next: Layout) {
@@ -94,6 +129,8 @@ export function DashboardGrid() {
 
   const libraryLayout = toGridLayout(visibleLayout, editing && desktop, view.columns)
 
+  if (loading) return <p className="layout-loading" role="status">Chargement de l’agencement…</p>
+
   return (
     <div className={`dashboard-layout${editing ? ' is-editing' : ''}`}>
       <div className="layout-toolbar" aria-label="Agencement du Dashboard">
@@ -105,10 +142,11 @@ export function DashboardGrid() {
             {!desktop && <p className="layout-breakpoint-note">Revenez sur un écran large pour modifier la grille canonique.</p>}
             <button className="layout-action" type="button" onClick={cancelEditing}>Annuler</button>
             <button className="layout-action" type="button" onClick={resetEditing}>Réinitialiser</button>
-            <button className="layout-action layout-action-primary" type="button" onClick={saveEditing}>Enregistrer pour cette session</button>
+            <button className="layout-action layout-action-primary" type="button" disabled={saving || snapshot === null || !desktop} onClick={() => void saveEditing()}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
           </>
         )}
       </div>
+      {preferenceError && <div className="layout-message is-error" role="alert">{preferenceError}{preferenceError.includes('autre onglet') && <button className="layout-action" type="button" onClick={() => void reloadLayout()}>Recharger l’agencement</button>}</div>}
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
       <div ref={containerRef} className="dashboard-grid-frame" data-columns={view.columns}>
         <GridLayout

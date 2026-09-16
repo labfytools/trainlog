@@ -58,6 +58,10 @@ h2 { color: var(--text); font-size: 1.08rem; letter-spacing: -.02em; }
 .layout-action-primary:hover { color: var(--crust); background: var(--blue); border-color: transparent; }
 .layout-help, .layout-breakpoint-note { margin: 0 auto 0 0; color: var(--subtext-0); font: 550 .7rem/1.4 var(--font-mono); }
 .layout-breakpoint-note { flex-basis: 100%; color: var(--yellow); }
+.layout-loading { min-height: 12rem; display: grid; place-items: center; color: var(--subtext-0); }
+.layout-message { margin: 0 0 1rem; padding: .7rem .85rem; display: flex; align-items: center; gap: .75rem; color: var(--subtext-0); background: var(--surface-0); border-radius: .55rem; font-size: .82rem; }
+.layout-message.is-error { color: var(--peach); }
+.layout-action:disabled { opacity: .55; cursor: not-allowed; }
 .dashboard-grid-frame { min-width: 0; }
 .dashboard-grid { min-width: 0; }
 .dashboard-grid > .react-grid-item { min-width: 0; }

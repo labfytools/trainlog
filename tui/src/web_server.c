@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <microhttpd.h>
 #include <netinet/in.h>
+#include <sys/random.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 #include <time.h>
 
 #include "trainlog/web_dashboard.h"
+#include "trainlog/dashboard_layout.h"
 #include "web_assets.h"
 
 #define TRAINLOG_HTTP_CONNECTION_LIMIT 32U
@@ -26,17 +28,49 @@
 typedef struct TrainlogWebContext {
     uint16_t port;
     TrainlogDatabase *database;
+    char csrf_token[65];
+    bool invalid_layout_reported;
 } TrainlogWebContext;
 
 typedef struct TrainlogHttpRequestState {
     size_t body_size;
     bool body_too_large;
+    char body[TRAINLOG_HTTP_BODY_LIMIT + 1U];
 } TrainlogHttpRequestState;
 
 static void web_diagnostic(char *output, size_t capacity, const char *message)
 {
     if (output != NULL && capacity > 0U)
         (void)snprintf(output, capacity, "%s", message);
+}
+
+static enum MHD_Result queue_layout_json(struct MHD_Connection *connection,
+    unsigned int status, const char *body, uint64_t revision,
+    const char *csrf_token)
+{
+    struct MHD_Response *response;
+    enum MHD_Result result;
+    char etag[32];
+    response = MHD_create_response_from_buffer(strlen(body), (void *)body,
+        MHD_RESPMEM_MUST_COPY);
+    if (response == NULL) return MHD_NO;
+    (void)snprintf(etag, sizeof(etag), "\"%llu\"",
+        (unsigned long long)revision);
+    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
+            "application/json; charset=utf-8") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL,
+            "no-store") != MHD_YES ||
+        MHD_add_response_header(response,
+            MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") != MHD_YES ||
+        MHD_add_response_header(response, "Content-Security-Policy",
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_ETAG, etag) != MHD_YES ||
+        MHD_add_response_header(response, "X-Trainlog-CSRF-Token", csrf_token) != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION, "close") != MHD_YES) {
+        MHD_destroy_response(response); return MHD_NO;
+    }
+    result = MHD_queue_response(connection, status, response);
+    MHD_destroy_response(response); return result;
 }
 
 static enum MHD_Result queue_json(struct MHD_Connection *connection,
@@ -139,6 +173,50 @@ static bool declared_body_too_large(struct MHD_Connection *connection)
         size > TRAINLOG_HTTP_BODY_LIMIT;
 }
 
+static bool valid_origin(const TrainlogWebContext *context, const char *origin)
+{
+    char direct[48];
+    if (origin == NULL) return false;
+    (void)snprintf(direct, sizeof(direct), "http://127.0.0.1:%u",
+        (unsigned int)context->port);
+    return strcmp(origin, direct) == 0 || strcmp(origin, "http://trainlog.perf") == 0;
+}
+
+static bool valid_csrf(const TrainlogWebContext *context, const char *provided)
+{
+    size_t index; unsigned char difference = 0U;
+    if (provided == NULL || strlen(provided) != 64U) return false;
+    for (index = 0U; index < 64U; ++index)
+        difference |= (unsigned char)(provided[index] ^ context->csrf_token[index]);
+    return difference == 0U;
+}
+
+static bool generate_csrf_token(char output[65])
+{
+    unsigned char random_bytes[32];
+    size_t used = 0U;
+    size_t index;
+    while (used < sizeof(random_bytes)) {
+        ssize_t count = getrandom(random_bytes + used, sizeof(random_bytes) - used, 0);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) return false;
+        used += (size_t)count;
+    }
+    for (index = 0U; index < sizeof(random_bytes); ++index)
+        (void)snprintf(output + index * 2U, 3U, "%02x", random_bytes[index]);
+    return true;
+}
+
+static bool parse_if_match(const char *value, uint64_t *revision)
+{
+    char *end = NULL; unsigned long long parsed;
+    if (value == NULL || value[0] != '"') return false;
+    errno = 0; parsed = strtoull(value + 1, &end, 10);
+    if (errno != 0 || end == value + 1 || end[0] != '"' || end[1] != '\0' ||
+        parsed > TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION) return false;
+    *revision = (uint64_t)parsed; return true;
+}
+
 static enum MHD_Result handle_request(void *closure,
     struct MHD_Connection *connection, const char *url, const char *method,
     const char *version, const char *upload_data, size_t *upload_data_size,
@@ -167,8 +245,11 @@ static enum MHD_Result handle_request(void *closure,
                 (state->body_size > TRAINLOG_HTTP_BODY_LIMIT
                     ? TRAINLOG_HTTP_BODY_LIMIT : state->body_size))
             state->body_too_large = true;
-        else state->body_size += *upload_data_size;
-        (void)upload_data;
+        else {
+            (void)memcpy(state->body + state->body_size, upload_data, *upload_data_size);
+            state->body_size += *upload_data_size;
+            state->body[state->body_size] = '\0';
+        }
         *upload_data_size = 0U;
         return MHD_YES;
     }
@@ -215,6 +296,94 @@ static enum MHD_Result handle_request(void *closure,
             return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
                 "{\"error\":\"dashboard_unavailable\"}\n", NULL);
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
+    }
+    if (strcmp(url, "/api/v1/dashboard-layout") == 0) {
+        TrainlogDashboardLayout layout;
+        TrainlogDashboardLayout saved;
+        TrainlogDashboardLayoutSource source;
+        TrainlogDashboardLayoutResult layout_result;
+        char json[TRAINLOG_DASHBOARD_LAYOUT_JSON_CAPACITY];
+        size_t json_size;
+        uint64_t expected;
+        const char *origin;
+        const char *csrf;
+        const char *if_match;
+        /* WHY: loopback alone does not stop a hostile webpage from submitting
+         * requests to a local service. CONTRACT: every mutation needs exact
+         * trusted Origin, the startup-random header token and an If-Match ETag.
+         * INVARIANT: proxy Host rewriting remains strict and no CORS is added. */
+        if (is_get) {
+            layout_result = trainlog_dashboard_layout_load(&layout, &source);
+            if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK ||
+                !trainlog_dashboard_layout_serialize(&layout, source, true,
+                    json, sizeof(json), &json_size) || json_size == 0U)
+                return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                    "{\"error\":\"layout_unavailable\"}\n", NULL);
+            if (source == TRAINLOG_DASHBOARD_LAYOUT_INVALID_PERSISTED &&
+                !context->invalid_layout_reported) {
+                (void)fprintf(stderr, "Trainlog Web : agencement persisté invalide, défaut utilisé\n");
+                context->invalid_layout_reported = true;
+            }
+            return queue_layout_json(connection, MHD_HTTP_OK, json,
+                layout.revision, context->csrf_token);
+        }
+        if (strcmp(method, MHD_HTTP_METHOD_PUT) != 0 &&
+            strcmp(method, MHD_HTTP_METHOD_DELETE) != 0)
+            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                "{\"error\":\"method_not_allowed\"}\n", "GET, PUT, DELETE");
+        origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
+        csrf = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
+            "X-Trainlog-CSRF-Token");
+        if (!valid_origin(context, origin) || !valid_csrf(context, csrf))
+            return queue_json(connection, MHD_HTTP_FORBIDDEN,
+                "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        if_match = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
+            MHD_HTTP_HEADER_IF_MATCH);
+        if (!parse_if_match(if_match, &expected))
+            return queue_json(connection, MHD_HTTP_PRECONDITION_REQUIRED,
+                "{\"error\":\"precondition_required\"}\n", NULL);
+        if (strcmp(method, MHD_HTTP_METHOD_DELETE) == 0) {
+            if (state->body_size != 0U)
+                return queue_json(connection, MHD_HTTP_BAD_REQUEST,
+                    "{\"error\":\"unexpected_body\"}\n", NULL);
+            layout_result = trainlog_dashboard_layout_delete(expected);
+            if (layout_result == TRAINLOG_DASHBOARD_LAYOUT_CONFLICT)
+                return queue_json(connection, MHD_HTTP_PRECONDITION_FAILED,
+                    "{\"error\":\"revision_conflict\"}\n", NULL);
+            if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK)
+                return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                    "{\"error\":\"layout_delete_failed\"}\n", NULL);
+            trainlog_dashboard_layout_default(&layout);
+            if (!trainlog_dashboard_layout_serialize(&layout,
+                    TRAINLOG_DASHBOARD_LAYOUT_DEFAULT, true, json, sizeof(json), &json_size))
+                return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                    "{\"error\":\"layout_unavailable\"}\n", NULL);
+            return queue_layout_json(connection, MHD_HTTP_OK, json, 0U,
+                context->csrf_token);
+        }
+        {
+            const char *content_type = MHD_lookup_connection_value(connection,
+                MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
+            if (content_type == NULL || strcmp(content_type, "application/json") != 0)
+                return queue_json(connection, MHD_HTTP_UNSUPPORTED_MEDIA_TYPE,
+                    "{\"error\":\"unsupported_media_type\"}\n", NULL);
+        }
+        layout_result = trainlog_dashboard_layout_parse(state->body,
+            state->body_size, &layout);
+        if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK || layout.revision != expected)
+            return queue_json(connection, MHD_HTTP_BAD_REQUEST,
+                "{\"error\":\"invalid_layout\"}\n", NULL);
+        layout_result = trainlog_dashboard_layout_save(&layout, expected, &saved);
+        if (layout_result == TRAINLOG_DASHBOARD_LAYOUT_CONFLICT)
+            return queue_json(connection, MHD_HTTP_PRECONDITION_FAILED,
+                "{\"error\":\"revision_conflict\"}\n", NULL);
+        if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK ||
+            !trainlog_dashboard_layout_serialize(&saved,
+                TRAINLOG_DASHBOARD_LAYOUT_PERSISTED, true, json, sizeof(json), &json_size))
+            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                "{\"error\":\"layout_save_failed\"}\n", NULL);
+        return queue_layout_json(connection, MHD_HTTP_OK, json, saved.revision,
+            context->csrf_token);
     }
     /* INVARIANT: API paths never fall through to the SPA index. */
     if (strncmp(url, "/api/", 5U) == 0)
@@ -276,6 +445,12 @@ int trainlog_web_server_run(TrainlogDatabase *database, uint16_t port,
     bind_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     context.port = port;
     context.database = database;
+    context.invalid_layout_reported = false;
+    if (!generate_csrf_token(context.csrf_token)) {
+        web_diagnostic(diagnostic, diagnostic_capacity,
+            "impossible de générer la protection CSRF");
+        return -1;
+    }
     errno = 0;
     daemon = MHD_start_daemon(MHD_USE_ERROR_LOG | MHD_USE_NO_THREAD_SAFETY,
         0U, accept_loopback_only, NULL, handle_request, &context,

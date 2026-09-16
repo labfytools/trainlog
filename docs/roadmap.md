@@ -26,13 +26,13 @@ implemented. Session Generator V1 is hidden pending V2. AI session-draft
 exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
-contract and the frozen interactive grid exist. Final tile rendering and layout
-persistence remain future slices.
+contract, frozen interactive grid and versioned layout persistence exist. Final
+tile rendering remains a future slice.
 
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_LAYOUT_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_TILES_V1
 ```
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
@@ -43,6 +43,9 @@ undifferentiated implementation of every Dashboard concern.
 `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` adds the validated 12-column desktop grid,
 explicit edit mode, drag/resize, keyboard alternative and derived responsive
 projections without persisting layout state.
+`WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN` persists only that canonical desktop
+layout with atomic XDG storage, optimistic revisions and protected HTTP
+mutations; responsive projections remain derived.
 
 ## TRAINLOG_WEB_V1 implementation gate
 
@@ -75,7 +78,7 @@ must consume them without reconstructing or redefining their mathematics.
 ```text
 WEB_DASHBOARD_DATA_CONTRACT_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_GRID_V1 [PASS/FROZEN]
-        -> WEB_DASHBOARD_LAYOUT_V1
+        -> WEB_DASHBOARD_LAYOUT_V1 [PASS/FROZEN]
         -> real-data tile delivery
         -> real-data visualization delivery
 ```

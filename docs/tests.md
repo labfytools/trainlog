@@ -76,6 +76,15 @@ normal-mode handles, edit actions, cancel/reset/session-only save, visible
 keyboard focus and live announcements. Existing shell tests continue to prove
 the factual Footer, navigation and absence of invented data.
 
+`WEB_DASHBOARD_LAYOUT_V1` adds Core-independent filesystem tests for default,
+strict parsing, bounds, corruption, oversized/non-regular/symlink inputs,
+private permissions, atomic replacement, revision conflicts, preservation on
+invalid writes and reset. A canonical JSON parity test prevents C/TypeScript
+constraint drift. HTTP tests cover GET/PUT/DELETE, ETag/If-Match, two stale
+clients, CSRF/Origin rejection and `trainlog.perf` Origin acceptance. Vitest
+covers default/persisted/invalid sources, ETag/token parsing, canonical-only
+PUT, conflict translation, loading, local cancel/reset and durable Save.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

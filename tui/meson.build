@@ -8,6 +8,7 @@ mtp_dep = dependency('libmtp', required: true)
 
 notcurses_dep = dependency('notcurses-core', required: true)
 microhttpd_dep = dependency('libmicrohttpd', required: true)
+yyjson_dep = dependency('yyjson', required: true)
 
 utf8proc_dep = dependency('libutf8proc', required: false)
 if not utf8proc_dep.found()
@@ -38,12 +39,14 @@ if web_assets_enabled
     '../web/tsconfig.json',
     '../web/tsconfig.app.json',
     '../web/tsconfig.node.json',
+    '../contracts/dashboard-layout-v1.json',
     '../web/vite.config.ts',
     '../web/index.html',
     '../web/src/main.tsx',
     '../web/src/vite-env.d.ts',
     '../web/src/api/health.ts',
     '../web/src/api/dashboard.ts',
+    '../web/src/api/dashboardLayout.ts',
     '../web/src/app/App.tsx',
     '../web/src/app/routes.ts',
     '../web/src/app/useRoute.ts',
@@ -239,6 +242,7 @@ trainlog_tui_sources = files(
   'src/terminal.c',
   'src/theme.c',
   'src/tui.c',
+  'src/dashboard_layout.c',
   'src/web_server.c',
 )
 trainlog_tui_sources += web_assets_source
@@ -250,6 +254,7 @@ trainlog_exe = executable(
     trainlog_core_dep,
     notcurses_dep,
     microhttpd_dep,
+    yyjson_dep,
   ],
   include_directories: trainlog_private_include,
   c_args: strict_c_args,
@@ -330,12 +335,23 @@ test('cli', test_cli)
 
 test_web_server = executable(
   'test_web_server',
-  ['tests/test_web_server.c', 'src/web_server.c', web_assets_source],
-  dependencies: [trainlog_core_dep, microhttpd_dep],
+  ['tests/test_web_server.c', 'src/web_server.c', 'src/dashboard_layout.c', web_assets_source],
+  dependencies: [trainlog_core_dep, microhttpd_dep, yyjson_dep],
   include_directories: trainlog_private_include,
   c_args: strict_c_args,
 )
 test('web_server', test_web_server, timeout: 30)
+
+test_dashboard_layout = executable(
+  'test_dashboard_layout',
+  ['tests/test_dashboard_layout.c', 'src/dashboard_layout.c'],
+  dependencies: yyjson_dep,
+  include_directories: trainlog_include,
+  c_args: strict_c_args,
+)
+test('dashboard_layout', test_dashboard_layout)
+test('dashboard_layout_contract', find_program('python3'),
+  args: [meson.project_source_root() / 'tools/validate_dashboard_layout_contract.py'])
 test('cli_help', trainlog_exe, args: ['--help'])
 test('cli_version', trainlog_exe, args: ['--version'])
 

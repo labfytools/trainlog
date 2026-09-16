@@ -1,4 +1,5 @@
 import { moveElement, verticalCompactor, type Layout as GridLayout } from 'react-grid-layout'
+import contract from '../../../contracts/dashboard-layout-v1.json'
 
 export const DASHBOARD_COLUMNS = 12
 export const DASHBOARD_MAX_Y = 200
@@ -30,25 +31,14 @@ export interface TileConstraint {
   maxHeight: number
 }
 
-export const TILE_CONSTRAINTS: Readonly<Record<TileId, TileConstraint>> = {
-  'next-session': { minWidth: 4, maxWidth: 8, minHeight: 3, maxHeight: 7 },
-  activity: { minWidth: 5, maxWidth: 12, minHeight: 3, maxHeight: 7 },
-  progression: { minWidth: 6, maxWidth: 12, minHeight: 4, maxHeight: 9 },
-  'last-session': { minWidth: 3, maxWidth: 7, minHeight: 3, maxHeight: 6 },
-  'max-records': { minWidth: 3, maxWidth: 8, minHeight: 3, maxHeight: 7 },
-  'muscle-distribution': { minWidth: 5, maxWidth: 12, minHeight: 4, maxHeight: 9 },
-  'cardio-recovery': { minWidth: 5, maxWidth: 12, minHeight: 4, maxHeight: 8 },
-}
+export const TILE_CONSTRAINTS = Object.fromEntries(contract.tiles.map((tile) => [tile.id, {
+  minWidth: tile.min_width, maxWidth: tile.max_width,
+  minHeight: tile.min_height, maxHeight: tile.max_height,
+}])) as Readonly<Record<TileId, TileConstraint>>
 
-export const DEFAULT_DASHBOARD_LAYOUT: readonly TileLayout[] = [
-  { id: 'next-session', x: 0, y: 0, width: 5, height: 4 },
-  { id: 'activity', x: 5, y: 0, width: 7, height: 4 },
-  { id: 'progression', x: 0, y: 4, width: 8, height: 5 },
-  { id: 'last-session', x: 8, y: 4, width: 4, height: 3 },
-  { id: 'max-records', x: 8, y: 7, width: 4, height: 3 },
-  { id: 'muscle-distribution', x: 0, y: 9, width: 6, height: 5 },
-  { id: 'cardio-recovery', x: 6, y: 10, width: 6, height: 4 },
-] as const
+export const DEFAULT_DASHBOARD_LAYOUT: readonly TileLayout[] = contract.tiles.map((tile) => ({
+  id: tile.id as TileId, ...tile.default,
+}))
 
 const tileIdSet = new Set<string>(TILE_IDS)
 

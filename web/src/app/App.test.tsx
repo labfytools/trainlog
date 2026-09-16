@@ -25,11 +25,30 @@ const dashboard: DashboardSnapshot = {
   meta: { partial: false, invalid_data: false, generated_at: '2026-09-16T12:00:00Z' },
 }
 
+const dashboardLayout = {
+  format: 'trainlog-dashboard-layout', version: 1, revision: 0, columns: 12,
+  source: 'default',
+  tiles: [
+    { id: 'next-session', x: 0, y: 0, width: 5, height: 4 },
+    { id: 'activity', x: 5, y: 0, width: 7, height: 4 },
+    { id: 'progression', x: 0, y: 4, width: 8, height: 5 },
+    { id: 'last-session', x: 8, y: 4, width: 4, height: 3 },
+    { id: 'max-records', x: 8, y: 7, width: 4, height: 3 },
+    { id: 'muscle-distribution', x: 0, y: 9, width: 6, height: 5 },
+    { id: 'cardio-recovery', x: 6, y: 10, width: 6, height: 4 },
+  ],
+}
+
+const layoutHeaders = new Headers({ ETag: '"0"', 'X-Trainlog-CSRF-Token': 'a'.repeat(64) })
+
+function responseValue(input: RequestInfo | URL, dashboardValue: unknown, healthValue: unknown) {
+  const url = String(input)
+  if (url.includes('/dashboard-layout')) return { ok: true, status: 200, headers: layoutHeaders, json: () => Promise.resolve(dashboardLayout) }
+  return { ok: true, status: 200, headers: new Headers(), json: () => Promise.resolve(url.includes('/dashboard') ? dashboardValue : healthValue) }
+}
+
 function mockHealth(value: unknown = health) {
-  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve(String(input).includes('/dashboard') ? dashboard : value),
-  })))
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(responseValue(input, dashboard, value))))
 }
 
 describe('shell Trainlog', () => {
@@ -44,7 +63,7 @@ describe('shell Trainlog', () => {
     expect(footer.parentElement).toHaveClass('app-shell')
     expect(screen.getByRole('link', { name: 'Trainlog — Dashboard' })).toHaveTextContent('TRAINLOG')
     expect(screen.queryByText('Vos repères d’entraînement, sans extrapolation ni donnée inventée.')).not.toBeInTheDocument()
-    expect(screen.getAllByText('INDISPONIBLE')).toHaveLength(7)
+    await waitFor(() => expect(screen.getAllByText('INDISPONIBLE')).toHaveLength(7))
     expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('—')
     expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('Indisponible')
     expect(screen.getByLabelText('Dernière zone')).toHaveTextContent('Indisponible')
@@ -96,10 +115,7 @@ describe('shell Trainlog', () => {
   it('alimente le Footer uniquement avec les faits Dashboard reçus', async () => {
     const actual = structuredClone(dashboard)
     actual.data.footer = { user: 'fy59', last_session_date: '2026-09-15T10:00:00+02:00', last_zones: ['DOS', 'BRAS'] }
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve(String(input).includes('/dashboard') ? actual : health),
-    })))
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(responseValue(input, actual, health))))
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('fy59'))
     expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('2026-09-15T10:00:00+02:00')
@@ -108,10 +124,7 @@ describe('shell Trainlog', () => {
 
   it('rejette les snapshots Dashboard invalides sans inventer de Footer', async () => {
     expect(() => parseDashboard({ api_version: 1, data: {}, meta: {} })).toThrow()
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve(String(input).includes('/dashboard') ? { status: 'ok' } : health),
-    })))
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(responseValue(input, { status: 'ok' }, health))))
     render(<App />)
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Backend connecté'))
     expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('—')

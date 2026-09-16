@@ -302,6 +302,13 @@ It does not enter business SQLite V1, `TRAINLOG_FORMAT_V1`, scientific or AI
 exports, or session synchronization. Small-screen layouts are derived
 responsive projections, not a second persisted truth.
 
+`WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN` implements this path as a strict private
+0600 JSON preference, atomically replaced without SQLite involvement. GET/PUT/
+DELETE `/api/v1/dashboard-layout` expose the canonical Trainlog shape. ETag and
+If-Match guard optimistic revisions; mutation additionally requires exact
+loopback or `trainlog.perf` Origin and an ephemeral startup-random CSRF header.
+Invalid files are preserved for diagnosis while GET safely returns the default.
+
 `WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN` fixes one coherent, read-only
 `GET /api/v1/dashboard` snapshot. One outer SQLite read savepoint covers every
 projection; statements are finalized before return. The seven domains mean:
