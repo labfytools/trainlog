@@ -28,7 +28,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v17 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.1` stable, synchronized across Android and desktop (no independent interface versions) |
+| Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |

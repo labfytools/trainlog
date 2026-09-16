@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — 0.1.2
+
+- Development opened after the stable `v0.1.1` release. The current
+  implementation cursor remains `WEB_DASHBOARD_CHARACTERIZATION_V1`; no Web
+  implementation has started.
+
 ## 0.1.1 — 2026-09-16
 
 - Completed `TRAINLOG_ANDROID_FIELD_INPUT_REFINEMENT_V1`: active and completed

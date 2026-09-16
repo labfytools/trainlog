@@ -37,9 +37,9 @@ Each published stable release provides:
 - SHA-256 checksums.
 
 Both mirrors publish the same Trainlog product version and release assets. The
-implemented product version is **0.1.1** on Android and desktop; this is one
+current development version is **0.1.2** on Android and desktop; this is one
 shared Trainlog version, not separate interface versions. Version 0.1.1 is the
-current stable release.
+latest stable release.
 
 Version 0.1.1 presents Trainlog in French by default, with English selectable
 from **Settings → Language** on Android and the desktop TUI. The selection is

@@ -117,7 +117,7 @@ Smaller terminals display a clear fallback instead of corrupt layout.
 
 ## Interface language (`TRAINLOG_I18N_V0_1_1`)
 
-Trainlog version 0.1.1 is synchronized with Android as one product version;
+Trainlog version 0.1.2 is synchronized with Android as one product version;
 the TUI has no independent interface version. French is the default. English is
 the only alternate language and is selected through **Settings → Language**.
 The active TUI rerenders immediately after a successful selection.

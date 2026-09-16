@@ -10,7 +10,7 @@ The desktop remains the canonical long-term history and analytics store.
 
 ## Interface language (`TRAINLOG_I18N_V0_1_1`)
 
-Trainlog version 0.1.1 is synchronized with the desktop TUI as one product
+Trainlog version 0.1.2 is synchronized with the desktop TUI as one product
 version; Android does not have an independent interface version. French is the
 default interface language. The only alternate language is English, selected
 from **Settings → Language**. The selection updates the Compose UI immediately.
