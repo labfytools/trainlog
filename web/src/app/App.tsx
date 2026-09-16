@@ -21,6 +21,8 @@ export function App() {
   const [healthPending, setHealthPending] = useState(true)
   const [healthFailed, setHealthFailed] = useState(false)
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null)
+  const [dashboardPending, setDashboardPending] = useState(true)
+  const [dashboardFailed, setDashboardFailed] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -28,11 +30,15 @@ export function App() {
       setHealth(value)
       setHealthFailed(false)
     }).catch(() => setHealthFailed(true)).finally(() => setHealthPending(false))
-    fetchDashboard(controller.signal).then(setDashboard).catch(() => setDashboard(null))
+    fetchDashboard(controller.signal).then((value) => {
+      setDashboard(value); setDashboardFailed(false)
+    }).catch(() => {
+      setDashboard(null); setDashboardFailed(true)
+    }).finally(() => setDashboardPending(false))
     return () => controller.abort()
   }, [])
 
-  const content = route.id === 'dashboard' ? <DashboardPage /> :
+  const content = route.id === 'dashboard' ? <DashboardPage dashboard={dashboard} pending={dashboardPending} failed={dashboardFailed} /> :
     <PlaceholderPage title={placeholderContent[route.id][0]}
       eyebrow={placeholderContent[route.id][1]}
       description={placeholderContent[route.id][2]} />

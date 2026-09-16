@@ -9,9 +9,11 @@ interface TileProps {
   size?: TileSize
   editable?: boolean
   onKeyDown?: KeyboardEventHandler<HTMLElement>
+  stateLabel?: string
+  stateTone?: 'available' | 'unavailable' | 'partial'
 }
 
-export function Tile({ title, eyebrow, children, className = '', size = 'medium', editable = false, onKeyDown }: TileProps) {
+export function Tile({ title, eyebrow, children, className = '', size = 'medium', editable = false, onKeyDown, stateLabel = 'DISPONIBLE', stateTone = 'available' }: TileProps) {
   return (
     <article
       className={`tile tile-${size} ${className}`.trim()}
@@ -25,7 +27,7 @@ export function Tile({ title, eyebrow, children, className = '', size = 'medium'
           {eyebrow && <p className="eyebrow">{eyebrow}</p>}
           <h2>{title}</h2>
         </div>
-        <span className="tile-state">INDISPONIBLE</span>
+        <span className={`tile-state is-${stateTone}`}>{stateLabel}</span>
       </div>
       <div className="tile-content">{children}</div>
     </article>

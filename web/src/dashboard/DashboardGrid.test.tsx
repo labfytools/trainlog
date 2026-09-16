@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DashboardGrid } from './DashboardGrid'
 import { DEFAULT_DASHBOARD_LAYOUT } from './dashboardLayout'
+import { dashboardFixture } from '../test/dashboardFixtures'
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
@@ -103,5 +104,28 @@ describe('grille interactive du Dashboard', () => {
     expect(screen.getByText(/écran large/)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(1)
     window.innerWidth = 1440
+  })
+
+  it('rend les faits réels et adapte immédiatement la densité pendant le resize', async () => {
+    const snapshot = dashboardFixture()
+    render(<DashboardGrid dashboard={snapshot} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Modifier l’agencement' }))
+    expect(screen.getByText('Identité comparable : reps · external')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('article', { name: 'Progression, tuile modifiable' }), { key: 'ArrowLeft', shiftKey: true })
+    expect(screen.queryByText('Identité comparable : reps · external')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/^Exercice \d$/)).toHaveLength(1)
+    fireEvent.keyDown(screen.getByRole('article', { name: 'Records / MAX, tuile modifiable' }), { key: 'ArrowDown', shiftKey: true })
+    expect(screen.getAllByText(/^Exercice \d$/)).toHaveLength(3)
+  })
+
+  it('signale discrètement loading, erreur globale et invalid_data', async () => {
+    const { rerender } = render(<DashboardGrid pending />)
+    await screen.findByRole('button', { name: 'Modifier l’agencement' })
+    expect(screen.getByRole('status')).toHaveTextContent('Chargement des données')
+    rerender(<DashboardGrid failed />)
+    expect(screen.getByRole('alert')).toHaveTextContent('momentanément indisponibles')
+    const snapshot = dashboardFixture(); snapshot.meta.invalid_data = true
+    rerender(<DashboardGrid dashboard={snapshot} />)
+    expect(screen.getByRole('status')).toHaveTextContent('données invalides ont été écartées')
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import GridLayout, { useContainerWidth, verticalCompactor, type Layout } from 'react-grid-layout'
-import { EmptyState } from '../components/EmptyState'
 import { Tile } from '../components/Tile'
+import type { DashboardSnapshot } from '../api/dashboard'
 import { fetchDashboardLayout, saveDashboardLayout, type DashboardLayoutSnapshot } from '../api/dashboardLayout'
 import {
   cloneLayout,
@@ -17,15 +17,16 @@ import {
   type TileId,
   type TileLayout,
 } from './dashboardLayout'
+import { ActivityTile, CardioTile, LastSessionTile, MaxRecordsTile, MuscleDistributionTile, NextSessionTile, ProgressionTile, type DashboardTileComponent } from './DashboardTiles'
 
-const dashboardTiles: Readonly<Record<TileId, { title: string, eyebrow: string, message: string }>> = {
-  'next-session': { title: 'Prochaine séance', eyebrow: 'Planification', message: 'Aucune séance préparée disponible.' },
-  activity: { title: 'Activité', eyebrow: 'Régularité', message: 'Les données d’activité ne sont pas encore exposées.' },
-  progression: { title: 'Progression', eyebrow: 'Évolution', message: 'La métrique de progression reste à définir.' },
-  'last-session': { title: 'Dernière séance', eyebrow: 'Historique', message: 'Aucune séance terminée disponible.' },
-  'max-records': { title: 'Records / MAX', eyebrow: 'Performances', message: 'Aucun MAX mesuré disponible.' },
-  'muscle-distribution': { title: 'Répartition musculaire', eyebrow: 'Zones', message: 'La répartition par zone n’est pas encore disponible.' },
-  'cardio-recovery': { title: 'Cardio / récupération', eyebrow: 'Physiologie', message: 'Aucune donnée cardio ou récupération disponible.' },
+const dashboardTiles: Readonly<Record<TileId, { title: string, eyebrow: string, component: DashboardTileComponent }>> = {
+  'next-session': { title: 'Prochaine séance', eyebrow: 'Planification', component: NextSessionTile },
+  activity: { title: 'Activité', eyebrow: 'Régularité', component: ActivityTile },
+  progression: { title: 'Progression', eyebrow: 'Évolution', component: ProgressionTile },
+  'last-session': { title: 'Dernière séance', eyebrow: 'Historique', component: LastSessionTile },
+  'max-records': { title: 'Records / MAX', eyebrow: 'Performances', component: MaxRecordsTile },
+  'muscle-distribution': { title: 'Répartition musculaire', eyebrow: 'Zones', component: MuscleDistributionTile },
+  'cardio-recovery': { title: 'Cardio / récupération', eyebrow: 'Physiologie', component: CardioTile },
 }
 
 function breakpoint(width: number): { columns: 12 | 6 | 1, rowHeight: number } {
@@ -34,7 +35,9 @@ function breakpoint(width: number): { columns: 12 | 6 | 1, rowHeight: number } {
   return { columns: 12, rowHeight: 52 }
 }
 
-export function DashboardGrid() {
+interface DashboardGridProps { dashboard?: DashboardSnapshot | null; pending?: boolean; failed?: boolean }
+
+export function DashboardGrid({ dashboard = null, pending = false, failed = false }: DashboardGridProps) {
   const [layout, setLayout] = useState<TileLayout[]>(() => cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
   const [editing, setEditing] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -147,6 +150,9 @@ export function DashboardGrid() {
         )}
       </div>
       {preferenceError && <div className="layout-message is-error" role="alert">{preferenceError}{preferenceError.includes('autre onglet') && <button className="layout-action" type="button" onClick={() => void reloadLayout()}>Recharger l’agencement</button>}</div>}
+      {pending && <div className="dashboard-data-message" role="status">Chargement des données du Dashboard…</div>}
+      {failed && <div className="dashboard-data-message is-error" role="alert">Les données du Dashboard sont momentanément indisponibles.</div>}
+      {dashboard?.meta.invalid_data && <div className="dashboard-data-message is-warning" role="status">Certaines données invalides ont été écartées.</div>}
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
       <div ref={containerRef} className="dashboard-grid-frame" data-columns={view.columns}>
         <GridLayout
@@ -162,16 +168,22 @@ export function DashboardGrid() {
           {TILE_IDS.map((id) => {
             const content = dashboardTiles[id]
             const dimensions = visibleLayout.find((tile) => tile.id === id) ?? DEFAULT_DASHBOARD_LAYOUT[0]
+            const size = tileSize(dimensions)
+            const available = dashboard === null ? false : tileAvailable(dashboard, id)
+            const partial = dashboard?.meta.partial === true && id === 'max-records'
+            const TileContent = content.component
             return (
               <div key={id} data-testid={`grid-item-${id}`}>
                 <Tile
                   title={content.title}
                   eyebrow={content.eyebrow}
-                  size={tileSize(dimensions)}
+                  size={size}
                   editable={editing && desktop}
                   onKeyDown={(event) => onTileKeyDown(event, id)}
+                  stateLabel={pending ? 'CHARGEMENT' : available ? (partial ? 'RÉCENT' : 'DISPONIBLE') : 'INDISPONIBLE'}
+                  stateTone={available ? (partial ? 'partial' : 'available') : 'unavailable'}
                 >
-                  <EmptyState message={content.message} />
+                  {dashboard === null ? <div className="tile-data-placeholder" aria-hidden="true"><span /><span /><span /></div> : <TileContent snapshot={dashboard} size={size} />}
                 </Tile>
               </div>
             )
@@ -180,4 +192,14 @@ export function DashboardGrid() {
       </div>
     </div>
   )
+}
+
+function tileAvailable(snapshot: DashboardSnapshot, id: TileId): boolean {
+  if (id === 'next-session') return snapshot.data.next_session.available
+  if (id === 'activity') return snapshot.data.activity.available
+  if (id === 'progression') return snapshot.data.progression.available
+  if (id === 'last-session') return snapshot.data.last_session.available
+  if (id === 'max-records') return snapshot.data.max_records.available
+  if (id === 'muscle-distribution') return snapshot.data.muscle_distribution.available
+  return snapshot.data.cardio.available
 }

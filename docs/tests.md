@@ -85,6 +85,14 @@ clients, CSRF/Origin rejection and `trainlog.perf` Origin acceptance. Vitest
 covers default/persisted/invalid sources, ETag/token parsing, canonical-only
 PUT, conflict translation, loading, local cancel/reset and durable Save.
 
+`WEB_DASHBOARD_TILES_V1` adds strict TypeScript parsing for every consumed
+field and Vitest fixtures confined to test sources. Coverage proves the 90-day
+activity map and direct totals, all compact/medium/large disclosure levels,
+legacy 0 kg visibility, `improved` use, unfinished-session duration absence,
+1/3/8 MAX bounds, factual muscle bars, unavailable cardio/next-session states,
+global loading/error/invalid signals, accessible textual equivalents and live
+density changes during keyboard resize.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

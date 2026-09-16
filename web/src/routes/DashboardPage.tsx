@@ -1,12 +1,15 @@
 import { DashboardGrid } from '../dashboard/DashboardGrid'
+import type { DashboardSnapshot } from '../api/dashboard'
 
-export function DashboardPage() {
+interface DashboardPageProps { dashboard: DashboardSnapshot | null; pending: boolean; failed: boolean }
+
+export function DashboardPage({ dashboard, pending, failed }: DashboardPageProps) {
   return (
     <section className="page" aria-labelledby="page-title">
       <div className="page-heading">
         <div><p className="eyebrow">VUE D’ENSEMBLE</p><h1 id="page-title">Dashboard</h1></div>
       </div>
-      <DashboardGrid />
+      <DashboardGrid dashboard={dashboard} pending={pending} failed={failed} />
     </section>
   )
 }

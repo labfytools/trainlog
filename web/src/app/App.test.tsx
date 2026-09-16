@@ -63,7 +63,7 @@ describe('shell Trainlog', () => {
     expect(footer.parentElement).toHaveClass('app-shell')
     expect(screen.getByRole('link', { name: 'Trainlog — Dashboard' })).toHaveTextContent('TRAINLOG')
     expect(screen.queryByText('Vos repères d’entraînement, sans extrapolation ni donnée inventée.')).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByText('INDISPONIBLE')).toHaveLength(7))
+    await waitFor(() => expect(screen.getAllByText('INDISPONIBLE')).toHaveLength(6))
     expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('—')
     expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('Indisponible')
     expect(screen.getByLabelText('Dernière zone')).toHaveTextContent('Indisponible')
