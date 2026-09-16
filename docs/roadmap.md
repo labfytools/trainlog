@@ -24,23 +24,20 @@ Desktop schema v18, Android schema v17, Notcurses, direct
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
 exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
-`TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`; its local-only
-architecture is canonical, but no Web code exists yet.
+`TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
+CLI/HTTP infrastructure exists, but no frontend or business endpoint exists.
 
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_CLI_HTTP_INFRASTRUCTURE_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_FRONTEND_SHELL_V1
 ```
 
-`WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` and
-`WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN`. The characterized Dashboard SQL,
-facts, limits and calculations now live in the typed Core service
-`trainlog_dashboard_load()`; the TUI supplies the selected period and current
-time, then presents the returned snapshot. Adoption was necessary to prove
-parity and was therefore completed in the extraction tranche rather than left
-as an empty roadmap step. The next authorized slice is local CLI/HTTP
-infrastructure; it does not yet authorize React or Dashboard Web metrics.
+`WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN`. `trainlog -w` and `--web` now
+dispatch through the common process owner to a bounded, single-threaded
+loopback HTTP adapter after one database open. Only `/api/v1/health` exists.
+The next slice is the frontend shell and embedded production assets; it does
+not authorize Dashboard business routes or new metrics.
 
 ## TRAINLOG_WEB_V1 implementation gate
 
@@ -50,7 +47,7 @@ Implementation order is fixed as:
 WEB_DASHBOARD_CHARACTERIZATION_V1
         -> WEB_DASHBOARD_CORE_READ_MODEL_V1 [PASS/FROZEN]
         -> WEB_TUI_READ_MODEL_ADOPTION_V1 [PASS/FROZEN]
-        -> WEB_CLI_HTTP_INFRASTRUCTURE_V1
+        -> WEB_CLI_HTTP_INFRASTRUCTURE_V1 [PASS/FROZEN]
         -> WEB_FRONTEND_SHELL_V1
         -> WEB_DASHBOARD_V1
 ```

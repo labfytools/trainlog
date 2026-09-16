@@ -39,7 +39,8 @@ parallel implementation of its rules.
 | Dashboard characterization | `WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN` |
 | Dashboard Core read model | `WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` |
 | TUI Dashboard adoption | `WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN` |
-| Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
+| Web CLI/HTTP infrastructure | `WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN` |
+| Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -136,8 +137,10 @@ the result. No Dashboard HTTP endpoint exists yet.
 
 `TRAINLOG_WEB_V1` architecture, API independence, local-network boundary,
 browser shell, Dashboard, layout ownership, build/runtime separation, and
-security invariants are now canonical. No Web server, frontend, CLI option,
-HTTP endpoint, embedded asset, or layout persistence is implemented yet.
+security invariants are canonical. The CLI and local HTTP infrastructure are
+implemented: `-w`/`--web`, optional `--port`, exact IPv4 loopback binding and
+the technical `/api/v1/health` route. No frontend, embedded asset, Dashboard
+route, business mutation, browser launch or layout persistence exists yet.
 
 ## Data semantics
 
@@ -169,6 +172,10 @@ The Dashboard Core extraction tranche passes **62/62 normal Meson tests** and
 **62/62 ASan/UBSan Meson tests**, including the standalone public-header and
 Core characterization targets, plus both canonical JSON validators.
 
+The CLI/HTTP infrastructure tranche passes **67/67 normal Meson tests**, adding
+pure CLI parsing, process-level help/version checks and an isolated loopback
+HTTP lifecycle/security suite. The same suite is required under ASan/UBSan.
+
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
 Android resource-parity, language-owner, typed sync-presentation, and
@@ -181,9 +188,8 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `TRAINLOG_WEB_V1` remains contract-only; Dashboard characterization, Core
-  extraction and TUI adoption are frozen. The next implementation cursor is
-  CLI/local HTTP infrastructure, not React.
+- `TRAINLOG_WEB_V1` has only its Core prerequisite and CLI/HTTP infrastructure;
+  the next cursor is the frontend shell. No Dashboard HTTP route exists.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

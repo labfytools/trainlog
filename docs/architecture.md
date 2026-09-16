@@ -193,6 +193,30 @@ opened and migrated once before HTTP listening, used without concurrent direct
 SQLite-handle access, and closed by the process owner after server shutdown. A
 single-threaded event loop is the preferred server architecture.
 
+`WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN` implements that owner. CLI parsing
+precedes all path, database, terminal and HTTP initialization. The common owner
+resolves the private XDG database path, opens/migrates it exactly once, dispatches
+to either the unchanged TUI or Web adapter, then closes it exactly once.
+`--help`, `--version` and CLI errors stop before path or database access.
+
+The HTTP adapter uses GNU libmicrohttpd in external-select mode with
+`MHD_USE_NO_THREAD_SAFETY`: libmicrohttpd creates no polling or request thread.
+All callbacks, future Core calls and SQLite access therefore run serially on
+the process event-loop thread. A concrete IPv4 `sockaddr_in` binds only
+`127.0.0.1`; port zero remains unavailable through the CLI. SIGINT/SIGTERM
+handlers only set a `sig_atomic_t` flag. The loop then stops libmicrohttpd,
+returns to the process owner and lets it close the database.
+
+The only implemented route is read-only `GET /api/v1/health`; `/` and every
+unknown route return 404, and other methods on health return 405. The adapter
+bounds concurrent/per-IP connections at 32, listen backlog at 32, per-connection
+memory at 16 KiB, decoded request headers at 8 KiB, request bodies at 4 KiB and
+idle time at 10 seconds. It validates `Host` against `127.0.0.1` and the active
+port, emits explicit JSON content type, `nosniff`, `no-store`, a deny-all CSP
+and no permissive CORS header. Assets, telemetry and remote resources are
+absent. Before the first mutation route, origin validation and explicit
+CSRF protection remain mandatory in addition to these transport bounds.
+
 Every Web page retains one application shell:
 
 - Header navigation: Dashboard, Analyse, Programmes, Séances, Exercices;

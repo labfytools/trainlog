@@ -13,6 +13,20 @@ A Trainlog feature is not complete without relevant validation.
 Frozen formats, persistence migrations, synchronization semantics, and user-data
 mutations require executable coverage where practical.
 
+`WEB_CLI_HTTP_INFRASTRUCTURE_V1` adds pure CLI tests for the default TUI mode,
+both Web switches, help, version, unknown and repeated options, positional
+arguments, Web-only `--port`, missing/non-numeric/negative/zero/out-of-range
+ports, 65535, and option ordering. Process-level tests execute `--help` and
+`--version` without initializing the database, TUI or server.
+
+The isolated HTTP test opens one in-memory database, starts the production
+single-threaded adapter on an explicitly reserved loopback port, and verifies
+health JSON/version, content type, `nosniff`, CSP, absence of CORS, 404, 405
+with `Allow: GET`, invalid Host, oversized body, oversized-header rejection,
+SIGTERM shutdown and explicit failure on an already occupied port. It never
+uses the Internet. A separate real-launch smoke uses an isolated XDG directory,
+performs the health request and stops the production binary with SIGINT.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

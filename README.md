@@ -19,8 +19,8 @@ over direct MTP; it never copies SQLite database files between devices.
 | Local Web (planned) | Analyze and visualize canonical data; prepare programs and sessions through typed Trainlog Core services. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
-a sibling adapter, not an extension of the TUI; `TRAINLOG_WEB_V1` is currently
-contract-only and has no implementation.
+a sibling adapter, not an extension of the TUI. Its loopback-only CLI/HTTP
+infrastructure is implemented; its frontend and business API are not.
 
 ## Releases
 
@@ -137,6 +137,7 @@ requires compatible versions of:
 - libudev;
 - libmtp;
 - Notcurses Core;
+- GNU libmicrohttpd;
 - the standard math library.
 
 Distribution packages may pull additional transitive libraries, including
@@ -164,7 +165,8 @@ Desktop builds require:
 - a C17 compiler toolchain;
 - `pkg-config`;
 - Notcurses Core development headers;
-- SQLite, libuuid, utf8proc, libudev, and libmtp development headers;
+- SQLite, libuuid, utf8proc, libudev, libmtp, and GNU libmicrohttpd development
+  headers;
 - Python 3 for generated sources, validators, import/export helpers, and tests.
 
 Android builds require JDK 17, an Android SDK supporting the configured API
@@ -229,7 +231,7 @@ As of 2026-09-15:
 - `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`;
 - `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
   Android-triggered bidirectional smoke test.
-- `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`.
+- `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`.
 
 The latest executable result belongs in
 [current state](docs/current_state.md), not in multiple README narratives.

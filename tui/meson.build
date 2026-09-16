@@ -6,6 +6,7 @@ udev_dep = dependency('libudev', required: true)
 mtp_dep = dependency('libmtp', required: true)
 
 notcurses_dep = dependency('notcurses-core', required: true)
+microhttpd_dep = dependency('libmicrohttpd', required: true)
 
 utf8proc_dep = dependency('libutf8proc', required: false)
 if not utf8proc_dep.found()
@@ -83,6 +84,7 @@ strict_c_args = [
   '-Wconversion',
   '-Wformat=2',
   '-Wshadow',
+  '-DTRAINLOG_VERSION="@0@"'.format(meson.project_version()),
 ]
 
 trainlog_core_sources = files(
@@ -140,7 +142,9 @@ trainlog_core_dep = declare_dependency(
 )
 
 trainlog_tui_sources = files(
+  'src/cli.c',
   'src/main.c',
+  'src/paths.c',
   'src/app_shell.c',
   'src/presentation.c',
   'src/chart.c',
@@ -148,6 +152,7 @@ trainlog_tui_sources = files(
   'src/terminal.c',
   'src/theme.c',
   'src/tui.c',
+  'src/web_server.c',
 )
 
 trainlog_exe = executable(
@@ -156,6 +161,7 @@ trainlog_exe = executable(
   dependencies: [
     trainlog_core_dep,
     notcurses_dep,
+    microhttpd_dep,
   ],
   c_args: strict_c_args,
   install: true,
@@ -216,6 +222,32 @@ test_dashboard_header = executable(
   c_args: strict_c_args,
 )
 test('dashboard_header', test_dashboard_header)
+
+test_cli = executable(
+  'test_cli',
+  ['tests/test_cli.c', 'src/cli.c'],
+  include_directories: trainlog_include,
+  c_args: strict_c_args,
+)
+test('cli', test_cli)
+
+test_web_server = executable(
+  'test_web_server',
+  ['tests/test_web_server.c', 'src/web_server.c'],
+  dependencies: [trainlog_core_dep, microhttpd_dep],
+  c_args: strict_c_args,
+)
+test('web_server', test_web_server, timeout: 30)
+test('cli_help', trainlog_exe, args: ['--help'])
+test('cli_version', trainlog_exe, args: ['--version'])
+
+test_web_headers = executable(
+  'test_web_headers',
+  'tests/test_web_headers.c',
+  include_directories: trainlog_include,
+  c_args: strict_c_args,
+)
+test('web_headers', test_web_headers)
 
 test_training_knowledge = executable(
   'test_training_knowledge',
