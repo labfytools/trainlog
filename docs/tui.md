@@ -441,8 +441,13 @@ by instant and `session_id`.
 The selected working series currently copies every matching exact-dose set and
 marks its point as weighted even when the persisted set has no weight, yielding
 `0.0 kg` for that point. This surprising legacy behavior is characterized, not
-endorsed or corrected by this tranche. The Core extraction must initially
-preserve it or explicitly return to contract review before changing semantics.
+endorsed or corrected by this tranche. The prior-best scan likewise accepts a
+matching earlier unweighted set as a `0.0 kg` baseline, so a later weighted set
+can be classified as an improvement. Two selected-series points from the same
+session and canonical instant compare equal because that final comparator has
+no set-position tie-break; the preceding fact order is session, entry, kind,
+then set position. The Core extraction must initially preserve these observed
+semantics or explicitly return to contract review before changing them.
 
 The snapshot reads at most 128 observable sessions, 4096 occurrence facts, 128
 selected performance points, and 256 points for each body metric. Reaching a

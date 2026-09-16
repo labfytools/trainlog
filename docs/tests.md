@@ -195,8 +195,10 @@ before/at/after the 30-day boundary, valid actual history without `ended_at`,
 and plan-only exclusion. It covers repeated occurrences, heterogeneous REPS
 sets, SETS/DURATION, CONTINUOUS/DURATION without fake sets, assistance,
 unweighted actuals, ordinary heavy sets versus explicit MAX, equal-instant
-tie-breaks, primary-only catalogue zones, secondary-zone exclusion, and seeded
-catalogue behavior. Exact and exceeded bounds are asserted for 128 observable
+tie-breaks (including equal same-session performance points), the legacy
+unweighted `0.0 kg` prior baseline, primary-only catalogue zones,
+secondary-zone exclusion, and seeded catalogue behavior. Exact and exceeded
+bounds are asserted for 128 observable
 sessions and 4096 Dashboard facts, including the independently truncated totals
 and `partial` flag. Existing regressions continue to cover malformed legacy
 timestamps, body-metric selection, responsive rendering, all-history buckets,

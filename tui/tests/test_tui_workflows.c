@@ -1508,6 +1508,36 @@ static bool dashboard_insert_plan_for_exercise(TrainlogDatabase *database,
     return trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK;
 }
 
+static bool dashboard_insert_optional_weight_set(TrainlogDatabase *database,
+    const char *session_id, const char *exercise_id, const char *started_at,
+    bool has_weight, double weight)
+{
+    TrainlogSetInput set = {10, 0, has_weight, weight};
+    TrainlogSessionExerciseInput occurrence;
+    TrainlogSessionInput session;
+    (void)memset(&occurrence, 0, sizeof(occurrence));
+    (void)memset(&session, 0, sizeof(session));
+    (void)snprintf(occurrence.exercise_id, sizeof(occurrence.exercise_id), "%s",
+        exercise_id);
+    (void)snprintf(occurrence.equipment_id, sizeof(occurrence.equipment_id), "%s",
+        "leg_press");
+    occurrence.recording_mode = TRAINLOG_RECORDING_SETS;
+    occurrence.tracking_mode = TRAINLOG_TRACKING_REPS;
+    occurrence.load_mode = TRAINLOG_LOAD_EXTERNAL;
+    occurrence.target_sets = 1;
+    occurrence.target_reps = 10;
+    occurrence.target_has_weight = true;
+    occurrence.target_weight_kg = 25.0;
+    occurrence.sets = &set;
+    occurrence.set_count = 1U;
+    (void)snprintf(session.session_id, sizeof(session.session_id), "%s", session_id);
+    (void)snprintf(session.started_at, sizeof(session.started_at), "%s", started_at);
+    session.session_type = TRAINLOG_SESSION_TRAINING;
+    session.exercises = &occurrence;
+    session.exercise_count = 1U;
+    return trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK;
+}
+
 static bool test_dashboard_characterization_empty_and_window_boundaries(void)
 {
     TrainlogDatabase *database = NULL;
@@ -1614,6 +1644,11 @@ static bool test_dashboard_characterization_modalities_ties_and_zones(void)
         "ex_10000000-0000-4000-8000-000000000004", "Assistance", "assistance",
         TRAINLOG_TRACKING_REPS, TRAINLOG_RECORDING_SETS,
         (TrainlogExerciseDataFields)0) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+        "ex_10000000-0000-4000-8000-000000000005", "Poids absent antérieur",
+        "poids absent anterieur", TRAINLOG_TRACKING_REPS,
+        TRAINLOG_RECORDING_SETS, (TrainlogExerciseDataFields)0) ==
+        TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_replace_exercise_body_zones(database,
         "ex_33333333-3333-4333-8333-333333333333", "chest",
         primary_secondary, 1U) == TRAINLOG_STATUS_OK);
@@ -1675,6 +1710,14 @@ static bool test_dashboard_characterization_modalities_ties_and_zones(void)
     session.exercises = occurrences;
     session.exercise_count = 4U;
     CHECK(trainlog_database_insert_session(database, &session) == TRAINLOG_STATUS_OK);
+    CHECK(dashboard_insert_optional_weight_set(database,
+        "se_32000000-0000-4000-8000-000000000009",
+        "ex_10000000-0000-4000-8000-000000000005", "2026-09-08T08:00:00Z",
+        false, 0.0));
+    CHECK(dashboard_insert_optional_weight_set(database,
+        "se_32000000-0000-4000-8000-000000000010",
+        "ex_10000000-0000-4000-8000-000000000005", "2026-09-09T08:00:00Z",
+        true, 25.0));
 
     (void)memset(&occurrences[0], 0, sizeof(occurrences[0]));
     (void)memset(&session, 0, sizeof(session));
@@ -1748,10 +1791,10 @@ static bool test_dashboard_characterization_modalities_ties_and_zones(void)
     app_shell_load_dashboard(&app);
     CHECK(!app.dashboard.error && !app.dashboard.partial &&
         !app.dashboard.invalid_data);
-    CHECK(app.dashboard.completed_session_count == 7U);
-    CHECK(app.dashboard.performed_set_count == 8U);
+    CHECK(app.dashboard.completed_session_count == 9U);
+    CHECK(app.dashboard.performed_set_count == 10U);
     CHECK(app.dashboard.explicit_max_count == 2U);
-    CHECK(app.dashboard.distinct_exercise_count == 6U);
+    CHECK(app.dashboard.distinct_exercise_count == 7U);
     CHECK(app.dashboard.has_performance);
     CHECK(strcmp(app.dashboard.exercise.exercise_id,
         "ex_33333333-3333-4333-8333-333333333333") == 0);
@@ -1768,7 +1811,9 @@ static bool test_dashboard_characterization_modalities_ties_and_zones(void)
         "ex_10000000-0000-4000-8000-000000000000") == 0);
     for (index = 0U; index < app.dashboard.week_count; ++index)
         working += app.dashboard.weeks[index].working_improvements;
-    CHECK(working == 2U);
+    /* Existing behavior: a matching earlier unweighted set supplies a 0.0
+     * baseline and therefore makes the later weighted set an improvement. */
+    CHECK(working == 3U);
     CHECK(app.dashboard.zone_count == 4U);
     for (index = 0U; index < app.dashboard.zone_count; ++index) {
         chest = chest || (strcmp(app.dashboard.zones[index].label, "Pectoraux") == 0 &&
@@ -1777,9 +1822,26 @@ static bool test_dashboard_characterization_modalities_ties_and_zones(void)
             app.dashboard.zones[index].count == 2U);
         unclassified = unclassified ||
             (strcmp(app.dashboard.zones[index].label, "Non classés") == 0 &&
-             app.dashboard.zones[index].count == 5U);
+             app.dashboard.zones[index].count == 6U);
     }
     CHECK(chest && back && unclassified);
+    {
+        TrainlogExercisePerformancePoint left;
+        TrainlogExercisePerformancePoint right;
+        (void)memset(&left, 0, sizeof(left));
+        (void)memset(&right, 0, sizeof(right));
+        (void)snprintf(left.started_at, sizeof(left.started_at), "%s",
+            "2026-09-10T08:00:00Z");
+        (void)snprintf(right.started_at, sizeof(right.started_at), "%s",
+            left.started_at);
+        (void)snprintf(left.session_id, sizeof(left.session_id), "%s",
+            "se_32000000-0000-4000-8000-000000000011");
+        (void)snprintf(right.session_id, sizeof(right.session_id), "%s",
+            left.session_id);
+        left.weight_kg = 10.0;
+        right.weight_kg = 20.0;
+        CHECK(dashboard_performance_time_compare(&left, &right) == 0);
+    }
     trainlog_database_close(database);
     dashboard_characterization_restore_clock();
     return true;
