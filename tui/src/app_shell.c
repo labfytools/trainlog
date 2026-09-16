@@ -11,6 +11,7 @@
 #include <utf8proc.h>
 
 #include "trainlog/terminal.h"
+#include "trainlog/presentation.h"
 
 static void copy_id(char output[TRAINLOG_SHELL_STABLE_ID_CAPACITY],
                     const char *value)
@@ -501,37 +502,24 @@ TrainlogFormResult trainlog_form_handle(TrainlogFormField *field, int key)
 
 const char *trainlog_route_title(TrainlogAppRoute route)
 {
-    switch (route) {
-    case TRAINLOG_ROUTE_HOME: return "Accueil";
-    case TRAINLOG_ROUTE_SESSIONS: return "Séances";
-    case TRAINLOG_ROUTE_SESSION_CURRENT: return "Séances / Séance en cours";
-    case TRAINLOG_ROUTE_SESSION_GENERATOR: return "Séances / Programmer";
-    case TRAINLOG_ROUTE_SESSION_MANUAL: return "Séances / Nouvelle séance";
-    case TRAINLOG_ROUTE_SESSIONS_COMPLETED: return "Séances / Effectuées";
-    case TRAINLOG_ROUTE_SESSION_DETAIL: return "Séances / Détail";
-    case TRAINLOG_ROUTE_EXERCISES: return "Exercices / Catalogue";
-    case TRAINLOG_ROUTE_EXERCISE_DETAIL: return "Exercices / Fiche";
-    case TRAINLOG_ROUTE_EXERCISE_KNOWLEDGE: return "Exercices / Connaissances";
-    case TRAINLOG_ROUTE_EXERCISE_PERFORMANCE: return "Statistiques / Performance";
-    case TRAINLOG_ROUTE_EXERCISE_MAX: return "Statistiques / MAX mesuré";
-    case TRAINLOG_ROUTE_EQUIPMENT: return "Équipements / Catalogue";
-    case TRAINLOG_ROUTE_EQUIPMENT_DETAIL: return "Équipements / Fiche";
-    case TRAINLOG_ROUTE_STATS: return "Statistiques";
-    case TRAINLOG_ROUTE_STATS_TRAINING: return "Statistiques / Entraînement";
-    case TRAINLOG_ROUTE_STATS_EXERCISE: return "Statistiques / Par exercice";
-    case TRAINLOG_ROUTE_STATS_EXERCISE_DETAIL: return "Statistiques / Exercice";
-    case TRAINLOG_ROUTE_STATS_ZONES: return "Statistiques / Zones";
-    case TRAINLOG_ROUTE_BODY: return "Statistiques / Mensurations";
-    case TRAINLOG_ROUTE_BODY_DETAIL: return "Mensurations / Relevé";
-    case TRAINLOG_ROUTE_BODY_METRIC: return "Mensurations / Historique";
-    case TRAINLOG_ROUTE_BODY_TRENDS: return "Mensurations / 12 mois";
-    case TRAINLOG_ROUTE_BODY_GLOBAL: return "Mensurations / Vue globale";
-    case TRAINLOG_ROUTE_BODY_ANALYTICS: return "Mensurations / Analyse";
-    case TRAINLOG_ROUTE_MAX: return "Statistiques / Capacités MAX";
-    case TRAINLOG_ROUTE_SYNC: return "Synchronisation";
-    case TRAINLOG_ROUTE_SETTINGS: return "Paramètres";
-    default: return "Trainlog";
-    }
+    static const char *const keys[TRAINLOG_ROUTE_COUNT] = {
+        "nav.home", "nav.sessions", "route.session.current",
+        "route.session.generator", "route.session.manual",
+        "route.session.completed", "route.session.detail",
+        "route.exercise.catalog", "route.exercise.detail",
+        "route.exercise.knowledge", "route.exercise.performance",
+        "route.exercise.max", "route.equipment.catalog",
+        "route.equipment.detail", "nav.statistics", "route.stats.training",
+        "route.stats.exercise", "route.stats.exercise.detail",
+        "route.stats.zones", "route.body", "route.body.detail",
+        "route.body.metric", "route.body.trends", "route.body.global",
+        "route.body.analytics", "route.max", "nav.sync", "nav.settings"
+    };
+    /* INVARIANT: enum order is the stable route identity; wording is resolved
+     * only at this presentation boundary. */
+    if (route >= TRAINLOG_ROUTE_HOME && route < TRAINLOG_ROUTE_COUNT)
+        return trainlog_presentation_text(keys[route]);
+    return "Trainlog";
 }
 
 TrainlogAppRoute trainlog_route_section(TrainlogAppRoute route)

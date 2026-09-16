@@ -141,6 +141,7 @@ trainlog_core_dep = declare_dependency(
 trainlog_tui_sources = files(
   'src/main.c',
   'src/app_shell.c',
+  'src/presentation.c',
   'src/chart.c',
   'src/sync_screen_action.c',
   'src/terminal.c',
@@ -598,6 +599,7 @@ test_sync_screen_action = executable(
   'test_sync_screen_action',
   'tests/test_sync_screen_action.c',
   'src/sync_screen_action.c',
+  'src/presentation.c',
   dependencies: [trainlog_core_dep, notcurses_dep],
   c_args: strict_c_args,
 )
@@ -654,6 +656,7 @@ test_tui_workflows = executable(
   'tests/test_tui_workflows.c',
   'src/app_shell.c',
   'src/chart.c',
+  'src/presentation.c',
   'src/theme.c',
   'src/sync_screen_action.c',
   dependencies: trainlog_core_dep,
@@ -666,6 +669,7 @@ test_chart = executable(
   'test_chart',
   'tests/test_chart.c',
   'src/chart.c',
+  'src/presentation.c',
   include_directories: trainlog_include,
   dependencies: m_dep,
   c_args: strict_c_args,
@@ -736,8 +740,28 @@ test_app_shell = executable(
   'test_app_shell',
   'tests/test_app_shell.c',
   'src/app_shell.c',
+  'src/presentation.c',
   dependencies: trainlog_core_dep,
   c_args: strict_c_args,
 )
 
 test('app_shell', test_app_shell)
+
+test_presentation = executable(
+  'test_presentation',
+  'tests/test_presentation.c',
+  'src/presentation.c',
+  'src/app_shell.c',
+  'src/sync_screen_action.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('presentation_i18n', test_presentation)
+
+test(
+  'presentation_catalog_completeness',
+  python3,
+  args: [meson.project_source_root() / 'tui/tests/test_presentation_catalog.py'],
+  workdir: meson.project_source_root(),
+)

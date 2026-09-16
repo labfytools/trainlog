@@ -12,6 +12,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,7 @@
 
 #include "trainlog/terminal.h"
 #include "trainlog/app_shell.h"
+#include "trainlog/presentation.h"
 
 #include "trainlog/bodyviz.h"
 #include "trainlog/body_analytics.h"
@@ -52,6 +54,45 @@
 #include "trainlog/usb.h"
 #include "timestamp.h"
 #include "database_internal.h"
+
+static void presentation_surface_printf(TrainlogSurface *surface, int row,
+    int column, const char *format, ...)
+{
+    va_list arguments;
+    va_list copy;
+    char *value;
+    int count;
+    va_start(arguments, format);
+    va_copy(copy, arguments);
+    count = trainlog_presentation_vformat(NULL, 0U, format, copy);
+    va_end(copy);
+    if (count >= 0) {
+        value = malloc((size_t)count + 1U);
+        if (value != NULL) {
+            (void)trainlog_presentation_vformat(value, (size_t)count + 1U,
+                format, arguments);
+            trainlog_surface_printf(surface, row, column, "%s", value);
+            free(value);
+        }
+    }
+    va_end(arguments);
+}
+
+static void presentation_terminal_printf(TrainlogTerminal *terminal, int row,
+    int column, const char *format, ...)
+{
+    va_list arguments;
+    char value[512];
+    va_start(arguments, format);
+    (void)trainlog_presentation_vformat(value, sizeof(value), format, arguments);
+    va_end(arguments);
+    trainlog_terminal_printf(terminal, row, column, "%s", value);
+}
+
+/* All legacy renderer format literals cross the centralized catalog. Unknown
+ * strings pass through, preserving persisted names and technical literals. */
+#define trainlog_surface_printf presentation_surface_printf
+#define trainlog_terminal_printf presentation_terminal_printf
 
 #define MAX_EXERCISES 128U
 #define MAX_SESSION_EXERCISES 32U
@@ -162,9 +203,11 @@ static size_t equipment_collect(TrainlogDatabase *database, const char *query,
 
 static const char *equipment_origin_label(TrainlogEquipmentOrigin origin)
 {
-    if (origin == TRAINLOG_EQUIPMENT_SUPPLIED) return "fourni";
-    if (origin == TRAINLOG_EQUIPMENT_CUSTOM) return "personnalisé";
-    return "inconnu";
+    if (origin == TRAINLOG_EQUIPMENT_SUPPLIED)
+        return trainlog_presentation_source("fourni");
+    if (origin == TRAINLOG_EQUIPMENT_CUSTOM)
+        return trainlog_presentation_source("personnalisé");
+    return trainlog_presentation_source("inconnu");
 }
 
 static void generate_custom_equipment_uuid(
@@ -177,12 +220,14 @@ static void generate_custom_equipment_uuid(
 
 static const char *session_type_label(TrainlogSessionType type)
 {
-    return type == TRAINLOG_SESSION_MAX_TEST ? "Test de max" : "Entraînement";
+    return trainlog_presentation_source(type == TRAINLOG_SESSION_MAX_TEST
+        ? "Test de max" : "Entraînement");
 }
 
 static const char *session_type_history_label(TrainlogSessionType type)
 {
-    return type == TRAINLOG_SESSION_MAX_TEST ? "[MAX]" : "[ENTRAINEMENT]";
+    return type == TRAINLOG_SESSION_MAX_TEST ? "[MAX]" :
+        trainlog_presentation_text("label.training.upper");
 }
 
 static bool parse_double_positive(const char *text, double *output)
@@ -209,14 +254,14 @@ static const char *exercise_load_mode_label(
 {
     switch (mode) {
     case TRAINLOG_LOAD_EXTERNAL:
-        return "charge externe";
+        return trainlog_presentation_source("charge externe");
 
     case TRAINLOG_LOAD_ASSISTANCE:
-        return "assistance";
+        return trainlog_presentation_source("assistance");
 
     case TRAINLOG_LOAD_NONE:
     default:
-        return "sans charge";
+        return trainlog_presentation_source("sans charge");
     }
 }
 
@@ -253,7 +298,7 @@ static void format_compact_max_weight(
 {
     size_t length;
     if (output == NULL || output_size == 0U) return;
-    (void)snprintf(output, output_size, "%.2f", value);
+    (void)trainlog_presentation_format(output, output_size, "%.2f", value);
     length = strlen(output);
     while (length > 0U && output[length - 1U] == '0')
         output[--length] = '\0';
@@ -274,12 +319,8 @@ static void exercise_format_performance(
     }
 
     if (point->has_performance == 0) {
-        (void)snprintf(
-            output,
-            output_size,
-            "%s",
-            "aucune série réussie"
-        );
+        (void)trainlog_presentation_format_key(output, output_size,
+            "summary.performance.none");
         return;
     }
 
@@ -299,7 +340,7 @@ static void exercise_format_performance(
                 duration,
                 sizeof(duration)
             ) != TRAINLOG_STATUS_OK) {
-            (void)snprintf(
+            (void)trainlog_presentation_format(
                 duration,
                 sizeof(duration),
                 "%d s",
@@ -320,13 +361,8 @@ static void exercise_format_performance(
             point->load_mode ==
             TRAINLOG_LOAD_ASSISTANCE
         ) {
-            (void)snprintf(
-                output,
-                output_size,
-                "%.1f kg aide × %s",
-                point->weight_kg,
-                duration
-            );
+            (void)trainlog_presentation_format_key(output, output_size,
+                "summary.assisted.duration", point->weight_kg, duration);
         } else {
             (void)snprintf(
                 output,
@@ -341,7 +377,7 @@ static void exercise_format_performance(
 
     if (point->load_mode ==
         TRAINLOG_LOAD_EXTERNAL) {
-        (void)snprintf(
+        (void)trainlog_presentation_format(
             output,
             output_size,
             "%.1f kg × %d reps",
@@ -352,15 +388,10 @@ static void exercise_format_performance(
         point->load_mode ==
         TRAINLOG_LOAD_ASSISTANCE
     ) {
-        (void)snprintf(
-            output,
-            output_size,
-            "%.1f kg aide × %d reps",
-            point->weight_kg,
-            point->metric_value
-        );
+        (void)trainlog_presentation_format_key(output, output_size,
+            "summary.assisted.reps", point->weight_kg, point->metric_value);
     } else {
-        (void)snprintf(
+        (void)trainlog_presentation_format(
             output,
             output_size,
             "%d reps",
@@ -609,6 +640,13 @@ static const TrainlogBodyMetricView BODY_METRICS[] = {
     {TRAINLOG_BODY_METRIC_LEFT_CALF, "Mollet gauche", "cm"},
     {TRAINLOG_BODY_METRIC_RIGHT_CALF, "Mollet droit", "cm"}
 };
+
+static const char *body_metric_label(size_t index)
+{
+    return index < sizeof(BODY_METRICS) / sizeof(BODY_METRICS[0])
+        ? trainlog_presentation_source(BODY_METRICS[index].label)
+        : trainlog_presentation_source("Mesure");
+}
 
 /* TRAINLOG_GLOBAL_BODY_OVERLAY_HELPERS */
 
@@ -1003,23 +1041,24 @@ static void draft_set_summary(
             duration,
             sizeof(duration)
         );
-        (void)snprintf(output, output_size, "Continu · %s", duration);
+        (void)trainlog_presentation_format_key(output, output_size,
+            "summary.continuous", duration);
     } else if (draft->input.set_count == 0U &&
         draft->input.target_sets > 0 && draft->input.target_reps > 0) {
         if (draft->input.target_has_weight) {
-            (void)snprintf(output, output_size,
-                "Plan %d×%d · %.2f kg · repos %d s · 0 réalisée",
+            (void)trainlog_presentation_format_key(output, output_size,
+                "summary.plan.weight",
                 draft->input.target_sets, draft->input.target_reps,
                 draft->input.target_weight_kg, draft->input.rest_seconds);
         } else {
-            (void)snprintf(output, output_size,
-                "Plan %d×%d · charge absente · repos %d s · 0 réalisée",
+            (void)trainlog_presentation_format_key(output, output_size,
+                "summary.plan.no_load",
                 draft->input.target_sets, draft->input.target_reps,
                 draft->input.rest_seconds);
         }
     } else {
-        int written = snprintf(output, output_size, "%zu séries · ",
-            draft->input.set_count);
+        int written = trainlog_presentation_format_key(output, output_size,
+            "summary.sets.prefix", draft->input.set_count);
         if (written < 0) {
             output[0] = '\0';
             return;
@@ -1044,12 +1083,12 @@ static void draft_set_summary(
                     draft->sets[index].has_weight ? "" : "—",
                     draft->sets[index].has_weight ? "kg" : "");
                 if (draft->sets[index].has_weight) {
-                    written = snprintf(fragment, sizeof(fragment),
+                    written = trainlog_presentation_format(fragment, sizeof(fragment),
                         "%s%s×%.2fkg%s",
                         index > 0U ? " / " : "", metric,
                         draft->sets[index].weight_kg,
                         draft->input.load_mode == TRAINLOG_LOAD_ASSISTANCE
-                            ? " aide" : "");
+                            ? trainlog_presentation_text("summary.assistance.suffix") : "");
                 }
             }
             if (written < 0) {
@@ -1266,10 +1305,10 @@ typedef struct TrainlogGeneratorPreviewItem {
 
 static const char *generator_goal_label(const char *goal_id)
 {
-    if (strcmp(goal_id, "general") == 0) return "Général";
-    if (strcmp(goal_id, "strength") == 0) return "Force";
-    if (strcmp(goal_id, "hypertrophy") == 0) return "Hypertrophie";
-    if (strcmp(goal_id, "endurance") == 0) return "Endurance";
+    if (strcmp(goal_id, "general") == 0) return trainlog_presentation_text("goal.general");
+    if (strcmp(goal_id, "strength") == 0) return trainlog_presentation_text("goal.strength");
+    if (strcmp(goal_id, "hypertrophy") == 0) return trainlog_presentation_text("goal.hypertrophy");
+    if (strcmp(goal_id, "endurance") == 0) return trainlog_presentation_text("goal.endurance");
     return goal_id;
 }
 
@@ -1383,17 +1422,8 @@ static void body_short_date(
         return;
     }
 
-    (void)snprintf(
-        output,
-        9U,
-        "%c%c/%c%c/%c%c",
-        timestamp[8],
-        timestamp[9],
-        timestamp[5],
-        timestamp[6],
-        timestamp[2],
-        timestamp[3]
-    );
+    if (!trainlog_presentation_compact_date(timestamp, true, output, 9U))
+        (void)snprintf(output, 9U, "%s", "--/--/--");
 }
 
 static size_t body_record_metric_count(
@@ -1467,49 +1497,26 @@ static void body_summary_text(
     }
 
     if (record->has_waist) {
-        (void)snprintf(
-            waist,
-            sizeof(waist),
-            "taille %.1f",
-            record->waist_cm
-        );
+        (void)trainlog_presentation_format_key(waist, sizeof(waist),
+            "summary.waist.value", record->waist_cm);
     } else {
-        (void)snprintf(
-            waist,
-            sizeof(waist),
-            "%s",
-            "taille —"
-        );
+        (void)trainlog_presentation_format_key(waist, sizeof(waist),
+            "summary.waist.none");
     }
 
     if (record->has_chest) {
-        (void)snprintf(
-            chest,
-            sizeof(chest),
-            "poitrine %.1f",
-            record->chest_cm
-        );
+        (void)trainlog_presentation_format_key(chest, sizeof(chest),
+            "summary.chest.value", record->chest_cm);
     } else {
-        (void)snprintf(
-            chest,
-            sizeof(chest),
-            "%s",
-            "poitrine —"
-        );
+        (void)trainlog_presentation_format_key(chest, sizeof(chest),
+            "summary.chest.none");
     }
 
     metric_count =
         body_record_metric_count(record);
 
-    (void)snprintf(
-        output,
-        output_size,
-        "%-9s  %-9s  %-14s  %2zu valeur(s)",
-        weight,
-        waist,
-        chest,
-        metric_count
-    );
+    (void)trainlog_presentation_format_key(output, output_size,
+        "summary.body", weight, waist, chest, metric_count);
 }
 
 static void body_input_from_record(
@@ -2061,23 +2068,16 @@ static void session_history_datetime(
         return;
     }
 
-    (void)snprintf(
-        output,
-        17U,
-        "%c%c/%c%c/%c%c%c%c %c%c:%c%c",
-        timestamp[8],
-        timestamp[9],
-        timestamp[5],
-        timestamp[6],
-        timestamp[0],
-        timestamp[1],
-        timestamp[2],
-        timestamp[3],
-        timestamp[11],
-        timestamp[12],
-        timestamp[14],
-        timestamp[15]
-    );
+    {
+        char date[9];
+        if (!trainlog_presentation_compact_date(timestamp, true, date,
+                sizeof(date))) {
+            (void)snprintf(output, 17U, "%s", "--/--/---- --:--");
+            return;
+        }
+        (void)snprintf(output, 17U, "%s %c%c:%c%c", date,
+            timestamp[11], timestamp[12], timestamp[14], timestamp[15]);
+    }
 }
 
 static bool sync_history_path(
@@ -2125,67 +2125,6 @@ static bool sync_history_path(
                 output_size,
                 "%s/.local/share/trainlog/sync_history.log",
                 home
-            );
-    } else {
-        return false;
-    }
-
-    return
-        written >= 0 &&
-        (size_t)written <
-            output_size;
-}
-
-static bool sync_runs_path(
-    const char *sync_id,
-    char *output,
-    size_t output_size
-)
-{
-    const char *data_home =
-        getenv(
-            "XDG_DATA_HOME"
-        );
-
-    const char *home =
-        getenv(
-            "HOME"
-        );
-
-    int written;
-
-    if (
-        sync_id == NULL ||
-        sync_id[0] == '\0' ||
-        output == NULL ||
-        output_size == 0U
-    ) {
-        return false;
-    }
-
-    if (
-        data_home != NULL &&
-        data_home[0] != '\0'
-    ) {
-        written =
-            snprintf(
-                output,
-                output_size,
-                "%s/trainlog/sync_runs/%s.txt",
-                data_home,
-                sync_id
-            );
-    } else if (
-        home != NULL &&
-        home[0] != '\0'
-    ) {
-        written =
-            snprintf(
-                output,
-                output_size,
-                "%s/.local/share/trainlog/sync_runs/%s.txt",
-                home,
-                sync_id
             );
     } else {
         return false;
@@ -2570,6 +2509,12 @@ typedef struct TrainlogSyncController {
     TrainlogStatus probe_status;
     bool probe_known;
     TrainlogSyncReport report;
+    /* WHY: report summary/error are durable diagnostic payloads, not UI copy.
+     * CONTRACT: the latest engine status is retained separately so the
+     * presenter can classify failures without parsing or rewriting payloads.
+     * INVARIANT: current-result rendering depends only on this status and the
+     * report's typed fields/counters. */
+    TrainlogStatus latest_status;
     bool has_report;
     bool running;
     TrainlogSyncHistoryEntry history[SYNC_HISTORY_CAPACITY];
@@ -2706,6 +2651,8 @@ typedef struct TrainlogAppContext {
     TrainlogFocusTarget navigation_restore_focus;
     size_t content_selected;
     size_t content_scroll;
+    bool settings_language_save_failed;
+    bool settings_language_durability_uncertain;
     TrainlogListState list;
     TrainlogSearchState search;
     TrainlogListState saved_lists[TRAINLOG_ROUTE_COUNT];
@@ -2834,7 +2781,7 @@ static void body_controller_open_field(TrainlogBodyController *controller)
     char text[64] = "";
     body_metric_slot(&controller->pending, controller->field, &present, &value);
     if (controller->editing && present != NULL && *present)
-        (void)snprintf(text, sizeof(text), "%.10g", *value);
+        (void)trainlog_presentation_format_input(text, sizeof(text), "%.10g", *value);
     trainlog_form_init(&controller->form, text);
     controller->phase = TRAINLOG_BODY_FORM;
 }
@@ -2848,8 +2795,8 @@ static void body_controller_start_add(TrainlogAppContext *app)
         trainlog_time_now_rfc3339(controller->pending.observed_at,
             sizeof(controller->pending.observed_at)) != TRAINLOG_STATUS_OK) {
         controller->phase = TRAINLOG_BODY_MESSAGE;
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Impossible de préparer un identifiant ou une date de relevé.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.body.prepare");
         return;
     }
     body_controller_open_field(controller);
@@ -2888,16 +2835,16 @@ static bool body_controller_persist(TrainlogAppContext *app)
         : trainlog_database_insert_body_observation(app->database,
             &controller->pending);
     if (status != TRAINLOG_STATUS_OK) {
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Enregistrement impossible : au moins une mesure positive est requise.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.body.positive");
         return false;
     }
     controller->dirty = false;
     controller->form.active = false;
     controller->phase = TRAINLOG_BODY_MESSAGE;
-    (void)snprintf(controller->message, sizeof(controller->message), "%s",
-        controller->editing ? "Relevé corrigé; identité, date et séance conservées."
-                            : "Relevé corporel enregistré.");
+    (void)trainlog_presentation_format_key(controller->message,
+        sizeof(controller->message), controller->editing
+            ? "msg.body.corrected" : "msg.body.saved");
     if (app->navigation.current.route == TRAINLOG_ROUTE_BODY) {
         app_shell_refresh_list(app);
         /* INVARIANT: a successful edit refreshes both halves of the body
@@ -2955,8 +2902,8 @@ static bool app_shell_dispatch_body_controller(TrainlogAppContext *app, int key)
                    strcmp(controller->form.text, "-") == 0) {
             *present = false; *value = 0.0;
         } else if (!parse_double_positive(controller->form.text, &parsed)) {
-            (void)snprintf(controller->message, sizeof(controller->message),
-                "Nombre positif invalide; le texte saisi est conservé.");
+            (void)trainlog_presentation_format_key(controller->message,
+                sizeof(controller->message), "msg.positive.invalid");
             return true;
         } else { *present = true; *value = parsed; }
         controller->dirty = true;
@@ -3033,8 +2980,8 @@ static bool app_shell_dispatch_profile_controller(TrainlogAppContext *app,
              controller->phase == TRAINLOG_PROFILE_FORMULA) {
         if (strcmp(controller->form.text, "1") != 0 &&
             strcmp(controller->form.text, "2") != 0) {
-            (void)snprintf(controller->message, sizeof(controller->message),
-                "Formule attendue : 1 homme ou 2 femme.");
+            (void)trainlog_presentation_format_key(controller->message,
+                sizeof(controller->message), "msg.profile.formula");
             return true;
         }
         controller->pending.formula = strcmp(controller->form.text, "2") == 0
@@ -3042,26 +2989,26 @@ static bool app_shell_dispatch_profile_controller(TrainlogAppContext *app,
             : TRAINLOG_BODY_ANALYTICS_FORMULA_MALE;
         controller->phase = TRAINLOG_PROFILE_HEIGHT;
         controller->return_phase = TRAINLOG_PROFILE_HEIGHT;
-        { char text[64]; (void)snprintf(text, sizeof(text), "%.1f",
+        { char text[64]; (void)trainlog_presentation_format_input(text, sizeof(text), "%.1f",
               controller->pending.height_cm); trainlog_form_init(&controller->form, text); }
     } else if (result == TRAINLOG_FORM_SUBMIT) {
         double height;
         if (!parse_double_positive(controller->form.text, &height) ||
             height < 100.0 || height > 250.0) {
-            (void)snprintf(controller->message, sizeof(controller->message),
-                "Taille attendue entre 100 et 250 cm; texte conservé.");
+            (void)trainlog_presentation_format_key(controller->message,
+                sizeof(controller->message), "msg.profile.height");
             return true;
         }
         controller->pending.height_cm = height;
         if (!body_analytics_profile_save(&controller->pending)) {
-            (void)snprintf(controller->message, sizeof(controller->message),
-                "Impossible d’enregistrer le profil local; champs conservés.");
+            (void)trainlog_presentation_format_key(controller->message,
+                sizeof(controller->message), "msg.profile.save.fail");
             return true;
         }
         controller->dirty = false;
         controller->phase = TRAINLOG_PROFILE_MESSAGE;
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Profil d’estimation corporelle enregistré localement.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.profile.saved");
     } else if (result == TRAINLOG_FORM_CANCEL) {
         if (controller->dirty) {
             controller->return_phase = controller->phase;
@@ -3130,14 +3077,14 @@ static bool session_controller_load_picker(TrainlogAppContext *app)
     session->picker_selected = 0U;
     if (trainlog_database_list_exercises(app->database, session->picker,
         MAX_EXERCISES, &session->picker_count) != TRAINLOG_STATUS_OK) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Impossible de lire le catalogue d’exercices.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.catalog.read");
         session->phase = TRAINLOG_SESSION_MESSAGE;
         return false;
     }
     if (session->picker_count == 0U) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Ajoutez d’abord au moins un exercice au catalogue.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.catalog.empty");
         session->phase = TRAINLOG_SESSION_MESSAGE;
         return false;
     }
@@ -3265,8 +3212,8 @@ static bool session_controller_actuals_valid(TrainlogSessionController *session)
 {
     size_t index;
     if (session->draft_count == 0U) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Ajoutez au moins un exercice avant d’enregistrer.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.session.empty");
         return false;
     }
     for (index = 0U; index < session->draft_count; ++index) {
@@ -3276,8 +3223,9 @@ static bool session_controller_actuals_valid(TrainlogSessionController *session)
                 ? input->continuous_duration_seconds > 0 : input->set_count > 0U);
         if (!valid) {
             session->selected = index;
-            (void)snprintf(session->message, sizeof(session->message),
-                "Saisissez un résultat réel pour %.120s.", session->drafts[index].name);
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.actual.required",
+                session->drafts[index].name);
             return false;
         }
     }
@@ -3319,15 +3267,15 @@ static bool session_controller_generate(TrainlogAppContext *app)
     status = trainlog_session_generate_from_database(app->database, &request,
         &session->generated);
     if (status != TRAINLOG_STATUS_OK) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Génération refusée (%d).", (int)status);
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.generation.rejected", (int)status);
         session->return_phase = TRAINLOG_SESSION_GENERATOR_CONFIG;
         session->phase = TRAINLOG_SESSION_MESSAGE;
         return false;
     }
     if (session->generated.exercise_count == 0U) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Pas assez d’exercices résolus et compatibles; rien n’a été inventé.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.generation.empty");
         session->return_phase = TRAINLOG_SESSION_GENERATOR_CONFIG;
         session->phase = TRAINLOG_SESSION_MESSAGE;
         return false;
@@ -3413,8 +3361,8 @@ static bool session_controller_accept_generator(TrainlogAppContext *app)
 {
     TrainlogSessionController *session = &app->session;
     if (session->has_draft) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Une séance est déjà en cours. Reprenez-la ou gardez cet aperçu.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.session.exists.preview");
         session->return_phase = TRAINLOG_SESSION_GENERATOR_PREVIEW;
         session->phase = TRAINLOG_SESSION_MESSAGE;
         return false;
@@ -3442,8 +3390,8 @@ static const TrainlogAppRoute shell_sections[] = {
     TRAINLOG_ROUTE_STATS, TRAINLOG_ROUTE_SYNC, TRAINLOG_ROUTE_SETTINGS
 };
 static const char *const shell_section_labels[] = {
-    "Accueil", "Séances", "Exercices", "Statistiques", "Synchronisation",
-    "Paramètres"
+    "nav.home", "nav.sessions", "nav.exercises", "nav.statistics", "nav.sync",
+    "nav.settings"
 };
 
 static void app_shell_destroy_surfaces(TrainlogAppContext *app)
@@ -3502,7 +3450,8 @@ static void app_shell_add_action(TrainlogAppContext *app, const char *identifier
                                  int key, const char *label, unsigned priority,
                                  TrainlogIntent intent, TrainlogAppRoute route)
 {
-    TrainlogAction action = {identifier, key, label, true, priority, intent, route};
+    TrainlogAction action = {identifier, key,
+        trainlog_presentation_source(label), true, priority, intent, route};
     (void)trainlog_actions_add(&app->actions, &action);
 }
 
@@ -4408,9 +4357,6 @@ static void sync_controller_load_history(TrainlogSyncController *sync)
 static void sync_controller_open_detail(TrainlogSyncController *sync)
 {
     const TrainlogSyncHistoryEntry *entry;
-    char path[PATH_MAX + 1U];
-    FILE *file;
-    size_t used;
     char *cursor;
     sync->detail_line_count = 0U;
     sync->detail_scroll = 0U;
@@ -4419,41 +4365,19 @@ static void sync_controller_open_detail(TrainlogSyncController *sync)
         return;
     entry = &sync->history[sync->selected];
     if (entry->sync_id[0] == '\0') return;
-    /* CONTRACT: known legacy one-way records remain readable internal history,
-     * but their stored diagnostic prose predates the unified PC↔Android TUI and
-     * may expose prohibited directional modes. Present only parsed neutral
-     * metadata; never rewrite or reinterpret the retained artifact. */
-    if (entry->direction_known &&
-        entry->direction != TRAINLOG_SYNC_BIDIRECTIONAL) {
-        (void)snprintf(sync->detail_text, sizeof(sync->detail_text),
-            "Synchronisation historique PC↔Android\n"
-            "Horodatage : %s\n"
-            "État : %s\n"
-            "Détail hérité masqué (entrée historique)",
-            entry->timestamp, entry->success ? "réussie" : "échouée");
-        sync->detail_lines[sync->detail_line_count++] = sync->detail_text;
-        cursor = sync->detail_text;
-        while (*cursor != '\0' &&
-               sync->detail_line_count < SYNC_DETAIL_LINE_CAPACITY) {
-            if (*cursor == '\n') {
-                *cursor = '\0';
-                if (cursor[1] != '\0')
-                    sync->detail_lines[sync->detail_line_count++] = cursor + 1;
-            }
-            ++cursor;
-        }
-        sync->showing_detail = true;
-        return;
-    }
-    if (!sync_runs_path(entry->sync_id,
-            path, sizeof(path))) return;
-    file = fopen(path, "rb");
-    if (file == NULL) return;
-    used = fread(sync->detail_text, 1U,
-        sizeof(sync->detail_text) - 1U, file);
-    sync->detail_text[used] = '\0';
-    (void)fclose(file);
-    if (used == 0U) return;
+    /* WHY: history artifacts intentionally retain byte-exact diagnostics for
+     * logs and support, but arbitrary stored prose is not localized UI copy.
+     * CONTRACT: normal history presents only parsed metadata and labels old
+     * directional records neutrally; the files themselves remain untouched.
+     * INVARIANT: no history summary or run-detail byte reaches this surface. */
+    (void)trainlog_presentation_format_key(sync->detail_text,
+        sizeof(sync->detail_text),
+        entry->direction_known &&
+            entry->direction != TRAINLOG_SYNC_BIDIRECTIONAL
+                ? "sync.history.legacy" : "sync.history.entry",
+        entry->timestamp,
+        trainlog_presentation_text(entry->success
+            ? "sync.state.success" : "sync.state.failure"));
     cursor = sync->detail_text;
     sync->detail_lines[sync->detail_line_count++] = cursor;
     while (*cursor != '\0' &&
@@ -4468,25 +4392,49 @@ static void sync_controller_open_detail(TrainlogSyncController *sync)
     sync->showing_detail = true;
 }
 
-static const char *sync_controller_status_error(TrainlogStatus status)
+static const char *sync_controller_status_key(TrainlogStatus status)
 {
     switch (status) {
     case TRAINLOG_STATUS_CONFLICT:
-        return "Synchronisation refusée : une autre exécution est active.";
+        return "sync.result.failure.conflict";
     case TRAINLOG_STATUS_NOT_FOUND:
-        return "Synchronisation impossible : aucun appareil MTP Trainlog détecté.";
+        return "sync.result.failure.not_found";
     case TRAINLOG_STATUS_INVALID_ARGUMENT:
-        return "Synchronisation refusée : données ou demande invalides.";
+        return "sync.result.failure.invalid";
     case TRAINLOG_STATUS_DATABASE_ERROR:
-        return "Synchronisation interrompue : erreur de base de données locale.";
+        return "sync.result.failure.database";
     case TRAINLOG_STATUS_SCHEMA_UNSUPPORTED:
-        return "Synchronisation refusée : version de données non prise en charge.";
+        return "sync.result.failure.version";
     case TRAINLOG_STATUS_SYSTEM_ERROR:
-        return "Synchronisation interrompue : erreur d’accès appareil ou fichier.";
+        return "sync.result.failure.system";
     case TRAINLOG_STATUS_OK:
     default:
-        return "Synchronisation interrompue sans rapport de réussite.";
+        return "sync.result.failure.no_report";
     }
+}
+
+static void sync_controller_present_result(const TrainlogSyncController *sync,
+    char *output, size_t capacity)
+{
+    const TrainlogSyncReport *report;
+    if (sync == NULL || output == NULL || capacity == 0U) return;
+    report = &sync->report;
+    /* CONTRACT: success requires agreement between the typed engine status and
+     * report flag. No diagnostic string is inspected, translated, or copied. */
+    if (sync->latest_status != TRAINLOG_STATUS_OK || !report->success) {
+        (void)snprintf(output, capacity, "%s",
+            trainlog_presentation_text(
+                sync_controller_status_key(sync->latest_status)));
+        return;
+    }
+    (void)trainlog_presentation_format_key(output, capacity,
+        "sync.result.success.counts",
+        trainlog_sync_screen_direction_label(report->direction),
+        report->exercises_imported, report->exercises_reconciled,
+        report->exercises_skipped, report->sessions_imported,
+        report->sessions_skipped, report->body_imported,
+        report->body_skipped, report->equipment_definitions_imported,
+        report->equipment_definitions_skipped, report->catalog_published);
 }
 
 static void app_shell_open_exercise_analytics(TrainlogAppContext *app,
@@ -4541,18 +4489,18 @@ static bool equipment_controller_save(TrainlogAppContext *app)
     status = trainlog_database_create_custom_equipment(app->database,
         &controller->pending);
     if (status != TRAINLOG_STATUS_OK) {
-        (void)snprintf(controller->message, sizeof(controller->message), "%s",
-            status == TRAINLOG_STATUS_CONFLICT
-                ? "Conflit de définition; les champs sont conservés."
-                : "Équipement non créé : définition invalide ou conflit.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), status == TRAINLOG_STATUS_CONFLICT
+                ? "msg.equipment.conflict" : "msg.equipment.invalid");
         controller->phase = TRAINLOG_EQUIPMENT_LOAD;
         return false;
     }
     controller->dirty = false;
     controller->form.active = false;
     controller->phase = TRAINLOG_EQUIPMENT_MESSAGE;
-    (void)snprintf(controller->message, sizeof(controller->message),
-        "Équipement personnel créé : %.120s", controller->pending.display_name);
+    (void)trainlog_presentation_format_key(controller->message,
+        sizeof(controller->message), "msg.equipment.created",
+        controller->pending.display_name);
     app_shell_refresh_list(app);
     if (!copy_ui_stable_id(app->list.selected_id, sizeof(app->list.selected_id),
             controller->pending.equipment_id)) return false;
@@ -4641,8 +4589,8 @@ static bool app_shell_dispatch_equipment_controller(TrainlogAppContext *app,
     if ((controller->phase == TRAINLOG_EQUIPMENT_NAME ||
          controller->phase == TRAINLOG_EQUIPMENT_TYPE) &&
         controller->form.text[0] == '\0') {
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Ce champ est obligatoire; la saisie est conservée.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.field.required");
         return true;
     }
     if (controller->phase == TRAINLOG_EQUIPMENT_NAME) {
@@ -4691,8 +4639,8 @@ static void exercise_controller_start_edit(TrainlogAppContext *app)
             controller->pending.exercise_id, controller->primary_zone,
             controller->secondary_zones, &controller->secondary_count)) {
         controller->phase = TRAINLOG_EXERCISE_MESSAGE;
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Impossible de lire les zones actuelles.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.zones.read");
     } else trainlog_form_init(&controller->form, controller->pending.name);
     app->focus = TRAINLOG_FOCUS_EDITOR;
 }
@@ -4772,8 +4720,8 @@ static void exercise_controller_start_merge(TrainlogAppContext *app)
     controller->merge_source = app->exercise_detail;
     if (status != TRAINLOG_STATUS_OK) {
         controller->phase = TRAINLOG_EXERCISE_MERGE_RESULT;
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Impossible de charger les cibles de fusion.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.merge.targets");
     } else {
         for (index = 0U; index < count; ++index)
             if (strcmp(all[index].exercise_id,
@@ -4807,8 +4755,8 @@ static bool exercise_controller_save(TrainlogAppContext *app)
     if (!controller->editing &&
         controller->pending.recording_mode == TRAINLOG_RECORDING_SETS &&
         controller->primary_zone[0] == '\0') {
-        (void)snprintf(controller->message, sizeof(controller->message),
-            "Une zone principale est requise pour un exercice par séries.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), "msg.zone.required");
         return false;
     }
     for (index = 0U; index < controller->secondary_count; ++index)
@@ -4834,10 +4782,9 @@ static bool exercise_controller_save(TrainlogAppContext *app)
         controller->primary_zone[0] != '\0' ? controller->primary_zone : NULL,
         secondary_ids, controller->secondary_count, &created);
     if (status != TRAINLOG_STATUS_OK) {
-        (void)snprintf(controller->message, sizeof(controller->message), "%s",
-            status == TRAINLOG_STATUS_CONFLICT
-                ? "Conflit de nom ou de profil; tous les champs sont conservés."
-                : "Exercice non enregistré; tous les champs sont conservés.");
+        (void)trainlog_presentation_format_key(controller->message,
+            sizeof(controller->message), status == TRAINLOG_STATUS_CONFLICT
+                ? "msg.exercise.conflict" : "msg.exercise.save.fail");
         return false;
     }
     controller->dirty = false;
@@ -4847,8 +4794,8 @@ static bool exercise_controller_save(TrainlogAppContext *app)
         TrainlogSessionController *session = &app->session;
         if (!session_controller_load_picker(app)) {
             controller->phase = TRAINLOG_EXERCISE_MESSAGE;
-            (void)snprintf(controller->message, sizeof(controller->message),
-                "Exercice créé, mais le sélecteur n’a pas pu être rechargé.");
+            (void)trainlog_presentation_format_key(controller->message,
+                sizeof(controller->message), "msg.exercise.reload");
             return true;
         }
         for (index = 0U; index < session->picker_count; ++index)
@@ -4874,9 +4821,10 @@ static bool exercise_controller_save(TrainlogAppContext *app)
             app->list.more_available);
     }
     controller->phase = TRAINLOG_EXERCISE_MESSAGE;
-    (void)snprintf(controller->message, sizeof(controller->message),
-        "Exercice %s : %.120s", controller->editing ? "modifié" : "créé",
-        created.name);
+    (void)trainlog_presentation_format_key(controller->message,
+        sizeof(controller->message), "msg.exercise.result",
+        trainlog_presentation_text(controller->editing
+            ? "msg.exercise.edited" : "msg.exercise.created"), created.name);
     return true;
 }
 
@@ -5061,8 +5009,8 @@ static bool app_shell_dispatch_exercise_controller(TrainlogAppContext *app,
         controller->message[0] = '\0';
     } else if (result == TRAINLOG_FORM_SUBMIT || result == TRAINLOG_FORM_NEXT) {
         if (controller->form.text[0] == '\0')
-            (void)snprintf(controller->message, sizeof(controller->message),
-                "Le nom est obligatoire; la saisie est conservée.");
+            (void)trainlog_presentation_format_key(controller->message,
+                sizeof(controller->message), "msg.name.required");
         else {
             (void)snprintf(controller->pending.name,
                 sizeof(controller->pending.name), "%s", controller->form.text);
@@ -5489,7 +5437,9 @@ static void app_shell_render_footer(TrainlogAppContext *app)
         trainlog_surface_printf(app->footer, 0, 24, "%s", contextual[1]->label);
     trainlog_surface_printf(app->footer, 1, 2,
         "F6 Navigation   F7 Actions   ? Aide   %s",
-        app->navigation.current.route == TRAINLOG_ROUTE_HOME ? "q Quitter" : "Échap Retour");
+        trainlog_presentation_source(
+            app->navigation.current.route == TRAINLOG_ROUTE_HOME
+                ? "q Quitter" : "Échap Retour"));
 }
 
 static void app_shell_render_sidebar(TrainlogAppContext *app)
@@ -5509,7 +5459,7 @@ static void app_shell_render_sidebar(TrainlogAppContext *app)
             focused ? TRAINLOG_TEXT_BOLD : TRAINLOG_TEXT_NORMAL);
         trainlog_surface_printf(app->sidebar, 1 + (int)index * 2, 1,
             "%c%c %-17s", focused ? '>' : ' ', active ? '[' : ' ',
-            shell_section_labels[index]);
+            trainlog_presentation_text(shell_section_labels[index]));
         if (active && app->layout.sidebar_expanded) {
             const char *subroute = NULL;
             switch (app->navigation.current.route) {
@@ -5538,7 +5488,8 @@ static void app_shell_render_sidebar(TrainlogAppContext *app)
             }
             if (subroute != NULL)
                 trainlog_surface_printf(app->sidebar,
-                    2 + (int)index * 2, 3, "%s", subroute);
+                    2 + (int)index * 2, 3, "%s",
+                    trainlog_presentation_source(subroute));
         }
     }
 }
@@ -5584,10 +5535,12 @@ static void app_shell_render_session_controller(TrainlogAppContext *app)
             ? "Type" : "Charge : 1 aucune · 2 externe · 3 assistance";
         trainlog_surface_printf(app->content, row++, 2,
             "Créer un équipement personnel — retour à l’occurrence");
-        trainlog_surface_printf(app->content, row++, 4, "%s", label);
+        trainlog_surface_printf(app->content, row++, 4, "%s",
+            trainlog_presentation_source(label));
         trainlog_surface_printf(app->content, row++, 4, "> %s", session->form.text);
         if (session->message[0] != '\0')
-            trainlog_surface_printf(app->content, row + 1, 4, "%s", session->message);
+            trainlog_surface_printf(app->content, row + 1, 4, "%s",
+                trainlog_presentation_source(session->message));
     } else if (session->phase == TRAINLOG_SESSION_PLANNING &&
                session->selected < session->draft_count) {
         TrainlogSessionDraftExercise *draft = &session->drafts[session->selected];
@@ -5600,24 +5553,30 @@ static void app_shell_render_session_controller(TrainlogAppContext *app)
             draft->input.target_duration_seconds);
         (void)snprintf(values[3], sizeof(values[3]), "%d", draft->input.rest_seconds);
         if (draft->input.target_has_weight)
-            (void)snprintf(values[4], sizeof(values[4]), "%.2f",
+            (void)trainlog_presentation_format(values[4], sizeof(values[4]), "%.2f",
                 draft->input.target_weight_kg);
         else (void)snprintf(values[4], sizeof(values[4]), "—");
         if (draft->input.recording_mode != TRAINLOG_RECORDING_SETS) {
-            (void)snprintf(values[0], sizeof(values[0]), "non applicable");
-            (void)snprintf(values[3], sizeof(values[3]), "non applicable");
+            (void)snprintf(values[0], sizeof(values[0]), "%s",
+                trainlog_presentation_text("value.not_applicable"));
+            (void)snprintf(values[3], sizeof(values[3]), "%s",
+                trainlog_presentation_text("value.not_applicable"));
         }
         if (draft->tracking_mode != TRAINLOG_TRACKING_REPS)
-            (void)snprintf(values[1], sizeof(values[1]), "non applicable");
+            (void)snprintf(values[1], sizeof(values[1]), "%s",
+                trainlog_presentation_text("value.not_applicable"));
         if (draft->tracking_mode != TRAINLOG_TRACKING_DURATION)
-            (void)snprintf(values[2], sizeof(values[2]), "non applicable");
+            (void)snprintf(values[2], sizeof(values[2]), "%s",
+                trainlog_presentation_text("value.not_applicable"));
         if (draft->input.load_mode == TRAINLOG_LOAD_NONE)
-            (void)snprintf(values[4], sizeof(values[4]), "non applicable");
+            (void)snprintf(values[4], sizeof(values[4]), "%s",
+                trainlog_presentation_text("value.not_applicable"));
         trainlog_surface_printf(app->content, row++, 2,
             "Objectif prévu — séparé des valeurs réalisées");
         for (index = 0U; index < 5U; ++index)
             trainlog_surface_printf(app->content, row++, 4, "%c %-32s %s",
-                index == session->planning_field ? '>' : ' ', labels[index], values[index]);
+                index == session->planning_field ? '>' : ' ',
+                trainlog_presentation_source(labels[index]), values[index]);
         if (row < app->layout.content.height - 2)
             trainlog_surface_printf(app->content, row++, 4,
                 "%% sur la charge : calcul utilisateur 1..100%% du dernier MAX compatible");
@@ -5732,7 +5691,7 @@ static void app_shell_render_session_controller(TrainlogAppContext *app)
                 else trainlog_surface_printf(app->content, row++, 7,
                     item->rationale_count > 0U && strcmp(item->rationale_codes[0],
                         "compatible_max_unavailable") == 0
-                        ? "MAX compatible indisponible"
+                        ? trainlog_presentation_text("ui.max.compatible.none")
                         : "Aucune charge numérique qualifiée");
             }
         }
@@ -5759,7 +5718,8 @@ static void app_shell_render_session_controller(TrainlogAppContext *app)
         trainlog_surface_printf(app->content, row, 4,
             "Entrée conserver et revenir · d Abandonner la proposition");
     } else if (session->phase == TRAINLOG_SESSION_MESSAGE) {
-        trainlog_surface_printf(app->content, row++, 2, "%s", session->message);
+        trainlog_surface_printf(app->content, row++, 2, "%s",
+            trainlog_presentation_source(session->message));
         trainlog_surface_printf(app->content, row, 2, "Entrée pour continuer");
     } else {
         trainlog_surface_printf(app->content, row++, 2, "Type : %s",
@@ -5777,7 +5737,7 @@ static void app_shell_render_session_controller(TrainlogAppContext *app)
         }
         if (session->message[0] != '\0')
             trainlog_surface_printf(app->content, app->layout.content.height - 2,
-                2, "%s", session->message);
+                2, "%s", trainlog_presentation_source(session->message));
     }
 }
 
@@ -5796,7 +5756,8 @@ static void app_shell_render_equipment_controller(TrainlogAppContext *app)
         return;
     }
     if (controller->phase == TRAINLOG_EQUIPMENT_MESSAGE) {
-        trainlog_surface_printf(app->content, row++, 2, "%s", controller->message);
+        trainlog_surface_printf(app->content, row++, 2, "%s",
+            trainlog_presentation_source(controller->message));
         trainlog_surface_printf(app->content, row, 2, "Entrée pour revenir au catalogue");
         return;
     }
@@ -5810,8 +5771,9 @@ static void app_shell_render_equipment_controller(TrainlogAppContext *app)
         controller->pending.equipment_type[0] != '\0'
             ? controller->pending.equipment_type : "—");
     trainlog_surface_printf(app->content, row++, 2,
-        "Charge : %s", controller->load_choice == 1 ? "aucune" :
-        controller->load_choice == 2 ? "externe" : "assistance");
+        "Charge : %s", trainlog_presentation_source(
+            controller->load_choice == 1 ? "aucune" :
+            controller->load_choice == 2 ? "externe" : "assistance"));
     row += 1;
     if (controller->phase == TRAINLOG_EQUIPMENT_LOAD) {
         trainlog_surface_printf(app->content, row++, 2,
@@ -5820,14 +5782,15 @@ static void app_shell_render_equipment_controller(TrainlogAppContext *app)
         label = controller->phase == TRAINLOG_EQUIPMENT_NAME ? "Nom convivial" :
             controller->phase == TRAINLOG_EQUIPMENT_LABEL
                 ? "Nom d’étiquette (optionnel)" : "Type";
-        trainlog_surface_printf(app->content, row++, 2, "%s", label);
+        trainlog_surface_printf(app->content, row++, 2, "%s",
+            trainlog_presentation_source(label));
         trainlog_surface_printf(app->content, row++, 4, "> %s%s",
             controller->form.text,
             controller->form.capacity_error ? "  [200 octets maximum]" : "");
     }
     if (controller->message[0] != '\0')
         trainlog_surface_printf(app->content, row + 1, 2, "%s",
-            controller->message);
+            trainlog_presentation_source(controller->message));
 }
 
 static void app_shell_render_exercise_controller(TrainlogAppContext *app)
@@ -5855,7 +5818,8 @@ static void app_shell_render_exercise_controller(TrainlogAppContext *app)
         return;
     }
     if (controller->phase == TRAINLOG_EXERCISE_MESSAGE) {
-        trainlog_surface_printf(app->content, row++, 2, "%s", controller->message);
+        trainlog_surface_printf(app->content, row++, 2, "%s",
+            trainlog_presentation_source(controller->message));
         trainlog_surface_printf(app->content, row, 2, "Entrée pour revenir");
         return;
     }
@@ -5866,7 +5830,8 @@ static void app_shell_render_exercise_controller(TrainlogAppContext *app)
             ? "répétitions" : "durée");
     trainlog_surface_printf(app->content, row++, 2, "Organisation : %s",
         controller->pending.recording_mode == TRAINLOG_RECORDING_CONTINUOUS
-            ? "continue" : "séries");
+            ? trainlog_presentation_source("continue")
+            : trainlog_presentation_source("séries"));
     if (controller->editing)
         trainlog_surface_printf(app->content, row++, 2,
             "Identifiant stable conservé : %s",
@@ -5916,7 +5881,8 @@ static void app_shell_render_exercise_controller(TrainlogAppContext *app)
     }
     if (controller->message[0] != '\0')
         trainlog_surface_printf(app->content,
-            app->layout.content.height - 3, 2, "%s", controller->message);
+            app->layout.content.height - 3, 2, "%s",
+            trainlog_presentation_source(controller->message));
 }
 
 static int app_shell_graph_height(const TrainlogAppContext *app, int top)
@@ -6165,7 +6131,7 @@ static void app_shell_render_body_profile(TrainlogAppContext *app)
         if (length < 1) length = 1;
         if (length > bar_capacity) length = bar_capacity;
         trainlog_surface_printf(app->content, profile_row, 2, "%-19s",
-            BODY_METRICS[index + 1U].label);
+            body_metric_label(index + 1U));
         trainlog_surface_set_role(app->content, TRAINLOG_COLOR_GRAPH,
             TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
         for (column = 0; column < length; ++column)
@@ -6194,9 +6160,9 @@ static void app_shell_render_body_profile(TrainlogAppContext *app)
     }
     {
         char title[128];
-        (void)snprintf(title, sizeof(title),
-            "ÉVOLUTION DANS LE TEMPS · ←/→ %s",
-            BODY_METRICS[app->body_metric_selected].label);
+        (void)trainlog_presentation_format_key(title, sizeof(title),
+            "chart.body.metric", trainlog_presentation_source(
+                body_metric_label(app->body_metric_selected)));
         app_shell_draw_body_points(app, series->points, series->count,
             evolution_top, app->layout.content.height - evolution_top - 1,
             BODY_METRICS[app->body_metric_selected].unit, title);
@@ -6207,7 +6173,8 @@ static void app_shell_render_body_controller(TrainlogAppContext *app)
 {
     TrainlogBodyController *controller = &app->body_controller;
     const char *label = controller->field < 14U
-        ? BODY_METRICS[controller->field].label : "Mesure";
+        ? body_metric_label(controller->field)
+        : trainlog_presentation_source("Mesure");
     trainlog_surface_printf(app->content, 4, 2, "%s — champ %zu/14",
         controller->editing ? "Modifier le relevé" : "Nouveau relevé",
         controller->field + 1U);
@@ -6217,7 +6184,8 @@ static void app_shell_render_body_controller(TrainlogAppContext *app)
         trainlog_surface_printf(app->content, 9, 2,
             "1 abandonner · 0/Échap reprendre");
     } else if (controller->phase == TRAINLOG_BODY_MESSAGE) {
-        trainlog_surface_printf(app->content, 7, 2, "%s", controller->message);
+        trainlog_surface_printf(app->content, 7, 2, "%s",
+            trainlog_presentation_source(controller->message));
         trainlog_surface_printf(app->content, 9, 2, "Entrée pour revenir");
     } else {
         trainlog_surface_printf(app->content, 7, 2, "%s (%s)", label,
@@ -6230,7 +6198,7 @@ static void app_shell_render_body_controller(TrainlogAppContext *app)
                 : "vide signifie mesure non faite · valeur positive ajoute");
         if (controller->message[0] != '\0')
             trainlog_surface_printf(app->content, 13, 2, "%s",
-                controller->message);
+                trainlog_presentation_source(controller->message));
     }
 }
 
@@ -6245,7 +6213,8 @@ static void app_shell_render_profile_controller(TrainlogAppContext *app)
         trainlog_surface_printf(app->content, 9, 2,
             "1 abandonner · 0/Échap reprendre");
     } else if (controller->phase == TRAINLOG_PROFILE_MESSAGE) {
-        trainlog_surface_printf(app->content, 7, 2, "%s", controller->message);
+        trainlog_surface_printf(app->content, 7, 2, "%s",
+            trainlog_presentation_source(controller->message));
     } else {
         trainlog_surface_printf(app->content, 7, 2, "%s",
             controller->phase == TRAINLOG_PROFILE_FORMULA
@@ -6255,7 +6224,7 @@ static void app_shell_render_profile_controller(TrainlogAppContext *app)
             controller->form.text);
         if (controller->message[0] != '\0')
             trainlog_surface_printf(app->content, 11, 2, "%s",
-                controller->message);
+                trainlog_presentation_source(controller->message));
     }
 }
 
@@ -6279,14 +6248,15 @@ static void app_shell_render_body_detail(TrainlogAppContext *app)
     trainlog_surface_printf(app->content, row++, 2, "Date : %s",
         record->observed_at);
     trainlog_surface_printf(app->content, row++, 2, "Séance liée : %s",
-        record->session_id[0] != '\0' ? record->session_id : "aucune");
+        record->session_id[0] != '\0' ? record->session_id
+            : trainlog_presentation_source("aucune"));
     for (index = app->content_scroll; index < 14U &&
          row < app->layout.content.height - 1; ++index) {
         if (present[index])
             trainlog_surface_printf(app->content, row++, 2, "%-22s %.2f %s",
-                BODY_METRICS[index].label, values[index], BODY_METRICS[index].unit);
+                body_metric_label(index), values[index], BODY_METRICS[index].unit);
         else trainlog_surface_printf(app->content, row++, 2, "%-22s —",
-            BODY_METRICS[index].label);
+            body_metric_label(index));
     }
 }
 
@@ -6407,11 +6377,8 @@ static void app_shell_dashboard_wide_performance_events(TrainlogAppContext *app,
 static void app_shell_dashboard_decimal_comma(double value, char *output,
                                               size_t output_size)
 {
-    char *separator;
     if (output == NULL || output_size == 0U) return;
-    (void)snprintf(output, output_size, "%.2f", value);
-    separator = strchr(output, '.');
-    if (separator != NULL) *separator = ',';
+    (void)trainlog_presentation_format(output, output_size, "%.2f", value);
 }
 
 /* WHY: the landing page needs a genuinely global catalogue view, while the
@@ -6509,7 +6476,9 @@ static void app_shell_dashboard_frequency_chart(TrainlogAppContext *app,
         dashboard->weeks[dashboard->week_count - 1U].maxima);
     baseline = top + height;
     for (index = 0U; index < dashboard->week_count; ++index) {
-        const char *label = dashboard->weeks[index].label;
+        const char *label = index + 1U == dashboard->week_count
+            ? trainlog_presentation_text("dashboard.current")
+            : dashboard->weeks[index].label;
         int label_margin = 3;
         int x = dashboard->week_count > 1U
             ? left + label_margin + (int)((index * (size_t)(width - 2 * label_margin - 1)) /
@@ -6561,7 +6530,8 @@ static void __attribute__((unused)) app_shell_render_dashboard(TrainlogAppContex
         dashboard->period == TRAINLOG_STATS_30_DAYS ? "[30j]" : "30j",
         dashboard->period == TRAINLOG_STATS_90_DAYS ? "[90j]" : "90j",
         dashboard->period == TRAINLOG_STATS_YEAR ? "[1an]" : "1an",
-        dashboard->period == TRAINLOG_STATS_ALL ? "[Tout]" : "Tout");
+        trainlog_presentation_source(
+            dashboard->period == TRAINLOG_STATS_ALL ? "[Tout]" : "Tout"));
     trainlog_surface_printf(app->content, 3, 2,
         "Séances %zu   Séries %zu   Exercices pratiqués %zu   MAX %zu",
         dashboard->completed_session_count, dashboard->performed_set_count,
@@ -6597,7 +6567,7 @@ static void __attribute__((unused)) app_shell_render_dashboard(TrainlogAppContex
             if (dashboard->body_count == 1U)
                 trainlog_surface_printf(app->content, 6, right,
                     "%s · %s %s · 1 relevé",
-                    BODY_METRICS[dashboard->body_metric].label, latest_text,
+                    body_metric_label(dashboard->body_metric), latest_text,
                     BODY_METRICS[dashboard->body_metric].unit);
             else {
                 double delta = latest - dashboard->body[
@@ -6607,7 +6577,7 @@ static void __attribute__((unused)) app_shell_render_dashboard(TrainlogAppContex
                     sizeof(delta_text));
                 trainlog_surface_printf(app->content, 6, right,
                     "%s · %s %s · Δ %c%s",
-                    BODY_METRICS[dashboard->body_metric].label, latest_text,
+                    body_metric_label(dashboard->body_metric), latest_text,
                     BODY_METRICS[dashboard->body_metric].unit,
                     delta >= 0.0 ? '+' : '-', delta_text);
                 app_shell_dashboard_sparkline(app, body_values,
@@ -6649,7 +6619,7 @@ static void __attribute__((unused)) app_shell_render_dashboard(TrainlogAppContex
         if (dashboard->body_count == 1U)
             trainlog_surface_printf(app->content, 8, 4,
                 "%s · %s %s · 1 relevé, tendance indisponible",
-                BODY_METRICS[dashboard->body_metric].label, latest_text,
+                body_metric_label(dashboard->body_metric), latest_text,
                 BODY_METRICS[dashboard->body_metric].unit);
         else {
             double delta = latest - dashboard->body[dashboard->body_count - 2U].value;
@@ -6658,7 +6628,7 @@ static void __attribute__((unused)) app_shell_render_dashboard(TrainlogAppContex
                 sizeof(delta_text));
             trainlog_surface_printf(app->content, 8, 4,
                 "%s · %s %s · Δ %c%s",
-                BODY_METRICS[dashboard->body_metric].label, latest_text,
+                body_metric_label(dashboard->body_metric), latest_text,
                 BODY_METRICS[dashboard->body_metric].unit,
                 delta >= 0.0 ? '+' : '-', delta_text);
         }
@@ -6748,7 +6718,7 @@ static void app_shell_render_body_global(TrainlogAppContext *app)
         trainlog_surface_printf(app->content, row, column, "%c   [%c] %-15s %+.1f%%",
             app->body_global_selected == metric ? '>' : ' ',
             app->body_global_enabled[metric] ? 'x' : ' ',
-            BODY_METRICS[metric].label,
+            body_metric_label(metric),
             app->body_global_series[metric].latest_percent);
         trainlog_surface_draw(app->content, row, column + 2,
             app->body_global_series[metric].symbol);
@@ -6950,6 +6920,7 @@ static void app_shell_render_body_analytics(TrainlogAppContext *app)
 static void app_shell_render_sync(TrainlogAppContext *app)
 {
     TrainlogSyncController *sync = &app->sync_controller;
+    char result[768];
     size_t index;
     int row = 4;
     if (sync->showing_detail) {
@@ -6990,10 +6961,8 @@ static void app_shell_render_sync(TrainlogAppContext *app)
         return;
     }
     if (sync->has_report) {
-        trainlog_surface_printf(app->content, row++, 2, "%s",
-            sync->report.success ? sync->report.summary :
-            sync->report.error[0] != '\0' ? sync->report.error
-                                           : "Synchronisation échouée.");
+        sync_controller_present_result(sync, result, sizeof(result));
+        trainlog_surface_printf(app->content, row++, 2, "%s", result);
     }
     row += 1;
     trainlog_surface_printf(app->content, row++, 2,
@@ -7004,12 +6973,14 @@ static void app_shell_render_sync(TrainlogAppContext *app)
     for (index = 0U; index < sync->history_count &&
          row < app->layout.content.height; ++index) {
         const TrainlogSyncHistoryEntry *entry = &sync->history[index];
-        /* CONTRACT: legacy journal directions remain parseable internal
-         * metadata, but the TUI exposes one PC↔Android sync operation. Old
-         * directional summaries used the same forbidden mode labels. */
-        const char *summary = entry->direction_known &&
-            entry->direction != TRAINLOG_SYNC_BIDIRECTIONAL
-                ? "entrée historique" : entry->summary;
+        /* CONTRACT: journal summary bytes stay available to persistence/log
+         * consumers, but the normal UI exposes only localized typed state. */
+        const char *summary = trainlog_presentation_text(
+            entry->direction_known &&
+                entry->direction != TRAINLOG_SYNC_BIDIRECTIONAL
+                    ? "ui.historical.entry"
+                    : entry->success ? "sync.state.success"
+                                     : "sync.state.failure");
         trainlog_surface_printf(app->content, row++, 2, "%c %-16s %c %-17.17s %.*s",
             index == sync->selected ? '>' : ' ', entry->timestamp,
             entry->success ? '+' : '!',
@@ -7022,11 +6993,14 @@ static void app_shell_render_sync(TrainlogAppContext *app)
 static const char *statistics_window_label(TrainlogStatisticsWindow window)
 {
     switch (window) {
-    case TRAINLOG_STATISTICS_7_DAYS: return "semaine courante";
-    case TRAINLOG_STATISTICS_30_DAYS: return "mois courant";
-    case TRAINLOG_STATISTICS_ALL: return "Tout l’historique";
+    case TRAINLOG_STATISTICS_7_DAYS:
+        return trainlog_presentation_source("semaine courante");
+    case TRAINLOG_STATISTICS_30_DAYS:
+        return trainlog_presentation_source("mois courant");
+    case TRAINLOG_STATISTICS_ALL:
+        return trainlog_presentation_source("Tout l’historique");
     }
-    return "Période";
+    return trainlog_presentation_source("Période");
 }
 
 static void statistics_duration(char *output, size_t capacity, uint64_t seconds)
@@ -7056,7 +7030,8 @@ static void app_shell_render_statistics_hub(TrainlogAppContext *app)
             TRAINLOG_RGB_BASE,
             selected ? TRAINLOG_TEXT_BOLD : TRAINLOG_TEXT_NORMAL);
         trainlog_surface_printf(app->content, 5 + (int)index * 2, 2,
-            "%s %s", selected ? "▶" : " ", labels[index]);
+            "%s %s", selected ? "▶" : " ",
+            trainlog_presentation_source(labels[index]));
     }
     trainlog_surface_set_role(app->content, TRAINLOG_COLOR_MUTED,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
@@ -7096,15 +7071,18 @@ static void app_shell_render_statistics_chart(TrainlogAppContext *app,
     else if (app->statistics_graph == 2U) { metric = "Séries"; unit = "séries"; }
     else if (app->statistics_graph == 3U) { metric = "Répétitions"; unit = "reps"; }
     else { metric = "Ressentis immédiats"; unit = "retours"; }
-    (void)snprintf(title, sizeof(title), "←/→ %s · %s · %zu/5", metric,
+    metric = trainlog_presentation_source(metric);
+    unit = trainlog_presentation_source(unit);
+    (void)trainlog_presentation_format_key(title, sizeof(title),
+        "chart.statistics", metric,
         app->statistics_window == TRAINLOG_STATISTICS_7_DAYS
-            ? "semaines calendaires"
+            ? trainlog_presentation_source("semaines calendaires")
             : app->statistics_window == TRAINLOG_STATISTICS_30_DAYS
-                ? "mois calendaires"
+                ? trainlog_presentation_source("mois calendaires")
                 : app->statistics.bucket_kind ==
                         TRAINLOG_STATISTICS_BUCKET_CALENDAR_MONTH
-                    ? "mois · historique complet"
-                    : "semaines · historique complet",
+                    ? trainlog_presentation_source("mois · historique complet")
+                    : trainlog_presentation_source("semaines · historique complet"),
         app->statistics_graph + 1U);
     options.non_negative = true;
     options.zero_baseline = true;
@@ -7239,14 +7217,19 @@ static void app_shell_render_statistics_training(TrainlogAppContext *app)
 static const char *exercise_series_label(TrainlogExerciseSeriesKind kind)
 {
     switch (kind) {
-    case TRAINLOG_EXERCISE_SERIES_LOAD: return "Charge observée";
-    case TRAINLOG_EXERCISE_SERIES_VOLUME: return "Volume chargé";
-    case TRAINLOG_EXERCISE_SERIES_REPETITIONS: return "Répétitions";
-    case TRAINLOG_EXERCISE_SERIES_SETS: return "Séries";
-    case TRAINLOG_EXERCISE_SERIES_MAX: return "MAX enregistrés";
+    case TRAINLOG_EXERCISE_SERIES_LOAD:
+        return trainlog_presentation_source("Charge observée");
+    case TRAINLOG_EXERCISE_SERIES_VOLUME:
+        return trainlog_presentation_source("Volume chargé");
+    case TRAINLOG_EXERCISE_SERIES_REPETITIONS:
+        return trainlog_presentation_source("Répétitions");
+    case TRAINLOG_EXERCISE_SERIES_SETS:
+        return trainlog_presentation_source("Séries");
+    case TRAINLOG_EXERCISE_SERIES_MAX:
+        return trainlog_presentation_source("MAX enregistrés");
     case TRAINLOG_EXERCISE_SERIES_COUNT: break;
     }
-    return "Mesure";
+    return trainlog_presentation_source("Mesure");
 }
 
 static const char *exercise_series_unit(TrainlogExerciseSeriesKind kind)
@@ -7310,7 +7293,8 @@ static void app_shell_render_exercise_statistics(TrainlogAppContext *app)
         points[index].value = value->series[kind][index].value;
         points[index].timestamp_label = value->series[kind][index].timestamp_label;
     }
-    (void)snprintf(title, sizeof(title), "←/→ %s · %d/5",
+    (void)trainlog_presentation_format_key(title, sizeof(title),
+        "chart.exercise",
         exercise_series_label(kind), (int)kind + 1);
     options.non_negative = true;
     trainlog_chart_render_line(app->content,
@@ -7486,7 +7470,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
                         (void)trainlog_feedback_relative_label(app->session_detail.ended_at,
                             app->session_detail.started_at, feedback->observed_at,
                             true, label, sizeof(label));
-                        trainlog_surface_printf(app->content, row++, 4, "%s  %s", label,
+                        trainlog_surface_printf(app->content, row++, 4, "%s  %s", trainlog_presentation_source(label),
                             feedback->raw_text);
                     }
                 }
@@ -7525,7 +7509,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
                         else (void)snprintf(metric, sizeof(metric), "%d reps",
                             entry->actual_sets[index].reps);
                         if (entry->actual_sets[index].has_weight)
-                            (void)snprintf(weight, sizeof(weight), "%.2f kg",
+                            (void)trainlog_presentation_format(weight, sizeof(weight), "%.2f kg",
                                 entry->actual_sets[index].weight_kg);
                         else (void)snprintf(weight, sizeof(weight), "—");
                         trainlog_surface_printf(app->content, row++, 4,
@@ -7543,7 +7527,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
                         app->session_detail.started_at,
                         app->session_followups[followup_index].observed_at,
                         false, label, sizeof(label));
-                    trainlog_surface_printf(app->content, row++, 4, "%s  %s", label,
+                    trainlog_surface_printf(app->content, row++, 4, "%s  %s", trainlog_presentation_source(label),
                         app->session_followups[followup_index].raw_text);
                 }
             }
@@ -7574,8 +7558,11 @@ static void app_shell_render_content(TrainlogAppContext *app)
                     item->equipment_id) != 0) continue;
             exercise = trainlog_exercise_knowledge_lookup(relation->exercise_id);
             if (exercise == NULL) continue;
-            confidence = strcmp(relation->confidence, "high") == 0 ? "élevée" :
-                strcmp(relation->confidence, "moderate") == 0 ? "modérée" : "incertaine";
+            confidence = strcmp(relation->confidence, "high") == 0
+                ? trainlog_presentation_text("label.confidence.high")
+                : strcmp(relation->confidence, "moderate") == 0
+                    ? trainlog_presentation_text("label.confidence.moderate")
+                    : trainlog_presentation_text("label.confidence.uncertain");
             trainlog_surface_printf(app->content, relation_row++, 4,
                 "> %.38s · confiance %s · sources vérifiées",
                 exercise->exercise_name, confidence);
@@ -7608,7 +7595,9 @@ static void app_shell_render_content(TrainlogAppContext *app)
         trainlog_surface_printf(app->content, row++, 2, "Identifiant : %s", item->exercise_id);
         trainlog_surface_printf(app->content, row++, 2, "Suivi : %s · organisation : %s",
             item->tracking_mode == TRAINLOG_TRACKING_REPS ? "répétitions" : "durée",
-            item->recording_mode == TRAINLOG_RECORDING_CONTINUOUS ? "continue" : "séries");
+            item->recording_mode == TRAINLOG_RECORDING_CONTINUOUS
+                ? trainlog_presentation_source("continue")
+                : trainlog_presentation_source("séries"));
         if (app->exercise_detail_metadata_error)
             trainlog_surface_printf(app->content, row++, 2,
                 "Métadonnées de zones/usage partiellement indisponibles.");
@@ -7808,7 +7797,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
     } else if (route == TRAINLOG_ROUTE_BODY_METRIC) {
         int graph_height = app_shell_graph_height(app, 6);
         trainlog_surface_printf(app->content, 4, 2, "%s — ←/→ change la mesure",
-            BODY_METRICS[app->body_metric_selected].label);
+            body_metric_label(app->body_metric_selected));
         if (app->body_snapshot_error)
             trainlog_surface_printf(app->content, 6, 2,
                 "Impossible de lire cet historique.");
@@ -7834,8 +7823,10 @@ static void app_shell_render_content(TrainlogAppContext *app)
         if (route == TRAINLOG_ROUTE_MAX)
             trainlog_surface_printf(app->content, 2, 2,
                 "Vue : %s · a afficher %s",
-                app->max_show_all ? "tous les exercices compatibles" : "MAX enregistrés",
-                app->max_show_all ? "seulement les MAX" : "tous les compatibles");
+                trainlog_presentation_source(app->max_show_all
+                    ? "tous les exercices compatibles" : "MAX enregistrés"),
+                trainlog_presentation_source(app->max_show_all
+                    ? "seulement les MAX" : "tous les compatibles"));
         trainlog_surface_printf(app->content, 3, 2, "Recherche : %s%s",
             app->search.bytes > 0U ? app->search.text : "—",
             app->search.focused ? "  [saisie]" : "");
@@ -7862,7 +7853,8 @@ static void app_shell_render_content(TrainlogAppContext *app)
                     "%s  %s", date,
                     session_type_history_label(app->sessions[index].session_type));
                 name = session_line;
-                (void)snprintf(secondary, sizeof(secondary), "%zu exercice(s)",
+                (void)trainlog_presentation_format_key(secondary,
+                    sizeof(secondary), "list.exercise.count",
                     app->sessions[index].exercise_count);
             } else if (route == TRAINLOG_ROUTE_BODY) {
                 char date[9];
@@ -7881,7 +7873,7 @@ static void app_shell_render_content(TrainlogAppContext *app)
                                 app->max_list_items[maximum].exercise_id) == 0) {
                             char date[9];
                             body_short_date(app->max_list_items[maximum].latest_at, date);
-                            (void)snprintf(secondary, sizeof(secondary),
+                            (void)trainlog_presentation_format(secondary, sizeof(secondary),
                                 "%.1f kg  %s",
                                 app->max_list_items[maximum].latest_max_kg, date);
                             measured = true; break;
@@ -7897,15 +7889,17 @@ static void app_shell_render_content(TrainlogAppContext *app)
                             char date[9];
                             body_short_date(app->exercise_list_statistics[fact].latest_at,
                                 date);
-                            (void)snprintf(secondary, sizeof(secondary), "%zu fois · %s",
-                                app->exercise_list_statistics[fact].occurrences, date);
+                            (void)trainlog_presentation_format_key(secondary,
+                                sizeof(secondary), "list.occurrences",
+                                app->exercise_list_statistics[fact].occurrences,
+                                date);
                             found = true; break;
                         }
                     if (!found) (void)snprintf(secondary, sizeof(secondary),
-                        "aucune donnée");
+                        "%s", trainlog_presentation_source("aucune donnée"));
                 } else (void)snprintf(secondary, sizeof(secondary), "%s",
                     app->exercises[index].tracking_mode == TRAINLOG_TRACKING_REPS
-                        ? "reps" : "durée");
+                        ? "reps" : trainlog_presentation_source("durée"));
             }
             if (label_cells < 12) label_cells = 12;
             if (label_cells > 48) label_cells = 48;
@@ -7932,16 +7926,46 @@ static void app_shell_render_content(TrainlogAppContext *app)
                 app->list.selected_index + 1U, app->loaded_count);
         }
     } else if (route == TRAINLOG_ROUTE_SETTINGS) {
-        trainlog_surface_printf(app->content, 4, 2, "Profil d’estimation corporelle");
+        trainlog_surface_set_role(app->content,
+            app->content_selected == 0U ? TRAINLOG_COLOR_ACCENT : TRAINLOG_COLOR_DEFAULT,
+            TRAINLOG_RGB_BASE,
+            app->content_selected == 0U ? TRAINLOG_TEXT_BOLD : TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_printf(app->content, 4, 2, "%s %s : %s",
+            app->content_selected == 0U ? ">" : " ",
+            trainlog_presentation_text("settings.language"),
+            trainlog_presentation_language_name(trainlog_presentation_language()));
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_MUTED,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_printf(app->content, 5, 4, "%s",
+            trainlog_presentation_text("settings.language.help"));
+        if (app->settings_language_save_failed)
+            trainlog_surface_printf(app->content, 6, 4, "%s",
+                trainlog_presentation_text("settings.language.save_failed"));
+        else if (app->settings_language_durability_uncertain)
+            trainlog_surface_printf(app->content, 6, 4, "%s",
+                trainlog_presentation_text(
+                    "settings.language.durability_uncertain"));
+        trainlog_surface_set_role(app->content,
+            app->content_selected == 1U ? TRAINLOG_COLOR_ACCENT : TRAINLOG_COLOR_DEFAULT,
+            TRAINLOG_RGB_BASE,
+            app->content_selected == 1U ? TRAINLOG_TEXT_BOLD : TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_printf(app->content, 8, 2, "%s %s",
+            app->content_selected == 1U ? ">" : " ",
+            trainlog_presentation_text("settings.body_profile"));
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_DEFAULT,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
         if (app->body_has_profile)
-            trainlog_surface_printf(app->content, 6, 2, "%s · %.1f cm",
+            trainlog_surface_printf(app->content, 10, 4, "%s · %.1f cm",
                 app->body_profile.formula == TRAINLOG_BODY_ANALYTICS_FORMULA_FEMALE
-                    ? "Formule femme" : "Formule homme",
+                    ? trainlog_presentation_source("Formule femme")
+                    : trainlog_presentation_source("Formule homme"),
                 app->body_profile.height_cm);
-        else trainlog_surface_printf(app->content, 6, 2,
+        else trainlog_surface_printf(app->content, 10, 4,
             "Profil non configuré.");
-        trainlog_surface_printf(app->content, 8, 2,
-            "Entrée pour consulter ou modifier le profil.");
+        trainlog_surface_set_role(app->content, TRAINLOG_COLOR_MUTED,
+            TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
+        trainlog_surface_printf(app->content, 11, 4, "%s",
+            trainlog_presentation_text("settings.body_profile.help"));
     } else {
         trainlog_surface_printf(app->content, 4, 2,
             "Entrée ouvre la vue complète existante dans ce contexte.");
@@ -7972,7 +7996,7 @@ static void app_shell_render_overlay(TrainlogAppContext *app)
              3 + (int)index < rect.height; ++index)
             trainlog_surface_printf(surface, 3 + (int)index, 2, "%c %s",
                 overlay->selected == index ? '>' : ' ',
-                shell_section_labels[index]);
+                trainlog_presentation_text(shell_section_labels[index]));
     } else if (overlay->type == TRAINLOG_OVERLAY_ACTIONS) {
         size_t visible = rect.height > 4 ? (size_t)(rect.height - 4) : 1U;
         size_t start = overlay->selected >= visible
@@ -8031,7 +8055,8 @@ static void app_shell_render_overlay(TrainlogAppContext *app)
                 overlay->selected == 1U ? '>' : ' ');
         } else {
             trainlog_surface_printf(surface, 1, 2, "Résultat de la fusion");
-            trainlog_surface_printf(surface, 3, 2, "%.64s", controller->message);
+            trainlog_surface_printf(surface, 3, 2, "%.64s",
+                trainlog_presentation_source(controller->message));
             trainlog_surface_printf(surface, 6, 2, "Entrée fermer");
         }
     } else if (overlay->type == TRAINLOG_OVERLAY_CONFIRMATION &&
@@ -8130,8 +8155,8 @@ static void app_shell_open_route(TrainlogAppContext *app, TrainlogAppRoute route
         return;
     }
     if (session->form.active && route != previous) {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Terminez ou annulez le champ actif avant de changer de rubrique.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.route.active.field");
         return;
     }
     if (previous == TRAINLOG_ROUTE_SESSION_GENERATOR &&
@@ -8343,7 +8368,26 @@ static void app_shell_primary(TrainlogAppContext *app)
     } else if (route == TRAINLOG_ROUTE_SYNC) {
         sync_controller_open_detail(&app->sync_controller);
     } else if (route == TRAINLOG_ROUTE_SETTINGS) {
-        profile_controller_start(app, TRAINLOG_ROUTE_SETTINGS);
+        if (app->content_selected == 0U) {
+            TrainlogPresentationLanguage previous =
+                trainlog_presentation_language();
+            TrainlogPresentationLanguage language =
+                previous == TRAINLOG_PRESENTATION_FRENCH
+                    ? TRAINLOG_PRESENTATION_ENGLISH
+                    : TRAINLOG_PRESENTATION_FRENCH;
+            TrainlogPresentationSaveResult save_result;
+            /* WHY: a visual toggle that was not persisted is misleading.
+             * CONTRACT: switching language mutates only the local preference;
+             * failure rolls back and produces a localized visible diagnostic.
+             * INVARIANT: no database object is reachable from this operation. */
+            (void)trainlog_presentation_set_language(language);
+            save_result = trainlog_presentation_save();
+            app->settings_language_save_failed = save_result ==
+                TRAINLOG_PRESENTATION_SAVE_NOT_COMMITTED;
+            app->settings_language_durability_uncertain = save_result ==
+                TRAINLOG_PRESENTATION_SAVE_COMMITTED_DURABILITY_UNCERTAIN;
+            trainlog_presentation_resolve_save(previous, save_result);
+        } else profile_controller_start(app, TRAINLOG_ROUTE_SETTINGS);
     }
 }
 
@@ -8378,9 +8422,8 @@ static void app_shell_dispatch_overlay(TrainlogAppContext *app, int key)
                         controller->phase = TRAINLOG_EXERCISE_MERGE_CONFIRM;
                     else {
                         controller->phase = TRAINLOG_EXERCISE_MERGE_RESULT;
-                        (void)snprintf(controller->message,
-                            sizeof(controller->message),
-                            "Prévisualisation impossible; aucune fusion effectuée.");
+                        (void)trainlog_presentation_format_key(controller->message,
+                            sizeof(controller->message), "msg.merge.preview.fail");
                     }
                     overlay->selected = 0U;
                 }
@@ -8410,20 +8453,19 @@ static void app_shell_dispatch_overlay(TrainlogAppContext *app, int key)
                                 sizeof(app->navigation.current.stable_id),
                                 controller->merge_target.exercise_id)) {
                             controller->phase = TRAINLOG_EXERCISE_MERGE_RESULT;
-                            (void)snprintf(controller->message,
-                                sizeof(controller->message),
-                                "Fusion terminée; identifiant UI hors borne.");
+                            (void)trainlog_presentation_format_key(
+                                controller->message, sizeof(controller->message),
+                                "msg.merge.id.bound");
                             return;
                         }
                         app_shell_load_exercise_detail_metadata(app);
-                        (void)snprintf(controller->message, sizeof(controller->message),
-                            "Fusion terminée. Cible sélectionnée : %.112s",
-                            controller->merge_target.name);
-                    } else (void)snprintf(controller->message,
-                        sizeof(controller->message), "%s",
+                        (void)trainlog_presentation_format_key(
+                            controller->message, sizeof(controller->message),
+                            "msg.merge.completed", controller->merge_target.name);
+                    } else (void)trainlog_presentation_format_key(
+                        controller->message, sizeof(controller->message),
                         status == TRAINLOG_STATUS_CONFLICT
-                            ? "Fusion refusée : profil ou zone principale incompatible. Aucun changement."
-                            : "Fusion impossible. Aucun changement confirmé.");
+                            ? "msg.merge.conflict" : "msg.merge.fail");
                     controller->phase = TRAINLOG_EXERCISE_MERGE_RESULT;
                 }
             }
@@ -8469,8 +8511,8 @@ static void app_shell_dispatch_overlay(TrainlogAppContext *app, int key)
             } else if (app->equipment_controller.phase != TRAINLOG_EQUIPMENT_IDLE) {
                 (void)app_shell_dispatch_equipment_controller(app, action.key);
             } else if (app->session.form.active) {
-                (void)snprintf(app->session.message, sizeof(app->session.message),
-                    "Terminez ou annulez le champ actif avant une autre action.");
+                (void)trainlog_presentation_format_key(app->session.message,
+                    sizeof(app->session.message), "msg.action.active.field");
             } else if (strcmp(action.identifier, "generator.discard") == 0) {
                 session_controller_discard_generator(&app->session);
                 app_shell_open_route(app, TRAINLOG_ROUTE_SESSIONS);
@@ -8571,8 +8613,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
     if (session->form_purpose == TRAINLOG_SESSION_FORM_EQUIPMENT_NAME) {
         if (session->form.bytes == 0U || session->form.bytes >=
             sizeof(session->pending_equipment.display_name)) {
-            (void)snprintf(session->message, sizeof(session->message),
-                "Le nom convivial est requis et doit tenir dans le champ.");
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.equipment.display.required");
             return true;
         }
         (void)snprintf(session->pending_equipment.display_name,
@@ -8582,8 +8624,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
         return true;
     } else if (session->form_purpose == TRAINLOG_SESSION_FORM_EQUIPMENT_LABEL) {
         if (session->form.bytes >= sizeof(session->pending_equipment.label_name)) {
-            (void)snprintf(session->message, sizeof(session->message),
-                "Le nom d’étiquette est trop long.");
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.equipment.label.long");
             return true;
         }
         (void)snprintf(session->pending_equipment.label_name,
@@ -8594,8 +8636,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
     } else if (session->form_purpose == TRAINLOG_SESSION_FORM_EQUIPMENT_TYPE) {
         if (session->form.bytes == 0U || session->form.bytes >=
             sizeof(session->pending_equipment.equipment_type)) {
-            (void)snprintf(session->message, sizeof(session->message),
-                "Le type d’équipement est requis.");
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.equipment.type.required");
             return true;
         }
         (void)snprintf(session->pending_equipment.equipment_type,
@@ -8616,8 +8658,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
             sizeof(session->pending_equipment.equipment_id), "%s", generated);
         if (trainlog_database_create_custom_equipment(app->database,
             &session->pending_equipment) != TRAINLOG_STATUS_OK) {
-            (void)snprintf(session->message, sizeof(session->message),
-                "Équipement non créé : nom ou identifiant invalide/conflit.");
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.equipment.create.fail");
             return true;
         }
         session->form.active = false;
@@ -8645,8 +8687,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
         session->selected < session->generated.exercise_count) {
         if (!session_controller_requalify_generated(app, session->selected,
             session->pending_generated_sets, integer_value)) {
-            (void)snprintf(session->message, sizeof(session->message),
-                "Dose refusée; la proposition précédente est conservée.");
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.dose.rejected");
             return true;
         }
         session->form.active = false;
@@ -8754,8 +8796,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
             draft->input.target_has_weight = false;
             draft->input.target_weight_kg = 0.0;
             draft->target_from_percent_max = false;
-            (void)snprintf(session->message, sizeof(session->message),
-                "MAX compatible indisponible : exercice et équipement externe exacts requis.");
+            (void)trainlog_presentation_format_key(session->message,
+                sizeof(session->message), "msg.max.unavailable");
             session->form.active = false;
             session->form_purpose = TRAINLOG_SESSION_FORM_NONE;
             draft_bind_input(draft);
@@ -8772,8 +8814,8 @@ static bool app_shell_dispatch_session_form(TrainlogAppContext *app, int key)
         draft->input.set_count = 0U;
         draft->input.continuous_duration_seconds = 0;
     } else {
-        (void)snprintf(session->message, sizeof(session->message),
-            "Valeur invalide; saisissez un nombre positif.");
+        (void)trainlog_presentation_format_key(session->message,
+            sizeof(session->message), "msg.value.invalid");
         return true;
     }
     draft_bind_input(draft);
@@ -8910,8 +8952,8 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
                 draft->input.target_has_weight = false;
                 draft->input.target_weight_kg = 0.0;
                 draft->target_from_percent_max = false;
-                (void)snprintf(session->message, sizeof(session->message),
-                    "%%MAX indisponible : choisissez une résistance externe compatible.");
+                (void)trainlog_presentation_format_key(session->message,
+                    sizeof(session->message), "msg.percent.unavailable");
             } else session_controller_start_form(session,
                 TRAINLOG_SESSION_FORM_TARGET_PERCENT_MAX, "");
         } else if (key == TRAINLOG_KEY_ENTER || key == '\n' || key == 'e' || key == 'E') {
@@ -8934,8 +8976,8 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
                 ? draft->input.recording_mode == TRAINLOG_RECORDING_SETS
                 : draft->input.load_mode != TRAINLOG_LOAD_NONE;
             if (!applicable) {
-                (void)snprintf(session->message, sizeof(session->message),
-                    "Ce champ ne s’applique pas au profil de cet exercice.");
+                (void)trainlog_presentation_format_key(session->message,
+                    sizeof(session->message), "msg.field.not.applicable");
                 return true;
             }
             if (session->planning_field == 0U)
@@ -8947,7 +8989,7 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
             else if (session->planning_field == 3U)
                 (void)snprintf(value, sizeof(value), "%d", draft->input.rest_seconds);
             else if (draft->input.target_has_weight)
-                (void)snprintf(value, sizeof(value), "%.2f", draft->input.target_weight_kg);
+                (void)trainlog_presentation_format_input(value, sizeof(value), "%.2f", draft->input.target_weight_kg);
             session_controller_start_form(session, purposes[session->planning_field], value);
         } else if (key == TRAINLOG_KEY_ESCAPE || key == 27 || key == 'b' || key == 'B')
             session->phase = TRAINLOG_SESSION_DRAFT;
@@ -9138,7 +9180,7 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
             if (key == TRAINLOG_KEY_ENTER || key == '\n' || key == 'e' || key == 'E') {
                 char value[48] = "";
                 if (draft->input.has_max_weight)
-                    (void)snprintf(value, sizeof(value), "%.2f", draft->input.max_weight_kg);
+                    (void)trainlog_presentation_format_input(value, sizeof(value), "%.2f", draft->input.max_weight_kg);
                 session_controller_start_form(session, TRAINLOG_SESSION_FORM_MAX_WEIGHT, value);
             }
         } else if (draft->input.recording_mode == TRAINLOG_RECORDING_CONTINUOUS) {
@@ -9153,7 +9195,7 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
                 (draft->input.data_fields & TRAINLOG_EXERCISE_DATA_SPEED_KMH) != 0U) {
                 char value[48] = "";
                 if (draft->input.continuous_has_speed)
-                    (void)snprintf(value, sizeof(value), "%.2f",
+                    (void)trainlog_presentation_format_input(value, sizeof(value), "%.2f",
                         draft->input.continuous_speed_kmh);
                 session_controller_start_form(session,
                     TRAINLOG_SESSION_FORM_CONTINUOUS_SPEED, value);
@@ -9161,7 +9203,7 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
                 (draft->input.data_fields & TRAINLOG_EXERCISE_DATA_DISTANCE_KM) != 0U) {
                 char value[48] = "";
                 if (draft->input.continuous_has_distance)
-                    (void)snprintf(value, sizeof(value), "%.2f",
+                    (void)trainlog_presentation_format_input(value, sizeof(value), "%.2f",
                         draft->input.continuous_distance_km);
                 session_controller_start_form(session,
                     TRAINLOG_SESSION_FORM_CONTINUOUS_DISTANCE, value);
@@ -9188,7 +9230,7 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
             char value[48];
             session->pending_set = draft->sets[session->set_selected];
             if (session->set_field == 1U && draft->input.load_mode != TRAINLOG_LOAD_NONE) {
-                (void)snprintf(value, sizeof(value), "%.2f", session->pending_set.weight_kg);
+                (void)trainlog_presentation_format_input(value, sizeof(value), "%.2f", session->pending_set.weight_kg);
                 session_controller_start_form(session, TRAINLOG_SESSION_FORM_SET_WEIGHT, value);
             } else {
                 (void)snprintf(value, sizeof(value), "%d",
@@ -9233,8 +9275,8 @@ static bool app_shell_dispatch_session(TrainlogAppContext *app, int key)
                 return true;
             }
             if (status != TRAINLOG_STATUS_INVALID_ARGUMENT)
-                (void)snprintf(session->message, sizeof(session->message),
-                    "Échec de l’enregistrement; le brouillon est conservé.");
+                (void)trainlog_presentation_format_key(session->message,
+                    sizeof(session->message), "msg.draft.save.fail");
         } else if (key == 'q' || key == 'Q') {
             session->destructive_confirm_selected = false;
             session->phase = TRAINLOG_SESSION_CONFIRM_ABANDON;
@@ -9307,12 +9349,7 @@ static bool app_shell_dispatch_sync(TrainlogAppContext *app, int key)
         run_status = run(TRAINLOG_SYNC_TRIGGER_TUI, false,
             TRAINLOG_SYNC_BIDIRECTIONAL, &sync->report);
         sync->running = false;
-        /* WHY: retain the engine's precise diagnostic, but never leave a
-         * completed failed action at the unhelpful `error=unknown` boundary. */
-        if ((!sync->report.success || run_status != TRAINLOG_STATUS_OK) &&
-            sync->report.error[0] == '\0')
-            (void)snprintf(sync->report.error, sizeof(sync->report.error), "%s",
-                sync_controller_status_error(run_status));
+        sync->latest_status = run_status;
         sync->has_report = true;
         sync_controller_load_history(sync);
         (void)memset(&sync->device, 0, sizeof(sync->device));
@@ -9495,6 +9532,11 @@ static void app_shell_dispatch(TrainlogAppContext *app, int key)
          * rendering stays SQL-free and all graph coordinates are recomputed. */
         app->statistics_window = periods[(size_t)(key - '1')];
         app_shell_load_statistics(app);
+        return;
+    }
+    if (app->navigation.current.route == TRAINLOG_ROUTE_SETTINGS &&
+        (key == TRAINLOG_KEY_UP || key == TRAINLOG_KEY_DOWN)) {
+        app->content_selected = app->content_selected == 0U ? 1U : 0U;
         return;
     }
     if (app_shell_dispatch_exercise_controller(app, key)) return;
@@ -9793,8 +9835,8 @@ shell_nonanalytics_input:
                 app->session_detail.session_id);
             if (app->session.has_draft) {
                 app_shell_open_route(app, TRAINLOG_ROUTE_SESSION_CURRENT);
-                (void)snprintf(app->session.message, sizeof(app->session.message),
-                    "Une séance est déjà en cours; elle n’a pas été remplacée.");
+                (void)trainlog_presentation_format_key(app->session.message,
+                    sizeof(app->session.message), "msg.session.exists");
             } else {
                 TrainlogSessionSummary persisted;
                 if (load_persisted_draft(app->database, session_id, &persisted,
@@ -9847,6 +9889,11 @@ int trainlog_tui_run(TrainlogDatabase *database)
     }
 
     (void)setlocale(LC_ALL, "");
+    /* WHY: presentation preference is loaded before the first surface is
+     * created so the initial frame cannot flash the default language.
+     * Invalid/missing local config deterministically remains French. */
+    trainlog_presentation_init();
+    (void)trainlog_presentation_load();
 
     (void)memset(&app, 0, sizeof(app));
     app.database = database;
@@ -9890,3 +9937,8 @@ int trainlog_tui_run(TrainlogDatabase *database)
     trainlog_terminal_destroy(app.terminal);
     return 0;
 }
+
+/* tui.c is included directly by the focused workflow harness; do not rewrite
+ * the harness's terminal mocks after the production implementation ends. */
+#undef trainlog_surface_printf
+#undef trainlog_terminal_printf

@@ -6,6 +6,7 @@
 #include "trainlog/sync_screen_action.h"
 
 #include "trainlog/terminal.h"
+#include "trainlog/presentation.h"
 
 static TrainlogSyncScreenAction sync_screen_action(
     TrainlogSyncScreenEffect effect,
@@ -143,14 +144,14 @@ const char *trainlog_sync_screen_confirmation(
 )
 {
     if (direction == TRAINLOG_SYNC_ANDROID_TO_PC) {
-        return "Importer Android vers le PC maintenant ?";
+        return trainlog_presentation_text("sync.confirm.import");
     }
 
     if (direction == TRAINLOG_SYNC_PC_TO_ANDROID) {
-        return "Publier le catalogue du PC vers Android maintenant ?";
+        return trainlog_presentation_text("sync.confirm.publish");
     }
 
-    return "Synchroniser Android et PC dans les deux sens maintenant ?";
+    return trainlog_presentation_text("sync.confirm.both");
 }
 
 const char *trainlog_sync_screen_footer(
@@ -158,8 +159,8 @@ const char *trainlog_sync_screen_footer(
 )
 {
     if (terminal_columns >= 100) {
-        return "s Synchroniser maintenant (PC↔Android)  r Actualiser appareil  Échap retour";
+        return trainlog_presentation_text("sync.footer.wide");
     }
 
-    return "s Synchroniser PC↔Android  r Actualiser  Échap retour";
+    return trainlog_presentation_text("sync.footer.compact");
 }

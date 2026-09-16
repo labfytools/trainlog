@@ -835,7 +835,9 @@ static TrainlogStatus mock_sync_run(TrainlogSyncTrigger trigger,
     sync_last_direction = direction;
     CHECK(sync_running_app != NULL && sync_running_app->sync_controller.running);
     CHECK(strstr(sync_running_app->terminal->output,
-        "Synchronisation en cours") != NULL);
+        "Synchronisation en cours") != NULL ||
+        strstr(sync_running_app->terminal->output,
+            "Synchronization in progress") != NULL);
     /* A re-entrant launch attempt is consumed while the sole run is active. */
     CHECK(app_shell_dispatch_sync(sync_running_app, 's'));
     CHECK(app_shell_dispatch_sync(sync_running_app, TRAINLOG_KEY_ENTER));
@@ -843,13 +845,23 @@ static TrainlogStatus mock_sync_run(TrainlogSyncTrigger trigger,
     (void)memset(output, 0, sizeof(*output));
     output->success = run_number != 2;
     output->direction = direction;
+    output->exercises_imported = 2U;
+    output->exercises_reconciled = 3U;
+    output->exercises_skipped = 4U;
+    output->sessions_imported = 5U;
+    output->sessions_skipped = 6U;
+    output->body_imported = 7U;
+    output->body_skipped = 8U;
+    output->equipment_definitions_imported = 9U;
+    output->equipment_definitions_skipped = 10U;
+    output->catalog_published = 11U;
     (void)snprintf(output->sync_id, sizeof(output->sync_id),
         "sy_00000000-0000-4000-8000-%012d", run_number);
     (void)snprintf(output->summary, sizeof(output->summary), "%s",
-        output->success ? "sync test réussie" : "sync test échouée");
+        output->success ? "RÉSUMÉ BRUT succès" : "RÉSUMÉ BRUT échec");
     if (!output->success)
         (void)snprintf(output->error, sizeof(output->error), "%s",
-            "Appareil déconnecté pendant la synchronisation.");
+            "DIAGNOSTIC BRUT appareil déconnecté.");
     CHECK(snprintf(directory, sizeof(directory), "%s/trainlog",
         sync_journal_root) > 0);
     CHECK(mkdir(directory, 0700) == 0 || errno == EEXIST);
@@ -862,6 +874,53 @@ static TrainlogStatus mock_sync_run(TrainlogSyncTrigger trigger,
         output->summary) > 0);
     CHECK(fclose(history) == 0);
     return output->success ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_SYSTEM_ERROR;
+}
+
+static bool test_sync_result_presenter_maps_typed_statuses_in_both_languages(void)
+{
+    static const struct {
+        TrainlogStatus status;
+        const char *fr;
+        const char *en;
+    } cases[] = {
+        {TRAINLOG_STATUS_CONFLICT, "une autre exécution est active",
+            "another run is active"},
+        {TRAINLOG_STATUS_NOT_FOUND, "aucun appareil MTP Trainlog détecté",
+            "no Trainlog MTP device detected"},
+        {TRAINLOG_STATUS_INVALID_ARGUMENT, "données ou demande invalides",
+            "invalid data or request"},
+        {TRAINLOG_STATUS_DATABASE_ERROR, "erreur de base de données locale",
+            "local database error"},
+        {TRAINLOG_STATUS_SCHEMA_UNSUPPORTED, "version de données non prise en charge",
+            "unsupported data version"},
+        {TRAINLOG_STATUS_SYSTEM_ERROR, "erreur d’accès appareil ou fichier",
+            "device or file access error"},
+        {TRAINLOG_STATUS_OK, "sans rapport de réussite",
+            "without a success report"},
+    };
+    TrainlogSyncController sync;
+    char presented[768];
+    size_t index;
+    (void)memset(&sync, 0, sizeof(sync));
+    (void)snprintf(sync.report.summary, sizeof(sync.report.summary),
+        "%s", "RÉSUMÉ BRUT interdit");
+    (void)snprintf(sync.report.error, sizeof(sync.report.error),
+        "%s", "DIAGNOSTIC BRUT interdit");
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        sync.latest_status = cases[index].status;
+        trainlog_presentation_init();
+        sync_controller_present_result(&sync, presented, sizeof(presented));
+        CHECK(strstr(presented, cases[index].fr) != NULL);
+        CHECK(strstr(presented, "BRUT") == NULL);
+        CHECK(trainlog_presentation_set_language(TRAINLOG_PRESENTATION_ENGLISH));
+        sync_controller_present_result(&sync, presented, sizeof(presented));
+        CHECK(strstr(presented, cases[index].en) != NULL);
+        CHECK(strstr(presented, "BRUT") == NULL);
+    }
+    CHECK(strcmp(sync.report.summary, "RÉSUMÉ BRUT interdit") == 0);
+    CHECK(strcmp(sync.report.error, "DIAGNOSTIC BRUT interdit") == 0);
+    trainlog_presentation_init();
+    return true;
 }
 
 static bool test_shell_body_controller_preserves_identity_and_failed_edit(void)
@@ -993,7 +1052,18 @@ static bool test_shell_sync_f7_runs_bidirectional_and_refreshes_history(void)
     CHECK(app.sync_controller.history_count == 1U);
     terminal.output_used = 0U; terminal.output[0] = '\0';
     app_shell_render_sync(&app);
-    CHECK(strstr(terminal.output, "sync test réussie") != NULL);
+    CHECK(strstr(terminal.output, "Synchronisation réussie") != NULL);
+    CHECK(strstr(terminal.output, "exercices +2, réconciliés 3, présents 4") != NULL);
+    CHECK(strstr(terminal.output, "catalogue publié 11") != NULL);
+    CHECK(strstr(terminal.output, "RÉSUMÉ BRUT") == NULL);
+    CHECK(strcmp(app.sync_controller.report.summary, "RÉSUMÉ BRUT succès") == 0);
+    CHECK(trainlog_presentation_set_language(TRAINLOG_PRESENTATION_ENGLISH));
+    terminal.output_used = 0U; terminal.output[0] = '\0';
+    app_shell_render_sync(&app);
+    CHECK(strstr(terminal.output, "Synchronization successful") != NULL);
+    CHECK(strstr(terminal.output, "exercises +2, reconciled 3, present 4") != NULL);
+    CHECK(strstr(terminal.output, "catalog published 11") != NULL);
+    CHECK(strstr(terminal.output, "RÉSUMÉ BRUT") == NULL);
 
     /* Repeating the action creates the next legitimate journal event. */
     app_shell_dispatch(&app, 's');
@@ -1002,11 +1072,17 @@ static bool test_shell_sync_f7_runs_bidirectional_and_refreshes_history(void)
     CHECK(sync_run_calls == 2);
     CHECK(sync_last_direction == TRAINLOG_SYNC_BIDIRECTIONAL);
     CHECK(!app.sync_controller.report.success);
+    CHECK(app.sync_controller.latest_status == TRAINLOG_STATUS_SYSTEM_ERROR);
     CHECK(app.sync_controller.history_count == 2U);
     terminal.output_used = 0U; terminal.output[0] = '\0';
     app_shell_render_sync(&app);
     CHECK(strstr(terminal.output,
-        "Appareil déconnecté pendant la synchronisation.") != NULL);
+        "Synchronization stopped: device or file access error.") != NULL);
+    CHECK(strstr(terminal.output, "DIAGNOSTIC BRUT") == NULL);
+    CHECK(strstr(terminal.output, "RÉSUMÉ BRUT") == NULL);
+    CHECK(strcmp(app.sync_controller.report.error,
+        "DIAGNOSTIC BRUT appareil déconnecté.") == 0);
+    CHECK(strcmp(app.sync_controller.report.summary, "RÉSUMÉ BRUT échec") == 0);
     CHECK(app_shell_dispatch_sync(&app, 'r'));
     CHECK(sync_probe_calls == 3 && sync_run_calls == 2);
     if (saved_data_home != NULL) {
@@ -1025,6 +1101,7 @@ static bool test_shell_sync_f7_runs_bidirectional_and_refreshes_history(void)
         CHECK(rmdir(temporary) == 0);
     }
     sync_running_app = NULL;
+    trainlog_presentation_init();
     trainlog_database_close(database);
     return true;
 }
@@ -1109,6 +1186,21 @@ static bool test_shell_sync_history_neutralizes_legacy_directions(void)
         CHECK(strstr(terminal.output, "PC→Android") == NULL);
         app.sync_controller.showing_detail = false;
     }
+
+    trainlog_presentation_set_language(TRAINLOG_PRESENTATION_ENGLISH);
+    app.sync_controller.selected = 0U;
+    terminal.output_used = 0U;
+    terminal.output[0] = '\0';
+    CHECK(app_shell_dispatch_sync(&app, TRAINLOG_KEY_ENTER));
+    app_shell_render_sync(&app);
+    CHECK(strstr(terminal.output,
+        "Historical PC↔Android synchronization") != NULL);
+    CHECK(strstr(terminal.output, "Timestamp:") != NULL);
+    CHECK(strstr(terminal.output, "Status:") != NULL);
+    CHECK(strstr(terminal.output, "successful") != NULL ||
+        strstr(terminal.output, "failed") != NULL);
+    CHECK(strstr(terminal.output, "Horodatage") == NULL);
+    trainlog_presentation_init();
 
     if (saved_data_home != NULL) {
         CHECK(setenv("XDG_DATA_HOME", saved_data_home, 1) == 0);
@@ -2223,11 +2315,11 @@ static bool test_body_profile_snapshot_and_evolution_are_separate(void)
 
     dashboard_prepare_render(&app, &terminal, &surface, 72, 20, 72, 16);
     app_shell_render_body_profile(&app);
-    CHECK(strstr(terminal.output, "Poids : 80.00 kg") != NULL);
+    CHECK(strstr(terminal.output, "Poids : 80,00 kg") != NULL);
     CHECK(strstr(terminal.output, "Poitrine") != NULL);
-    CHECK(strstr(terminal.output, "100.0 cm") != NULL);
+    CHECK(strstr(terminal.output, "100,0 cm") != NULL);
     CHECK(strstr(terminal.output, "Tour de taille") != NULL);
-    CHECK(strstr(terminal.output, "85.0 cm") != NULL);
+    CHECK(strstr(terminal.output, "85,0 cm") != NULL);
     CHECK(strstr(terminal.output, "Épaules") == NULL);
     CHECK(rendered_draw_column(&terminal, 0x25c6U, 0U) >= 0);
     CHECK(rendered_draw_column(&terminal, 0x2586U, 0U) >= 0);
@@ -2257,9 +2349,9 @@ static bool test_body_profile_snapshot_and_evolution_are_separate(void)
     CHECK(app.list.selected_index == 1U);
     dashboard_prepare_render(&app, &terminal, &surface, 80, 24, 80, 20);
     app_shell_render_body_profile(&app);
-    CHECK(strstr(terminal.output, "Poids : 78.00 kg") != NULL);
-    CHECK(strstr(terminal.output, "90.0 cm") != NULL);
-    CHECK(strstr(terminal.output, "100.0 cm") == NULL);
+    CHECK(strstr(terminal.output, "Poids : 78,00 kg") != NULL);
+    CHECK(strstr(terminal.output, "90,0 cm") != NULL);
+    CHECK(strstr(terminal.output, "100,0 cm") == NULL);
 
     app.body_metric_selected = 0U;
     app_shell_move_available_body_metric(&app, 1);
@@ -2305,7 +2397,7 @@ static bool test_statistics_center_renders_and_cycles_factual_views(void)
     app_shell_render_statistics_training(&app);
     CHECK(strstr(terminal.output, "ACTIVITÉ") != NULL);
     CHECK(strstr(terminal.output, "TRAVAIL") != NULL);
-    CHECK(strstr(terminal.output, "Volume 3200.0 kg") != NULL);
+    CHECK(strstr(terminal.output, "Volume 3200,0 kg") != NULL);
     CHECK(strstr(terminal.output,
         "Volume chargé · mois calendaires") != NULL);
     CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
@@ -2366,6 +2458,14 @@ static bool test_statistics_center_renders_and_cycles_factual_views(void)
     CHECK(strstr(terminal.output, "Développé couché") != NULL);
     CHECK(strstr(terminal.output, "Charge observée") != NULL);
     CHECK(!terminal.coordinate_overflow && !terminal.text_overflow);
+    trainlog_presentation_set_language(TRAINLOG_PRESENTATION_ENGLISH);
+    terminal.output_used = 0U;
+    terminal.output[0] = '\0';
+    app_shell_render_exercise_statistics(&app);
+    CHECK(strstr(terminal.output, "Développé couché") != NULL);
+    CHECK(strstr(terminal.output, "Observed load") != NULL);
+    CHECK(strstr(terminal.output, "Charge observée") == NULL);
+    trainlog_presentation_init();
     return true;
 }
 
@@ -2386,6 +2486,7 @@ int main(void)
         !test_shell_compact_navigation_focus_contract() ||
         !test_shell_detail_back_restores_stable_list_selection() ||
         !test_shell_body_controller_preserves_identity_and_failed_edit() ||
+        !test_sync_result_presenter_maps_typed_statuses_in_both_languages() ||
         !test_shell_sync_f7_runs_bidirectional_and_refreshes_history() ||
         !test_shell_sync_history_neutralizes_legacy_directions() ||
         !test_equipment_collector_finds_match_after_first_pages() ||

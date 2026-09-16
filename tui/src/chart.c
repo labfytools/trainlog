@@ -9,9 +9,25 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "trainlog/presentation.h"
+
+static void chart_surface_printf(TrainlogSurface *surface, int row, int column,
+                                 const char *format, ...)
+{
+    va_list arguments;
+    char value[512];
+    va_start(arguments, format);
+    (void)trainlog_presentation_vformat(value, sizeof(value), format, arguments);
+    va_end(arguments);
+    trainlog_surface_printf(surface, row, column, "%s", value);
+}
+
+#define trainlog_surface_printf chart_surface_printf
 
 #define CHART_LABEL_WIDTH 12
 #define CHART_MIN_WIDTH 24
@@ -160,21 +176,18 @@ static void short_date(const TrainlogChartPoint *point, char output[6])
 {
     time_t seconds;
     struct tm value;
+    char iso_date[11];
     if (point != NULL && point->timestamp_label != NULL &&
         strlen(point->timestamp_label) >= 10U &&
         point->timestamp_label[4] == '-' && point->timestamp_label[7] == '-') {
-        output[0] = point->timestamp_label[8];
-        output[1] = point->timestamp_label[9];
-        output[2] = '/';
-        output[3] = point->timestamp_label[5];
-        output[4] = point->timestamp_label[6];
-        output[5] = '\0';
-        return;
+        if (trainlog_presentation_compact_date(point->timestamp_label, false,
+                output, 6U)) return;
     }
     seconds = point != NULL ? (time_t)point->timestamp : (time_t)-1;
     if (point == NULL || (int64_t)seconds != point->timestamp ||
         gmtime_r(&seconds, &value) == NULL ||
-        strftime(output, 6U, "%d/%m", &value) != 5U)
+        strftime(iso_date, sizeof(iso_date), "%Y-%m-%d", &value) != 10U ||
+        !trainlog_presentation_compact_date(iso_date, false, output, 6U))
         (void)snprintf(output, 6U, "--/--");
 }
 
@@ -184,12 +197,13 @@ static void render_empty(TrainlogSurface *surface, TrainlogChartRect rect,
     trainlog_surface_set_role(surface, TRAINLOG_COLOR_DEFAULT,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_BOLD);
     trainlog_surface_printf(surface, rect.top, rect.left, "%s",
-        title != NULL ? title : "ÉVOLUTION DANS LE TEMPS");
+        title != NULL ? trainlog_presentation_source(title)
+                      : trainlog_presentation_text("chart.timeline"));
     trainlog_surface_set_role(surface, TRAINLOG_COLOR_MUTED,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_NORMAL);
     if (rect.height > 2)
         trainlog_surface_printf(surface, rect.top + 2, rect.left,
-            "Aucune donnée disponible.");
+            "%s", trainlog_presentation_text("empty.no_data"));
 }
 
 void trainlog_chart_render(TrainlogSurface *surface, TrainlogChartRect rect,
@@ -229,7 +243,8 @@ void trainlog_chart_render_line(TrainlogSurface *surface, TrainlogChartRect rect
     trainlog_surface_set_role(surface, TRAINLOG_COLOR_DEFAULT,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_BOLD);
     trainlog_surface_printf(surface, rect.top, rect.left, "%s",
-        title != NULL ? title : "ÉVOLUTION DANS LE TEMPS");
+        title != NULL ? trainlog_presentation_source(title)
+                      : trainlog_presentation_text("chart.timeline"));
     if (rect.width < CHART_MIN_WIDTH || rect.height < CHART_MIN_HEIGHT) {
         trainlog_surface_set_role(surface, TRAINLOG_COLOR_ACCENT,
             TRAINLOG_RGB_BASE, TRAINLOG_TEXT_BOLD);
@@ -359,10 +374,12 @@ void trainlog_chart_render_bars(TrainlogSurface *surface, TrainlogChartRect rect
     trainlog_surface_set_role(surface, TRAINLOG_COLOR_DEFAULT,
         TRAINLOG_RGB_BASE, TRAINLOG_TEXT_BOLD);
     trainlog_surface_printf(surface, rect.top, rect.left, "%s",
-        title != NULL ? title : "TOTAUX PAR PÉRIODE");
+        title != NULL ? trainlog_presentation_source(title)
+                      : trainlog_presentation_text("chart.totals"));
     if (rect.width < CHART_MIN_WIDTH || rect.height < CHART_MIN_HEIGHT) {
         trainlog_surface_printf(surface, rect.top + 2, rect.left,
-            "%zu périodes · %.2f %s", count, points[count - 1U].value, safe_unit);
+            "%zu périodes · %.2f %s", count,
+            points[count - 1U].value, safe_unit);
         return;
     }
     plot_left = rect.left + CHART_LABEL_WIDTH;
@@ -410,9 +427,13 @@ void trainlog_chart_render_bars(TrainlogSurface *surface, TrainlogChartRect rect
                 if (column < plot_left) column = plot_left;
                 if (column > plot_left + plot_width - 11)
                     column = plot_left + plot_width - 11;
-                if (label != NULL)
+                if (label != NULL) {
+                    char localized_label[32];
                     trainlog_surface_printf(surface,
-                        plot_top + plot_height + 1, column, "%.11s", label);
+                        plot_top + plot_height + 1, column, "%.11s",
+                        trainlog_presentation_month_label(label, localized_label,
+                            sizeof(localized_label)));
+                }
             }
         } else {
             short_date(&first_domain, first); short_date(&last_domain, last);
