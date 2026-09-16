@@ -1,10 +1,60 @@
 # Changelog
 
-- Documented stable-release distribution through GitHub Releases, including
+## 0.1.1 — 2026-09-16
+
+- Completed `TRAINLOG_ANDROID_FIELD_INPUT_REFINEMENT_V1`: active and completed
+  occurrence handles now keep one stable `entry_id`-keyed pointer gesture alive,
+  accumulate total drag distance, jump directly across multiple positions, show
+  residual pointer-following motion, restore the origin on cancellation, and
+  commit only once at completion where persistence applies. Decimal distance,
+  speed, MAX, target-load, and set-load editors use decimal keyboards, accept
+  both `.` and `,`, preserve incomplete typing states, and parse finite
+  locale-independent values only at commit. Units, schemas, formats, identities,
+  active/completed ownership, and version 0.1.1 remain unchanged.
+
+- Completed `TRAINLOG_ANDROID_COMPLETED_SESSION_REORDER_V1`: the Android
+  completed-session correction form reuses the dedicated localized right-side
+  drag handle and accessibility move actions. Reordering remains transient until
+  Save; Cancel/Back writes nothing, while Save atomically replaces positions and
+  any factual corrections under the same session/entry/exercise identities.
+  Stable Compose keys keep editor state attached to `entry_id`; equipment,
+  targets, actuals, MAX, feedback revisions, and J+1 ownership survive. Existing
+  V3 synchronization reconciles the same desktop session without duplication.
+  No schema, exchange format, active-session behavior, or version changed.
+
+- Completed `TRAINLOG_ANDROID_FIELD_WORKFLOW_REFINEMENT_V1`: Android now uses a
+  full-width semantic-success **Add to session** action, provides a dedicated
+  accessible right-side drag handle for durable active-draft reordering, and
+  supports atomic completed-session factual correction. Reorder and correction
+  retain stable session, occurrence, exercise, equipment, plan, actual, feedback,
+  and follow-up ownership; corrected facts continue through the existing V3
+  synchronization identity. Continuous values reject non-finite input and show
+  explicit km, km/h, and seconds units. No SQLite schema, exchange format,
+  desktop/TUI behavior, or product version changed.
+
+- Documented stable-release distribution through GitHub and Forgejo Releases,
+  including
   prebuilt Android and architecture-specific dynamically linked Linux assets,
   SHA-256 verification, runtime/build/optional dependencies, and the release
-  signing and exact-tag requirements. No v0.1.0 release is claimed until a
-  signed APK and authenticated GitHub publication path are available.
+  signing and exact-tag requirements. The Android artifact is built with the
+  durable Trainlog release identity and is verified before publication.
+
+- Completed `TRAINLOG_I18N_V0_1_1`: Trainlog 0.1.1 is one synchronized Android
+  and desktop product version, with French as the default interface language
+  and English selectable through **Settings → Language** on both surfaces.
+  The preference is local presentation state (dedicated Android
+  SharedPreferences; desktop XDG `trainlog/presentation.conf`) and successful
+  selection updates the interface immediately. Localized Trainlog-owned text,
+  BODY ZONE labels selected by stable IDs, and visible number/date formatting
+  do not change training data, user exercise/catalogue names, IDs, SQLite,
+  schemas, exchange/protocol artifacts, AI, MAX, or feedback. Desktop and
+  Android synchronization views render local typed status/counters; raw
+  core/receipt/history summaries remain opaque protocol/operational bytes and
+  are never injected as cross-device French text. Final validation passed
+  60/60 normal and 60/60 ASan/UBSan desktop tests, Android 202 total tests
+  (198 passed, 4 skipped, 0 failed), both validators, source-derived
+  `TRANSLATABLE_UI=0`, and Android resource parity. Real device/manual visual
+  switching remains an explicit smoke validation.
 
 - Completed `TRAINLOG_FULL_REPOSITORY_DOCUMENTATION_AUDIT_V2`: added the
   canonical documentation index, made README a concise entry point, separated

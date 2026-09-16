@@ -115,6 +115,32 @@ Minimum terminal size:
 
 Smaller terminals display a clear fallback instead of corrupt layout.
 
+## Interface language (`TRAINLOG_I18N_V0_1_1`)
+
+Trainlog version 0.1.1 is synchronized with Android as one product version;
+the TUI has no independent interface version. French is the default. English is
+the only alternate language and is selected through **Settings → Language**.
+The active TUI rerenders immediately after a successful selection.
+
+The choice is local presentation state in the XDG configuration file
+`trainlog/presentation.conf` (under `$XDG_CONFIG_HOME`, or
+`$HOME/.config` when the XDG variable is unavailable). Invalid, absent, or
+unreadable preference data falls back to French. A failed persistence attempt
+does not claim a committed choice. The setting never enters the desktop SQLite
+database, training data, stable IDs, schemas, exchange artifacts, transport
+protocols, AI proposals, MAX, or feedback.
+
+Trainlog-owned strings and selected-language number/date formatting are
+localized. Persisted/user exercise and catalogue names are byte-exact display
+data, never translation keys. Stable BODY ZONE IDs select localized known-zone
+labels where applicable; unknown IDs retain their catalogue label. Layout and
+minimum-terminal behavior remain language-invariant.
+
+The current synchronization screen renders local typed status and counters. It
+does not translate, reinterpret, or inject Android/core/receipt/history raw
+summaries: those protocol and operational bytes remain opaque. No exchange,
+receipt, or synchronization-history format changed for this presentation work.
+
 ## 3. Visual rules
 
 The TUI uses centralized semantic theme roles.
@@ -174,7 +200,8 @@ Unicode-aware normalized-name uniqueness prevents duplicate logical names.
 `3 Exercices` also owns Body Zones V1. Creation opens a keyboard-only manifest
 selector: `p` chooses the sole primary, Space toggles secondaries, `n` selects
 the explicit unclassified state and clears all relations, Enter validates and Escape
-cancels without mutation. Only French display names are shown; stable IDs such
+cancels without mutation. Visible names use the selected presentation language
+where Trainlog owns the label; stable IDs such
 as `chest` remain internal. New set-based exercises require a primary zone.
 
 The exercise list supports `/` prefix search and `z` cycling through all

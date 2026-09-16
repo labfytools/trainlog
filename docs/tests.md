@@ -29,6 +29,23 @@ It validates:
 
 A negative fixture passes only when Trainlog rejects it.
 
+Android field-workflow regression coverage additionally permutes distinct and
+duplicate active occurrences, checks stable IDs/equipment/targets/actuals and raw
+form state, recreates the repository, injects a transactional write failure, and
+finalizes the reordered draft. Completed-session tests edit reps, loads, set and
+continuous durations, distance, and speed; preserve feedback/follow-up roots;
+exercise atomic rollback; and inspect the corrected V3 export identity.
+Completed-order coverage also exercises duplicate exercises, SETS, CONTINUOUS,
+MAX, planning, equipment, feedback revisions, J+1 follow-up, Cancel/no-write,
+successful position persistence, injected Save rollback, and desktop V3
+reconciliation without a duplicate canonical session.
+Field-input coverage maps one accumulated drag directly from index 5 to 1 and
+between both list extremes, restores the origin permutation on cancellation,
+and checks decimal editing/final parsing for both separators. It covers `0.3`,
+`0,3`, quarter-unit values, whole values, incomplete separator states, malformed
+text, non-finite spellings, negative final distance, stored numeric equality,
+and locale-independent V3 JSON publication.
+
 Semantic validation includes:
 
 ```text
@@ -118,6 +135,7 @@ body_analytics
 terminal_input_event_type_policy
 tui_workflows
 app_shell
+presentation_i18n
 ```
 
 The desktop suite includes APP_SHELL_V1 production-transition coverage and the
@@ -149,6 +167,26 @@ The desktop executable is additionally smoke-checked in isolated tmux PTYs at
 100x30, the exact 72x20 minimum, and the 60x15 fallback; a resize down/up must
 recover before a clean keyboard quit. Notcurses is verified as the executable's
 direct terminal dependency with `readelf -d`.
+
+`presentation_i18n` covers the deterministic French default, French/English
+catalogue lookup, immediate in-process language switching, selected-language
+decimal/date formatting even under a contrary host numeric locale, unchanged
+layout at the 72x20 minimum, and local XDG configuration persistence/failure
+semantics. It also proves that persisted catalogue names are not translation
+keys, the source-derived `TRANSLATABLE_UI=0` boundary, and that synchronization
+presentation uses local typed status/counters rather than raw opaque
+core/receipt/history summaries.
+
+Android Robolectric coverage verifies both resource locales, Settings language
+ownership and dedicated SharedPreferences persistence, French fallback for an
+absent/invalid preference, and localized presentation of known stable BODY ZONE
+IDs without changing unknown catalogue labels or repository values. Resource
+parity and typed synchronization-receipt presentation are also covered; raw
+protocol/operational summaries remain opaque. Final i18n validation passed
+60/60 normal desktop tests, 60/60 ASan/UBSan desktop tests, and 202 Android
+tests (198 passed, 4 skipped, 0 failed), with both JSON validators passing.
+Automated coverage does not replace a real device/manual visual language-switch
+smoke; that remains explicit manual validation.
 
 Notable regression coverage:
 
@@ -238,6 +276,24 @@ Notable regression coverage:
 Stable-release validation additionally builds the signed release variant and
 checks the packaged product versions and binary linkage:
 
+The release machine supplies all four `TRAINLOG_RELEASE_*` environment
+variables, or a mode-0600 private file at
+`~/.config/trainlog/release-signing.properties` with this shape:
+
+```text
+storeFile=/absolute/private/path/trainlog-release.jks
+storePassword=<local secret>
+keyAlias=<local alias>
+keyPassword=<local secret>
+```
+
+`TRAINLOG_RELEASE_CREDENTIALS_FILE` may select another private properties file.
+Environment variables take precedence over file values. The keystore and
+credentials are the durable Android update identity: back them up through an
+approved encrypted external mechanism, never Git or release assets. Missing
+configuration makes `packageRelease` fail explicitly rather than producing an
+apparently publishable unsigned APK.
+
 ```bash
 meson compile -C build
 meson test -C build --print-errorlogs
@@ -246,10 +302,13 @@ cd android
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
 
-file trainlog-tui-linux-x86_64-v0.1.0
-ldd trainlog-tui-linux-x86_64-v0.1.0
-sha256sum trainlog-android-v0.1.0.apk \
-          trainlog-tui-linux-x86_64-v0.1.0
+apksigner verify --verbose --print-certs \
+  app/build/outputs/apk/release/app-release.apk
+
+file trainlog-tui-linux-x86_64-v<version>
+ldd trainlog-tui-linux-x86_64-v<version>
+sha256sum trainlog-android-v<version>.apk \
+          trainlog-tui-linux-x86_64-v<version>
 ```
 
 An unsigned release APK is build evidence only and must not be published as the

@@ -7,9 +7,10 @@ in [reviews](reviews/) and [CHANGELOG.md](../CHANGELOG.md).
 ## Product boundary
 
 ```text
-Android captures and summarizes.
-The TUI analyzes and tracks over time.
-Desktop SQLite is canonical long-term history.
+Trainlog Core owns business truth and canonical desktop persistence.
+The TUI administers, inspects, maintains, and imports/exports.
+The local Web analyzes, visualizes, and prepares programs/sessions.
+Android executes in the field, captures actual work/feedback, and returns data.
 ```
 
 Future work must preserve the frozen Trainlog JSON V1 contract, stable
@@ -23,16 +24,45 @@ Desktop schema v18, Android schema v17, Notcurses, direct
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
 exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
+`TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`; its local-only
+architecture is canonical, but no Web code exists yet.
 
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=REAL_DATA_BASELINE_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_CHARACTERIZATION_V1
 ```
 
-Collect real body observations and training sessions through Android, sync them
-to desktop, and record MAX only through explicit `max_test` results. Do not seed
-fictitious user history into canonical databases.
+Characterize the existing TUI Dashboard before moving its direct SQLite and
+`database_internal.h` projection into a typed Core read model. Then adapt the
+TUI to consume that read model. This incremental sequence is a blocking
+prerequisite for a Web Dashboard endpoint and does not authorize a global
+`tui.c` refactor.
+
+## TRAINLOG_WEB_V1 implementation gate
+
+Implementation order is fixed as:
+
+```text
+WEB_DASHBOARD_CHARACTERIZATION_V1
+        -> WEB_DASHBOARD_CORE_READ_MODEL_V1
+        -> WEB_TUI_READ_MODEL_ADOPTION_V1
+        -> WEB_CLI_HTTP_INFRASTRUCTURE_V1
+        -> WEB_FRONTEND_SHELL_V1
+        -> WEB_DASHBOARD_V1
+```
+
+The Web must not start with React. Characterization proves current behavior;
+Core extraction establishes one business implementation; TUI adoption proves
+reuse; only then may `trainlog -w`, the loopback HTTP adapter, embedded assets,
+and browser UI be introduced. Initial API delivery is read-only. Later program
+and session writes require explicit transactional Core command services.
+
+`TRAINLOG_WEB_V1` preserves `/api/v1/` as an independently versioned boundary,
+the `127.0.0.1:8080` default, explicit `--port`, no silent port fallback, a
+single serialized Core/SQLite owner, build-only Node/npm, and no change to
+business SQLite or frozen exchange formats. Dashboard Activité and Progression
+mathematics remain specification gates before their read models.
 
 ## Next
 
@@ -75,7 +105,11 @@ normal capture.
 ## Canonical order
 
 ```text
-REAL_DATA_BASELINE_V1
+WEB_DASHBOARD_CHARACTERIZATION_V1
+        -> WEB_DASHBOARD_CORE_READ_MODEL_V1
+        -> WEB_TUI_READ_MODEL_ADOPTION_V1
+        -> TRAINLOG_WEB_V1
+        -> REAL_DATA_BASELINE_V1
         -> GYM_CATALOG_V1
         -> EXERCISE_METADATA_V1
         -> SESSION_GENERATOR_V2
@@ -101,3 +135,6 @@ filesystem, exercise-name identity heuristics, fake sets for continuous work,
 synthetic uniform actuals, ordinary training promoted to measured MAX,
 assistance interpreted as external load, or estimates presented as direct
 measurements. Incompatible exchange semantics require a new version.
+Web UI configuration remains outside training data, scientific/AI exports,
+session synchronization, and business SQLite. Browser, React, TUI, and Android
+must not query desktop tables or duplicate Core calculations.

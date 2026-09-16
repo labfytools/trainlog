@@ -8,6 +8,50 @@ It is a native Kotlin/Jetpack Compose application with local SQLite persistence.
 
 The desktop remains the canonical long-term history and analytics store.
 
+## Interface language (`TRAINLOG_I18N_V0_1_1`)
+
+Trainlog version 0.1.1 is synchronized with the desktop TUI as one product
+version; Android does not have an independent interface version. French is the
+default interface language. The only alternate language is English, selected
+from **Settings → Language**. The selection updates the Compose UI immediately.
+
+`LanguageSettingsOwner` stores exactly one language tag in its dedicated
+`trainlog_presentation_settings` SharedPreferences file. An absent or invalid
+value deterministically selects French. This is presentation state only: it
+does not call the repository and is never stored in Android SQLite, exported,
+imported, or synchronized.
+
+Translations apply to Trainlog-owned UI text, accessibility text, and visible
+number/date formatting. They never translate user exercise or catalogue names,
+stable IDs, JSON/protocol literals, training data, schemas, AI proposals, MAX,
+or feedback. Recognized BODY ZONES are presented from their stable IDs; an
+unknown future ID deliberately retains its catalogue label rather than changing
+domain data.
+
+The current synchronization view renders local typed status and counters. It
+does not translate, reinterpret, or inject a raw desktop/core/receipt/history
+summary: those protocol and operational bytes remain opaque. This presentation
+boundary changes no Android import, export, receipt, or history format.
+
+The active-session editor presents its add action as a full-width semantic
+success button. Existing occurrences can be moved from a dedicated right-side
+drag handle; the resulting list is persisted once the gesture completes. The
+permutation retains `session_id`, `entry_id`, `exercise_id`, equipment, targets,
+actual form values, MAX results, and feedback ownership. A failed write reloads
+the last durable ordering instead of leaving presentation and SQLite divergent.
+The pointer gesture is keyed by stable `entry_id`, accumulates its full vertical
+delta, and calculates a direct bounded destination from the gesture origin. A
+single drag can therefore cross several positions while the handle follows the
+residual pointer offset and surrounding occurrences move away. Cancellation
+restores the origin permutation; completion performs one draft write.
+
+Decimal capture fields use a decimal-capable Android keyboard and retain raw
+editing text. Both `.` and `,` are accepted independently of interface language,
+including intermediate forms such as `0.`, `0,`, `.3`, and `,3`. Commit replaces
+`,` with `.` and parses a finite locale-independent number before applying the
+existing positive/non-negative domain rule. Distance remains explicitly km; no
+unit guessing or automatic correction occurs.
+
 ## Session exchange V3
 
 Completed session occurrences persist an `entry_id`; it is never regenerated
@@ -79,6 +123,21 @@ Completed Session Detail exposes **Modifier la séance**. Its bounded form is
 initialized from occurrence snapshots and writes nothing before Save. Save
 replaces all children in one transaction while retaining `session_id`, every
 retained `entry_id`, feedback roots/revisions, and the session follow-up parent.
+The form edits only facts allowed by each stored occurrence profile, including
+repetitions, set load, set duration, continuous duration, distance in kilometres,
+and speed in km/h. The existing V3 snapshot republishes those corrected facts,
+so synchronization updates the same stable session and occurrences rather than
+creating correction IDs.
+The same dedicated right-side handle can reorder completed occurrences in this
+form. Its list permutation remains transient until Save; Cancel or Back performs
+no repository mutation. Stable `entry_id` keys keep Compose editor/focus state
+with the same occurrence even when duplicate exercises exchange positions. Save
+persists facts and positions together through the same atomic replacement, and
+a failed Save restores the original completed order with all child ownership.
+Completed decimal fields likewise retain keyed raw text until Save, so typing a
+separator is not collapsed into a premature numeric value. Invalid incomplete,
+malformed, non-finite, or negative final values block the transaction with a
+localized error.
 Set and occurrence removal require explicit confirmation; Cancel writes
 nothing. Exercise Detail separately exposes **Modifier l'exercice**. A
 confirmed incompatible catalogue edit controls future Android occurrences;
@@ -607,8 +666,9 @@ trainlog-sync-receipt-v1.json
 
 The receipt is matched by `request_id`.
 
-On success Android then applies the latest PC catalog and displays the final
-result.
+On success Android then applies the latest PC catalog and renders the final
+local typed status/counters. Raw receipt summaries remain opaque operational
+bytes and are not displayed as injected cross-device text.
 
 Before applying the PC catalog or its V2 artifacts, Android applies
 `trainlog-pc-equipment-definitions-v1.json`. Thus custom definitions are known

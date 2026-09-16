@@ -18,6 +18,9 @@ evidence and chronology.
   glanceable summaries, permissions, and Android interaction rules.
 - [Desktop TUI](tui.md) owns Notcurses navigation, correction, detailed
   consultation, analytics, graphs, and long-term follow-up behavior.
+- [Architecture](architecture.md) owns the contract for the planned local Web
+  sibling, including Core/API boundaries, loopback networking, shell,
+  Dashboard, layout, build/runtime separation, and security invariants.
 
 ## Data model
 

@@ -1,7 +1,39 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+/*
+ * CONTRACT: release-signing material is machine-local. Environment variables
+ * take precedence over the private properties file so CI and release hosts can
+ * inject secrets without copying them into the source tree.
+ */
+val releaseSigningProperties = Properties()
+val releaseSigningPropertiesPath =
+    providers.environmentVariable("TRAINLOG_RELEASE_CREDENTIALS_FILE").orNull
+        ?: "${System.getProperty("user.home")}/.config/trainlog/release-signing.properties"
+val releaseSigningPropertiesFile = file(releaseSigningPropertiesPath)
+if (releaseSigningPropertiesFile.isFile) {
+    releaseSigningPropertiesFile.inputStream().use(releaseSigningProperties::load)
+}
+
+fun releaseSigningValue(environmentName: String, propertyName: String): String? =
+    providers.environmentVariable(environmentName).orNull
+        ?.takeIf { it.isNotBlank() }
+        ?: releaseSigningProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = releaseSigningValue("TRAINLOG_RELEASE_STORE_FILE", "storeFile")
+val releaseStorePassword = releaseSigningValue("TRAINLOG_RELEASE_STORE_PASSWORD", "storePassword")
+val releaseKeyAlias = releaseSigningValue("TRAINLOG_RELEASE_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = releaseSigningValue("TRAINLOG_RELEASE_KEY_PASSWORD", "keyPassword")
+val releaseSigningComplete = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.labfytools.trainlog"
@@ -12,10 +44,29 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (releaseSigningComplete) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            if (releaseSigningComplete) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     compileOptions {
@@ -49,6 +100,27 @@ android {
                     .asFile
                     .absolutePath,
             )
+        }
+    }
+}
+
+/* WHY: Android Gradle otherwise emits app-release-unsigned.apk successfully,
+ * which is build evidence but can be mistaken for a publishable artifact.
+ * INVARIANT: every task that packages a release fails before packaging unless
+ * all four external values exist and the configured keystore is a regular
+ * file. Gradle/apksigner still perform the cryptographic validation. */
+tasks.matching { it.name == "packageRelease" }.configureEach {
+    doFirst {
+        if (!releaseSigningComplete) {
+            throw GradleException(
+                "Trainlog release signing is not configured. Set the four " +
+                    "TRAINLOG_RELEASE_* variables or provide the private " +
+                    "release-signing.properties file.",
+            )
+        }
+        val configuredStore = file(requireNotNull(releaseStoreFile))
+        if (!configuredStore.isFile) {
+            throw GradleException("Trainlog release keystore does not exist: $configuredStore")
         }
     }
 }

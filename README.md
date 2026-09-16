@@ -1,9 +1,10 @@
 # Trainlog
 
-Trainlog is a local-first workout and body-data system. Its native Android app
-is the lightweight field companion for fast capture and glanceable summaries;
-its C17/Notcurses desktop TUI is the detailed surface for correction,
-catalogue management, analytics, graphs, and long-term follow-up.
+Trainlog is a local-first workout and body-data system. Trainlog Core owns
+business truth and canonical desktop persistence. Its native Android app is the
+field companion, its C17/Notcurses desktop TUI is the administration and
+technical surface, and its documented future local Web sibling is the analysis,
+visualization, and program/session-preparation surface.
 
 Android and desktop each own a local SQLite database. The desktop database is
 the canonical long-term history. Trainlog synchronizes versioned JSON artifacts
@@ -13,26 +14,41 @@ over direct MTP; it never copies SQLite database files between devices.
 
 | Surface | Primary responsibility |
 |---|---|
-| Android | Capture sets, repetitions, loads, durations, continuous activities, feedback, J+1 follow-ups, body measurements, active drafts, and AI proposals; trigger sync; show quick summaries. |
-| Desktop TUI | Consult and correct canonical history; manage exercises and equipment; analyze body data, MAX results, training statistics, body zones, calendar periods, and longitudinal graphs. |
+| Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
+| Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
+| Local Web (planned) | Analyze and visualize canonical data; prepare programs and sessions through typed Trainlog Core services. |
 
-In short: **Android captures and summarizes. The TUI analyzes and tracks over
-time.** Android intentionally remains lightweight for analytics.
+No interface reconstructs business truth from SQLite tables. The local Web is
+a sibling adapter, not an extension of the TUI; `TRAINLOG_WEB_V1` is currently
+contract-only and has no implementation.
 
 ## Releases
 
-Prebuilt Trainlog releases are published on both official mirrors:
+When a Trainlog release is published, its prebuilt assets are available from
+both official mirrors:
 
 - [GitHub Releases](https://github.com/labfytools/trainlog/releases)
 - [Forgejo Releases](https://git.labfytools.com/fy59/trainlog/releases)
 
-Each stable release provides:
+Each published stable release provides:
 
 - a signed Android APK;
 - a Linux x86-64 TUI executable;
 - SHA-256 checksums.
 
-Both mirrors publish the same Trainlog version and release assets.
+Both mirrors publish the same Trainlog product version and release assets. The
+implemented product version is **0.1.1** on Android and desktop; this is one
+shared Trainlog version, not separate interface versions. Version 0.1.1 is the
+current stable release.
+
+Version 0.1.1 presents Trainlog in French by default, with English selectable
+from **Settings → Language** on Android and the desktop TUI. The selection is
+local to that installation and updates the visible interface immediately; it
+does not translate user exercise/catalogue names or change training data,
+stable IDs, databases, schemas, exchange artifacts, synchronization protocols,
+AI, MAX, or feedback. Synchronization status is rendered locally from typed
+status and counters; raw protocol and operational summaries are not translated
+or injected into the other surface.
 
 See the [documentation](docs/README.md) and [changelog](CHANGELOG.md) for more
 details.
@@ -41,7 +57,7 @@ details.
 
 ### Download a prebuilt release
 
-You can download Trainlog from either official mirror:
+For a published release, download Trainlog from either official mirror:
 
 - [GitHub](https://github.com/labfytools/trainlog/releases)
 - [Forgejo](https://git.labfytools.com/fy59/trainlog/releases)
@@ -55,8 +71,8 @@ not a universally portable Linux binary: the host must provide compatible
 runtime libraries listed under [Dependencies](#dependencies).
 
 ```bash
-chmod +x trainlog-tui-linux-x86_64-v0.1.0
-./trainlog-tui-linux-x86_64-v0.1.0
+chmod +x trainlog-tui-linux-x86_64-v<version>
+./trainlog-tui-linux-x86_64-v<version>
 ```
 
 The executable can remain in the download directory. Moving it into a directory
@@ -93,6 +109,19 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
 `assembleRelease` produces a distributable stable APK only when release signing
 is configured by the release operator. The repository does not contain signing
 credentials and does not silently generate them.
+
+Release hosts provide `TRAINLOG_RELEASE_STORE_FILE`,
+`TRAINLOG_RELEASE_STORE_PASSWORD`, `TRAINLOG_RELEASE_KEY_ALIAS`, and
+`TRAINLOG_RELEASE_KEY_PASSWORD`, or a private
+`~/.config/trainlog/release-signing.properties` file containing the equivalent
+`storeFile`, `storePassword`, `keyAlias`, and `keyPassword` keys. Environment
+variables take precedence. Keystores and local credential files are ignored by
+Git; neither belongs in source control, build logs, or release notes.
+
+The Android release key is the permanent update identity for the application.
+The release operator must preserve an encrypted external backup of both the
+keystore and its credentials. Losing either prevents future compatible Android
+updates; generating a replacement key is not a normal release procedure.
 
 ## Dependencies
 
@@ -200,6 +229,7 @@ As of 2026-09-15:
 - `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`;
 - `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
   Android-triggered bidirectional smoke test.
+- `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`.
 
 The latest executable result belongs in
 [current state](docs/current_state.md), not in multiple README narratives.

@@ -8,6 +8,11 @@ meson-private/
 .gradle/
 local.properties
 **/build/
+*.jks
+*.keystore
+/android/release-signing.properties
+/android/release-signing.env
+/android/keystore.properties
 
 # Editors
 *.swp

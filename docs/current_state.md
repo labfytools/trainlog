@@ -1,6 +1,6 @@
 # Current implementation state
 
-Snapshot date: **2026-09-15**.
+Snapshot date: **2026-09-16**.
 
 This document owns the current implemented state. Historical checkpoints and
 closed incidents belong in [reviews](reviews/) and the
@@ -10,11 +10,14 @@ closed incidents belong in [reviews](reviews/) and the
 
 Android is the field companion: it captures training and body data, preserves
 the active draft, receives AI proposals, triggers synchronization, and shows
-quick summaries. The C17/Notcurses TUI is the detailed consultation,
-correction, catalogue, analytics, graphing, and long-term tracking surface.
+quick summaries. The C17/Notcurses TUI is the administration, inspection,
+maintenance, import/export, and technical-tooling surface. The documented but
+not yet implemented local Web sibling will own analysis, visualization, and
+program/session preparation through Trainlog Core.
 
-Android captures and summarizes. The TUI analyzes and tracks over time. The
-desktop SQLite database remains the canonical long-term history.
+Trainlog Core owns business truth. The desktop SQLite database remains the
+canonical local source of truth and long-term history; no interface owns a
+parallel implementation of its rules.
 
 ## Versions and compatibility
 
@@ -25,15 +28,35 @@ desktop SQLite database remains the canonical long-term history.
 | Android SQLite | schema v17 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs |
 | Desktop terminal backend | Notcurses only |
+| Trainlog product version | `0.1.1` stable, synchronized across Android and desktop (no independent interface versions) |
+| Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
 | Training knowledge | `TRAINING_KNOWLEDGE_V1=PASS` |
 | Session generator | `SESSION_GENERATOR_V1=PASS`, hidden pending V2 |
 | Application shell | `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2` |
 | Statistics | `STATS_V1=IMPLEMENTED` |
+| Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
+
+Language is device-local presentation state. Android keeps it in dedicated
+SharedPreferences; desktop keeps it in the XDG configuration file
+`trainlog/presentation.conf`. A successful selection updates the UI
+immediately. It does not enter either SQLite database, training data, stable
+IDs, schemas, exchange artifacts, synchronization protocols, AI proposals,
+MAX, or feedback. User-defined exercise and catalogue names are never
+automatically translated. Where a recognized stable body-zone ID has a local
+presentation label, only that label is localized; unknown IDs retain their
+catalogue label. Numbers, dates, and other visible formatting are owned by the
+selected presentation language.
+
+Synchronization remains a protocol boundary: core, receipt, and persisted
+history summaries stay opaque operational bytes. Android and the TUI render
+their current synchronization state from local typed status and counters; they
+never inject a raw cross-device French summary into the visible interface. No
+raw exchange or protocol format changed for interface language support.
 
 ## Storage and synchronization
 
@@ -59,9 +82,12 @@ Android currently provides:
 
 - metadata-driven SETS+REPS, SETS+DURATION, and CONTINUOUS+DURATION capture;
 - actual per-set values, optional occurrence equipment, and explicit MAX rows;
-- exactly one durable active session draft with resume, confirmed discard, and
-  atomic completion;
-- completed-session consultation and correction;
+- exactly one durable active session draft with identity-preserving continuous
+  multi-position drag reorder,
+  resume, confirmed discard, and atomic completion;
+- completed-session consultation, transient drag reorder, and atomic factual or
+  order correction while retaining session/occurrence/feedback identities for
+  synchronization;
 - exercise catalogue editing with stable `exercise_id` and referenced-profile
   protection;
 - supplied/custom equipment and machine-exercise metadata;
@@ -70,8 +96,10 @@ Android currently provides:
   follow-ups;
 - pending AI proposal collection, explicit start/delete, and durable tombstones;
 - 7/30/90-day, year, and all-history quick statistics;
-- direct-storage snapshot publication, sync triggering, receipt display, and
-  companion application.
+- direct-storage snapshot publication, sync triggering, locally rendered typed
+  receipt status/counters, and companion application.
+- French-default/English-selectable presentation from **Settings → Language**,
+  applied immediately without changing repository or synchronization state.
 
 Android does not own canonical long-term analytics. The V1 session generator is
 implemented but intentionally hidden from normal navigation pending V2.
@@ -90,10 +118,25 @@ The desktop is a strict C17 application using Notcurses. It currently provides:
 - statistics derived from canonical occurrence-owned actual work, including
   exact calendar-week/month buckets, performance, body, frequency, exercise,
   and BODY ZONES views;
-- detailed synchronization status and history through the shared engine.
+- detailed locally rendered typed synchronization status/history through the
+  shared engine.
+- French-default/English-selectable presentation from **Settings → Language**,
+  including selected-language formatting without changing canonical data.
 
-Rendering does not own SQL or business rules. Statistics are read-only
-projections; they are not persisted as facts.
+Rendering is not permitted to own SQL or business rules. Statistics are
+read-only projections; they are not persisted as facts. The current TUI
+Dashboard still has a known exception: its direct SQLite/
+`database_internal.h` fact projection must be characterized, extracted into a
+typed Core read model, and consumed by the TUI before any Web Dashboard
+endpoint is created. This is an incremental extraction, not authorization for
+a global `tui.c` refactor.
+
+## Local Web
+
+`TRAINLOG_WEB_V1` architecture, API independence, local-network boundary,
+browser shell, Dashboard, layout ownership, build/runtime separation, and
+security invariants are now canonical. No Web server, frontend, CLI option,
+HTTP endpoint, embedded asset, or layout persistence is implemented yet.
 
 ## Data semantics
 
@@ -113,10 +156,19 @@ projections; they are not persisted as facts.
 
 ## Validation status
 
-The durable commands are owned by [tests.md](tests.md). On 2026-09-15 this audit
-passed desktop compilation, **58/58 Meson tests**, Android unit tests, Android
-debug assembly, the JSON validator, and the import-contract validator. Link and
-diff safety checks also pass in the final audit evidence.
+The durable commands are owned by [tests.md](tests.md). On 2026-09-15 final
+validation passed desktop compilation, **60/60 normal Meson tests** and
+**60/60 ASan/UBSan Meson tests**, Android debug assembly and **202 Android
+tests (198 passed, 4 skipped, 0 failed)**, the JSON validator, and the
+import-contract validator. The source-derived TUI
+`TRANSLATABLE_UI=0` check and Android resource parity also passed. Link and
+diff safety checks pass in the final audit evidence.
+
+`TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
+formatting, layout-invariance and source-derived text-boundary tests, plus
+Android resource-parity, language-owner, typed sync-presentation, and
+stable-data presentation tests. A real-device/manual visual language-switch
+smoke remains a manual validation; it does not change the validated status.
 
 Hardware-dependent MTP and the final real Drive plus Android-triggered AI-draft
 smoke test are not automated. The latter is why
@@ -124,6 +176,8 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
+- `TRAINLOG_WEB_V1` is contract-only; its implementation starts with Dashboard
+  characterization and Core extraction, not React or HTTP infrastructure.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

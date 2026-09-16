@@ -2,10 +2,13 @@
 
 ## 1. System boundary
 
-Trainlog separates capture, durable history, transport, and presentation.
+Trainlog Core is the product authority and separates capture, durable history,
+business logic, transport, and presentation. The TUI, Web, and Android are
+sibling adapters with different product responsibilities; none owns a parallel
+business model.
 
 ```text
-Android capture client
+Android field client
         |
         | local SQLite
         |
@@ -23,10 +26,16 @@ Android capture client
      desktop SQLite       directional PC artifacts
           |                      |
           v                      v
-      desktop TUI             Android
+      Trainlog Core           Android
+          |
+          +-- desktop TUI
+          +-- local Web adapter -> browser
 ```
 
-The desktop SQLite database is the canonical long-term history.
+The desktop SQLite database is the canonical local source of truth and
+long-term history. Core owns data, persistence, business logic, calculations,
+read models, command services, and versioned contracts. An interface must not
+query tables directly to reconstruct its own business rules.
 
 Android local SQLite is a capture store, not a synchronization format.
 
@@ -48,14 +57,23 @@ Responsibilities:
 - PC catalog application;
 - synchronization request creation;
 - synchronization receipt display.
+- retrieval of a session prepared through Trainlog;
+- future sensor-data acquisition, including BLE heart rate.
 
-Android is not responsible for canonical long-term analytics.
+Android is the field adapter for gym use, actual-work capture, feedback, and
+returning observations to Trainlog. It is not responsible for canonical
+long-term analytics or business truth and never accesses desktop SQLite
+directly.
 
 ### Desktop core
 
 The C17 core owns:
 
+- data and domain rules;
 - desktop SQLite persistence;
+- business calculations;
+- typed read models and transactional command services;
+- versioned contracts;
 - exercise/catalog rules;
 - generated body-zone taxonomy and relation APIs;
 - profile-aware session data;
@@ -67,9 +85,10 @@ The C17 core owns:
 
 ### TUI
 
-The Notcurses layer owns interaction and rendering. It is confined to the
-desktop executable; persistence, synchronization, and core services have no
-terminal-library dependency.
+The TUI is the administration, inspection, maintenance, import/export, and
+technical-tooling adapter. The Notcurses layer owns terminal interaction and
+rendering. It is confined to the desktop executable; persistence,
+synchronization, and core services have no terminal-library dependency.
 
 It consumes core services for:
 
@@ -99,6 +118,145 @@ layout is compact from 72x20, has a sidebar from 100x26, and expands it from
 120x32. Its bounded UTF-8 adapter, stable-ID list state, shared action registry
 and run-scoped terminal planes keep Notcurses infrastructure separate from
 product semantics.
+
+The current Dashboard implementation retains one known layering violation:
+`tui.c` uses SQLite and `database_internal.h` directly to build Dashboard facts
+and calculations. This is a blocking debt for the Web Dashboard. Before any
+Dashboard HTTP endpoint exists, characterization tests must capture the current
+behavior, the query and calculations must move incrementally into a typed Core
+read model, and the TUI must consume that read model. This requirement does not
+authorize a global `tui.c` refactor.
+
+### Local Web application
+
+`TRAINLOG_WEB_V1` is a sibling adapter of the TUI and Android, never an
+extension of the TUI. It is launched by either:
+
+```text
+trainlog -w
+trainlog --web
+```
+
+Trainlog serves the Web application and its versioned HTTP API to a browser.
+The Web owns analysis, visualization, program preparation, and session
+preparation. Initial API introduction is read-only; later program and session
+mutations must call explicit transactional Core command services. Generic CRUD
+over SQLite tables is forbidden.
+
+The V1 network contract is:
+
+```text
+address = 127.0.0.1
+default port = 8080
+explicit override = trainlog -w --port <port>
+IPv6 = out of scope
+```
+
+A requested occupied port is an explicit startup failure. Trainlog never
+selects another port silently and never binds to a LAN address implicitly.
+
+The architectural boundary is:
+
+```text
+Browser
+   |
+   | HTTP / independently versioned /api/v1/
+   v
+Web adapter
+   |
+   | typed Core services
+   v
+Trainlog Core
+   |
+   v
+desktop SQLite
+```
+
+The following dependencies are forbidden:
+
+```text
+Browser -> SQLite
+React -> SQL
+Web route -> database_internal.h
+Web route -> duplicated TUI calculation
+```
+
+The Web API version is independent of the SQLite schema,
+`TRAINLOG_FORMAT_V1`, mobile/synchronization/export formats, and the Trainlog
+product version. Web evolution must not alter a frozen exchange format.
+
+V1 preserves serialized Core access: one process-owned `TrainlogDatabase` is
+opened and migrated once before HTTP listening, used without concurrent direct
+SQLite-handle access, and closed by the process owner after server shutdown. A
+single-threaded event loop is the preferred server architecture.
+
+Every Web page retains one application shell:
+
+- Header navigation: Dashboard, Analyse, Programmes, Séances, Exercices;
+- Body: responsive tile-organized page content;
+- Footer: user, date of the latest completed session, and all primary BODY
+  ZONES worked in that completed session.
+
+The Unix login is the V1 user fallback until Trainlog owns an explicit display
+name. Footer zones come only from the latest completed session; missing facts
+remain unavailable rather than being invented. Header and Footer remain
+present during navigation.
+
+The sole V1 theme is Catppuccin Mocha with Lavender as its primary accent.
+There is no V1 light theme. The browser is the client and Electron is outside
+the architecture. React, TypeScript, Vite, and Apache ECharts are the intended
+frontend stack. Node and npm are build-only dependencies; installed Trainlog
+must not require either. All production assets are local, built ahead of time,
+and incorporated into the `trainlog` binary from the sibling root `web/`
+directory. The grid library remains open pending a dedicated spike.
+
+The Dashboard is a canonical 12-column grid containing exactly seven V1 tiles:
+
+1. Prochaine séance;
+2. Activité;
+3. Progression;
+4. Dernière séance;
+5. Records / MAX;
+6. Répartition musculaire;
+7. Cardio / récupération.
+
+V1 supports drag and drop, horizontal and vertical resizing, tile-specific
+minimum/maximum sizes, automatic reorganization, responsive projection,
+persistence, and restoration of the Trainlog default. Dragging and resizing
+are enabled only by the explicit `Modifier l'agencement` mode. A larger tile
+may reveal more information, but tile size never changes a metric's business
+definition.
+
+The single persisted source layout is the canonical desktop 12-column layout:
+
+```text
+$XDG_CONFIG_HOME/trainlog/web/dashboard-layout-v1.json
+```
+
+with fallback:
+
+```text
+$HOME/.config/trainlog/web/dashboard-layout-v1.json
+```
+
+Its separately versioned format is interface configuration, not training data.
+It does not enter business SQLite V1, `TRAINLOG_FORMAT_V1`, scientific or AI
+exports, or session synchronization. Small-screen layouts are derived
+responsive projections, not a second persisted truth.
+
+Dashboard values come only from real Trainlog data or documented deterministic
+Core calculations. Missing data produces an unavailable/empty state. Prochaine
+séance displays only a genuinely prepared and persisted session; a generated,
+AI, hidden, or unaccepted proposal is not a validated session. Cardio /
+récupération remains unavailable until real relevant data exists. The exact
+Activité and Progression mathematics remain open and must be specified before
+their read models are implemented.
+
+V1 security invariants are: loopback-only binding, Host validation, no
+permissive CORS, foreign-origin/CSRF protection for mutations, explicit bounds
+for headers, bodies, connections and timeouts, local assets only, no CDN, no
+implicit telemetry, a Content Security Policy, and orderly `SIGINT`/`SIGTERM`
+shutdown.
 
 Android's `AppNavigationController` is the corresponding route owner. Its
 Material 3 drawer exposes the same seven roots and derives drawer selection
@@ -463,20 +621,21 @@ known errors with generic placeholders.
 ## 11. Layering rule
 
 ```text
-Notcurses / Compose rendering
-          |
-          v
-application workflow
-          |
-          +-- domain model
-          +-- synchronization
-          +-- validation
-          |
-          v
-persistence / MTP transport
+Notcurses / Web / Compose adapters
+                 |
+                 v
+       typed Core application services
+                 |
+                 +-- domain model and calculations
+                 +-- read models and command services
+                 +-- synchronization and validation
+                 |
+                 v
+       persistence / MTP transport
 ```
 
-Rendering does not own persistence rules.
+Rendering does not own persistence rules, SQL, or duplicate business
+calculations.
 
 Persistence and MTP code do not depend on Notcurses rendering.
 
