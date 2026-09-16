@@ -318,6 +318,26 @@ rules. The activity map encodes active/session facts directly; muscle bar
 length is exactly `session_count`, explicitly labelled. Responsive projection
 changes density, not the canonical layout or metric semantics.
 
+`WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` keeps visualization behind the
+same typed snapshot. Progression dynamically imports modular ECharts
+(`LineChart`, `GridComponent`, `TooltipComponent`, `SVGRenderer`) only in
+medium/large sizes. One instance is owned per mounted chart, updated from the
+exact comparable series, resized by `ResizeObserver`, and disposed on unmount.
+SVG was selected over Canvas because the bounded series has very few elements
+and vector sharpness/responsive scaling matter more than high-volume drawing.
+All colours are read from the live Catppuccin CSS variables.
+
+The muscle figure is an original code-native SVG. Canonical localized mappings
+are: `chest` to bilateral front chest; `back` to rear upper back and bilateral
+lats; `shoulders` to bilateral front/rear shoulders; `arms` to bilateral
+front/rear arms; `core` to the front trunk; `glutes` to bilateral rear glutes;
+`thighs` and `calves` to bilateral front/rear legs. Aggregate zones
+`full_body`, `upper_body`, and `lower_body` deliberately have no SVG region and
+remain in the complete text list. Visual levels are a deterministic ratio to
+the maximum `session_count` in the current snapshot: zero, up to one third, up
+to two thirds, and above two thirds. They communicate comparison only, never
+fatigue, recovery, balance, volume, or physiological quality.
+
 `WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN` fixes one coherent, read-only
 `GET /api/v1/dashboard` snapshot. One outer SQLite read savepoint covers every
 projection; statements are finalized before return. The seven domains mean:

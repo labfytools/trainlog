@@ -1,7 +1,10 @@
 import type { DashboardSnapshot, WorkedZone } from '../api/dashboard'
-import type { ComponentType } from 'react'
+import { lazy, Suspense, type ComponentType } from 'react'
 import type { TileSize } from './dashboardLayout'
 import { count, formatDate, formatDateTime, formatDose, formatDuration, formatWeight } from './dashboardFormat'
+import { BodyZoneFigure } from './BodyZoneFigure'
+
+const ProgressionChart = lazy(() => import('../charts/ProgressionChart').then((module) => ({ default: module.ProgressionChart })))
 
 interface TileDataProps { snapshot: DashboardSnapshot; size: TileSize }
 
@@ -35,6 +38,7 @@ export function ProgressionTile({ snapshot, size }: TileDataProps) {
     <div><p className="primary-label">{progression.identity.exercise_name}</p>{size !== 'compact' && <p className="secondary-label">{progression.identity.equipment_label}</p>}</div>
     {last === undefined ? <p className="muted">Aucun point disponible</p> : <div className="progression-latest"><strong>{formatWeight(last.weight_kg)}</strong><span>{formatDate(last.timestamp)}</span>{last.improved && <em>Amélioration enregistrée</em>}</div>}
     {size !== 'compact' && <dl className="fact-list horizontal"><Fact label="Dose" value={formatDose(progression.identity.dose)} /><Fact label="Premier" value={first ? formatWeight(first.weight_kg) : '—'} /><Fact label="Dernier" value={last ? formatWeight(last.weight_kg) : '—'} /><Fact label="Points" value={String(progression.points.length)} /></dl>}
+    {size !== 'compact' && progression.points.length > 0 && <><Suspense fallback={<div className="chart-loading" role="status">Chargement de la courbe…</div>}><ProgressionChart identity={progression.identity} points={progression.points} /></Suspense><ol className="sr-only" aria-label="Mesures de progression">{progression.points.map((point, index) => <li key={`${point.session_id}-${point.timestamp}-${index}`}>{formatDateTime(point.timestamp)}, {formatWeight(point.weight_kg)}{point.improved ? ', amélioration' : ''}</li>)}</ol></>}
     {size === 'large' && <p className="chart-legend">Identité comparable : {progression.identity.tracking_mode} · {progression.identity.load_mode}</p>}
   </div>
 }
@@ -64,7 +68,10 @@ export function MuscleDistributionTile({ snapshot, size }: TileDataProps) {
   const ordered = [...zones].sort((a, b) => b.session_count - a.session_count || b.occurrence_count - a.occurrence_count || a.label.localeCompare(b.label, 'fr'))
   const shown = size === 'compact' ? ordered.slice(0, 3) : ordered
   const maximum = Math.max(...ordered.map((zone) => zone.session_count), 1)
-  return <div className="muscle-content"><p className="chart-legend">Longueur : nombre de séances sur 30 jours</p><ul className="muscle-list">{shown.map((zone) => <MuscleRow key={zone.zone_id} zone={zone} maximum={maximum} detailed={size !== 'compact'} full={size === 'large'} />)}</ul></div>
+  return <div className="muscle-content">
+    {size !== 'compact' && <div className="muscle-visual"><BodyZoneFigure zones={zones} /><p className="chart-legend">Couleur : séances sur 30 jours · maximum relatif au snapshot affiché</p></div>}
+    <div className="muscle-details"><p className="chart-legend">Longueur : nombre de séances sur 30 jours</p><ul className="muscle-list">{shown.map((zone) => <MuscleRow key={zone.zone_id} zone={zone} maximum={maximum} detailed={size !== 'compact'} full={size === 'large'} />)}</ul></div>
+  </div>
 }
 
 function MuscleRow({ zone, maximum, detailed, full }: { zone: WorkedZone; maximum: number; detailed: boolean; full: boolean }) {

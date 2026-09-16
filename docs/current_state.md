@@ -45,6 +45,7 @@ parallel implementation of its rules.
 | Web Dashboard grid | `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` |
 | Web Dashboard layout | `WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN` |
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
+| Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -213,6 +214,13 @@ only reveal existing facts. Activity uses a factual CSS day map, MAX lists are
 bounded 1/3/8, and muscle bars encode `session_count` only. Unavailable,
 partial, invalid and transport-error states never synthesize values.
 
+`WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` uses a lazy, modular Apache
+ECharts 6.1.0 SVG line chart for medium/large Progression tiles. Every real
+point remains visible, `smooth=false`, legacy zeroes are preserved, and only
+Core-owned `improved` flags alter markers. An original React SVG supplies
+front/back BODY ZONES regions whose discrete colour level depends solely on
+`session_count`; the factual text list remains authoritative and accessible.
+
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
 Android resource-parity, language-owner, typed sync-presentation, and
@@ -225,9 +233,9 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `WEB_DASHBOARD_VISUALIZATIONS_V1`: advanced curves and muscle visualization
-  remain future work; Tile V1 intentionally uses bounded text, CSS and direct
-  factual encodings without ECharts.
+- `WEB_DASHBOARD_V1_FINAL_REVIEW`: global visual consistency, runtime
+  performance and remaining placeholder decisions await the final bounded
+  Dashboard V1 review.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

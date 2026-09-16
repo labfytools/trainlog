@@ -30,6 +30,21 @@ describe('tuiles Dashboard alimentées par le contrat', () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument()
   })
 
+  it('réserve la courbe aux tailles medium et large', async () => {
+    const snapshot = dashboardFixture()
+    const { rerender } = render(<ProgressionTile snapshot={snapshot} size="compact" />)
+    expect(screen.queryByTestId('progression-chart')).not.toBeInTheDocument()
+    rerender(<ProgressionTile snapshot={snapshot} size="medium" />)
+    expect(await screen.findByTestId('progression-chart', undefined, { timeout: 5_000 })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Mesures de progression' })).toHaveTextContent('0 kg')
+    expect(screen.getByRole('list', { name: 'Mesures de progression' })).toHaveTextContent('amélioration')
+    rerender(<ProgressionTile snapshot={snapshot} size="large" />)
+    expect(await screen.findByTestId('progression-chart', undefined, { timeout: 5_000 })).toBeInTheDocument()
+    expect(screen.getByText('Premier')).toBeInTheDocument()
+    expect(screen.getByText('Dernier')).toBeInTheDocument()
+    expect(screen.getByText('Points')).toBeInTheDocument()
+  })
+
   it('omet toute durée fabriquée lorsque ended_at est absent et révèle les zones en grand', () => {
     const snapshot = dashboardFixture()
     const { rerender } = render(<LastSessionTile snapshot={snapshot} size="medium" />)
@@ -55,6 +70,20 @@ describe('tuiles Dashboard alimentées par le contrat', () => {
     expect(chest.getByText(/6 occurrences · 18 séries/)).toBeInTheDocument()
     expect((container.querySelector('.muscle-track span') as HTMLElement).style.width).toBe('100%')
     expect(screen.getByText(/Longueur : nombre de séances/)).toBeInTheDocument()
+  })
+
+  it('affiche la silhouette en medium/large, jamais en compact, et conserve une zone non mappée dans la liste', () => {
+    const snapshot = dashboardFixture()
+    snapshot.data.muscle_distribution.primary_zones.push({ zone_id: 'full_body', label: 'Corps entier', session_count: 1, occurrence_count: 1, set_count: 0 })
+    const { rerender } = render(<MuscleDistributionTile snapshot={snapshot} size="compact" />)
+    expect(screen.queryByLabelText('Silhouette, vue avant')).not.toBeInTheDocument()
+    rerender(<MuscleDistributionTile snapshot={snapshot} size="medium" />)
+    expect(screen.getByLabelText('Silhouette, vue avant')).toBeInTheDocument()
+    expect(screen.getByLabelText('Silhouette, vue arrière')).toBeInTheDocument()
+    expect(screen.getByText('Corps entier')).toBeInTheDocument()
+    rerender(<MuscleDistributionTile snapshot={snapshot} size="large" />)
+    expect(screen.getByLabelText('Silhouette, vue arrière')).toBeInTheDocument()
+    expect(screen.getByText(/Couleur : séances sur 30 jours/)).toBeInTheDocument()
   })
 
   it('gère les états indisponibles des domaines optionnels', () => {

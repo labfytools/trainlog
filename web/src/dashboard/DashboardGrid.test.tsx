@@ -126,6 +126,6 @@ describe('grille interactive du Dashboard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('momentanément indisponibles')
     const snapshot = dashboardFixture(); snapshot.meta.invalid_data = true
     rerender(<DashboardGrid dashboard={snapshot} />)
-    expect(screen.getByRole('status')).toHaveTextContent('données invalides ont été écartées')
+    expect(screen.getByText('Certaines données invalides ont été écartées.')).toHaveAttribute('role', 'status')
   })
 })

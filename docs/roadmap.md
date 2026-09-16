@@ -32,7 +32,7 @@ tile rendering exist. Advanced visualizations remain a future slice.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_VISUALIZATIONS_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_V1_FINAL_REVIEW
 ```
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
@@ -48,6 +48,9 @@ layout with atomic XDG storage, optimistic revisions and protected HTTP
 mutations; responsive projections remain derived.
 `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` replaces every shell placeholder with a
 size-adaptive component consuming only the frozen Dashboard snapshot.
+`WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` adds a factual time-series chart
+for the Core-selected performance identity and an original accessible BODY
+ZONES silhouette, without changing either domain's semantics.
 
 ## TRAINLOG_WEB_V1 implementation gate
 
@@ -82,7 +85,8 @@ WEB_DASHBOARD_DATA_CONTRACT_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_GRID_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_LAYOUT_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_TILES_V1 [PASS/FROZEN]
-        -> WEB_DASHBOARD_VISUALIZATIONS_V1
+        -> WEB_DASHBOARD_VISUALIZATIONS_V1 [PASS/FROZEN]
+        -> WEB_DASHBOARD_V1_FINAL_REVIEW
 ```
 
 The slice order may be refined by the next contract, but it must preserve the

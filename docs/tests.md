@@ -93,6 +93,14 @@ legacy 0 kg visibility, `improved` use, unfinished-session duration absence,
 global loading/error/invalid signals, accessible textual equivalents and live
 density changes during keyboard resize.
 
+`WEB_DASHBOARD_VISUALIZATIONS_V1` adds Vitest coverage for lazy chart presence
+by tile size, factual progression tooltips, one/multiple/legacy-zero points,
+accessible series descriptions, the complete canonical BODY ZONES SVG mapping,
+unmapped aggregate preservation, deterministic session-only intensity levels,
+front/back views, keyboard-focusable regions and factual muscle tooltips. The
+existing Activity, MAX, session, unavailable, Footer and Grid/Layout tests
+remain unchanged and passing.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

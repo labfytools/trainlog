@@ -9,6 +9,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "echarts": "6.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-grid-layout": "2.2.4"
