@@ -408,6 +408,52 @@ bounded source reaches its local limit.
 Malformed persisted timestamps are excluded before sorting, reported as ignored
 legacy data, and do not make the remaining dashboard unavailable.
 
+`WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN` fixes the current projection
+before Core extraction. Its persisted sources are `sessions`,
+`session_exercises`, `performed_sets`, `continuous_activity`, `max_results`,
+`exercises`, exercise BODY ZONE relations, equipment resolution, and body
+observations through their existing database readers. The landing snapshot has
+no “last session” record and computes no loaded volume: it exposes counts,
+period buckets, one selected working-performance identity/series, the latest
+eligible explicit-MAX event, one latest body-metric series, and catalogue-zone
+buckets.
+
+SETS/REPS and SETS/DURATION each contribute one performed-set fact per stored
+row; their dose is respectively repetitions or seconds. CONTINUOUS/DURATION
+contributes one exercise/session fact but never a performed set or working
+performance point. Multiple occurrences are retained as independent facts,
+while the distinct-exercise total deduplicates by `exercise_id`. Plans without
+actual sets, continuous data, or explicit MAX do not enter observable session
+history. A valid actual session with empty `ended_at` does enter it.
+
+Working improvement requires the exact exercise, equipment, tracking mode,
+load mode and positive dose, a resolved equipment whose load semantics are
+`external`, an occurrence load mode of `external`, a finite nonnegative actual
+weight, and a strictly earlier comparable instant. Assistance facts remain in
+session/set/exercise counts but not in working comparison. Explicit MAX remains
+separate from ordinary heavy sets; it requires resolved external equipment and
+a non-assistance occurrence. The headline MAX is the latest eligible event,
+not the greatest weight. Equal-instant facts never compare against one another;
+stable session/entry/kind/position order is used internally, the selected
+exercise tie-break is bytewise `exercise_id`, and performance points then order
+by instant and `session_id`.
+
+The selected working series currently copies every matching exact-dose set and
+marks its point as weighted even when the persisted set has no weight, yielding
+`0.0 kg` for that point. This surprising legacy behavior is characterized, not
+endorsed or corrected by this tranche. The Core extraction must initially
+preserve it or explicitly return to contract review before changing semantics.
+
+The snapshot reads at most 128 observable sessions, 4096 occurrence facts, 128
+selected performance points, and 256 points for each body metric. Reaching a
+bound sets the conservative `partial` flag. At exactly 128 sessions the view is
+already partial; beyond that limit the session total stays at 128 while facts
+continue independently up to 4096. At exactly 4096 facts the view is complete;
+the next fact is omitted and sets `partial`. Malformed fact/timestamp rows are
+omitted and set `invalid_data`. A database with no training history still has
+the seeded canonical exercise catalogue, so its training/MAX/body values are
+empty while its catalogue zone distribution is not.
+
 `Répartition du catalogue` is a separate global catalogue projection. It
 counts every active canonical exercise exactly once by its persisted **primary**
 BODY ZONE; secondary zones do not inflate the result, merged source IDs are not

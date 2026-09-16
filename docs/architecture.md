@@ -121,11 +121,12 @@ product semantics.
 
 The current Dashboard implementation retains one known layering violation:
 `tui.c` uses SQLite and `database_internal.h` directly to build Dashboard facts
-and calculations. This is a blocking debt for the Web Dashboard. Before any
-Dashboard HTTP endpoint exists, characterization tests must capture the current
-behavior, the query and calculations must move incrementally into a typed Core
-read model, and the TUI must consume that read model. This requirement does not
-authorize a global `tui.c` refactor.
+and calculations. `WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN` now captures
+that behavior, including its bounds and legacy-data flags. This remains a
+blocking debt for the Web Dashboard: before any Dashboard HTTP endpoint exists,
+the query and calculations must move incrementally into a typed Core read model
+and the TUI must consume that read model. This requirement does not authorize a
+global `tui.c` refactor.
 
 ### Local Web application
 

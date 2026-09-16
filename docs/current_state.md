@@ -36,6 +36,7 @@ parallel implementation of its rules.
 | Session generator | `SESSION_GENERATOR_V1=PASS`, hidden pending V2 |
 | Application shell | `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2` |
 | Statistics | `STATS_V1=IMPLEMENTED` |
+| Dashboard characterization | `WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -126,10 +127,10 @@ The desktop is a strict C17 application using Notcurses. It currently provides:
 Rendering is not permitted to own SQL or business rules. Statistics are
 read-only projections; they are not persisted as facts. The current TUI
 Dashboard still has a known exception: its direct SQLite/
-`database_internal.h` fact projection must be characterized, extracted into a
-typed Core read model, and consumed by the TUI before any Web Dashboard
-endpoint is created. This is an incremental extraction, not authorization for
-a global `tui.c` refactor.
+`database_internal.h` fact projection is now frozen by characterization tests.
+It must next be extracted into a typed Core read model and consumed by the TUI
+before any Web Dashboard endpoint is created. This is an incremental
+extraction, not authorization for a global `tui.c` refactor.
 
 ## Local Web
 
@@ -176,8 +177,9 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `TRAINLOG_WEB_V1` is contract-only; its implementation starts with Dashboard
-  characterization and Core extraction, not React or HTTP infrastructure.
+- `TRAINLOG_WEB_V1` is contract-only; Dashboard characterization is frozen and
+  the next implementation step is Core read-model extraction, not React or
+  HTTP infrastructure.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

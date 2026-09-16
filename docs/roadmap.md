@@ -30,14 +30,14 @@ architecture is canonical, but no Web code exists yet.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_CHARACTERIZATION_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_CORE_READ_MODEL_V1
 ```
 
-Characterize the existing TUI Dashboard before moving its direct SQLite and
-`database_internal.h` projection into a typed Core read model. Then adapt the
-TUI to consume that read model. This incremental sequence is a blocking
-prerequisite for a Web Dashboard endpoint and does not authorize a global
-`tui.c` refactor.
+`WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN`. Move the now-characterized
+direct SQLite and `database_internal.h` projection into a typed Core read
+model without changing its results. Then adapt the TUI to consume that read
+model. This incremental sequence is a blocking prerequisite for a Web
+Dashboard endpoint and does not authorize a global `tui.c` refactor.
 
 ## TRAINLOG_WEB_V1 implementation gate
 

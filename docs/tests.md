@@ -188,6 +188,20 @@ tests (198 passed, 4 skipped, 0 failed), with both JSON validators passing.
 Automated coverage does not replace a real device/manual visual language-switch
 smoke; that remains explicit manual validation.
 
+`WEB_DASHBOARD_CHARACTERIZATION_V1` exercises the production Dashboard
+projection through a real in-memory SQLite database. Its fixed test clock
+covers an empty training history, exact rolling-window inclusion immediately
+before/at/after the 30-day boundary, valid actual history without `ended_at`,
+and plan-only exclusion. It covers repeated occurrences, heterogeneous REPS
+sets, SETS/DURATION, CONTINUOUS/DURATION without fake sets, assistance,
+unweighted actuals, ordinary heavy sets versus explicit MAX, equal-instant
+tie-breaks, primary-only catalogue zones, secondary-zone exclusion, and seeded
+catalogue behavior. Exact and exceeded bounds are asserted for 128 observable
+sessions and 4096 Dashboard facts, including the independently truncated totals
+and `partial` flag. Existing regressions continue to cover malformed legacy
+timestamps, body-metric selection, responsive rendering, all-history buckets,
+strictly earlier exact-dose improvement, and explicit-MAX separation.
+
 Notable regression coverage:
 
 - transactional persisted-session replacement;

@@ -3865,12 +3865,32 @@ static int64_t dashboard_period_days(TrainlogStatisticsPeriod period)
     return 30;
 }
 
+/* WHY: characterization tests must exercise rolling-window boundaries without
+ * depending on wall-clock execution time. CONTRACT: production always reads
+ * time(NULL); only the translation-unit test build may supply a fixed instant.
+ * INVARIANT: the override is absent from the installed binary and cannot alter
+ * persisted data or Dashboard semantics. */
+#ifdef TRAINLOG_DASHBOARD_CHARACTERIZATION_TEST
+static bool dashboard_characterization_clock_enabled;
+static time_t dashboard_characterization_clock_value;
+#endif
+
+static time_t dashboard_clock_now(void)
+{
+#ifdef TRAINLOG_DASHBOARD_CHARACTERIZATION_TEST
+    if (dashboard_characterization_clock_enabled)
+        return dashboard_characterization_clock_value;
+#endif
+    return time(NULL);
+}
+
 static bool dashboard_in_period(const TrainlogTimestampKey *key,
     TrainlogStatisticsPeriod period)
 {
     const int64_t days = dashboard_period_days(period);
     /* Unix time and Trainlog's proleptic day zero differ by 719162 days. */
-    const int64_t now = (int64_t)time(NULL) + INT64_C(719162) * INT64_C(86400);
+    const int64_t now = (int64_t)dashboard_clock_now() +
+        INT64_C(719162) * INT64_C(86400);
     return key->utc_second <= now &&
         (days == 0 || key->utc_second >= now - days * INT64_C(86400));
 }
@@ -4068,7 +4088,7 @@ static void __attribute__((unused)) app_shell_load_dashboard(TrainlogAppContext 
      * uses canonical instants, while buckets use represented local dates.
      * Presentation always ends at the canonical current day, so the bucket
      * containing that day remains explicit even when it is zero. */
-    now = time(NULL);
+    now = dashboard_clock_now();
     if (now == (time_t)-1) {
         dashboard->error = true;
         goto finish;
