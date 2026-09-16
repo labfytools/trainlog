@@ -5,6 +5,8 @@
   --base: #1e1e2e;
   --surface-0: #313244;
   --surface-1: #45475a;
+  --surface-2: #585b70;
+  --overlay-1: #7f849c;
   --text: #cdd6f4;
   --subtext-0: #a6adc8;
   --lavender: #b4befe;
@@ -18,6 +20,14 @@
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  /* CONTRACT: functional Web text starts at 12px. The scale keeps Trainlog's
+     compact TUI character without making labels or metadata microscopic. */
+  --font-size-xs: .75rem;
+  --font-size-sm: .8125rem;
+  --font-size-md: .9375rem;
+  --font-size-lg: 1.0625rem;
+  --font-size-xl: 1.5rem;
+  --font-size-display: clamp(2.25rem, 5vw, 4.5rem);
   --shell-gutter: clamp(1rem, 3vw, 3rem);
   --radius: 1rem;
   font-family: var(--font-sans);
