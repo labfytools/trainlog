@@ -1,7 +1,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <sqlite3.h>
 
 #include "trainlog/web_dashboard.h"
 
@@ -36,4 +40,6 @@ static bool test_empty_and_real_facts(void){
 
 static bool test_json_escaping_and_limit(void){TrainlogWebDashboardSnapshot s;char json[TRAINLOG_WEB_JSON_CAPACITY];char tiny[8];size_t size;(void)memset(&s,0,sizeof(s));(void)snprintf(s.user_display_name,sizeof(s.user_display_name),"A\"B\\C\nÉ");(void)snprintf(s.generated_at,sizeof(s.generated_at),"2026-09-16T12:00:00Z");s.next_session_reason="no_persisted_executable_plan";s.cardio_reason="no_cardio_data_source";CHECK(trainlog_web_dashboard_serialize(&s,json,sizeof(json),&size)==TRAINLOG_STATUS_OK&&size>0U);CHECK(strstr(json,"A\\\"B\\\\C\\nÉ")!=NULL);CHECK(trainlog_web_dashboard_serialize(&s,tiny,sizeof(tiny),&size)==TRAINLOG_STATUS_SYSTEM_ERROR);s.user_display_name[0]=(char)0xc3;s.user_display_name[1]='\0';CHECK(trainlog_web_dashboard_serialize(&s,json,sizeof(json),&size)==TRAINLOG_STATUS_SYSTEM_ERROR);return true;}
 
-int main(void){return test_empty_and_real_facts()&&test_json_escaping_and_limit()?0:1;}
+static bool test_corrupt_timestamp_sets_invalid_data(void){char path[]="/tmp/trainlog-web-dashboard-XXXXXX";int fd=mkstemp(path);TrainlogDatabase*d=NULL;sqlite3*raw=NULL;TrainlogWebDashboardSnapshot s;TrainlogWebDashboardQuery q={INT64_C(1789560000)};CHECK(fd>=0);CHECK(close(fd)==0);CHECK(trainlog_database_open(path,&d)==TRAINLOG_STATUS_OK);CHECK(insert_fact(d,"se_92000000-0000-4000-8000-000000000001","en_92000000-0000-4000-8000-000000000001","2026-09-15T10:00:00+02:00",0)==false);CHECK(trainlog_database_insert_exercise_profiled(d,"ex_90000000-0000-4000-8000-000000000001","Corruptible","corruptible",TRAINLOG_TRACKING_REPS,TRAINLOG_RECORDING_SETS,(TrainlogExerciseDataFields)0)==TRAINLOG_STATUS_OK);CHECK(insert_fact(d,"se_92000000-0000-4000-8000-000000000001","en_92000000-0000-4000-8000-000000000001","2026-09-15T10:00:00+02:00",0));trainlog_database_close(d);d=NULL;CHECK(sqlite3_open(path,&raw)==SQLITE_OK);CHECK(sqlite3_exec(raw,"UPDATE sessions SET started_at='corrupt';",NULL,NULL,NULL)==SQLITE_OK);CHECK(sqlite3_close(raw)==SQLITE_OK);raw=NULL;CHECK(trainlog_database_open(path,&d)==TRAINLOG_STATUS_OK);CHECK(trainlog_web_dashboard_load(d,&q,&s)==TRAINLOG_STATUS_OK);CHECK(s.invalid_data);trainlog_database_close(d);CHECK(unlink(path)==0);return true;}
+
+int main(void){return test_empty_and_real_facts()&&test_json_escaping_and_limit()&&test_corrupt_timestamp_sets_invalid_data()?0:1;}

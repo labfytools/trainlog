@@ -13,6 +13,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <sqlite3.h>
+
 #include "trainlog/database.h"
 #include "trainlog/web_server.h"
 #include "web_assets.h"
@@ -252,6 +254,46 @@ static bool test_port_in_use(TrainlogDatabase *database)
     return true;
 }
 
+static bool test_dashboard_core_error_translation(void)
+{
+    char path[] = "/tmp/trainlog-web-error-XXXXXX";
+    char response[4096];
+    TrainlogDatabase *database = NULL;
+    sqlite3 *raw = NULL;
+    uint16_t port;
+    pid_t child;
+    int fd = mkstemp(path);
+    int status;
+    CHECK(fd >= 0 && close(fd) == 0);
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    trainlog_database_close(database);
+    database = NULL;
+    CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw, "DROP TABLE sessions;", NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_close(raw) == SQLITE_OK);
+    raw = NULL;
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(reserve_port(&port, 0) == -2);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        volatile sig_atomic_t stop = 0;
+        char diagnostic[256];
+        _exit(trainlog_web_server_run(database, port, &stop, diagnostic,
+            sizeof(diagnostic)) == 0 ? 0 : 1);
+    }
+    CHECK(exchange(port,
+        "GET /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        response, sizeof(response)));
+    CHECK(strstr(response, "HTTP/1.1 500") != NULL);
+    CHECK(strstr(response, "\"dashboard_unavailable\"") != NULL);
+    CHECK(kill(child, SIGTERM) == 0);
+    CHECK(waitpid(child, &status, 0) == child);
+    trainlog_database_close(database);
+    CHECK(unlink(path) == 0);
+    return true;
+}
+
 int main(void)
 {
     TrainlogDatabase *database = NULL;
@@ -264,7 +306,8 @@ int main(void)
         passed = trainlog_web_server_run(database, 8080U, &stop, diagnostic,
             sizeof(diagnostic)) != 0 && strstr(diagnostic, "frontend") != NULL;
     } else {
-        passed = test_http_contract(database) && test_port_in_use(database);
+        passed = test_http_contract(database) && test_port_in_use(database) &&
+            test_dashboard_core_error_translation();
     }
     trainlog_database_close(database);
     return passed ? 0 : 1;
