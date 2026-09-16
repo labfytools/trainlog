@@ -37,6 +37,8 @@ parallel implementation of its rules.
 | Application shell | `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2` |
 | Statistics | `STATS_V1=IMPLEMENTED` |
 | Dashboard characterization | `WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN` |
+| Dashboard Core read model | `WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` |
+| TUI Dashboard adoption | `WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -125,12 +127,10 @@ The desktop is a strict C17 application using Notcurses. It currently provides:
   including selected-language formatting without changing canonical data.
 
 Rendering is not permitted to own SQL or business rules. Statistics are
-read-only projections; they are not persisted as facts. The current TUI
-Dashboard still has a known exception: its direct SQLite/
-`database_internal.h` fact projection is now frozen by characterization tests.
-It must next be extracted into a typed Core read model and consumed by the TUI
-before any Web Dashboard endpoint is created. This is an incremental
-extraction, not authorization for a global `tui.c` refactor.
+read-only projections; they are not persisted as facts. The former Dashboard
+exception is resolved: its typed Core read model owns the SQLite projection and
+all characterized calculations, while the TUI supplies query state and renders
+the result. No Dashboard HTTP endpoint exists yet.
 
 ## Local Web
 
@@ -165,6 +165,10 @@ import-contract validator. The source-derived TUI
 `TRANSLATABLE_UI=0` check and Android resource parity also passed. Link and
 diff safety checks pass in the final audit evidence.
 
+The Dashboard Core extraction tranche passes **62/62 normal Meson tests** and
+**62/62 ASan/UBSan Meson tests**, including the standalone public-header and
+Core characterization targets, plus both canonical JSON validators.
+
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
 Android resource-parity, language-owner, typed sync-presentation, and
@@ -177,9 +181,9 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `TRAINLOG_WEB_V1` is contract-only; Dashboard characterization is frozen and
-  the next implementation step is Core read-model extraction, not React or
-  HTTP infrastructure.
+- `TRAINLOG_WEB_V1` remains contract-only; Dashboard characterization, Core
+  extraction and TUI adoption are frozen. The next implementation cursor is
+  CLI/local HTTP infrastructure, not React.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

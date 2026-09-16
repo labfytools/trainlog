@@ -449,6 +449,17 @@ no set-position tie-break; the preceding fact order is session, entry, kind,
 then set position. The Core extraction must initially preserve these observed
 semantics or explicitly return to contract review before changing them.
 
+`WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` preserves those semantics in
+the Core API `trainlog_dashboard_load()`. Its query makes the reference Unix
+second explicit, so rolling boundaries are deterministic without a test-only
+production clock. The snapshot is caller-owned and retains the characterized
+128-session, 4096-fact, 128-performance-point, 256-body-point and 12-bucket
+bounds plus conservative `partial` and `invalid_data` flags. The TUI owns only
+period selection, the normal `time(NULL)` capture, localization, formatting,
+layout, rendering and interaction. Consequently
+`WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN` is complete as part of the same
+extraction tranche.
+
 The snapshot reads at most 128 observable sessions, 4096 occurrence facts, 128
 selected performance points, and 256 points for each body metric. Reaching a
 bound sets the conservative `partial` flag. At exactly 128 sessions the view is

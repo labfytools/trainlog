@@ -90,6 +90,7 @@ trainlog_core_sources = files(
   'src/body_analytics.c',
   'src/catalog.c',
   'src/database.c',
+  'src/dashboard.c',
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
@@ -199,6 +200,22 @@ test_body_zones = executable(
   c_args: strict_c_args,
 )
 test('body_zones', test_body_zones)
+
+test_dashboard = executable(
+  'test_dashboard',
+  'tests/test_dashboard.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('dashboard', test_dashboard)
+
+test_dashboard_header = executable(
+  'test_dashboard_header',
+  'tests/test_dashboard_header.c',
+  include_directories: trainlog_include,
+  c_args: strict_c_args,
+)
+test('dashboard_header', test_dashboard_header)
 
 test_training_knowledge = executable(
   'test_training_knowledge',

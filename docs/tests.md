@@ -188,8 +188,9 @@ tests (198 passed, 4 skipped, 0 failed), with both JSON validators passing.
 Automated coverage does not replace a real device/manual visual language-switch
 smoke; that remains explicit manual validation.
 
-`WEB_DASHBOARD_CHARACTERIZATION_V1` exercises the production Dashboard
-projection through a real in-memory SQLite database. Its fixed test clock
+`WEB_DASHBOARD_CHARACTERIZATION_V1` now exercises the production Core service
+directly through a real in-memory SQLite database, without including `tui.c` or
+linking Notcurses. Its explicit fixed query instant
 covers an empty training history, exact rolling-window inclusion immediately
 before/at/after the 30-day boundary, valid actual history without `ended_at`,
 and plan-only exclusion. It covers repeated occurrences, heterogeneous REPS
@@ -203,6 +204,9 @@ sessions and 4096 Dashboard facts, including the independently truncated totals
 and `partial` flag. Existing regressions continue to cover malformed legacy
 timestamps, body-metric selection, responsive rendering, all-history buckets,
 strictly earlier exact-dose improvement, and explicit-MAX separation.
+The standalone `dashboard_header` target also proves that
+`trainlog/dashboard.h` compiles independently as C17. TUI workflow regressions
+separately verify service adoption and snapshot presentation.
 
 Notable regression coverage:
 

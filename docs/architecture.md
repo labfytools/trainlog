@@ -119,14 +119,16 @@ layout is compact from 72x20, has a sidebar from 100x26, and expands it from
 and run-scoped terminal planes keep Notcurses infrastructure separate from
 product semantics.
 
-The current Dashboard implementation retains one known layering violation:
-`tui.c` uses SQLite and `database_internal.h` directly to build Dashboard facts
-and calculations. `WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN` now captures
-that behavior, including its bounds and legacy-data flags. This remains a
-blocking debt for the Web Dashboard: before any Dashboard HTTP endpoint exists,
-the query and calculations must move incrementally into a typed Core read model
-and the TUI must consume that read model. This requirement does not authorize a
-global `tui.c` refactor.
+`WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` resolves the former Dashboard
+layering violation. `tui/src/dashboard.c` alone owns its SQLite fact projection,
+normalization, bounds, ordering, rolling windows, aggregates and legacy-data
+flags. Its public `trainlog/dashboard.h` boundary contains no SQLite, Notcurses
+or private TUI type. The TUI calls that service with an explicit reference Unix
+second and presents the caller-owned bounded snapshot; it neither includes
+`database_internal.h` for the Dashboard nor reproduces its calculations.
+`WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN` was completed in the same tranche
+because live TUI adoption is the parity proof. This was an incremental
+extraction, not a global `tui.c` refactor.
 
 ### Local Web application
 

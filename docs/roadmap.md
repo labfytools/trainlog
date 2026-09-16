@@ -30,14 +30,17 @@ architecture is canonical, but no Web code exists yet.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_CORE_READ_MODEL_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_CLI_HTTP_INFRASTRUCTURE_V1
 ```
 
-`WEB_DASHBOARD_CHARACTERIZATION_V1=PASS/FROZEN`. Move the now-characterized
-direct SQLite and `database_internal.h` projection into a typed Core read
-model without changing its results. Then adapt the TUI to consume that read
-model. This incremental sequence is a blocking prerequisite for a Web
-Dashboard endpoint and does not authorize a global `tui.c` refactor.
+`WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` and
+`WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN`. The characterized Dashboard SQL,
+facts, limits and calculations now live in the typed Core service
+`trainlog_dashboard_load()`; the TUI supplies the selected period and current
+time, then presents the returned snapshot. Adoption was necessary to prove
+parity and was therefore completed in the extraction tranche rather than left
+as an empty roadmap step. The next authorized slice is local CLI/HTTP
+infrastructure; it does not yet authorize React or Dashboard Web metrics.
 
 ## TRAINLOG_WEB_V1 implementation gate
 
@@ -45,8 +48,8 @@ Implementation order is fixed as:
 
 ```text
 WEB_DASHBOARD_CHARACTERIZATION_V1
-        -> WEB_DASHBOARD_CORE_READ_MODEL_V1
-        -> WEB_TUI_READ_MODEL_ADOPTION_V1
+        -> WEB_DASHBOARD_CORE_READ_MODEL_V1 [PASS/FROZEN]
+        -> WEB_TUI_READ_MODEL_ADOPTION_V1 [PASS/FROZEN]
         -> WEB_CLI_HTTP_INFRASTRUCTURE_V1
         -> WEB_FRONTEND_SHELL_V1
         -> WEB_DASHBOARD_V1
