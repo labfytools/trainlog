@@ -25,13 +25,13 @@ Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
 exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
-CLI/HTTP infrastructure and embedded frontend shell exist, but no Dashboard
-business endpoint or real Web metric exists.
+CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
+contract exist. Final tile rendering and layout remain future slices.
 
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_GRID_V1
 ```
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
@@ -63,12 +63,13 @@ and session writes require explicit transactional Core command services.
 the `127.0.0.1:8080` default, explicit `--port`, no silent port fallback, a
 single serialized Core/SQLite owner, build-only Node/npm, and no change to
 business SQLite or frozen exchange formats. Dashboard Activité and Progression
-mathematics remain specification gates before their read models.
+semantics are now frozen by `WEB_DASHBOARD_DATA_CONTRACT_V1`; future rendering
+must consume them without reconstructing or redefining their mathematics.
 
-`WEB_DASHBOARD_V1` must advance through independently reviewable slices:
+`WEB_DASHBOARD_V1` advances through independently reviewable slices:
 
 ```text
-missing Dashboard API/read models
+WEB_DASHBOARD_DATA_CONTRACT_V1 [PASS/FROZEN]
         -> grid-library spike and bounded grid engine
         -> separately versioned layout persistence
         -> real-data tile delivery

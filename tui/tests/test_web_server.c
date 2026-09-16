@@ -156,6 +156,19 @@ static bool test_http_contract(TrainlogDatabase *database)
     CHECK(strstr(response,
         "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
         "\"version\":\"0.1.2\"}") != NULL);
+    CHECK(exchange(port,
+        "GET /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        response, sizeof(response)) && strstr(response, "HTTP/1.1 200") != NULL);
+    CHECK(strstr(response, "Content-Type: application/json; charset=utf-8") != NULL);
+    CHECK(strstr(response, "\"api_version\":1") != NULL);
+    CHECK(strstr(response, "\"no_persisted_executable_plan\"") != NULL);
+    CHECK(strstr(response, "\"no_cardio_data_source\"") != NULL);
+    CHECK(strstr(response, "\"window_days\":90") != NULL);
+    CHECK(strstr(response, "\"partial\":false") != NULL);
+    CHECK(exchange(port,
+        "POST /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n",
+        response, sizeof(response)) && strstr(response, "HTTP/1.1 405") != NULL &&
+        strstr(response, "Allow: GET") != NULL);
     CHECK(exchange(port, "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
         response, sizeof(response)) && strstr(response, "HTTP/1.1 200") != NULL);
     CHECK(strstr(response, "Content-Type: text/html; charset=utf-8") != NULL);

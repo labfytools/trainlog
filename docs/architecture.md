@@ -120,7 +120,9 @@ and run-scoped terminal planes keep Notcurses infrastructure separate from
 product semantics.
 
 `WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` resolves the former Dashboard
-layering violation. `tui/src/dashboard.c` alone owns its SQLite fact projection,
+layering violation. `tui/src/dashboard.c` owns its frozen TUI-compatible SQLite
+projection; `tui/src/web_dashboard.c` owns the distinct Web aggregate and
+composes that projection only where semantics match.
 normalization, bounds, ordering, rolling windows, aggregates and legacy-data
 flags. Its public `trainlog/dashboard.h` boundary contains no SQLite, Notcurses
 or private TUI type. The TUI calls that service with an explicit reference Unix
@@ -298,13 +300,53 @@ It does not enter business SQLite V1, `TRAINLOG_FORMAT_V1`, scientific or AI
 exports, or session synchronization. Small-screen layouts are derived
 responsive projections, not a second persisted truth.
 
-Dashboard values come only from real Trainlog data or documented deterministic
-Core calculations. Missing data produces an unavailable/empty state. Prochaine
-séance displays only a genuinely prepared and persisted session; a generated,
-AI, hidden, or unaccepted proposal is not a validated session. Cardio /
-récupération remains unavailable until real relevant data exists. The exact
-Activité and Progression mathematics remain open and must be specified before
-their read models are implemented.
+`WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN` fixes one coherent, read-only
+`GET /api/v1/dashboard` snapshot. One outer SQLite read savepoint covers every
+projection; statements are finalized before return. The seven domains mean:
+
+1. **Prochaine séance** is available only for a persisted plan explicitly
+   accepted for execution. Schema v18 has proposals, targets in occurrences and
+   completed/observable history, but no such lifecycle gate. V1 therefore
+   returns `available=false`, reason `no_persisted_executable_plan`; proposals,
+   templates and generated suggestions never qualify.
+2. **Activité** is the 90 local calendar days ending on the backend's current
+   local date. A day is active when at least one observable session starts on
+   that persisted timestamp's local date. Observable means at least one
+   performed set, continuous activity or explicit MAX; `ended_at` is not a
+   gate. Multiple sessions are counted separately and sets are counted without
+   converting continuous/MAX facts into fake sets.
+3. **Progression** reuses the frozen Core Dashboard selection and exact
+   `(exercise_id,equipment_id,tracking_mode,load_mode,dose)` identity over 90
+   days. Points and deterministic improvement events never mix identities.
+   Frozen legacy present-at-0.0-kg behavior remains unchanged.
+4. **Dernière séance** is the newest observable session by represented instant,
+   then stable session ID. Duration exists only with a valid non-earlier
+   `ended_at`. Counts distinguish worked occurrences, persisted sets,
+   continuous occurrences and explicit MAX. Primary zones come only from
+   occurrences that own one of those facts, deduplicated and ordered by
+   `zone_id`; catalogue-only exercises never contribute.
+5. **Records / MAX** contains at most eight `max_results`, newest first with
+   session and occurrence IDs as deterministic ties. It exposes the source
+   exercise/equipment and measured weight; ordinary sets and estimated 1RM
+   never qualify.
+6. **Répartition musculaire** covers the 30 local calendar days ending today.
+   Each persisted primary zone reports distinct observable sessions, worked
+   occurrences and actual sets. Continuous and MAX occurrences count as work
+   occurrences/sessions but add no set. Secondary zones and recovery scores
+   are excluded.
+7. **Cardio / récupération** is unavailable with stable reason
+   `no_cardio_data_source`; duration, load, feedback and continuous activity
+   are not cardio proxies.
+
+The same snapshot supplies the Unix account name (bounded `getpwuid_r`
+fallback), latest observable session timestamp and that session's worked
+primary-zone labels to the Footer. Absence is represented by `null`, empty
+collections or stable unavailable reasons, never invented zero-valued facts.
+The JSON writer is internal, allocation-free and bounded at 128 KiB; it owns
+escaping for quotes, backslashes, controls and UTF-8. Collections are bounded
+to 90 activity days, eight MAX entries, 17 BODY ZONES, 128 progression points
+and a 4,096-session corruption scan. `meta.partial` reports truncation and
+`meta.invalid_data` reports rejected persisted values independently.
 
 V1 security invariants are: loopback-only binding, Host validation, no
 permissive CORS, foreign-origin/CSRF protection for mutations, explicit bounds

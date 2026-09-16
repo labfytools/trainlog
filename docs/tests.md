@@ -55,6 +55,17 @@ npm run build
 Release-oriented Meson builds must use `-Dweb=enabled`; Meson never provisions
 or downloads npm dependencies.
 
+`WEB_DASHBOARD_DATA_CONTRACT_V1` adds a standalone bounded Core test for empty
+history, explicit unavailable domains, two observable sessions on one local
+day, an unfinished session, continuous activity, MAX-only sessions, primary
+zone deduplication, catalogue-without-history exclusion, 90/30-day windows,
+recent-MAX truncation/`partial`, Footer facts and JSON escaping/overflow. The
+HTTP lifecycle test additionally proves `GET /api/v1/dashboard`, JSON content
+type/version, unavailable reasons and `POST` rejection without weakening Host,
+CSP, CORS or unknown-route behavior. Vitest validates strict parsing, real
+Footer population, empty fallback, malformed snapshots and absence of invented
+tile metrics; the seven tile bodies remain placeholders.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

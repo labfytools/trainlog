@@ -43,6 +43,7 @@ if web_assets_enabled
     '../web/src/main.tsx',
     '../web/src/vite-env.d.ts',
     '../web/src/api/health.ts',
+    '../web/src/api/dashboard.ts',
     '../web/src/app/App.tsx',
     '../web/src/app/routes.ts',
     '../web/src/app/useRoute.ts',
@@ -174,6 +175,9 @@ trainlog_core_sources = files(
   'src/catalog.c',
   'src/database.c',
   'src/dashboard.c',
+  'src/json_writer.c',
+  'src/web_dashboard.c',
+  'src/web_dashboard_json.c',
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
@@ -297,6 +301,14 @@ test_dashboard = executable(
   c_args: strict_c_args,
 )
 test('dashboard', test_dashboard)
+
+test_web_dashboard = executable(
+  'test_web_dashboard',
+  'tests/test_web_dashboard.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('web_dashboard', test_web_dashboard)
 
 test_dashboard_header = executable(
   'test_dashboard_header',

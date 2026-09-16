@@ -9,7 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
+#include <time.h>
 
+#include "trainlog/web_dashboard.h"
 #include "web_assets.h"
 
 #define TRAINLOG_HTTP_CONNECTION_LIMIT 32U
@@ -23,6 +25,7 @@
 
 typedef struct TrainlogWebContext {
     uint16_t port;
+    TrainlogDatabase *database;
 } TrainlogWebContext;
 
 typedef struct TrainlogHttpRequestState {
@@ -42,7 +45,7 @@ static enum MHD_Result queue_json(struct MHD_Connection *connection,
     struct MHD_Response *response;
     enum MHD_Result result;
     response = MHD_create_response_from_buffer(strlen(body), (void *)body,
-        MHD_RESPMEM_PERSISTENT);
+        MHD_RESPMEM_MUST_COPY);
     if (response == NULL) return MHD_NO;
     if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
             "application/json; charset=utf-8") != MHD_YES ||
@@ -191,6 +194,28 @@ static enum MHD_Result handle_request(void *closure,
                 "{\"error\":\"method_not_allowed\"}\n", "GET");
         return queue_json(connection, MHD_HTTP_OK, HEALTH, NULL);
     }
+    if (strcmp(url, "/api/v1/dashboard") == 0) {
+        TrainlogWebDashboardQuery query;
+        TrainlogWebDashboardSnapshot snapshot;
+        char json[TRAINLOG_WEB_JSON_CAPACITY];
+        size_t json_size;
+        time_t now;
+        if (!is_get)
+            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                "{\"error\":\"method_not_allowed\"}\n", "GET");
+        now = time(NULL);
+        if (now == (time_t)-1 || (int64_t)now != (int64_t)(time_t)now)
+            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                "{\"error\":\"clock_unavailable\"}\n", NULL);
+        query.reference_unix_second = (int64_t)now;
+        if (trainlog_web_dashboard_load(context->database, &query,
+                &snapshot) != TRAINLOG_STATUS_OK ||
+            trainlog_web_dashboard_serialize(&snapshot, json, sizeof(json),
+                &json_size) != TRAINLOG_STATUS_OK || json_size == 0U)
+            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
+                "{\"error\":\"dashboard_unavailable\"}\n", NULL);
+        return queue_json(connection, MHD_HTTP_OK, json, NULL);
+    }
     /* INVARIANT: API paths never fall through to the SPA index. */
     if (strncmp(url, "/api/", 5U) == 0)
         return queue_json(connection, MHD_HTTP_NOT_FOUND,
@@ -250,6 +275,7 @@ int trainlog_web_server_run(TrainlogDatabase *database, uint16_t port,
     bind_address.sin_port = htons(port);
     bind_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     context.port = port;
+    context.database = database;
     errno = 0;
     daemon = MHD_start_daemon(MHD_USE_ERROR_LOG | MHD_USE_NO_THREAD_SAFETY,
         0U, accept_loopback_only, NULL, handle_request, &context,

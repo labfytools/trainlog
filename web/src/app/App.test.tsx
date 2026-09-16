@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import { parseDashboard, type DashboardSnapshot } from '../api/dashboard'
 
 const health = {
   api_version: 1,
@@ -9,11 +10,26 @@ const health = {
   version: '0.1.2',
 }
 
+const dashboard: DashboardSnapshot = {
+  api_version: 1,
+  data: {
+    footer: { user: '—', last_session_date: null, last_zones: [] },
+    next_session: { available: false, reason: 'no_persisted_executable_plan' },
+    activity: { available: true, window_days: 90, days: Array.from({ length: 90 }, (_, day) => ({ date: `day-${day}`, active: false, session_count: 0, set_count: 0 })) },
+    progression: { available: false, reason: 'no_comparable_performance' },
+    last_session: { available: false, reason: 'no_observable_session' },
+    max_records: { available: false, records: [] },
+    muscle_distribution: { available: false, window_days: 30, primary_zones: [] },
+    cardio: { available: false, reason: 'no_cardio_data_source' },
+  },
+  meta: { partial: false, invalid_data: false, generated_at: '2026-09-16T12:00:00Z' },
+}
+
 function mockHealth(value: unknown = health) {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
     ok: true,
-    json: () => Promise.resolve(value),
-  }))
+    json: () => Promise.resolve(String(input).includes('/dashboard') ? dashboard : value),
+  })))
 }
 
 describe('shell Trainlog', () => {
@@ -75,6 +91,32 @@ describe('shell Trainlog', () => {
     mockHealth({ status: 'ok' })
     render(<App />)
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Backend indisponible'))
+  })
+
+  it('alimente le Footer uniquement avec les faits Dashboard reçus', async () => {
+    const actual = structuredClone(dashboard)
+    actual.data.footer = { user: 'fy59', last_session_date: '2026-09-15T10:00:00+02:00', last_zones: ['DOS', 'BRAS'] }
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(String(input).includes('/dashboard') ? actual : health),
+    })))
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('fy59'))
+    expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('2026-09-15T10:00:00+02:00')
+    expect(screen.getByLabelText('Dernière zone')).toHaveTextContent('DOS · BRAS')
+  })
+
+  it('rejette les snapshots Dashboard invalides sans inventer de Footer', async () => {
+    expect(() => parseDashboard({ api_version: 1, data: {}, meta: {} })).toThrow()
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(String(input).includes('/dashboard') ? { status: 'ok' } : health),
+    })))
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Backend connecté'))
+    expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('—')
+    expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('Indisponible')
+    expect(screen.getByLabelText('Dernière zone')).toHaveTextContent('Indisponible')
   })
 
   it('expose les cinq destinations dans une navigation clavier sémantique', () => {

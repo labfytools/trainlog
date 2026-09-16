@@ -133,7 +133,8 @@ Rendering is not permitted to own SQL or business rules. Statistics are
 read-only projections; they are not persisted as facts. The former Dashboard
 exception is resolved: its typed Core read model owns the SQLite projection and
 all characterized calculations, while the TUI supplies query state and renders
-the result. No Dashboard HTTP endpoint exists yet.
+the result. The Web aggregate now exposes the distinct factual snapshot through
+`GET /api/v1/dashboard` without changing the frozen TUI projection.
 
 ## Local Web
 
@@ -143,8 +144,9 @@ security invariants are canonical. The CLI/local HTTP infrastructure and
 embedded frontend shell are implemented: `-w`/`--web`, optional `--port`, exact
 IPv4 loopback binding, `/api/v1/health`, React navigation and the persistent
 Header/Body/Footer shell. Production assets are generated from the npm lockfile
-and linked into the binary. No Dashboard business route, real metric, grid
-engine, business mutation, browser launch or layout persistence exists yet.
+and linked into the binary. The read-only Dashboard business snapshot and
+factual Footer integration exist; no grid engine, business mutation, automatic
+browser launch or layout persistence exists yet.
 
 ## Data semantics
 
@@ -185,6 +187,10 @@ including TypeScript typecheck, 10 Vitest component tests, deterministic asset
 generation bounds, real embedded-asset HTTP coverage, SPA/API separation and
 runtime execution without Node/npm or `web/dist`.
 
+The Dashboard data-contract tranche passes **71/71 normal and ASan/UBSan
+Meson tests**, including the bounded Core/JSON target, HTTP endpoint coverage
+and 12 Vitest tests for parsing and factual Footer integration.
+
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
 Android resource-parity, language-owner, typed sync-presentation, and
@@ -197,9 +203,9 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `TRAINLOG_WEB_V1` has its Core prerequisite, CLI/HTTP infrastructure and
-  embedded frontend shell. The next cursor begins the explicitly partitioned
-  Dashboard V1 work; no Dashboard HTTP route or real Web metric exists yet.
+- `WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN`: the bounded Core snapshot,
+  `/api/v1/dashboard`, explicit unavailable states and factual Footer data are
+  implemented. The seven tile bodies intentionally retain shell placeholders.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

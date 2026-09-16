@@ -2,9 +2,12 @@
 #include "trainlog/cli.h"
 #include "trainlog/paths.h"
 #include "trainlog/web_server.h"
+#include "trainlog/web_dashboard.h"
 
 int main(void)
 {
     TrainlogCliOptions options = {TRAINLOG_RUN_TUI, 8080U};
-    return options.mode == TRAINLOG_RUN_TUI && options.port == 8080U ? 0 : 1;
+    TrainlogWebDashboardQuery query = {0};
+    return options.mode == TRAINLOG_RUN_TUI && options.port == 8080U &&
+        query.reference_unix_second == 0 ? 0 : 1;
 }
