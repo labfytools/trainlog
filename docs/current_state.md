@@ -46,6 +46,7 @@ parallel implementation of its rules.
 | Web Dashboard layout | `WEB_DASHBOARD_LAYOUT_V1=PASS/FROZEN` |
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
+| Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -233,9 +234,9 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `WEB_DASHBOARD_V1_FINAL_REVIEW`: global visual consistency, runtime
-  performance and remaining placeholder decisions await the final bounded
-  Dashboard V1 review.
+- `WEB_NEXT_MODULE_SELECTION_V1`: Analyse, Programmes, Séances and Exercices
+  remain shell placeholders until their Core/API ownership and implementation
+  order are explicitly contracted.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

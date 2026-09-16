@@ -32,7 +32,7 @@ tile rendering exist. Advanced visualizations remain a future slice.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_V1_FINAL_REVIEW
+CURRENT_OPERATIONAL_CURSOR=WEB_NEXT_MODULE_SELECTION_V1
 ```
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
@@ -51,6 +51,9 @@ size-adaptive component consuming only the frozen Dashboard snapshot.
 `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` adds a factual time-series chart
 for the Core-selected performance identity and an original accessible BODY
 ZONES silhouette, without changing either domain's semantics.
+`WEB_DASHBOARD_V1=PASS/FROZEN` closes the complete Dashboard after its final
+functional, visual, responsive, accessibility, persistence and performance
+review.
 
 ## TRAINLOG_WEB_V1 implementation gate
 
@@ -86,12 +89,18 @@ WEB_DASHBOARD_DATA_CONTRACT_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_LAYOUT_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_TILES_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_VISUALIZATIONS_V1 [PASS/FROZEN]
-        -> WEB_DASHBOARD_V1_FINAL_REVIEW
+        -> WEB_DASHBOARD_V1_FINAL_REVIEW [PASS/FROZEN]
 ```
 
 The slice order may be refined by the next contract, but it must preserve the
 existing Core ownership, keep visual layout outside business SQLite and frozen
 formats, and specify Activité/Progression before implementing those metrics.
+
+`WEB_NEXT_MODULE_SELECTION_V1` is the next documentary cursor. The current
+roadmap does not yet establish a contract order between Analyse, Programmes,
+Séances and Exercices. This cursor must inventory their existing Core services,
+read/write boundaries and dependencies, then select one bounded module contract;
+it does not authorize silently implementing a page.
 
 ## Next
 

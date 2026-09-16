@@ -84,6 +84,7 @@ describe('tuiles Dashboard alimentées par le contrat', () => {
     rerender(<MuscleDistributionTile snapshot={snapshot} size="large" />)
     expect(screen.getByLabelText('Silhouette, vue arrière')).toBeInTheDocument()
     expect(screen.getByText(/Couleur : séances sur 30 jours/)).toBeInTheDocument()
+    expect(screen.getByText('Corps entier')).toBeInTheDocument()
   })
 
   it('gère les états indisponibles des domaines optionnels', () => {

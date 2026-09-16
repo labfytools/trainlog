@@ -338,6 +338,15 @@ the maximum `session_count` in the current snapshot: zero, up to one third, up
 to two thirds, and above two thirds. They communicate comparison only, never
 fatigue, recovery, balance, volume, or physiological quality.
 
+`WEB_DASHBOARD_V1=PASS/FROZEN` closes the Dashboard after final review. The
+Progression value axis uses explicit deterministic bounds: constant series get
+a symmetric margin of at least 1 kg (rounded outward to 0.5 kg), while varying
+series get at least 0.5 kg or 10% of their observed span. The lower bound is
+never below zero, and every real observation—including legacy zero—is retained.
+Large Progression tiles place facts and chart side by side so the complete
+domain stays visible without an internal scroll. Dashboard layout persistence,
+responsive projections and the seven domain semantics remain unchanged.
+
 `WEB_DASHBOARD_DATA_CONTRACT_V1=PASS/FROZEN` fixes one coherent, read-only
 `GET /api/v1/dashboard` snapshot. One outer SQLite read savepoint covers every
 projection; statements are finalized before return. The seven domains mean:

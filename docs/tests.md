@@ -101,6 +101,13 @@ front/back views, keyboard-focusable regions and factual muscle tooltips. The
 existing Activity, MAX, session, unavailable, Footer and Grid/Layout tests
 remain unchanged and passing.
 
+`WEB_DASHBOARD_V1_FINAL_REVIEW` adds explicit value-axis coverage for an empty
+defensive domain, one point, identical points, low amplitude, normal amplitude
+and a legacy zero. Every observation must remain within the computed bounds and
+a positive constant series must have visible space on both sides. Tile-density,
+BODY ZONES text preservation, edit handles, keyboard editing and responsive
+non-persistence remain covered by the existing Grid and tile suites.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

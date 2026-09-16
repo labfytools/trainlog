@@ -19,6 +19,25 @@ interface ChartDatum {
   label?: { show: boolean; formatter: string; position: 'top'; color: string; fontSize: number }
 }
 
+export interface ProgressionYAxisBounds { min: number; max: number }
+
+export function progressionYAxisBounds(points: ProgressionPoint[]): ProgressionYAxisBounds {
+  if (points.length === 0) return { min: 0, max: 1 }
+  const weights = points.map((point) => point.weight_kg)
+  const observedMin = Math.min(...weights)
+  const observedMax = Math.max(...weights)
+  const span = observedMax - observedMin
+  // CONTRACT: bounds add visual breathing room only; every persisted value,
+  // including a legacy zero, remains unchanged and inside the visible domain.
+  const rawMargin = span === 0
+    ? Math.max(1, Math.abs(observedMax) * 0.1)
+    : Math.max(0.5, span * 0.1)
+  const margin = Math.ceil(rawMargin * 2) / 2
+  const min = Math.max(0, observedMin - margin)
+  const max = observedMax + margin
+  return { min, max: max > min ? max : min + 1 }
+}
+
 export function progressionCollisionMetadata(points: ProgressionPoint[]): Array<{ count: number; index: number }> {
   const keys = points.map((point) => `${point.timestamp}\u0000${point.weight_kg}`)
   const totals = new Map<string, number>()
@@ -50,6 +69,7 @@ export function ProgressionChart({ identity, points }: ProgressionChartProps) {
     const element = host.current
     const theme = trainlogChartTheme(element)
     const chart = echarts.init(element, undefined, { renderer: 'svg' })
+    const yBounds = progressionYAxisBounds(points)
     const collisions = progressionCollisionMetadata(points)
     const data: ChartDatum[] = points.map((point, index) => {
       const collision = collisions[index]
@@ -80,7 +100,7 @@ export function ProgressionChart({ identity, points }: ProgressionChartProps) {
         axisLabel: { color: theme.subtext, fontSize: 12, hideOverlap: true }, splitLine: { show: false },
       },
       yAxis: {
-        type: 'value', name: 'kg', scale: true, nameTextStyle: { color: theme.subtext, fontSize: 12 },
+        type: 'value', name: 'kg', min: yBounds.min, max: yBounds.max, scale: true, nameTextStyle: { color: theme.subtext, fontSize: 12 },
         axisLabel: { color: theme.subtext, fontSize: 12, formatter: '{value} kg' },
         axisLine: { show: false }, axisTick: { show: false }, splitLine: { lineStyle: { color: theme.surface0 } },
       },
