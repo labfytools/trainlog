@@ -190,6 +190,54 @@ reports that frontend support is absent. Release builds must use
 `-Dweb=enabled`. `-Dweb=disabled` is the explicit desktop-only choice. Node,
 npm, `node_modules`, and `web/dist` are not runtime dependencies.
 
+### Optional systemd user service for local Web development
+
+The versioned `systemd/trainlog-web.service` unit can keep `trainlog -w`
+available on `127.0.0.1:8080` during an interactive user session. This is a
+development convenience, not a requirement of the final Trainlog distribution.
+It intentionally runs the canonical user entry point
+`~/.local/bin/trainlog`; in a source checkout that entry point may be a symlink
+to the current `build/tui/trainlog` binary, but the symlink must resolve to an
+executable before the service is started.
+
+The unit prevents privilege acquisition, gives the process a private temporary
+directory, makes system paths read-only, and applies kernel/control-group and
+setuid restrictions that are compatible with the local HTTP server. It does
+not protect or hide the home directory because SQLite and Trainlog
+configuration must remain writable under `~/.local/share/trainlog` and
+`~/.config/trainlog`. Failed starts use a ten-second restart delay and are
+limited to three attempts per minute, preventing a persistent port-8080
+conflict from producing an uncontrolled loop.
+
+Install the development unit as a symlink so repository updates are picked up
+after `daemon-reload`:
+
+```bash
+mkdir -p ~/.config/systemd/user
+ln -s "$(pwd)/systemd/trainlog-web.service" ~/.config/systemd/user/trainlog-web.service
+systemctl --user daemon-reload
+systemctl --user enable --now trainlog-web.service
+```
+
+Useful lifecycle and diagnostic commands are:
+
+```bash
+systemctl --user status trainlog-web
+systemctl --user restart trainlog-web
+systemctl --user stop trainlog-web
+systemctl --user start trainlog-web
+journalctl --user -u trainlog-web
+```
+
+Uninstalling the integration disables the unit before removing only its user
+configuration symlink:
+
+```bash
+systemctl --user disable --now trainlog-web.service
+rm ~/.config/systemd/user/trainlog-web.service
+systemctl --user daemon-reload
+```
+
 Android builds require JDK 17, an Android SDK supporting the configured API
 levels, and the Gradle wrapper committed in this repository. People installing
 the APK do not need Java, Gradle, or the Android SDK.

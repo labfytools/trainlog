@@ -16,7 +16,6 @@ export function DashboardPage() {
     <section className="page" aria-labelledby="page-title">
       <div className="page-heading">
         <div><p className="eyebrow">VUE D’ENSEMBLE</p><h1 id="page-title">Dashboard</h1></div>
-        <p className="page-intro">Vos repères d’entraînement, sans extrapolation ni donnée inventée.</p>
       </div>
       <div className="tile-grid dashboard-preview">
         {dashboardTiles.map(([title, eyebrow, message], index) => (
