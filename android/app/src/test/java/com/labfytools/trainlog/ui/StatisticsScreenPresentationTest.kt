@@ -69,8 +69,8 @@ class StatisticsScreenPresentationTest {
             "Progression sur six semaines : aucun événement comparable, six points vides",
         ).fetchSemanticsNode()
         compose.onNodeWithText("Données insuffisantes pour établir une progression comparable.").fetchSemanticsNode()
-        compose.onNodeWithText("2 MAX explicite(s) · ouvrir le détail").fetchSemanticsNode()
-        compose.onNodeWithText("82.5 kg").fetchSemanticsNode()
+        compose.onNodeWithText("2 MAX explicites · ouvrir le détail").fetchSemanticsNode()
+        compose.onNodeWithText("82,5 kg").fetchSemanticsNode()
         compose.onNodeWithText("1 relevé · tendance indisponible").fetchSemanticsNode()
         assertTrue(compose.onAllNodesWithText("Δ", substring = true).fetchSemanticsNodes().isEmpty())
     }
@@ -89,9 +89,9 @@ class StatisticsScreenPresentationTest {
         }
 
         compose.onNodeWithContentDescription("Fréquence sur six semaines", substring = true).fetchSemanticsNode()
-        compose.onNodeWithText("Semaine actuelle · 3 séance(s) · 1 MAX inclus").fetchSemanticsNode()
+        compose.onNodeWithText("Semaine actuelle · 3 séances · 1 MAX inclus").fetchSemanticsNode()
         compose.onNodeWithText(
-            "Les MAX signalent des séances; ils ne sont jamais additionnés une seconde fois.",
+            "Les MAX signalent des séances ; ils ne sont jamais additionnés une seconde fois.",
         ).fetchSemanticsNode()
     }
 

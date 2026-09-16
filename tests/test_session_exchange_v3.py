@@ -135,6 +135,29 @@ def main():
         assert roundtrip["sessions"][0]["exercises"][2]["target"] == {"sets": 1, "reps": 12}
         assert roundtrip["sessions"][0]["exercises"][3]["target"] is None
         assert roundtrip["sessions"][1]["exercises"][0]["max_weight_kg"] == 100.0
+
+        # CONTRACT: Android completed-session reorder is a V3 correction of
+        # positions under the same session_id/entry_id identities, never a new
+        # session. Facts and occurrence owners survive the reconciliation.
+        reordered = copy.deepcopy(payload())
+        entries = reordered["sessions"][0]["exercises"]
+        entries.insert(0, entries.pop(3))
+        for position, entry in enumerate(entries):
+            entry["position"] = position
+        reordered_path = root / "reordered.json"
+        reordered_path.write_text(json.dumps(reordered), encoding="utf-8")
+        reconciled = run([sys.executable, str(IMPORTER), str(reordered_path), "--database", str(db)])
+        assert "sessions_reconciled=1" in reconciled.stdout
+        with sqlite3.connect(db) as con:
+            assert con.execute("SELECT COUNT(*) FROM sessions WHERE session_id='se_v3'").fetchone()[0] == 1
+            assert con.execute(
+                "SELECT entry_id FROM session_exercises WHERE session_row_id="
+                "(SELECT id FROM sessions WHERE session_id='se_v3') ORDER BY position"
+            ).fetchall() == [("sxe_walk",), ("sxe_reps",), ("sxe_duration",), ("sxe_unweighted",)]
+            assert con.execute(
+                "SELECT COUNT(DISTINCT entry_id) FROM session_exercises WHERE session_row_id="
+                "(SELECT id FROM sessions WHERE session_id='se_v3')"
+            ).fetchone()[0] == 4
         legacy = copy.deepcopy(payload()); legacy["version"] = 2
         for session in legacy["sessions"]:
             for entry in session["exercises"]:

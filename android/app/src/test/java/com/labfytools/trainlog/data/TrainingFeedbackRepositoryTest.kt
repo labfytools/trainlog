@@ -176,4 +176,140 @@ class TrainingFeedbackRepositoryTest {
             SessionDraft(listOf(corrected.copy(sets=listOf(SessionSetDraft(reps=1))),timedCorrected))) is CorrectCompletedSessionResult.DatabaseError)
         assertEquals(8,android.getSessionDetail(saved.sessionId)!!.exercises[0].sets[1].reps)
     }
+
+    @Test fun `completed continuous correction preserves identity and republishes corrected facts`() {
+        val movement = (android.createExercise(NewExerciseProfile(
+            "Correction continue", RecordingMode.CONTINUOUS, TrackingMode.DURATION,
+            ExerciseDataFields.SPEED_KMH or ExerciseDataFields.DISTANCE_KM,
+        )) as CreateExerciseResult.Created).exercise
+        val original = SessionExerciseDraft(
+            entryId = "sxe_00000000-0000-4000-8000-0000000000d1",
+            exercise = movement,
+            continuousDurationSeconds = 1800,
+            distanceKm = 300.0,
+            speedKmh = 10.0,
+        )
+        val saved = android.saveSession(SessionDraft(listOf(original))) as SaveSessionResult.Saved
+        val corrected = original.copy(continuousDurationSeconds = 1900,
+            distanceKm = com.labfytools.trainlog.ui.parseFiniteDecimal("0,3"), speedKmh = 9.5)
+        assertEquals(CorrectCompletedSessionResult.Saved,
+            android.correctCompletedSession(saved.sessionId, SessionDraft(listOf(corrected))))
+        val detail = android.getSessionDetail(saved.sessionId)!!
+        assertEquals(saved.sessionId, detail.summary.sessionId)
+        assertEquals(original.entryId, detail.exercises.single().entryId)
+        assertEquals(movement.exerciseId, detail.exercises.single().exerciseId)
+        assertEquals(1900, detail.exercises.single().continuousDurationSeconds)
+        assertEquals(0.3, detail.exercises.single().distanceKm!!, 0.0)
+        assertEquals(9.5, detail.exercises.single().speedKmh!!, 0.0)
+        val exported = JSONObject(android.buildMobileExportV3Json())
+            .getJSONArray("sessions").getJSONObject(0)
+        assertEquals(saved.sessionId, exported.getString("session_id"))
+        val occurrence = exported.getJSONArray("exercises").getJSONObject(0)
+        assertEquals(original.entryId, occurrence.getString("entry_id"))
+        val continuous = occurrence.getJSONObject("continuous")
+        assertEquals(0.3, continuous.getDouble("distance_km"), 0.0)
+        assertEquals(9.5, continuous.getDouble("speed_kmh"), 0.0)
+
+        assertTrue(android.correctCompletedSession(saved.sessionId,
+            SessionDraft(listOf(corrected.copy(distanceKm = Double.POSITIVE_INFINITY))))
+            is CorrectCompletedSessionResult.Invalid)
+        assertEquals(0.3, android.getSessionDetail(saved.sessionId)!!
+            .exercises.single().distanceKm!!, 0.0)
+    }
+
+    @Test fun `completed reorder is transient atomic and preserves all occurrence ownership`() {
+        val reps = (android.createExercise(NewExerciseProfile(
+            "Reorder completed reps", RecordingMode.SETS, TrackingMode.REPS, 0,
+        )) as CreateExerciseResult.Created).exercise
+        val continuous = (android.createExercise(NewExerciseProfile(
+            "Reorder completed continuous", RecordingMode.CONTINUOUS, TrackingMode.DURATION,
+            ExerciseDataFields.SPEED_KMH or ExerciseDataFields.DISTANCE_KM,
+        )) as CreateExerciseResult.Created).exercise
+        val equipment = (android.createCustomEquipment("Completed reorder machine") as
+            CreateEquipmentResult.Created).equipment
+        val first = SessionExerciseDraft(
+            entryId = "sxe_00000000-0000-4000-8000-0000000000e1", exercise = reps,
+            equipmentId = equipment.equipmentId,
+            plan = SessionExercisePlan(2, reps = 8, weightKg = 40.0,
+                loadMode = SessionLoadMode.EXTERNAL, restSeconds = 90),
+            sets = listOf(SessionSetDraft(reps = 8, weightKg = 39.0)),
+        )
+        val duplicate = first.copy(
+            entryId = "sxe_00000000-0000-4000-8000-0000000000e2",
+            sets = listOf(SessionSetDraft(reps = 7, weightKg = 38.0)),
+        )
+        val cardio = SessionExerciseDraft(
+            entryId = "sxe_00000000-0000-4000-8000-0000000000e3", exercise = continuous,
+            continuousDurationSeconds = 600, speedKmh = 8.5, distanceKm = 1.4,
+        )
+        val maximum = SessionExerciseDraft(
+            entryId = "sxe_00000000-0000-4000-8000-0000000000e4", exercise = reps,
+            equipmentId = equipment.equipmentId, maxWeightKg = 85.0,
+        )
+        val saved = android.saveSession(SessionDraft(
+            listOf(first, duplicate, cardio, maximum), SessionType.MAX_TEST,
+        )) as SaveSessionResult.Saved
+        val feedback = android.saveExerciseFeedback(saved.sessionId, duplicate.entryId, "avant") as SaveFeedbackResult.Saved
+        assertTrue(android.reviseExerciseFeedback(feedback.stableId, "après") is SaveFeedbackResult.Saved)
+        val followup = android.saveSessionFollowUp(saved.sessionId, "J+1") as SaveFeedbackResult.Saved
+        val original = android.getSessionDetail(saved.sessionId)!!
+
+        val transient = com.labfytools.trainlog.ui.reorderExerciseOccurrences(
+            original.exercises.map { it.correctionDraftForTest() }, 3, 0,
+        )
+        /* Cancel/Back has no repository call: canonical history remains exact. */
+        assertEquals(original, android.getSessionDetail(saved.sessionId))
+        assertEquals(CorrectCompletedSessionResult.Saved, android.correctCompletedSession(
+            saved.sessionId, SessionDraft(transient, SessionType.MAX_TEST),
+        ))
+        val reordered = android.getSessionDetail(saved.sessionId)!!
+        assertEquals(saved.sessionId, reordered.summary.sessionId)
+        assertEquals(listOf(maximum.entryId, first.entryId, duplicate.entryId, cardio.entryId),
+            reordered.exercises.map { it.entryId })
+        assertEquals(listOf(reps.exerciseId, reps.exerciseId, reps.exerciseId, continuous.exerciseId),
+            reordered.exercises.map { it.exerciseId })
+        assertEquals(maximum.maxWeightKg, reordered.exercises[0].maxWeightKg)
+        assertEquals(first.plan, reordered.exercises[1].plan)
+        assertEquals(first.sets, reordered.exercises[1].sets)
+        assertEquals(duplicate.sets, reordered.exercises[2].sets)
+        assertEquals(cardio.continuousDurationSeconds, reordered.exercises[3].continuousDurationSeconds)
+        assertEquals(cardio.distanceKm, reordered.exercises[3].distanceKm)
+        assertEquals(cardio.speedKmh, reordered.exercises[3].speedKmh)
+        assertEquals(listOf(equipment.equipmentId, equipment.equipmentId, equipment.equipmentId, null),
+            reordered.exercises.map { it.equipmentId })
+        assertEquals(feedback.stableId, reordered.exercises[2].feedback.single().feedbackId)
+        assertTrue(reordered.exercises[2].feedback.single().modified)
+        assertEquals(followup.stableId, reordered.followUps.single().followupId)
+
+        android.close()
+        SQLiteDatabase.openDatabase(context.getDatabasePath(aName).path, null,
+            SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("CREATE TRIGGER fail_completed_reorder BEFORE INSERT ON session_exercises " +
+                "BEGIN SELECT RAISE(ABORT,'synthetic completed reorder failure'); END;")
+        }
+        android = TrainlogRepository(context, aName)
+        val failed = com.labfytools.trainlog.ui.reorderExerciseOccurrences(transient, 0, 3)
+        assertTrue(android.correctCompletedSession(saved.sessionId,
+            SessionDraft(failed, SessionType.MAX_TEST)) is CorrectCompletedSessionResult.DatabaseError)
+        assertEquals(reordered, android.getSessionDetail(saved.sessionId))
+
+        val export = JSONObject(android.buildMobileExportV3Json()).getJSONArray("sessions")
+        assertEquals(1, export.length())
+        assertEquals(saved.sessionId, export.getJSONObject(0).getString("session_id"))
+        assertEquals(listOf(maximum.entryId, first.entryId, duplicate.entryId, cardio.entryId),
+            List(4) { export.getJSONObject(0).getJSONArray("exercises").getJSONObject(it).getString("entry_id") })
+    }
+
+    private fun SessionExerciseDetail.correctionDraftForTest() = SessionExerciseDraft(
+        entryId = entryId,
+        exercise = ExerciseProfile(exerciseId, exerciseName, exerciseName,
+            recordingMode, trackingMode, dataFields),
+        equipmentId = equipmentId,
+        maxWeightKg = maxWeightKg,
+        plan = plan,
+        sets = sets,
+        continuousDurationSeconds = continuousDurationSeconds,
+        speedKmh = speedKmh,
+        distanceKm = distanceKm,
+    )
 }

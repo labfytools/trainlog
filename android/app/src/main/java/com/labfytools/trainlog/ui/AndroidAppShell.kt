@@ -55,6 +55,25 @@ fun AndroidAppShell(
     content: @Composable () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext().resources
+    fun sectionLabel(section: AppSection): String = strings.getString(when (section) {
+        AppSection.HOME -> R.string.nav_home; AppSection.SESSIONS -> R.string.nav_sessions
+        AppSection.EXERCISES -> R.string.nav_exercises; AppSection.EQUIPMENT -> R.string.nav_equipment
+        AppSection.STATISTICS -> R.string.nav_statistics; AppSection.SYNC -> R.string.nav_sync
+        AppSection.SETTINGS -> R.string.nav_settings
+    })
+    fun title(): String = strings.getString(when (route) {
+        AppRoute.Home -> R.string.nav_home; AppRoute.Sessions -> R.string.nav_sessions
+        AppRoute.SessionEditor -> R.string.route_session_editor; AppRoute.SessionGenerator -> R.string.route_session_generator
+        AppRoute.AiSessionDrafts -> R.string.route_ai_drafts; AppRoute.CompletedSessions -> R.string.route_completed_sessions
+        is AppRoute.SessionDetail -> R.string.route_session_detail; is AppRoute.SessionCorrection -> R.string.route_session_correction
+        AppRoute.Exercises -> R.string.nav_exercises; is AppRoute.ExerciseDetail -> R.string.route_exercise_detail
+        is AppRoute.ExerciseEdit -> R.string.route_exercise_edit; is AppRoute.ExerciseCreate -> R.string.route_exercise_create
+        AppRoute.Equipment -> R.string.nav_equipment; is AppRoute.EquipmentDetail -> R.string.route_equipment_detail
+        is AppRoute.EquipmentCreate -> R.string.route_equipment_create; AppRoute.Statistics -> R.string.nav_statistics
+        AppRoute.BodyMeasurements -> R.string.route_body_measurements; AppRoute.LatestMaxima -> R.string.route_latest_maxima
+        AppRoute.Sync -> R.string.nav_sync; AppRoute.Settings -> R.string.nav_settings
+    })
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val root = route == route.section.rootRoute()
@@ -81,7 +100,7 @@ fun AndroidAppShell(
                 AppSection.entries.filterNot { it == AppSection.EQUIPMENT }.forEach { section ->
                     NavigationDrawerItem(
                         icon = { Icon(painterResource(drawerIcons.getValue(section)), contentDescription = null) },
-                        label = { Text(section.label) },
+                        label = { Text(sectionLabel(section)) },
                         selected = route.section == section,
                         onClick = {
                             onOpenSection(section)
@@ -96,14 +115,14 @@ fun AndroidAppShell(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (root) "TRAINLOG" else routeTitle(route)) },
+                    title = { Text(if (root) "TRAINLOG" else title()) },
                     navigationIcon = {
                         IconButton(
                             onClick = {
                                 if (root) scope.launch { drawerState.open() } else onBack()
                             },
                             modifier = Modifier.semantics {
-                                contentDescription = if (root) "Ouvrir la navigation" else "Retour"
+                                contentDescription = strings.getString(if (root) R.string.a11y_open_navigation else R.string.a11y_back)
                             },
                         ) {
                             Icon(
@@ -116,7 +135,7 @@ fun AndroidAppShell(
                         if (!root) {
                             IconButton(
                                 onClick = { scope.launch { drawerState.open() } },
-                                modifier = Modifier.semantics { contentDescription = "Navigation" },
+                                modifier = Modifier.semantics { contentDescription = strings.getString(R.string.a11y_navigation) },
                             ) { Icon(painterResource(R.drawable.ic_menu), contentDescription = null) }
                         }
                     },

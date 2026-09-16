@@ -58,6 +58,7 @@ import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
+import com.labfytools.trainlog.R
 
 @Composable
 fun HomeScreen(
@@ -74,32 +75,35 @@ fun HomeScreen(
     onSync: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
-    TrainlogScreen("Accueil", scrollKey = "home") {
+    val strings = localizedContext()
+    val locale = presentationLocale()
+    TrainlogScreen(strings.getString(R.string.nav_home), scrollKey = "home") {
         draftError?.let { TrainlogInfo(it, colors.error) }
-        TrainlogFrame("Séance") {
+        TrainlogFrame(strings.getString(R.string.home_session)) {
             if (activeDraft != null) {
-                val kind = if (activeDraft.sessionType == SessionType.MAX_TEST) "Test max" else "Entraînement"
-                TrainlogPrimaryAction("Reprendre la séance en cours", "$kind · ${activeDraft.exercises.size} exercice(s)", onSession)
+                val kind = if (activeDraft.sessionType == SessionType.MAX_TEST) strings.getString(R.string.session_max_test) else strings.getString(R.string.training)
+                TrainlogPrimaryAction(strings.getString(R.string.resume_current_session), "$kind · " + strings.resources.getQuantityString(R.plurals.exercise_count, activeDraft.exercises.size, activeDraft.exercises.size), onSession)
             } else {
-                TrainlogPrimaryAction("Nouvelle séance manuelle", "Créer explicitement un brouillon durable.", onSession)
+                TrainlogPrimaryAction(strings.getString(R.string.new_manual_session), strings.getString(R.string.new_manual_description), onSession)
             }
         }
         BodyZoneHomeSection(bodyZoneOverview, onOpenExercises, onOpenStatistics)
         latestSession?.let { session ->
-            TrainlogFrame("Dernière séance") {
-                TrainlogAction(formatStartedAt(session.startedAt), "${sessionTypeLabel(session.sessionType)} · ${session.exerciseCount} exercice(s)", { onOpenLatestSession(session.sessionId) })
+            TrainlogFrame(strings.getString(R.string.latest_session)) {
+                TrainlogAction(formatStartedAt(session.startedAt), sessionTypeLabel(session.sessionType) + " · " +
+                    strings.resources.getQuantityString(R.plurals.exercise_count, session.exerciseCount, session.exerciseCount), { onOpenLatestSession(session.sessionId) })
             }
         }
         latestMaximum?.let { maximum ->
-            val weight = "%.2f".format(java.util.Locale.FRANCE, maximum.maxWeightKg).trimEnd('0').trimEnd(',')
-            TrainlogInfo("Dernier MAX · ${maximum.exerciseName} · $weight kg · ${maximum.startedAt.take(10)}", colors.warning)
+            val weight = "%.2f".format(locale, maximum.maxWeightKg).trimEnd('0').trimEnd(',', '.')
+            TrainlogInfo(strings.getString(R.string.latest_max_value, maximum.exerciseName, weight, formatDate(maximum.startedAt)), colors.warning)
         }
-        TrainlogFrame("Accès rapides", active = false) {
+        TrainlogFrame(strings.getString(R.string.quick_access), active = false) {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("home-quick-actions-row"),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TrainlogActionTile("Synchronisation", "État et actions", TrainlogIcons.Refresh,
+                TrainlogActionTile(strings.getString(R.string.nav_sync), strings.getString(R.string.home_sync_state), TrainlogIcons.Refresh,
                     onSync, Modifier.weight(1f).fillMaxHeight().testTag("home-sync-action"))
-                TrainlogActionTile("Mensurations", "Suivi corporel", TrainlogIcons.BodyMeasurements,
+                TrainlogActionTile(strings.getString(R.string.route_body_measurements), strings.getString(R.string.home_body_tracking), TrainlogIcons.BodyMeasurements,
                     onBody, Modifier.weight(1f).fillMaxHeight().testTag("home-body-action"))
             }
         }
@@ -118,75 +122,76 @@ internal fun BodyZoneHomeSection(
     onOpenStatistics: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
     var showExposureInfo by remember { mutableStateOf(false) }
     var selectedId by remember(overview.zones) {
         mutableStateOf(overview.recommendations.firstOrNull()?.zoneId ?: overview.zones.firstOrNull()?.zoneId)
     }
     val selected = overview.zones.firstOrNull { it.zoneId == selectedId }
-    TrainlogFrame("Zones à travailler", active = overview.recommendations.isNotEmpty()) {
+    TrainlogFrame(strings.getString(R.string.zones_to_work), active = overview.recommendations.isNotEmpty()) {
         TextButton(onClick = { showExposureInfo = true }) {
-            Text("Exposition récente  ⓘ")
+            Text(strings.getString(R.string.recent_exposure) + "  ⓘ")
         }
         if (!overview.hasTrainingHistory) {
-            TrainlogInfo("Pas encore d’historique d’entraînement.")
+            TrainlogInfo(strings.getString(R.string.no_training_history))
         }
         if (overview.hasInvalidHistoryTimestamp) {
-            TrainlogInfo("Données insuffisantes : un horodatage historique ne peut pas être interprété.", colors.warning)
+            TrainlogInfo(strings.getString(R.string.invalid_history_timestamp), colors.warning)
         }
         BodyZoneMap(overview.zones, selectedId) { selectedId = it }
         selected?.let { zone ->
             BasicText(
-                "Sélection : ${zone.displayName}",
+                strings.getString(R.string.selection_value, localizedBodyZoneName(strings, zone.zoneId, zone.displayName)),
                 modifier = Modifier.padding(bottom = 8.dp),
                 style = TrainlogTypography.normal.copy(color = colors.lavender),
             )
         }
-        TrainlogInfo("Priorités", colors.accent)
+        TrainlogInfo(strings.getString(R.string.priorities), colors.accent)
         overview.recommendations.take(3).forEachIndexed { index, zone ->
             TrainlogAction(
-                "${index + 1}. ${zone.displayName} · ${homeStateLabel(zone)}",
-                recommendationReason(zone),
+                "${index + 1}. ${localizedBodyZoneName(strings, zone.zoneId, zone.displayName)} · ${homeStateLabel(zone, strings)}",
+                recommendationReason(zone, strings),
                 { selectedId = zone.zoneId },
             )
         }
         if (overview.recommendations.isEmpty()) {
-            TrainlogInfo("Aucune zone disposant d’un exercice résolu n’est disponible.")
+            TrainlogInfo(strings.getString(R.string.resolved_zone_none))
         }
         selected?.let { zone ->
             Column(
                 Modifier.fillMaxWidth().padding(top = 8.dp).background(colors.surface, RoundedCornerShape(8.dp)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                BasicText(zone.displayName, style = TrainlogTypography.section.copy(color = colors.text))
-                BasicText(homeStateLabel(zone), style = TrainlogTypography.small.copy(color = stateColor(zone.state, colors)))
+                BasicText(localizedBodyZoneName(strings, zone.zoneId, zone.displayName), style = TrainlogTypography.section.copy(color = colors.text))
+                BasicText(homeStateLabel(zone, strings), style = TrainlogTypography.small.copy(color = stateColor(zone.state, colors)))
                 BasicText(
-                    "Dernier travail principal : ${ageLabel(zone.primaryExposureAgeSeconds)}",
+                    strings.getString(R.string.latest_primary_work_label, ageLabel(zone.primaryExposureAgeSeconds, strings)),
                     style = TrainlogTypography.small.copy(color = colors.text),
                 )
                 BasicText(
-                    recentWorkLabel(zone.primaryWork7Days, "principal") + " · " +
-                        recentWorkLabel(zone.secondaryWork7Days, "secondaire"),
+                    recentWorkLabel(zone.primaryWork7Days, true, strings) + " · " +
+                        recentWorkLabel(zone.secondaryWork7Days, false, strings),
                     style = TrainlogTypography.small.copy(color = colors.text),
                 )
                 BasicText(
-                    availableExerciseLabel(zone.availableExerciseCount),
+                    availableExerciseLabel(zone.availableExerciseCount, strings),
                     style = TrainlogTypography.small.copy(color = colors.text),
                 )
                 if (zone.availableExerciseCount == 0) TrainlogInfo(BodyZoneHomeState.UNSUPPORTED.label, colors.muted)
-                TrainlogAction("Voir les exercices", "", { onOpenExercises(zone.zoneId) })
-                TrainlogAction("Voir les statistiques", "", onOpenStatistics)
+                TrainlogAction(strings.getString(R.string.view_exercises), "", { onOpenExercises(zone.zoneId) })
+                TrainlogAction(strings.getString(R.string.view_statistics), "", onOpenStatistics)
             }
         }
     }
     if (showExposureInfo) {
         AlertDialog(
             onDismissRequest = { showExposureInfo = false },
-            title = { Text("Exposition récente") },
+            title = { Text(strings.getString(R.string.recent_exposure)) },
             text = {
-                Text("Ces couleurs décrivent le travail enregistré récemment. Elles ne mesurent pas la récupération physiologique.")
+                Text(strings.getString(R.string.exposure_explanation))
             },
             confirmButton = {
-                TextButton(onClick = { showExposureInfo = false }) { Text("Compris") }
+                TextButton(onClick = { showExposureInfo = false }) { Text(strings.getString(R.string.understood)) }
             },
         )
     }
@@ -213,9 +218,11 @@ private fun BodyMapPanel(
     modifier: Modifier,
 ) {
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
     val visibleZones = view.zoneIds.mapNotNull(zones::get)
-    Column(modifier.semantics { contentDescription = "Carte corporelle, ${view.label}" }) {
-        BasicText(view.label, style = TrainlogTypography.small.copy(color = colors.muted))
+    val viewLabel = strings.getString(view.labelId)
+    Column(modifier.semantics { contentDescription = strings.getString(R.string.body_map, viewLabel) }) {
+        BasicText(viewLabel, style = TrainlogTypography.small.copy(color = colors.muted))
         BoxWithConstraints(Modifier.fillMaxWidth().height(236.dp)) {
             val panelWidth = maxWidth
             val panelHeight = maxHeight
@@ -281,14 +288,14 @@ private fun BodyMapPanel(
                             role = Role.Button
                             selected = chosen
                             contentDescription = buildString {
-                                append(view.label)
+                                append(viewLabel)
                                 append(", ")
-                                append(zone.displayName)
+                                append(localizedBodyZoneName(strings, zone.zoneId, zone.displayName))
                                 append(", ")
-                                append(homeStateLabel(zone))
-                                append(if (chosen) ", sélectionnée" else ", non sélectionnée")
+                                append(homeStateLabel(zone, strings))
+                                append(strings.getString(if (chosen) R.string.selected_suffix else R.string.not_selected_suffix))
                             }
-                            onClick(label = "Sélectionner ${zone.displayName}") {
+                            onClick(label = strings.getString(R.string.select_zone, localizedBodyZoneName(strings, zone.zoneId, zone.displayName))) {
                                 select(zone.zoneId)
                                 true
                             }
@@ -300,13 +307,13 @@ private fun BodyMapPanel(
 }
 
 private enum class BodyView(
-    val label: String,
+    @param:androidx.annotation.StringRes val labelId: Int,
     val testName: String,
     val zoneIds: List<String>,
     val accessibilityBounds: Map<String, Rect>,
 ) {
     FRONT(
-        label = "Face",
+        labelId = R.string.body_front,
         testName = "front",
         zoneIds = listOf("shoulders", "chest", "arms", "core", "thighs", "calves"),
         accessibilityBounds = mapOf(
@@ -319,7 +326,7 @@ private enum class BodyView(
         ),
     ),
     BACK(
-        label = "Dos",
+        labelId = R.string.body_back,
         testName = "back",
         zoneIds = listOf("shoulders", "back", "arms", "glutes", "thighs", "calves"),
         accessibilityBounds = mapOf(
@@ -491,28 +498,31 @@ private fun stateColor(state: BodyZoneHomeState, colors: TrainlogColors): Color 
     }
 }
 
-internal fun recommendationReason(zone: BodyZoneHomeStatus): String = when {
-    zone.lastPrimaryExposure == null -> "Aucune exposition principale enregistrée"
-    zone.primaryWork7Days == 0 -> "Dernier travail principal : ${ageLabel(zone.primaryExposureAgeSeconds)}"
-    else -> recentWorkLabel(zone.primaryWork7Days, "principal")
+internal fun recommendationReason(zone: BodyZoneHomeStatus, context: android.content.Context): String = when {
+    zone.lastPrimaryExposure == null -> context.getString(R.string.no_primary_exposure)
+    zone.primaryWork7Days == 0 -> context.getString(R.string.latest_primary_work, ageLabel(zone.primaryExposureAgeSeconds, context))
+    else -> recentWorkLabel(zone.primaryWork7Days, true, context)
 }
 
-internal fun homeStateLabel(zone: BodyZoneHomeStatus): String =
+internal fun homeStateLabel(zone: BodyZoneHomeStatus, context: android.content.Context): String =
     if (zone.state == BodyZoneHomeState.PRIORITIZE && zone.primaryWork7Days > 0) {
-        "Priorité relative"
+        context.getString(R.string.relative_priority)
     } else {
-        zone.state.label
+        context.getString(when (zone.state) { BodyZoneHomeState.PRIORITIZE -> R.string.state_prioritize
+            BodyZoneHomeState.LITTLE_RECENT_WORK -> R.string.state_little_work; BodyZoneHomeState.RECENT_WORK -> R.string.state_recent_work
+            BodyZoneHomeState.HIGH_RECENT_EXPOSURE -> R.string.state_high_exposure; BodyZoneHomeState.INSUFFICIENT_DATA -> R.string.state_insufficient
+            BodyZoneHomeState.UNSUPPORTED -> R.string.state_unsupported })
     }
 
-internal fun recentWorkLabel(count: Int, kind: String): String =
-    "Travail $kind sur 7 j : $count"
+internal fun recentWorkLabel(count: Int, primary: Boolean, context: android.content.Context): String =
+    context.getString(if (primary) R.string.recent_primary_work else R.string.recent_secondary_work, count)
 
-private fun availableExerciseLabel(count: Int): String =
-    "$count ${if (count == 1) "exercice disponible" else "exercices disponibles"}"
+private fun availableExerciseLabel(count: Int, context: android.content.Context): String =
+    context.resources.getQuantityString(R.plurals.available_exercise_count, count, count)
 
-internal fun ageLabel(seconds: Long?): String = when {
-    seconds == null -> "jamais enregistrée"
-    seconds < 86400L -> "aujourd’hui"
-    seconds < 2L * 86400L -> "il y a 1 jour"
-    else -> "il y a ${seconds / 86400L} jours"
+internal fun ageLabel(seconds: Long?, context: android.content.Context): String = when {
+    seconds == null -> context.getString(R.string.age_never)
+    seconds < 86400L -> context.getString(R.string.age_today)
+    seconds < 2L * 86400L -> context.getString(R.string.age_yesterday)
+    else -> context.resources.getQuantityString(R.plurals.age_days, (seconds / 86400L).toInt(), seconds / 86400L)
 }

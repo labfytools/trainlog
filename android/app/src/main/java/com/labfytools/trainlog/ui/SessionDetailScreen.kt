@@ -25,6 +25,7 @@ import com.labfytools.trainlog.model.SessionExerciseDetail
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
+import com.labfytools.trainlog.R
 
 @Composable
 fun SessionDetailScreen(
@@ -36,6 +37,8 @@ fun SessionDetailScreen(
 ) {
     val colors =
         LocalTrainlogColors.current
+    val locale = presentationLocale()
+    val strings = localizedContext()
 
     var revision by remember(sessionId) { mutableStateOf(0) }
     var editingEntryId by remember(sessionId) { mutableStateOf<String?>(null) }
@@ -61,15 +64,15 @@ fun SessionDetailScreen(
         }
 
     TrainlogScreen(
-        subtitle = "Détail de la séance"
+        subtitle = strings.getString(R.string.route_session_detail)
     ) {
         if (detail == null) {
             TrainlogFrame(
-                title = "Erreur"
+                title = strings.getString(R.string.error_title)
             ) {
                 TrainlogInfo(
                     text =
-                        "Séance introuvable.",
+                        strings.getString(R.string.session_not_found),
                     color =
                         colors.error,
                 )
@@ -79,7 +82,7 @@ fun SessionDetailScreen(
         }
 
         TrainlogFrame(
-            title = "Séance"
+            title = strings.getString(R.string.home_session)
         ) {
             TrainlogInfo(
                 formatStartedAt(
@@ -89,11 +92,8 @@ fun SessionDetailScreen(
 
             TrainlogInfo(
                 text =
-                    "Type : " +
-                        sessionTypeLabel(
-                            detail.summary
-                                .sessionType
-                        ),
+                    strings.getString(R.string.session_type_value,
+                        sessionTypeLabel(detail.summary.sessionType)),
                 color =
                     if (
                         detail.summary
@@ -107,21 +107,22 @@ fun SessionDetailScreen(
             )
 
             TrainlogInfo(
-                "${detail.summary.exerciseCount} exercice(s)"
+                strings.resources.getQuantityString(R.plurals.exercise_count,
+                    detail.summary.exerciseCount, detail.summary.exerciseCount)
             )
 
-            TrainlogButton("Modifier la séance", onCorrect,
+            TrainlogButton(strings.getString(R.string.route_session_correction), onCorrect,
                 Modifier.fillMaxWidth().testTag("edit-completed-session"))
 
             if (detail.summary.sessionType == SessionType.MAX_TEST) {
                 TrainlogAction(
-                    label = "Reprendre ce Test max",
-                    description = "Continuer la même séance en conservant son identifiant et sa date.",
+                    label = strings.getString(R.string.resume_max_test),
+                    description = strings.getString(R.string.resume_max_description),
                     accent = colors.success,
                     onClick = {
                         when (val result = repository.resumeMaxTestSession(detail.summary.sessionId)) {
                             ActiveDraftMutationResult.Saved -> onResumeMaxTest()
-                            is ActiveDraftMutationResult.Error -> resumeMessage = result.message
+                            is ActiveDraftMutationResult.Error -> resumeMessage = localizedRepositoryMessage(strings, result.message)
                         }
                     },
                 )
@@ -139,25 +140,25 @@ fun SessionDetailScreen(
                         "${index + 1}. ${exercise.exerciseName}"
                 ) {
                     exercise.equipmentDisplayName?.let { equipment ->
-                        TrainlogInfo("Équipement : $equipment", color = colors.muted)
+                        TrainlogInfo(strings.getString(R.string.equipment_inline, equipment), color = colors.muted)
                     }
                     exercise.plan?.let { plan ->
                         TrainlogInfo(
-                            "Plan : ${plan.sets} × ${plan.reps ?: plan.durationSeconds} · " +
-                                "repos ${plan.restSeconds} s · " +
-                                (plan.weightKg?.let { "charge cible $it kg" }
-                                    ?: "sans charge numérique"),
+                            strings.getString(R.string.plan_summary, plan.sets,
+                                (plan.reps ?: plan.durationSeconds).toString(), plan.restSeconds,
+                                plan.weightKg?.let { strings.getString(R.string.target_load_inline, it) }
+                                    ?: strings.getString(R.string.no_numeric_load)),
                             color = colors.muted,
                         )
                     }
                     if (editingEntryId == exercise.entryId) {
                         TrainlogInputField(
-                            label = "Rechercher une machine",
+                            label = strings.getString(R.string.search_machine),
                             value = equipmentQuery,
                             onValueChange = { equipmentQuery = it },
                         )
                         TrainlogDeleteButton(
-                            contentDescription = "Retirer la machine de cet exercice",
+                            contentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_remove_machine),
                             modifier = Modifier.testTag("delete-completed-equipment-${exercise.entryId}"),
                             onClick = {
                                 pendingEquipmentChange = exercise.entryId to null
@@ -179,17 +180,17 @@ fun SessionDetailScreen(
                         }
                     } else {
                         TrainlogAction(
-                            label = "Modifier l'équipement",
-                            description = "Choisir, remplacer ou retirer la machine de cette entrée.",
+                            label = strings.getString(R.string.modify_equipment),
+                            description = strings.getString(R.string.modify_equipment_description),
                             accent = colors.muted,
                             onClick = { editingEntryId = exercise.entryId },
                         )
                     }
                     if (exercise.maxWeightKg != null) {
-                        val rendered = "%.2f".format(java.util.Locale.FRANCE, exercise.maxWeightKg)
+                        val rendered = "%.2f".format(locale, exercise.maxWeightKg)
                             .trimEnd('0').trimEnd(',')
                         TrainlogInfo(
-                            text = "Max : $rendered kg",
+                            text = strings.getString(R.string.max_value, rendered),
                             color = colors.warning,
                         )
                     } else if (
@@ -208,67 +209,70 @@ fun SessionDetailScreen(
                         )
                     }
                     exercise.feedback.forEach { item ->
-                        TrainlogInfo("${exerciseFeedbackElapsedLabel(detail.summary.endedAt, detail.summary.startedAt, item.observedAt)} · ${item.rawText}${if (item.modified) " · Modifié" else ""}")
-                        TrainlogAction("Modifier", "Corriger le texte sans déplacer l’observation.",
+                        val elapsed = exerciseFeedbackElapsedLabel(detail.summary.endedAt, detail.summary.startedAt, item.observedAt)
+                        // CONTRACT: repository diagnostics remain stable data; only this visible sentinel is localized.
+                        val localizedElapsed = if (elapsed == "Pendant la séance") strings.getString(R.string.during_session) else elapsed
+                        TrainlogInfo("$localizedElapsed · ${item.rawText}${if (item.modified) strings.getString(R.string.modified_suffix) else ""}")
+                        TrainlogAction(strings.getString(R.string.modify), strings.getString(R.string.feedback_move_description),
                             onClick = { editingFeedbackId = item.feedbackId }, accent = colors.muted)
                         if (editingFeedbackId == item.feedbackId) FeedbackEditor(
                             initialText = item.rawText, editing = true,
                             onSave = { text -> when (val result = repository.reviseExerciseFeedback(item.feedbackId, text)) {
                                 is SaveFeedbackResult.Saved -> { editingFeedbackId = null; revision++; null }
-                                is SaveFeedbackResult.Invalid -> result.message
-                                is SaveFeedbackResult.DatabaseError -> result.message
+                                is SaveFeedbackResult.Invalid -> localizedRepositoryMessage(strings, result.message)
+                                is SaveFeedbackResult.DatabaseError -> localizedRepositoryMessage(strings, result.message)
                             } }, onCancel = { editingFeedbackId = null })
                     }
                     if (feedbackEntryId == exercise.entryId) {
                         FeedbackEditor(onSave = { text ->
                             when (val result = repository.saveExerciseFeedback(detail.summary.sessionId, exercise.entryId, text)) {
                                 is SaveFeedbackResult.Saved -> { feedbackEntryId = null; revision++; null }
-                                is SaveFeedbackResult.Invalid -> result.message
-                                is SaveFeedbackResult.DatabaseError -> result.message
+                                is SaveFeedbackResult.Invalid -> localizedRepositoryMessage(strings, result.message)
+                                is SaveFeedbackResult.DatabaseError -> localizedRepositoryMessage(strings, result.message)
                             }
                         }, onCancel = { feedbackEntryId = null })
                     } else {
-                        TrainlogButton("Ajouter un ressenti", { feedbackEntryId = exercise.entryId },
+                        TrainlogButton(strings.getString(R.string.add_feedback), { feedbackEntryId = exercise.entryId },
                             Modifier.fillMaxWidth().testTag("add-exercise-feedback-${exercise.entryId}"),
                             icon = TrainlogIcons.Mic)
                     }
                 }
             }
 
-        TrainlogFrame(title = "Suivi après séance") {
+        TrainlogFrame(title = strings.getString(R.string.session_follow_up)) {
             detail.followUps.forEach { item ->
                 TrainlogInfo(sessionFollowUpElapsedLabel(detail.summary.endedAt, detail.summary.startedAt, item.observedAt), color = colors.accent)
-                TrainlogInfo(item.rawText + if (item.modified) " · Modifié" else "")
-                TrainlogAction("Modifier", "Corriger le texte sans changer le repère H+.",
+                TrainlogInfo(item.rawText + if (item.modified) strings.getString(R.string.modified_suffix) else "")
+                TrainlogAction(strings.getString(R.string.modify), strings.getString(R.string.feedback_marker_description),
                     onClick = { editingFollowUpId = item.followupId }, accent = colors.muted)
                 if (editingFollowUpId == item.followupId) FeedbackEditor(
                     initialText = item.rawText, editing = true,
                     onSave = { text -> when (val result = repository.reviseSessionFollowUp(item.followupId, text)) {
                         is SaveFeedbackResult.Saved -> { editingFollowUpId = null; revision++; null }
-                        is SaveFeedbackResult.Invalid -> result.message
-                        is SaveFeedbackResult.DatabaseError -> result.message
+                        is SaveFeedbackResult.Invalid -> localizedRepositoryMessage(strings, result.message)
+                        is SaveFeedbackResult.DatabaseError -> localizedRepositoryMessage(strings, result.message)
                     } }, onCancel = { editingFollowUpId = null })
             }
             if (addingFollowUp) {
                 FeedbackEditor(onSave = { text ->
                     when (val result = repository.saveSessionFollowUp(detail.summary.sessionId, text)) {
                         is SaveFeedbackResult.Saved -> { addingFollowUp = false; revision++; null }
-                        is SaveFeedbackResult.Invalid -> result.message
-                        is SaveFeedbackResult.DatabaseError -> result.message
+                        is SaveFeedbackResult.Invalid -> localizedRepositoryMessage(strings, result.message)
+                        is SaveFeedbackResult.DatabaseError -> localizedRepositoryMessage(strings, result.message)
                     }
                 }, onCancel = { addingFollowUp = false })
-            } else TrainlogButton("Ajouter un enregistrement", { addingFollowUp = true },
+            } else TrainlogButton(strings.getString(R.string.add_record), { addingFollowUp = true },
                 Modifier.fillMaxWidth().testTag("add-session-follow-up"), icon = TrainlogIcons.Mic,
                 containerColor = colors.success)
         }
         pendingEquipmentChange?.let { (entryId, equipmentId) ->
             DestructiveConfirmationDialog(
-                title = if (equipmentId == null) "Retirer la machine de cette entrée ?" else "Remplacer la machine associée ?",
-                detail = "L’association de machine actuellement enregistrée sera perdue. Les séries, MAX et ressentis restent inchangés.",
-                confirmLabel = if (equipmentId == null) "Retirer" else "Remplacer",
+                title = strings.getString(if (equipmentId == null) R.string.remove_machine_question else R.string.replace_machine_question),
+                detail = strings.getString(R.string.machine_change_detail),
+                confirmLabel = strings.getString(if (equipmentId == null) R.string.remove else R.string.replace),
                 onCancel = { pendingEquipmentChange = null },
                 deleteContentDescription = if (equipmentId == null) {
-                    "Retirer la machine de cet exercice"
+                    strings.getString(R.string.a11y_remove_machine)
                 } else null,
                 onConfirm = {
                     if (repository.setCompletedSessionEquipment(detail.summary.sessionId,entryId,equipmentId)) {
@@ -287,6 +291,8 @@ private fun SetsDetail(
 ) {
     val colors =
         LocalTrainlogColors.current
+    val locale = presentationLocale()
+    val strings = localizedContext()
 
     TrainlogInfo(
         text =
@@ -294,9 +300,9 @@ private fun SetsDetail(
                 exercise.trackingMode ==
                 TrackingMode.REPS
             ) {
-                "Mode : séries · répétitions"
+                strings.getString(R.string.mode_sets_reps)
             } else {
-                "Mode : séries · durée"
+                strings.getString(R.string.mode_sets_duration)
             },
         color = colors.accent,
     )
@@ -304,13 +310,13 @@ private fun SetsDetail(
     if (exercise.trackingMode == TrackingMode.REPS) {
         val loadHeading =
             if (loadSemantics == EquipmentLoadSemantics.ASSISTANCE) {
-                "Assistance (kg)"
+                strings.getString(R.string.assistance_kg)
             } else {
-                "Charge (kg)"
+                strings.getString(R.string.field_weight)
             }
         /* Readable row table: history must expose every persisted value and
          * distinguish an absent load from an explicit zero. */
-        TrainlogInfo("Série | Répétitions | $loadHeading", color = colors.muted)
+        TrainlogInfo(strings.getString(R.string.sets_table, loadHeading), color = colors.muted)
     }
 
     exercise.sets
@@ -324,11 +330,11 @@ private fun SetsDetail(
                     TrackingMode.REPS
                 ) {
                     val renderedWeight = set.weightKg?.let {
-                        "%.2f".format(java.util.Locale.FRANCE, it).trimEnd('0').trimEnd(',')
+                        "%.2f".format(locale, it).trimEnd('0').trimEnd(',', '.')
                     } ?: "—"
                     "${index + 1} | ${set.reps} | $renderedWeight"
                 } else {
-                    "Série ${index + 1} : ${formatDuration(set.durationSeconds)}"
+                    strings.getString(R.string.set_duration, index + 1, formatDuration(set.durationSeconds))
                 }
             )
         }
@@ -340,15 +346,16 @@ private fun ContinuousDetail(
 ) {
     val colors =
         LocalTrainlogColors.current
+    val strings = localizedContext()
 
     TrainlogInfo(
         text =
-            "Mode : continu",
+            strings.getString(R.string.mode_continuous),
         color = colors.accent,
     )
 
     TrainlogInfo(
-        "Durée : ${formatDuration(exercise.continuousDurationSeconds)}"
+        strings.getString(R.string.duration_value, formatDuration(exercise.continuousDurationSeconds))
     )
 
     if (
@@ -356,9 +363,7 @@ private fun ContinuousDetail(
             ExerciseDataFields.SPEED_KMH != 0
     ) {
         TrainlogInfo(
-            "Vitesse : %.1f km/h".format(
-                exercise.speedKmh ?: 0.0
-            )
+            strings.getString(R.string.speed_value, exercise.speedKmh ?: 0.0)
         )
     }
 
@@ -367,13 +372,12 @@ private fun ContinuousDetail(
             ExerciseDataFields.DISTANCE_KM != 0
     ) {
         TrainlogInfo(
-            "Distance : %.2f km".format(
-                exercise.distanceKm ?: 0.0
-            )
+            strings.getString(R.string.distance_value, exercise.distanceKm ?: 0.0)
         )
     }
 }
 
+@Composable
 private fun formatDuration(
     seconds: Int,
 ): String {
@@ -381,8 +385,8 @@ private fun formatDuration(
         seconds > 0 &&
         seconds % 60 == 0
     ) {
-        return "${seconds / 60} min"
+        return uiQuantity(R.plurals.duration_minutes_value, seconds / 60, seconds / 60)
     }
 
-    return "$seconds s"
+    return uiQuantity(R.plurals.duration_seconds_value, seconds, seconds)
 }

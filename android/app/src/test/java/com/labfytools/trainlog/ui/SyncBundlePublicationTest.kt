@@ -184,6 +184,23 @@ class SyncBundlePublicationTest {
         assertEquals(0, directory.canonicalCount("foo (1).json"))
     }
 
+    @Test fun `presentation language cannot change synchronization payload`() = runBlocking {
+        val exporter = SyncExporter(context, repository) { directory }
+        assertTrue(exporter.exportMobileBundle() is com.labfytools.trainlog.data.SyncExportResult.Exported)
+        val frenchPayload = JSONObject(readCanonical("trainlog-mobile-export-v3.json")).apply {
+            remove("generated_at")
+        }.toString()
+
+        LanguageSettingsOwner(context).select(AppLanguage.ENGLISH)
+        assertTrue(exporter.exportMobileBundle() is com.labfytools.trainlog.data.SyncExportResult.Exported)
+
+        val englishPayload = JSONObject(readCanonical("trainlog-mobile-export-v3.json")).apply {
+            remove("generated_at")
+        }.toString()
+        assertEquals(frenchPayload, englishPayload)
+        assertFalse(readCanonical("trainlog-mobile-export-v3.json").contains("language_tag"))
+    }
+
     @Test fun `empty directory creates exact canonical name and final content`() {
         val opened = DirectExchangePublisher { directory }.snapshot() as DirectExchangeSnapshotResult.Ready
 

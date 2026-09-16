@@ -21,10 +21,10 @@ import org.junit.Test
 
 class SessionGeneratorPreviewControllerTest {
     @Test
-    fun formExposesTheCompleteFrenchChoiceSetAndValidatesCustomDuration() {
+    fun formExposesTheCompleteStableGoalSetAndValidatesCustomDuration() {
         assertEquals(
-            listOf("Général", "Force", "Hypertrophie", "Endurance locale"),
-            SessionGeneratorFormController.goals.map { it.second },
+            listOf("general", "strength", "hypertrophy", "endurance"),
+            SessionGeneratorFormController.goals,
         )
         val allowed = 10..120
         assertEquals(10, SessionGeneratorFormController.duration("10", allowed))

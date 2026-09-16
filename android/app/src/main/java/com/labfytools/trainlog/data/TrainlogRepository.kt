@@ -6581,13 +6581,13 @@ class TrainlogRepository(
                             (draft.speedKmh != null)) &&
                             (
                                 !wantsSpeed ||
-                                    draft.speedKmh!! > 0.0
+                                    (draft.speedKmh!!.isFinite() && draft.speedKmh > 0.0)
                             ) &&
                             (wantsDistance ==
                                 (draft.distanceKm != null)) &&
                             (
                                 !wantsDistance ||
-                                    draft.distanceKm!! > 0.0
+                                    (draft.distanceKm!!.isFinite() && draft.distanceKm > 0.0)
                             )
                     )
                 }

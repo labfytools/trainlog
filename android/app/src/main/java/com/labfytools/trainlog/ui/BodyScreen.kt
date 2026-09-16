@@ -25,6 +25,7 @@ import com.labfytools.trainlog.data.SaveBodyObservationResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
+import com.labfytools.trainlog.R
 
 class BodyScreenState {
     val values = List(14) { mutableStateOf("") }
@@ -39,6 +40,8 @@ fun BodyScreen(
     onBodySaved: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val strings = localizedContext()
+    val locale = presentationLocale()
     val colors =
         LocalTrainlogColors.current
 
@@ -81,13 +84,13 @@ fun BodyScreen(
     }
 
     TrainlogScreen(
-        subtitle = "Mensurations"
+        subtitle = strings.getString(R.string.route_body_measurements)
     ) {
         TrainlogFrame(
-            title = "Général"
+            title = strings.getString(R.string.general)
         ) {
             BodyMetricField(
-                label = "Poids",
+                label = strings.getString(R.string.weight),
                 unit = "kg",
                 value = bodyWeight,
                 onValueChange = {
@@ -97,7 +100,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Cou",
+                label = strings.getString(R.string.neck),
                 unit = "cm",
                 value = neck,
                 onValueChange = {
@@ -107,7 +110,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Épaules",
+                label = strings.getString(R.string.shoulders),
                 unit = "cm",
                 value = shoulders,
                 onValueChange = {
@@ -117,7 +120,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Poitrine",
+                label = strings.getString(R.string.chest),
                 unit = "cm",
                 value = chest,
                 onValueChange = {
@@ -127,7 +130,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Tour de taille",
+                label = strings.getString(R.string.waist),
                 unit = "cm",
                 value = waist,
                 onValueChange = {
@@ -137,7 +140,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Hanches",
+                label = strings.getString(R.string.hips),
                 unit = "cm",
                 value = hips,
                 onValueChange = {
@@ -148,10 +151,10 @@ fun BodyScreen(
         }
 
         TrainlogFrame(
-            title = "Membres"
+            title = strings.getString(R.string.limbs)
         ) {
             BodyMetricField(
-                label = "Bras gauche",
+                label = strings.getString(R.string.left_arm),
                 unit = "cm",
                 value = leftArm,
                 onValueChange = {
@@ -161,7 +164,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Bras droit",
+                label = strings.getString(R.string.right_arm),
                 unit = "cm",
                 value = rightArm,
                 onValueChange = {
@@ -171,7 +174,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Avant-bras gauche",
+                label = strings.getString(R.string.left_forearm),
                 unit = "cm",
                 value = leftForearm,
                 onValueChange = {
@@ -181,7 +184,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Avant-bras droit",
+                label = strings.getString(R.string.right_forearm),
                 unit = "cm",
                 value = rightForearm,
                 onValueChange = {
@@ -191,7 +194,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Cuisse gauche",
+                label = strings.getString(R.string.left_thigh),
                 unit = "cm",
                 value = leftThigh,
                 onValueChange = {
@@ -201,7 +204,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Cuisse droite",
+                label = strings.getString(R.string.right_thigh),
                 unit = "cm",
                 value = rightThigh,
                 onValueChange = {
@@ -211,7 +214,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Mollet gauche",
+                label = strings.getString(R.string.left_calf),
                 unit = "cm",
                 value = leftCalf,
                 onValueChange = {
@@ -221,7 +224,7 @@ fun BodyScreen(
             )
 
             BodyMetricField(
-                label = "Mollet droit",
+                label = strings.getString(R.string.right_calf),
                 unit = "cm",
                 value = rightCalf,
                 onValueChange = {
@@ -232,13 +235,13 @@ fun BodyScreen(
         }
 
         TrainlogFrame(
-            title = "Enregistrement"
+            title = strings.getString(R.string.recording)
         ) {
             TrainlogAction(
                 label =
-                    "Enregistrer les mensurations",
+                    strings.getString(R.string.body_save),
                 description =
-                    "Les champs vides sont ignorés.",
+                    strings.getString(R.string.empty_fields_ignored),
                 accent =
                     colors.success,
                 onClick = {
@@ -279,7 +282,7 @@ fun BodyScreen(
                         }
                     ) {
                         message =
-                            "Une valeur est invalide."
+                            strings.getString(R.string.invalid_value)
                     } else {
                         val doubles =
                             parsed.map {
@@ -337,19 +340,19 @@ fun BodyScreen(
                                 clearForm()
                                 revision += 1
                                 message =
-                                    "Mensurations enregistrées."
+                                    strings.getString(R.string.body_saved)
 
                                 onBodySaved()
                             }
 
                             SaveBodyObservationResult.Invalid -> {
                                 message =
-                                    "Ajoutez au moins une mesure positive."
+                                    strings.getString(R.string.positive_measure_required)
                             }
 
                             SaveBodyObservationResult.DatabaseError -> {
                                 message =
-                                    "Erreur base locale."
+                                    strings.getString(R.string.local_database_error)
                             }
                         }
                     }
@@ -365,7 +368,7 @@ fun BodyScreen(
                     color =
                         if (
                             message ==
-                            "Mensurations enregistrées."
+                            strings.getString(R.string.body_saved)
                         ) {
                             colors.success
                         } else {
@@ -376,13 +379,13 @@ fun BodyScreen(
         }
 
         TrainlogFrame(
-            title = "Derniers relevés",
+            title = strings.getString(R.string.latest_measurements),
             active =
                 recent.isNotEmpty(),
         ) {
             if (recent.isEmpty()) {
                 TrainlogInfo(
-                    "Aucun relevé enregistré."
+                    strings.getString(R.string.body_none)
                 )
             } else {
                 recent.forEach {
@@ -398,14 +401,13 @@ fun BodyScreen(
                                 )
 
                                 append(
-                                    " · ${item.metricCount} mesure(s)"
+                                    " · " + strings.resources.getQuantityString(R.plurals.measurement_count, item.metricCount, item.metricCount)
                                 )
 
                                 item.bodyWeightKg
                                     ?.let {
                                         append(
-                                            " · %.1f kg"
-                                                .format(it)
+                                            " · %.1f kg".format(locale, it)
                                         )
                                     }
                             },

@@ -74,7 +74,7 @@ class AiSessionDraftUiWiringTest {
         } }
 
         compose.onNodeWithText("Brouillons").assertIsDisplayed()
-        compose.onNodeWithText("0 séance(s) préparée(s)", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("0 séance préparée", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -86,7 +86,7 @@ class AiSessionDraftUiWiringTest {
             SessionsHub(null, 2, {}, { manualCalls++ }, { draftCalls++ }, { historyCalls++ })
         } }
 
-        compose.onNodeWithText("2 séance(s) préparée(s)", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("2 séances préparées", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Nouvelle séance manuelle").performClick()
         compose.onNodeWithText("Brouillons").performClick()
         compose.onNodeWithText("Séances effectuées").performClick()

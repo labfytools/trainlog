@@ -47,6 +47,7 @@ import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.TrackingMode
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
+import com.labfytools.trainlog.R
 
 class ExerciseScreenState {
     val name = mutableStateOf("")
@@ -73,7 +74,7 @@ class ExerciseScreenState {
     }
     fun prepareEdit(exercise: ExerciseProfile) {
         if (editedExerciseId.value == exercise.exerciseId) return
-        require(!dirty) { "un éditeur sale ne peut pas être remplacé" }
+        require(!dirty) { "dirty editor state cannot be replaced" }
         editedExerciseId.value = exercise.exerciseId
         name.value = exercise.name
         recordingMode.value = exercise.recordingMode
@@ -106,6 +107,7 @@ fun ExerciseScreen(
 ) {
     val colors =
         LocalTrainlogColors.current
+    val strings = localizedContext()
 
     var name by state.name
     var recordingMode by state.recordingMode
@@ -150,18 +152,18 @@ fun ExerciseScreen(
     }
 
     TrainlogScreen(
-        subtitle = if (editedExerciseId == null) "Créer un exercice" else "Modifier l'exercice"
+        subtitle = strings.getString(if (editedExerciseId == null) R.string.route_exercise_create else R.string.route_exercise_edit)
     ) {
         TrainlogFrame(
             title =
                 if (editedExerciseId == null) {
-                    "Nouvel exercice"
+                    strings.getString(R.string.new_exercise)
                 } else {
-                    "Modifier l'exercice"
+                    strings.getString(R.string.route_exercise_edit)
                 }
         ) {
             TrainlogField(
-                label = "Nom",
+                label = strings.getString(R.string.name),
                 value = name,
                 onValueChange = {
                     name = it
@@ -170,10 +172,10 @@ fun ExerciseScreen(
             )
 
             TrainlogChoiceGroup(
-                label = "Organisation",
+                label = strings.getString(R.string.organization),
             ) {
                 TrainlogChoice(
-                    label = "Séries",
+                    label = strings.getString(R.string.organization_sets),
                     selected =
                         recordingMode ==
                             RecordingMode.SETS,
@@ -189,7 +191,7 @@ fun ExerciseScreen(
                 )
 
                 TrainlogChoice(
-                    label = "Continu",
+                    label = strings.getString(R.string.continuous),
                     selected =
                         recordingMode ==
                             RecordingMode.CONTINUOUS,
@@ -207,7 +209,7 @@ fun ExerciseScreen(
             }
 
             TrainlogChoiceGroup(
-                label = "Mesure principale",
+                label = strings.getString(R.string.primary_measurement),
             ) {
                 if (
                     recordingMode ==
@@ -215,7 +217,7 @@ fun ExerciseScreen(
                 ) {
                     TrainlogChoice(
                         label =
-                            "Répétitions",
+                            strings.getString(R.string.field_reps),
                         selected =
                             trackingMode ==
                                 TrackingMode.REPS,
@@ -230,7 +232,7 @@ fun ExerciseScreen(
                 }
 
                 TrainlogChoice(
-                    label = "Durée",
+                    label = strings.getString(R.string.field_duration),
                     selected =
                         trackingMode ==
                             TrackingMode.DURATION,
@@ -250,10 +252,10 @@ fun ExerciseScreen(
             ) {
                 TrainlogChoiceGroup(
                     label =
-                        "Données complémentaires",
+                        strings.getString(R.string.supplemental_data),
                 ) {
                     TrainlogChoice(
-                        label = "Vitesse",
+                        label = strings.getString(R.string.field_speed_short),
                         selected = speed,
                         enabled = true,
                         onClick = {
@@ -263,7 +265,7 @@ fun ExerciseScreen(
                     )
 
                     TrainlogChoice(
-                        label = "Distance",
+                        label = strings.getString(R.string.field_distance_short),
                         selected = distance,
                         enabled = true,
                         onClick = {
@@ -276,9 +278,9 @@ fun ExerciseScreen(
                 }
             }
 
-            TrainlogChoiceGroup(label = "Zone principale") {
+            TrainlogChoiceGroup(label = strings.getString(R.string.primary_zone)) {
                 TrainlogChoice(
-                    label = "Non renseignée",
+                    label = strings.getString(R.string.not_specified_feminine),
                     selected = primaryZoneId == null,
                     onClick = {
                         primaryZoneId = null
@@ -288,7 +290,7 @@ fun ExerciseScreen(
                 )
                 BodyZoneChoices(zones) { zone, indented ->
                     TrainlogChoice(
-                        label = (if (indented) "  ↳ " else "") + zone.displayName,
+                        label = (if (indented) "  ↳ " else "") + localizedBodyZoneName(strings, zone.zoneId, zone.displayName),
                         selected = primaryZoneId == zone.zoneId,
                         enabled = zone.kind != BodyZoneKind.GROUP,
                         onClick = {
@@ -300,10 +302,10 @@ fun ExerciseScreen(
                 }
             }
 
-            TrainlogChoiceGroup(label = "Zones secondaires") {
+            TrainlogChoiceGroup(label = strings.getString(R.string.secondary_zones)) {
                 BodyZoneChoices(zones) { zone, indented ->
                     TrainlogChoice(
-                        label = (if (indented) "  ↳ " else "") + zone.displayName,
+                        label = (if (indented) "  ↳ " else "") + localizedBodyZoneName(strings, zone.zoneId, zone.displayName),
                         selected = zone.zoneId in secondaryZoneIds,
                         enabled = primaryZoneId != null &&
                             zone.kind != BodyZoneKind.GROUP && zone.zoneId != primaryZoneId,
@@ -359,7 +361,7 @@ fun ExerciseScreen(
             if (editedExerciseId != null && repository.canEditExerciseProfile(editedExerciseId!!).not()) {
                 TrainlogInfo(
                     text =
-                        "Les séances passées et l'occurrence déjà présente dans le brouillon resteront inchangées. Le nouveau profil s'appliquera aux prochaines utilisations.",
+                        strings.getString(R.string.profile_change_note),
                     color = colors.warning,
                 )
             }
@@ -367,17 +369,17 @@ fun ExerciseScreen(
             TrainlogPrimaryAction(
                 label =
                     if (editedExerciseId != null) {
-                        "Enregistrer les modifications"
+                        strings.getString(R.string.save_changes)
                     } else if (inline) {
-                        "Créer et revenir à la séance"
+                        strings.getString(R.string.create_return_session)
                     } else {
-                        "Enregistrer l'exercice"
+                        strings.getString(R.string.exercise_save)
                     },
                 description =
                     if (editedExerciseId == null) {
-                        "Ajouter ce profil au catalogue local."
+                        strings.getString(R.string.add_profile_description)
                     } else {
-                        "Conserver l'identité et mettre à jour le catalogue."
+                        strings.getString(R.string.identity_update_description)
                     },
                 onClick = save@{
                     if (editedExerciseId != null && incompatibleProfileChange && !confirmedIncompatible) {
@@ -386,7 +388,7 @@ fun ExerciseScreen(
                     }
                     if (editedExerciseId == null &&
                         recordingMode == RecordingMode.SETS && primaryZoneId == null) {
-                        message = "Une zone principale est requise pour un nouvel exercice musculaire."
+                        message = strings.getString(R.string.primary_zone_required)
                         return@save
                     }
                     val current = editedExerciseId
@@ -427,12 +429,12 @@ fun ExerciseScreen(
 
                         CreateExerciseResult.Conflict -> {
                             message =
-                                "Un exercice portant ce nom existe déjà."
+                                strings.getString(R.string.exercise_name_exists)
                         }
 
                         CreateExerciseResult.Invalid -> {
                             message =
-                                "Profil ou nom invalide."
+                                strings.getString(R.string.invalid_profile_name)
                         }
 
                         is CreateExerciseResult.DatabaseError -> {
@@ -447,20 +449,20 @@ fun ExerciseScreen(
                         }
 
                         EditExerciseResult.Conflict -> {
-                            message = "Un autre exercice porte déjà ce nom."
+                            message = strings.getString(R.string.other_exercise_name_exists)
                         }
 
                         EditExerciseResult.InvalidNameOrProfile -> {
-                            message = "Nom ou profil invalide."
+                            message = strings.getString(R.string.invalid_name_profile)
                         }
 
                         EditExerciseResult.IncompatibleProfileChange -> {
                             message =
-                                "Le profil ne peut pas changer après utilisation."
+                                strings.getString(R.string.profile_used_error)
                         }
 
                         EditExerciseResult.DatabaseError -> {
-                            message = "Enregistrement en base impossible."
+                            message = strings.getString(R.string.database_save_failed)
                         }
                     }
                 },
@@ -468,8 +470,8 @@ fun ExerciseScreen(
 
             if (editedExerciseId != null) {
                 TrainlogAction(
-                    label = "Annuler",
-                    description = "Revenir au catalogue sans modification.",
+                    label = strings.getString(R.string.dialog_cancel),
+                    description = strings.getString(R.string.cancel_catalog_description),
                     accent = colors.muted,
                     onClick = {
                         editedExerciseId = null
@@ -494,27 +496,27 @@ fun ExerciseScreen(
             }
         }
 
-        if (catalogueVisible) TrainlogFrame(title = "Exercices existants", active = false) {
+        if (catalogueVisible) TrainlogFrame(title = strings.getString(R.string.existing_exercises), active = false) {
             TrainlogInputField(
-                label = "Recherche par préfixe",
+                label = strings.getString(R.string.search_prefix),
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
             )
-            TrainlogChoiceGroup(label = "Filtre par zone") {
+            TrainlogChoiceGroup(label = strings.getString(R.string.zone_filter)) {
                 TrainlogChoice(
-                    label = "Toutes les zones",
+                    label = strings.getString(R.string.all_zones),
                     selected = filterZoneId == null && !unclassifiedFilter,
                     onClick = { filterZoneId = null; unclassifiedFilter = false },
                 )
                 BodyZoneChoices(zones, includeGroups = true) { zone, indented ->
                     TrainlogChoice(
-                        label = (if (indented) "  ↳ " else "") + zone.displayName,
+                        label = (if (indented) "  ↳ " else "") + localizedBodyZoneName(strings, zone.zoneId, zone.displayName),
                         selected = filterZoneId == zone.zoneId && !unclassifiedFilter,
                         onClick = { filterZoneId = zone.zoneId; unclassifiedFilter = false },
                     )
                 }
                 TrainlogChoice(
-                    label = "Non renseignés",
+                    label = strings.getString(R.string.not_specified_plural),
                     selected = unclassifiedFilter,
                     onClick = { filterZoneId = null; unclassifiedFilter = true },
                 )
@@ -526,20 +528,20 @@ fun ExerciseScreen(
                 unclassifiedOnly = unclassifiedFilter,
             )
             if (exercises.isEmpty()) {
-                TrainlogInfo("Aucun exercice enregistré.")
+                TrainlogInfo(strings.getString(R.string.exercise_none_saved))
             } else {
                 exercises.forEach { exercise ->
                     TrainlogAction(
-                        label = "Modifier · ${exercise.name}",
-                        description = exerciseZoneSummary(repository, exercise),
+                        label = strings.getString(R.string.modify_named, exercise.name),
+                        description = exerciseZoneSummary(repository, exercise, strings),
                         accent = colors.accent,
                         onClick = { startEditing(exercise) },
                     )
                     repository.getExerciseKnowledge(exercise.exerciseId)?.let { knowledge ->
                         val expanded = exercise.exerciseId in expandedKnowledgeIds
                         TrainlogAction(
-                            label = if (expanded) "− Connaissances" else "+ Connaissances",
-                            description = knowledgeSummary(knowledge),
+                            label = strings.getString(if (expanded) R.string.knowledge_collapse else R.string.knowledge_expand),
+                            description = knowledgeSummary(knowledge, strings),
                             accent = colors.muted,
                             onClick = {
                                 expandedKnowledgeIds = if (expanded) {
@@ -552,8 +554,8 @@ fun ExerciseScreen(
                         if (expanded) KnowledgePanel(repository, knowledge)
                     }
                     TrainlogAction(
-                        label = "Voir les derniers MAX",
-                        description = "Ouvrir la liste agrégée existante dans Statistiques.",
+                        label = strings.getString(R.string.view_latest_max),
+                        description = strings.getString(R.string.view_latest_max_description),
                         accent = colors.warning,
                         onClick = onOpenMaxima,
                     )
@@ -562,7 +564,7 @@ fun ExerciseScreen(
         }
 
         TrainlogFrame(
-            title = "Contrat",
+            title = strings.getString(R.string.contract),
             active = false,
         ) {
             TrainlogInfo(
@@ -570,20 +572,20 @@ fun ExerciseScreen(
             )
 
             TrainlogInfo(
-                "Aucune règle ne dépend du nom."
+                strings.getString(R.string.name_no_rules)
             )
         }
     }
     if (confirmingIncompatible) AlertDialog(
         onDismissRequest = { confirmingIncompatible = false },
-        title = { Text("Modifier le mode de suivi ?") },
-        text = { Text("Les anciennes séances et le brouillon actif resteront inchangés. Les nouvelles utilisations suivront le nouveau profil.") },
+        title = { Text(strings.getString(R.string.tracking_change_question)) },
+        text = { Text(strings.getString(R.string.profile_change_dialog_detail)) },
         confirmButton = { TextButton(onClick = {
             confirmedIncompatible = true
             confirmingIncompatible = false
-            message = "Transition confirmée. Enregistrez pour appliquer le profil aux prochaines utilisations."
-        }) { Text("Modifier") } },
-        dismissButton = { TextButton(onClick = { confirmingIncompatible = false }) { Text("Annuler") } },
+            message = strings.getString(R.string.profile_transition_confirmed)
+        }) { Text(strings.getString(R.string.modify)) } },
+        dismissButton = { TextButton(onClick = { confirmingIncompatible = false }) { Text(strings.getString(R.string.dialog_cancel)) } },
     )
 }
 
@@ -595,6 +597,7 @@ fun ExerciseEditorRoute(
     inline: Boolean,
     onSaved: () -> Unit,
 ) {
+    val strings = localizedContext()
     val profile = remember(exerciseId) {
         exerciseId?.let { id -> repository.listExercises().firstOrNull { it.exerciseId == id } }
     }
@@ -602,9 +605,9 @@ fun ExerciseEditorRoute(
         if (profile == null) state.prepareCreate() else state.prepareEdit(profile)
     }
     if (exerciseId != null && profile == null) {
-        TrainlogScreen("Modifier l'exercice") { TrainlogInfo("Exercice introuvable.") }
+        TrainlogScreen(strings.getString(R.string.route_exercise_edit)) { TrainlogInfo(strings.getString(R.string.exercise_not_found)) }
     } else if (state.editedExerciseId.value != exerciseId) {
-        TrainlogScreen("Modifier l'exercice") { TrainlogInfo("Chargement du profil…") }
+        TrainlogScreen(strings.getString(R.string.route_exercise_edit)) { TrainlogInfo(strings.getString(R.string.profile_loading)) }
     } else {
         ExerciseScreen(repository, state, inline, {}, onSaved, {}, catalogueVisible = false)
     }
@@ -613,6 +616,7 @@ fun ExerciseEditorRoute(
 @Composable
 private fun KnowledgePanel(repository: TrainlogRepository, knowledge: ExerciseKnowledge) {
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
     /* WHY: conditional content is opened only under an explicit uncertainty
      * label; it cannot be mistaken for an ordinary resolved classification. */
     val interpretation = when (knowledge.resolutionStatus) {
@@ -621,11 +625,11 @@ private fun KnowledgePanel(repository: TrainlogRepository, knowledge: ExerciseKn
         ExerciseKnowledgeStatus.UNRESOLVED -> null
     }
     if (interpretation == null) {
-        TrainlogInfo("Classification scientifique non résolue.", colors.warning)
-        TrainlogInfo("Confiance : ${confidenceLabel(knowledge.confidence)}", colors.muted)
+        TrainlogInfo(strings.getString(R.string.science_unresolved), colors.warning)
+        TrainlogInfo(strings.getString(R.string.confidence_inline, confidenceLabel(knowledge.confidence, strings)), colors.muted)
     } else if (knowledge.resolutionStatus == ExerciseKnowledgeStatus.CONDITIONAL) {
         TrainlogInfo(
-            "Interprétation conditionnelle · à confirmer : ${interpretation.requiredConfirmation.orEmpty()}",
+            strings.getString(R.string.conditional_interpretation, interpretation.requiredConfirmation.orEmpty()),
             colors.warning,
         )
     }
@@ -635,24 +639,26 @@ private fun KnowledgePanel(repository: TrainlogRepository, knowledge: ExerciseKn
         val secondary = resolved.secondaryMuscleIds.mapNotNull(repository::getMuscleKnowledge)
         val stabilizers = resolved.stabilizerMuscleIds.mapNotNull(repository::getMuscleKnowledge)
         val actions = resolved.actionIds.mapNotNull(repository::getJointActionKnowledge)
-        val primaryZone = repository.bodyZone(resolved.primaryZoneId)?.displayName ?: resolved.primaryZoneId
-        val secondaryZones = resolved.secondaryZoneIds.map { repository.bodyZone(it)?.displayName ?: it }
+        val primaryZone = repository.bodyZone(resolved.primaryZoneId)?.let { localizedBodyZoneName(strings, it.zoneId, it.displayName) } ?: resolved.primaryZoneId
+        val secondaryZones = resolved.secondaryZoneIds.map { id -> repository.bodyZone(id)?.let { localizedBodyZoneName(strings, it.zoneId, it.displayName) } ?: id }
         val runtimeEquipment = repository.listEquipment().associateBy { it.equipmentId }
         val equipment = repository.listEquipmentForKnownExercise(knowledge.exerciseId)
             .map { runtimeEquipment[it.equipmentId]?.displayName ?: it.equipmentId }
-        TrainlogInfo("Mouvements : ${actions.joinToString { it.displayNameFr }.ifEmpty { patterns.joinToString { it.displayNameFr }.ifEmpty { "Non classés" } }}")
-        TrainlogInfo("Muscles principaux : ${primary.joinToString { it.displayNameFr }.ifEmpty { "Non classés" }}")
-        TrainlogInfo("Muscles secondaires : ${secondary.joinToString { it.displayNameFr }.ifEmpty { "Aucun établi" }}")
-        TrainlogInfo("Stabilisateurs : ${stabilizers.joinToString { it.displayNameFr }.ifEmpty { "Aucun établi" }}")
-        TrainlogInfo("Zones scientifiques : $primaryZone" + if (secondaryZones.isEmpty()) "" else " · secondaires : ${secondaryZones.joinToString()}")
-        TrainlogInfo("Équipement compatible : ${equipment.joinToString().ifEmpty { "Non établi" }}")
-        TrainlogInfo("Confiance : ${confidenceLabel(resolved.confidence)}", colors.muted)
+        val french = LocalLanguagePresentation.current.language == AppLanguage.FRENCH
+        TrainlogInfo(strings.getString(R.string.movements_value, actions.joinToString { scientificCatalogLabel(it.actionId, it.displayNameFr, null, french) }.ifEmpty { patterns.joinToString { scientificCatalogLabel(it.patternId, it.displayNameFr, null, french) }.ifEmpty { strings.getString(R.string.unclassified) } }))
+        TrainlogInfo(strings.getString(R.string.primary_muscles, primary.joinToString { scientificCatalogLabel(it.muscleId, it.displayNameFr, it.displayName, french) }.ifEmpty { strings.getString(R.string.unclassified) }))
+        TrainlogInfo(strings.getString(R.string.secondary_muscles, secondary.joinToString { scientificCatalogLabel(it.muscleId, it.displayNameFr, it.displayName, french) }.ifEmpty { strings.getString(R.string.none_established) }))
+        TrainlogInfo(strings.getString(R.string.stabilizers, stabilizers.joinToString { scientificCatalogLabel(it.muscleId, it.displayNameFr, it.displayName, french) }.ifEmpty { strings.getString(R.string.none_established) }))
+        TrainlogInfo(strings.getString(R.string.scientific_zones, primaryZone,
+            if (secondaryZones.isEmpty()) "" else strings.getString(R.string.secondary_suffix, secondaryZones.joinToString())))
+        TrainlogInfo(strings.getString(R.string.compatible_equipment_value, equipment.joinToString().ifEmpty { strings.getString(R.string.not_established) }))
+        TrainlogInfo(strings.getString(R.string.confidence_inline, confidenceLabel(resolved.confidence, strings)), colors.muted)
     }
-    knowledge.limitations.forEach { TrainlogInfo("Limite : $it", colors.muted) }
+    knowledge.limitations.forEach { TrainlogInfo(strings.getString(R.string.limitation_value, it), colors.muted) }
     knowledge.sourceRefs.mapNotNull(repository::getScienceReference).forEach { reference ->
         TrainlogInfo(
-            "Source : ${reference.authorsOrOrganization} · ${reference.title}" +
-                (reference.year?.let { " ($it)" } ?: ""),
+            strings.getString(R.string.source_value, reference.authorsOrOrganization, reference.title,
+                reference.year?.let { " ($it)" } ?: ""),
             colors.muted,
         )
     }
@@ -666,27 +672,28 @@ fun ExerciseCatalogueScreen(
     onCreate: () -> Unit,
     onOpenDetail: (String) -> Unit,
 ) {
+    val strings = localizedContext()
     var query by state.searchQuery
     var zoneId by state.filterZoneId
     var unclassified by state.unclassifiedFilter
     val zones = repository.listBodyZones()
     val exercises = repository.listExercises(query, zoneId, true, false, unclassified)
-    TrainlogScreen("Catalogue d'exercices", scrollKey = "exercise-catalogue") {
-        TrainlogPrimaryAction("Créer un exercice", "Ajouter un profil au catalogue local.", onCreate)
-        TrainlogInputField("Recherche par préfixe", query, { query = it })
-        TrainlogChoiceGroup("Filtrer") {
-            TrainlogChoice("Toutes les zones", zoneId == null && !unclassified) {
+    TrainlogScreen(strings.getString(R.string.exercise_catalog), scrollKey = "exercise-catalogue") {
+        TrainlogPrimaryAction(strings.getString(R.string.route_exercise_create), strings.getString(R.string.create_exercise_description), onCreate)
+        TrainlogInputField(strings.getString(R.string.search_prefix), query, { query = it })
+        TrainlogChoiceGroup(strings.getString(R.string.filter)) {
+            TrainlogChoice(strings.getString(R.string.all_zones), zoneId == null && !unclassified) {
                 zoneId = null; unclassified = false
             }
             zones.filter { it.parentZoneId == null }.forEach { zone ->
-                TrainlogChoice(zone.displayName, zoneId == zone.zoneId && !unclassified) {
+                TrainlogChoice(localizedBodyZoneName(strings, zone.zoneId, zone.displayName), zoneId == zone.zoneId && !unclassified) {
                     zoneId = zone.zoneId; unclassified = false
                 }
             }
-            TrainlogChoice("Non renseignés", unclassified) { zoneId = null; unclassified = true }
+            TrainlogChoice(strings.getString(R.string.not_specified_plural), unclassified) { zoneId = null; unclassified = true }
         }
-        TrainlogFrame("Catalogue", active = exercises.isNotEmpty()) {
-            if (exercises.isEmpty()) TrainlogInfo("Aucun exercice trouvé.")
+        TrainlogFrame(strings.getString(R.string.catalog), active = exercises.isNotEmpty()) {
+            if (exercises.isEmpty()) TrainlogInfo(strings.getString(R.string.exercise_none_found))
             if (exercises.isNotEmpty()) {
                 /* CONTRACT: filtering and ordering stay repository-owned. This
                  * fixed viewport bounds presentation only; its child owns the
@@ -699,7 +706,7 @@ fun ExerciseCatalogueScreen(
                         .testTag("exercise-catalogue-scroll"),
                 ) {
                     exercises.forEach { exercise ->
-                        TrainlogAction(exercise.name, exerciseZoneSummary(repository, exercise), {
+                        TrainlogAction(exercise.name, exerciseZoneSummary(repository, exercise, strings), {
                             state.selectedExerciseId = exercise.exerciseId
                             onOpenDetail(exercise.exerciseId)
                         })
@@ -718,24 +725,25 @@ fun ExerciseDetailScreen(
     onOpenMaxima: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
     val context = remember(exerciseId) { repository.getTrainingExerciseContext(exerciseId) }
-    TrainlogScreen("Fiche exercice", scrollKey = "exercise-detail:$exerciseId") {
+    TrainlogScreen(strings.getString(R.string.route_exercise_detail), scrollKey = "exercise-detail:$exerciseId") {
         if (context == null) {
-            TrainlogInfo("Exercice introuvable.", colors.error)
+            TrainlogInfo(strings.getString(R.string.exercise_not_found), colors.error)
             return@TrainlogScreen
         }
-        TrainlogFrame("Profil") {
+        TrainlogFrame(strings.getString(R.string.profile)) {
             TrainlogInfo(context.exercise.name, colors.accent)
-            TrainlogInfo(exerciseZoneSummary(repository, context.exercise))
+            TrainlogInfo(exerciseZoneSummary(repository, context.exercise, strings))
             TrainlogInfo(profilePreview(context.exercise.recordingMode, context.exercise.trackingMode, context.exercise.dataFields))
-            TrainlogAction("Modifier", "Modifier le nom, le profil et les zones selon les règles existantes.", onModify)
+            TrainlogAction(strings.getString(R.string.modify), strings.getString(R.string.exercise_modify_description), onModify)
         }
-        TrainlogFrame("Connaissances", active = context.knowledge != null) {
+        TrainlogFrame(strings.getString(R.string.knowledge), active = context.knowledge != null) {
             context.knowledge?.let { KnowledgePanel(repository, it) }
-                ?: TrainlogInfo("Aucune connaissance scientifique liée à cet identifiant.", colors.muted)
+                ?: TrainlogInfo(strings.getString(R.string.knowledge_none), colors.muted)
         }
-        TrainlogFrame("Équipements compatibles", active = context.compatibleEquipment.isNotEmpty()) {
-            if (context.compatibleEquipment.isEmpty()) TrainlogInfo("Compatibilité non établie.")
+        TrainlogFrame(strings.getString(R.string.compatible_equipment), active = context.compatibleEquipment.isNotEmpty()) {
+            if (context.compatibleEquipment.isEmpty()) TrainlogInfo(strings.getString(R.string.compatibility_none))
             context.compatibleEquipment.forEach { equipment ->
                 val name = repository.listEquipment().firstOrNull { it.equipmentId == equipment.equipmentId }?.displayName
                     ?: listOfNotNull(equipment.manufacturer, equipment.model).joinToString(" ").ifBlank { equipment.equipmentId }
@@ -744,25 +752,25 @@ fun ExerciseDetailScreen(
         }
         context.latestExplicitMax?.let { max ->
             TrainlogFrame("MAX") {
-                TrainlogInfo("Dernier résultat : ${max.maxWeightKg} kg · ${max.startedAt.take(10)}", colors.warning)
+                TrainlogInfo(strings.getString(R.string.latest_result, max.maxWeightKg, formatDate(max.startedAt)), colors.warning)
             }
         }
-        TrainlogAction("Voir les derniers MAX", "Ouvrir la liste agrégée existante dans Statistiques.", onOpenMaxima)
+        TrainlogAction(strings.getString(R.string.view_latest_max), strings.getString(R.string.view_latest_max_description), onOpenMaxima)
     }
 }
 
-private fun knowledgeSummary(knowledge: ExerciseKnowledge): String = when (knowledge.resolutionStatus) {
+private fun knowledgeSummary(knowledge: ExerciseKnowledge, context: android.content.Context): String = when (knowledge.resolutionStatus) {
     ExerciseKnowledgeStatus.RESOLVED_FAMILY_VARIANT_LIMITED ->
-        "Classification scientifique · confiance ${confidenceLabel(knowledge.confidence)}"
+        context.getString(R.string.science_classification_confidence, confidenceLabel(knowledge.confidence, context))
     ExerciseKnowledgeStatus.CONDITIONAL ->
-        "Classification conditionnelle · incertitude explicite"
-    ExerciseKnowledgeStatus.UNRESOLVED -> "Classification scientifique non résolue"
+        context.getString(R.string.conditional_classification)
+    ExerciseKnowledgeStatus.UNRESOLVED -> context.getString(R.string.science_unresolved)
 }
 
-private fun confidenceLabel(confidence: KnowledgeConfidence): String = when (confidence) {
-    KnowledgeConfidence.HIGH -> "élevée"
-    KnowledgeConfidence.MODERATE -> "modérée"
-    KnowledgeConfidence.UNCERTAIN -> "incertaine"
+private fun confidenceLabel(confidence: KnowledgeConfidence, context: android.content.Context): String = when (confidence) {
+    KnowledgeConfidence.HIGH -> context.getString(R.string.confidence_high)
+    KnowledgeConfidence.MODERATE -> context.getString(R.string.confidence_moderate)
+    KnowledgeConfidence.UNCERTAIN -> context.getString(R.string.confidence_uncertain)
 }
 
 @Composable
@@ -771,11 +779,12 @@ private fun BodyZoneChoices(
     includeGroups: Boolean = false,
     content: @Composable (BodyZone, Boolean) -> Unit,
 ) {
+    val strings = localizedContext()
     zones.forEach { zone ->
         if (includeGroups || zone.kind != BodyZoneKind.GROUP) {
             content(zone, zone.parentZoneId != null)
         } else {
-            TrainlogInfo(zone.displayName)
+            TrainlogInfo(localizedBodyZoneName(strings, zone.zoneId, zone.displayName))
         }
     }
 }
@@ -783,18 +792,25 @@ private fun BodyZoneChoices(
 private fun exerciseZoneSummary(
     repository: TrainlogRepository,
     exercise: ExerciseProfile,
+    context: android.content.Context,
 ): String {
     val primary = exercise.primaryZoneId?.let(repository::bodyZone)
-        ?: return "Zone : Non renseignée"
+        ?: return context.getString(R.string.zone_not_specified)
     val secondary = exercise.secondaryZoneIds.mapNotNull(repository::bodyZone)
     val group = repository.bodyZoneAncestors(primary.zoneId).firstOrNull()
     return buildString {
-        append("Zone principale : ${primary.displayName}")
-        append(" · Zones secondaires : ")
-        append(if (secondary.isEmpty()) "Aucune" else secondary.joinToString { it.displayName })
-        group?.let { append(" · Groupe : ${it.displayName}") }
+        append(context.getString(R.string.primary_zone_value, localizedBodyZoneName(context, primary.zoneId, primary.displayName)))
+        append(context.getString(R.string.secondary_zones_value,
+            if (secondary.isEmpty()) context.getString(R.string.value_none_feminine) else secondary.joinToString { localizedBodyZoneName(context, it.zoneId, it.displayName) }))
+        group?.let { append(context.getString(R.string.group_value, localizedBodyZoneName(context, it.zoneId, it.displayName))) }
     }
 }
+
+/** INVARIANT: scientific catalog IDs/names are never rewritten; this derives presentation text only. */
+private fun scientificCatalogLabel(id: String, frenchLabel: String, englishLabel: String?, french: Boolean): String =
+    if (french) frenchLabel else englishLabel ?: id.split('_').joinToString(" ") { token ->
+        token.replaceFirstChar { character -> character.uppercase() }
+    }
 
 @Composable
 private fun TrainlogField(

@@ -5,14 +5,25 @@
  */
 package com.labfytools.trainlog.ui
 
+import android.content.Context
+import android.content.res.Configuration
+import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.data.BodyZoneHomeState
 import com.labfytools.trainlog.data.BodyZoneHomeStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.util.Locale
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class BodyZoneHomePresentationTest {
+    private val context: Context = ApplicationProvider.getApplicationContext<Context>().createConfigurationContext(
+        Configuration(ApplicationProvider.getApplicationContext<Context>().resources.configuration).apply { setLocale(Locale.FRENCH) })
     @Test fun detailWordingIsExposureOnlyAndIncludesEvidence() {
         val status = BodyZoneHomeStatus(
             zoneId = "chest",
@@ -30,21 +41,21 @@ class BodyZoneHomePresentationTest {
             state = BodyZoneHomeState.PRIORITIZE,
             reasons = listOf("Exposition primaire moins récente."),
         )
-        val text = recommendationReason(status)
+        val text = recommendationReason(status, context)
         assertEquals("Dernier travail principal : il y a 10 jours", text)
-        assertEquals("jamais enregistrée", ageLabel(null))
-        assertEquals("aujourd’hui", ageLabel(60))
-        assertEquals("il y a 10 jours", ageLabel(10 * 86400L))
+        assertEquals("jamais enregistrée", ageLabel(null, context))
+        assertEquals("aujourd’hui", ageLabel(60, context))
+        assertEquals("il y a 10 jours", ageLabel(10 * 86400L, context))
         listOf("récupération", "fatigue", "prêt", "séance recommandée").forEach {
             assertTrue(it !in text.lowercase())
         }
     }
 
     @Test fun recentWorkLabelsAreNeutralFactualCounts() {
-        assertEquals("Travail principal sur 7 j : 1", recentWorkLabel(1, "principal"))
-        assertEquals("Travail principal sur 7 j : 2", recentWorkLabel(2, "principal"))
-        assertEquals("Travail secondaire sur 7 j : 1", recentWorkLabel(1, "secondaire"))
-        assertEquals("Travail secondaire sur 7 j : 3", recentWorkLabel(3, "secondaire"))
+        assertEquals("Travail principal sur 7 j : 1", recentWorkLabel(1, true, context))
+        assertEquals("Travail principal sur 7 j : 2", recentWorkLabel(2, true, context))
+        assertEquals("Travail secondaire sur 7 j : 1", recentWorkLabel(1, false, context))
+        assertEquals("Travail secondaire sur 7 j : 3", recentWorkLabel(3, false, context))
     }
 
     @Test fun recentPrioritizedExposureIsPresentedAsRelativePriority() {
@@ -65,10 +76,10 @@ class BodyZoneHomePresentationTest {
             reasons = emptyList(),
         )
 
-        assertEquals("Priorité relative", homeStateLabel(status))
-        assertEquals("Travail principal sur 7 j : 2", recommendationReason(status))
-        assertFalse(recommendationReason(status).contains("exposition"))
-        assertFalse(recommendationReason(status).contains("fait(s)"))
-        assertFalse(recommendationReason(status).contains("pondéré"))
+        assertEquals("Priorité relative", homeStateLabel(status, context))
+        assertEquals("Travail principal sur 7 j : 2", recommendationReason(status, context))
+        assertFalse(recommendationReason(status, context).contains("exposition"))
+        assertFalse(recommendationReason(status, context).contains("fait(s)"))
+        assertFalse(recommendationReason(status, context).contains("pondéré"))
     }
 }

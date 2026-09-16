@@ -10,9 +10,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 
-enum class AppSection(val label: String) {
-    HOME("Accueil"), SESSIONS("Séances"), EXERCISES("Exercices"),
-    EQUIPMENT("Équipements"), STATISTICS("Statistiques"), SYNC("Synchronisation"), SETTINGS("Paramètres"),
+enum class AppSection {
+    HOME, SESSIONS, EXERCISES,
+    EQUIPMENT, STATISTICS, SYNC, SETTINGS,
 }
 
 sealed interface AppRoute {
@@ -156,29 +156,6 @@ class AppNavigationController(
         cancelPending()
         action()
     }
-}
-
-internal fun routeTitle(route: AppRoute): String = when (route) {
-    AppRoute.Home -> "Accueil"
-    AppRoute.Sessions -> "Séances"
-    AppRoute.SessionEditor -> "Séance en cours"
-    AppRoute.SessionGenerator -> "Programmer une séance"
-    AppRoute.AiSessionDrafts -> "Brouillons"
-    AppRoute.CompletedSessions -> "Séances effectuées"
-    is AppRoute.SessionDetail -> "Détail de la séance"
-    is AppRoute.SessionCorrection -> "Modifier la séance"
-    AppRoute.Exercises -> "Exercices"
-    is AppRoute.ExerciseDetail -> "Fiche exercice"
-    is AppRoute.ExerciseEdit -> "Modifier l'exercice"
-    is AppRoute.ExerciseCreate -> "Créer un exercice"
-    AppRoute.Equipment -> "Équipements"
-    is AppRoute.EquipmentDetail -> "Fiche équipement"
-    is AppRoute.EquipmentCreate -> "Créer un équipement"
-    AppRoute.Statistics -> "Statistiques"
-    AppRoute.BodyMeasurements -> "Mensurations"
-    AppRoute.LatestMaxima -> "Derniers MAX"
-    AppRoute.Sync -> "Synchronisation"
-    AppRoute.Settings -> "Paramètres"
 }
 
 /**

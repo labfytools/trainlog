@@ -52,7 +52,7 @@ class SessionSetRowEditorTest {
 
         assertNull(parseRawSetRows(rows))
         assertEquals(
-            "Série 2 : saisissez des répétitions entre 0 et 10000.",
+            "set_reps:2",
             setRowValidationError(rows),
         )
         assertEquals("10;8x;6", encodeRawReps(rows))
@@ -167,7 +167,7 @@ class SessionSetRowEditorTest {
             ManualPercentMaxResult.Available(100.0, "2026-09-10T08:00:00Z", 70.0),
             EquipmentLoadSemantics.ASSISTANCE)
         assertEquals(
-            "Le %MAX est indisponible pour une assistance ; choisissez une résistance externe.",
+            "max_assistance_unavailable",
             assistance.exceptionOrNull()?.message,
         )
     }

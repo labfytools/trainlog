@@ -94,6 +94,7 @@ fun TrainlogFrame(
     title: String,
     modifier: Modifier = Modifier,
     active: Boolean = true,
+    titleTrailing: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors =
@@ -112,15 +113,19 @@ fun TrainlogFrame(
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
     ) {
-        BasicText(
-            text = title,
-            style =
-                TrainlogTypography.small.copy(
-                    color = accent,
-                    fontWeight =
-                        FontWeight.Bold,
-                ),
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BasicText(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style =
+                    TrainlogTypography.small.copy(
+                        color = accent,
+                        fontWeight =
+                            FontWeight.Bold,
+                    ),
+            )
+            titleTrailing?.invoke()
+        }
 
         Box(
             modifier =
@@ -285,9 +290,11 @@ fun TrainlogButton(
     icon: ImageVector? = null,
     containerColor: Color? = null,
     maxLines: Int = 1,
+    enabled: Boolean = true,
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier.heightIn(min = 52.dp),
         colors = containerColor?.let { ButtonDefaults.buttonColors(containerColor = it) }
             ?: ButtonDefaults.buttonColors(),
@@ -466,7 +473,7 @@ fun DestructiveConfirmationDialog(
         onDismissRequest = onCancel,
         title = { Text(title) },
         text = { Text(detail) },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Annuler") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(localizedContext().getString(com.labfytools.trainlog.R.string.dialog_cancel)) } },
         confirmButton = {
             if (deleteContentDescription != null) {
                 TrainlogDeleteButton(

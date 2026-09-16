@@ -33,6 +33,7 @@ import com.labfytools.trainlog.ui.theme.TrainlogTypography
 import androidx.core.content.ContextCompat
 import com.labfytools.trainlog.data.MAX_FEEDBACK_UTF8_BYTES
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
+import com.labfytools.trainlog.R
 
 @Composable
 fun FeedbackEditor(
@@ -44,6 +45,15 @@ fun FeedbackEditor(
 ) {
     val context = LocalContext.current
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
+    val speechTag = if (LocalLanguagePresentation.current.language == AppLanguage.FRENCH) "fr-FR" else "en-US"
+    fun message(value: String): String = when (value) {
+        "feedback_microphone_denied" -> strings.getString(R.string.feedback_microphone_denied)
+        "feedback_speech_unavailable" -> strings.getString(R.string.feedback_speech_unavailable)
+        "feedback_empty" -> strings.getString(R.string.feedback_empty)
+        else -> if (value.startsWith("speech_error:")) strings.getString(R.string.speech_interrupted,
+            value.substringAfter(':').toIntOrNull() ?: -1) else value
+    }
     var state by remember(initialText) { mutableStateOf(DictationState(committedText = initialText)) }
     val controller = remember(initialText) { FeedbackDictationController(
         recognizerFactory?.invoke(context) ?: AndroidSpeechRecognitionAdapter(context),
@@ -51,7 +61,7 @@ fun FeedbackEditor(
             if (initialText.isNotEmpty()) it.edit(initialText)
         } }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        controller.start(granted)
+        controller.start(granted, speechTag)
     }
     DisposableEffect(controller) { onDispose { controller.destroy() } }
     val transcriptScroll = rememberScrollState()
@@ -64,10 +74,10 @@ fun FeedbackEditor(
         }
     }
 
-    TrainlogFrame(title = "Dictée du ressenti") {
+    TrainlogFrame(title = strings.getString(R.string.feedback_dictation)) {
         if (state.phase == DictationPhase.Listening) {
-            TrainlogInfo("● Enregistrement en cours", color = colors.error)
-            TrainlogIconAction(TrainlogIcons.Stop, "Arrêter la dictée",
+            TrainlogInfo(strings.getString(R.string.feedback_recording), color = colors.error)
+            TrainlogIconAction(TrainlogIcons.Stop, strings.getString(R.string.feedback_stop),
                 onClick = { controller.stop() }, accent = colors.warning,
                 modifier = Modifier.testTag("feedback-stop"))
             Box(Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 192.dp)
@@ -76,22 +86,22 @@ fun FeedbackEditor(
                 BasicText(state.visibleText, style = TrainlogTypography.normal.copy(color = colors.text))
             }
         } else {
-            TrainlogInputField("Texte", state.visibleText, onValueChange = {
+            TrainlogInputField(strings.getString(R.string.feedback_text), state.visibleText, onValueChange = {
                 if (it.toByteArray(Charsets.UTF_8).size <= MAX_FEEDBACK_UTF8_BYTES) controller.edit(it)
             }, testTag = "feedback-edit-transcript", singleLine = false, minLines = 4, maxLines = 8)
             val resume = state.committedText.isNotBlank()
             TrainlogIconAction(TrainlogIcons.Mic,
-                if (resume) "Reprendre la dictée" else "Démarrer la dictée", onClick = {
+                strings.getString(if (resume) R.string.feedback_resume else R.string.feedback_start), onClick = {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-                    controller.start(true) else permission.launch(Manifest.permission.RECORD_AUDIO)
+                    controller.start(true, speechTag) else permission.launch(Manifest.permission.RECORD_AUDIO)
             }, accent = colors.accent, modifier = Modifier.testTag("feedback-mic"))
-            TrainlogAction(if (editing) "Enregistrer les modifications" else "Enregistrer",
-                if (editing) "Créer une nouvelle révision immutable." else "Créer un enregistrement historique immutable.", onClick = {
+            TrainlogAction(strings.getString(if (editing) R.string.save_changes else R.string.save),
+                strings.getString(if (editing) R.string.feedback_revision_description else R.string.feedback_create_description), onClick = {
                 controller.beginSaving()?.let { text -> onSave(text)?.let(controller::saveFailed) }
             }, accent = colors.success)
-            TrainlogAction("Annuler", "Ne rien enregistrer.",
+            TrainlogAction(strings.getString(R.string.dialog_cancel), strings.getString(R.string.save_nothing),
                 onClick = { controller.cancel(); onCancel() }, accent = colors.muted)
         }
-        state.message?.let { TrainlogInfo(it, color = colors.error) }
+        state.message?.let { TrainlogInfo(message(it), color = colors.error) }
     }
 }

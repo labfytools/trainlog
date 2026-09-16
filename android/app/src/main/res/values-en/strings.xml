@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Trainlog</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_sessions">Sessions</string>
+    <string name="nav_exercises">Exercises</string>
+    <string name="nav_equipment">Equipment</string>
+    <string name="nav_statistics">Statistics</string>
+    <string name="nav_sync">Synchronization</string>
+    <string name="nav_settings">Settings</string>
+    <string name="route_session_editor">Current session</string>
+    <string name="route_session_generator">Plan a session</string>
+    <string name="route_ai_drafts">Drafts</string>
+    <string name="route_completed_sessions">Completed sessions</string>
+    <string name="route_session_detail">Session details</string>
+    <string name="route_session_correction">Edit session</string>
+    <string name="route_exercise_detail">Exercise details</string>
+    <string name="route_exercise_edit">Edit exercise</string>
+    <string name="route_exercise_create">Create exercise</string>
+    <string name="route_equipment_detail">Equipment details</string>
+    <string name="route_equipment_create">Create equipment</string>
+    <string name="route_body_measurements">Body measurements</string>
+    <string name="route_latest_maxima">Latest MAX</string>
+    <string name="a11y_open_navigation">Open navigation</string>
+    <string name="a11y_back">Back</string>
+    <string name="a11y_navigation">Navigation</string>
+    <string name="settings_language_section">LANGUAGE</string>
+    <string name="settings_language_label">Language</string>
+    <string name="language_french">Français</string>
+    <string name="language_english">English</string>
+    <string name="settings_exchange_folder">EXCHANGE FOLDER</string>
+    <string name="settings_screen">Settings</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_keep_leave">Keep and leave</string>
+    <string name="dialog_discard_proposal">Discard proposal</string>
+    <string name="dialog_discard_changes">Discard changes</string>
+    <string name="dialog_unaccepted_proposal">Unaccepted proposal</string>
+    <string name="dialog_unsaved_changes">Unsaved changes</string>
+    <string name="dialog_proposal_retained">The proposal can remain in memory while you visit another section.</string>
+    <string name="dialog_fields_retained">The fields remain in memory until you explicitly discard them.</string>
+    <string name="a11y_delete_exercise">Delete this exercise</string>
+    <string name="a11y_delete_current_session">Delete the current session</string>
+    <string name="a11y_delete_set">Delete this set</string>
+    <string name="a11y_remove_machine">Remove the machine from this exercise</string>
+    <string name="a11y_delete_draft">Delete this draft</string>
+    <string name="home_session">Session</string>
+    <string name="home_sync_state">Status and actions</string>
+    <string name="home_body_tracking">Body tracking</string>
+    <string name="settings_access_granted">File access granted.</string>
+    <string name="settings_access_required">File access is still required.</string>
+    <string name="settings_folder_granted">Exchange folder: Documents/Trainlog\nFile access: granted</string>
+    <string name="settings_folder_required">File access required</string>
+    <string name="settings_open_access">Open access settings</string>
+    <string name="settings_authorize">Authorize</string>
+    <string name="settings_authorize_description">Allow access to the Trainlog folder in Android.</string>
+    <string name="settings_reload_catalog">Reload PC catalog</string>
+    <string name="settings_reload_description">Explicitly apply the catalog in the authorized folder.</string>
+    <string name="settings_no_catalog">No PC catalog received.</string>
+    <string name="settings_folder_revoked">The folder is no longer authorized.</string>
+    <string name="sync_folder_unauthorized">Trainlog folder not authorized.</string>
+    <string name="sync_complete">Synchronization complete · Android catalog: %1$s.</string>
+    <string name="sync_receipt_failure">PC synchronization failed. Check the PC log for diagnostics.</string>
+    <string name="sync_pc_catalog_missing">PC synchronization completed, but the received catalog could not be found.</string>
+    <string name="sync_pc_folder_unauthorized">PC synchronization completed, but the Trainlog folder is not authorized.</string>
+    <string name="sync_pc_import_error">PC synchronization completed; Android import: %1$s</string>
+    <string name="sync_timeout">The PC did not respond within 60 seconds.</string>
+    <string name="sync_access_ready">File access granted · Documents/Trainlog is ready.</string>
+    <string name="sync_access_enable">File access is required. Enable the permission in Android.</string>
+    <string name="sync_access_catalog">Access granted · PC catalog: %1$s.</string>
+    <string name="sync_access_no_catalog">Access granted · no PC catalog received.</string>
+    <string name="sync_action">Synchronize</string>
+    <string name="sync_snapshot_automatic">The Android snapshot is maintained automatically.</string>
+    <string name="sync_running">Synchronization in progress…</string>
+    <string name="sync_now">Synchronize now</string>
+    <string name="sync_flow_description">Android → PC then PC → Android, in one operation.</string>
+    <string name="sync_authorize_first">File access is required. Authorize Documents/Trainlog first.</string>
+    <string name="sync_request_sent">Request sent · waiting for the PC…</string>
+    <string name="sync_android_unsupported">Android is not supported.</string>
+    <string name="sync_folder_section">EXCHANGE FOLDER</string>
+    <string name="sync_authorize_folder">Authorize access to the Trainlog folder</string>
+    <string name="sync_manage_files">Allow access to manage all files in Android.</string>
+    <string name="sync_manual_recovery">Manual recovery action if needed.</string>
+    <string name="sync_catalog_result">PC catalog: %1$s.</string>
+    <string name="sync_folder_access_required">File access is required for Documents/Trainlog.</string>
+    <string name="sync_status">Status</string>
+    <string name="sync_prepare_error">Android → PC preparation: %1$s</string>
+    <plurals name="catalog_new"><item quantity="one">%d new</item><item quantity="other">%d new</item></plurals>
+    <plurals name="catalog_reconciled"><item quantity="one">%d reconciled</item><item quantity="other">%d reconciled</item></plurals>
+    <plurals name="catalog_present"><item quantity="one">%d present</item><item quantity="other">%d present</item></plurals>
+    <string name="history_none">No sessions recorded.</string>
+    <string name="max_none">No explicit MAX recorded.</string>
+    <string name="equipment_value">Equipment: %1$s</string>
+    <string name="value_none">none</string>
+    <string name="session_training">TRAINING</string>
+    <string name="session_max_test">MAX TEST</string>
+    <plurals name="exercise_count"><item quantity="one">%d exercise</item><item quantity="other">%d exercises</item></plurals>
+    <string name="date_time_pattern">MM/dd/yyyy h:mm a</string>
+    <string name="date_pattern">MM/dd/yyyy</string>
+    <string name="correction_profile_note">Previous profile interpretations are preserved. The identifiers of the session and retained occurrences do not change.</string>
+    <string name="field_target_sets">Target set count</string>
+    <string name="field_target_reps">Target repetitions</string>
+    <string name="field_target_duration">Target duration per set (s)</string>
+    <string name="field_rest_seconds">Rest (s)</string>
+    <string name="field_target_weight">Target load (kg)</string>
+    <string name="field_explicit_max">Explicit MAX (kg)</string>
+    <string name="field_continuous_duration">Continuous duration (s)</string>
+    <string name="field_speed">Speed (km/h)</string>
+    <string name="field_distance">Distance (km)</string>
+    <string name="field_reps">Repetitions</string>
+    <string name="field_duration_seconds">Duration (s)</string>
+    <string name="field_weight">Load (kg)</string>
+    <string name="set_number">Set %1$d</string>
+    <string name="add_set">+ Add a set</string>
+    <string name="add_set_description">Explicitly add a performed fact.</string>
+    <string name="delete_occurrence">Delete this occurrence</string>
+    <string name="save">Save</string>
+    <string name="correction_save_description">Apply the entire correction in one transaction.</string>
+    <string name="cancel_no_database_change">Leave without changing the database.</string>
+    <string name="delete_set_question">Delete this set?</string>
+    <string name="delete_set_detail">This performed fact will disappear from the corrected session.</string>
+    <string name="delete">Delete</string>
+    <string name="delete_occurrence_question">Delete this occurrence?</string>
+    <string name="a11y_delete_occurrence">Delete this occurrence</string>
+    <plurals name="performed_set_count"><item quantity="one">%d performed set</item><item quantity="other">%d performed sets</item></plurals>
+    <string name="occurrence_delete_impact">Impact: %1$s%2$s%3$s. Its feedback and revisions will be deleted with their parent.</string>
+    <string name="continuous_activity_suffix">, continuous activity</string>
+    <string name="max_suffix">, MAX</string>
+    <string name="session_not_found">Session not found.</string>
+    <string name="feedback_dictation">Feedback dictation</string>
+    <string name="feedback_recording">● Recording</string>
+    <string name="feedback_stop">Stop dictation</string>
+    <string name="feedback_text">Text</string>
+    <string name="feedback_resume">Resume dictation</string>
+    <string name="feedback_start">Start dictation</string>
+    <string name="save_changes">Save changes</string>
+    <string name="feedback_revision_description">Create a new immutable revision.</string>
+    <string name="feedback_create_description">Create an immutable historical record.</string>
+    <string name="save_nothing">Save nothing.</string>
+    <string name="feedback_microphone_denied">Microphone permission denied: manual input remains available.</string>
+    <string name="feedback_speech_unavailable">Speech recognition is unavailable: use manual input.</string>
+    <string name="feedback_empty">Empty feedback cannot be saved.</string>
+    <string name="current_session_none">No session in progress.</string>
+    <string name="prepare">Prepare</string>
+    <string name="new_manual_session">New manual session</string>
+    <string name="create_or_resume">Create or resume</string>
+    <plurals name="prepared_session_count"><item quantity="one">%d prepared session</item><item quantity="other">%d prepared sessions</item></plurals>
+    <string name="draft_none">No imported drafts.</string>
+    <string name="delete_draft_question">Delete this draft?</string>
+    <string name="max_capacities">CAPABILITIES / MAX</string>
+    <string name="equipment_catalog">Equipment catalog</string>
+    <string name="catalog">Catalog</string>
+    <string name="equipment_none">No equipment found.</string>
+    <string name="load_value">Load: %1$s</string>
+    <string name="possible_exercises">Possible exercises</string>
+    <string name="association_none">No verified association. Anatomy is not inferred from the machine name.</string>
+    <string name="settings_folder_imported">Folder authorized · %1$s.</string>
+    <string name="settings_catalog_reloaded">Catalog reloaded · %1$s.</string>
+    <string name="body_save">Save body measurements</string>
+    <string name="body_saved">Body measurements saved.</string>
+    <string name="local_database_error">Local database error.</string>
+    <string name="body_none">No measurements recorded.</string>
+    <string name="exercise_save">Save exercise</string>
+    <string name="existing_exercises">Existing exercises</string>
+    <string name="exercise_none_saved">No exercises saved.</string>
+    <string name="modify_named">Edit · %1$s</string>
+    <string name="view_latest_max">View latest MAX</string>
+    <string name="name_no_rules">No rule depends on the name.</string>
+    <string name="tracking_change_question">Change tracking mode?</string>
+    <string name="modify">Edit</string>
+    <string name="exercise_not_found">Exercise not found.</string>
+    <string name="profile_loading">Loading profile…</string>
+    <string name="primary_muscles">Primary muscles: %1$s</string>
+    <string name="secondary_muscles">Secondary muscles: %1$s</string>
+    <string name="stabilizers">Stabilizers: %1$s</string>
+    <string name="unclassified">Unclassified</string>
+    <string name="none_established">None established</string>
+    <string name="exercise_none_found">No exercises found.</string>
+    <string name="exercise_modify_description">Edit the name, profile, and zones according to the existing rules.</string>
+    <string name="knowledge_none">No scientific knowledge is linked to this identifier.</string>
+    <string name="view_latest_max_description">Open the existing aggregated list in Statistics.</string>
+    <string name="value_none_feminine">None</string>
+    <string name="field_duration">Duration</string>
+    <string name="field_speed_short">Speed</string>
+    <string name="field_distance_short">Distance</string>
+    <string name="error_title">Error</string>
+    <string name="draft_unsaved">Draft not saved: %1$s</string>
+    <string name="draft_unsaved_title">Draft not saved</string>
+    <string name="last_change_unsaved">Latest change not saved.</string>
+    <string name="session_saved_locally">Session saved locally.</string>
+    <string name="normal_session_description">Normal training session.</string>
+    <string name="max_session_description">Session explicitly dedicated to a MAX measurement.</string>
+    <string name="exercise_none_added">No exercises added.</string>
+    <string name="performed_sets_none">No performed sets entered: add the values actually performed.</string>
+    <string name="modify_name">Edit %1$s</string>
+    <string name="feedback_edit_description">Correct the text without changing the observation.</string>
+    <string name="exercise_added">Exercise added to the session.</string>
+    <string name="exercise_modified">Exercise edited.</string>
+    <string name="session_save">Save session</string>
+    <string name="exercise_title">Exercise</string>
+    <string name="exercise_none">No exercises.</string>
+    <string name="choose_exercise">Choose an exercise</string>
+    <string name="exercise_picker_description">Exercise selected. Tap to show suggestions.</string>
+    <string name="search_exercise">Search for an exercise…</string>
+    <string name="exercise_none_found_short">No exercises found</string>
+    <string name="cancel_search">Cancel search</string>
+    <string name="keep_named_values">Keep %1$s and the entered values.</string>
+    <string name="entry_title">ENTRY — %1$s</string>
+    <string name="target_load_note">Planned target load — separate from loads actually performed.</string>
+    <string name="load_kg_value">Value in kg</string>
+    <string name="percent_my_max">%% of my MAX</string>
+    <string name="percent_my_max_field">Percentage of my MAX (1 to 100)</string>
+    <string name="compatible_max">Compatible MAX: %1$s kg · %2$s</string>
+    <string name="target_none">No target load will be saved.</string>
+    <string name="set_reps_field">Set %1$d — Repetitions</string>
+    <string name="optional_load_note">Load is optional; both decimal separators are accepted. An empty field is not zero.</string>
+    <string name="sets_count">Number of sets</string>
+    <string name="set_duration_seconds">Duration per set (seconds)</string>
+    <string name="duration_minutes">Duration (minutes)</string>
+    <string name="speed_kmh">Speed km/h</string>
+    <string name="distance_km">Distance km</string>
+    <string name="invalid_target_load">Invalid target load.</string>
+    <string name="cancel_entry">Cancel entry</string>
+    <string name="delete_numbered_set_question">Delete set %1$d?</string>
+    <string name="session_type_value">Type: %1$s</string>
+    <string name="resume_max_test">Resume this MAX test</string>
+    <string name="resume_max_description">Continue the same session while preserving its identifier and date.</string>
+    <string name="equipment_inline">Equipment: %1$s</string>
+    <string name="plan_summary">Plan: %1$d × %2$s · rest %3$d s · %4$s</string>
+    <string name="target_load_inline">target load %1$s kg</string>
+    <string name="no_numeric_load">no numeric load</string>
+    <string name="search_machine">Search for a machine</string>
+    <string name="modify_equipment">Edit equipment</string>
+    <string name="modify_equipment_description">Choose, replace, or remove the machine for this entry.</string>
+    <string name="max_value">MAX: %1$s kg</string>
+    <string name="modified_suffix"> · Edited</string>
+    <string name="feedback_move_description">Correct the text without moving the observation.</string>
+    <string name="add_feedback">Add feedback</string>
+    <string name="session_follow_up">Post-session follow-up</string>
+    <string name="feedback_marker_description">Correct the text without changing the H+ marker.</string>
+    <string name="add_record">Add a record</string>
+    <string name="remove_machine_question">Remove the machine from this entry?</string>
+    <string name="replace_machine_question">Replace the associated machine?</string>
+    <string name="machine_change_detail">The currently recorded machine association will be lost. Sets, MAX, and feedback remain unchanged.</string>
+    <string name="remove">Remove</string>
+    <string name="replace">Replace</string>
+    <string name="mode_sets_reps">Mode: sets · repetitions</string>
+    <string name="mode_sets_duration">Mode: sets · duration</string>
+    <string name="assistance_kg">Assistance (kg)</string>
+    <string name="sets_table">Set | Repetitions | %1$s</string>
+    <string name="set_duration">Set %1$d: %2$s</string>
+    <string name="mode_continuous">Mode: continuous</string>
+    <string name="duration_value">Duration: %1$s</string>
+    <string name="speed_value">Speed: %1$.1f km/h</string>
+    <string name="distance_value">Distance: %1$.2f km</string>
+    <plurals name="duration_minutes_value"><item quantity="one">%d min</item><item quantity="other">%d min</item></plurals>
+    <plurals name="duration_seconds_value"><item quantity="one">%d sec</item><item quantity="other">%d sec</item></plurals>
+    <string name="period_7_days">7 days</string><string name="period_30_days">30 days</string><string name="period_90_days">90 days</string><string name="period_year">1 year</string><string name="period_all">All</string>
+    <string name="statistics_invalid_ignored">Some invalid historical data was ignored; valid statistics remain available.</string>
+    <string name="explore">EXPLORE</string><string name="distribution">Distribution</string>
+    <string name="distribution_description">Zones and exercise usage, only when they are classified.</string>
+    <string name="global_summary">Global summary</string><string name="global_summary_description">Cautious indicators derived from available data.</string>
+    <string name="summary_period">SUMMARY · %1$s</string><string name="sets">Sets</string><string name="explicit_max_plural">Explicit MAX</string>
+    <string name="progression">PROGRESSION</string><string name="progress_insufficient">Insufficient data to establish comparable progress.</string>
+    <string name="progress_counts">%1$d training improvements · %2$d MAX records</string><string name="max_open_detail">%1$d explicit MAX · open details</string>
+    <string name="body_period_none">No body measurements in this period.</string><string name="measurement_single">1 measurement · trend unavailable</string>
+    <string name="frequency">FREQUENCY</string><string name="current_week_summary">Current week · %1$s · %2$d MAX included</string>
+    <string name="max_not_double_counted">MAX values mark sessions; they are never added a second time.</string>
+    <string name="back_dashboard">← Back to dashboard</string><string name="comparable_none">No comparable data in this period.</string>
+    <plurals name="session_count"><item quantity="one">%d session</item><item quantity="other">%d sessions</item></plurals>
+    <string name="progress_detail_description">Each detail row preserves a canonical exercise, comparable equipment, and mode; the dashboard never adds kilograms together.</string>
+    <string name="body_detail_description">No interpolation: only measurements actually recorded are shown.</string>
+    <string name="frequency_title">Frequency</string><string name="frequency_unit">sessions</string>
+    <string name="frequency_detail_description">Number of sessions with actual work per week; MAX is a marker, not a second session.</string>
+    <string name="distribution_detail_description">Detailed distribution appears when classified occurrences are available in this view.</string>
+    <string name="summary_detail">%1$d sessions · %2$d sets · %3$d exercises · %4$d explicit MAX</string>
+    <string name="generator_zone">Body zone</string><string name="generator_goal">Goal</string>
+    <string name="generator_custom_duration">Custom duration (%1$d to %2$d min)</string>
+    <string name="generate">Generate</string><string name="generate_description">Analyze history read-only and prepare the proposal.</string>
+    <string name="duration_range_error">Duration must be between %1$d and %2$d minutes.</string>
+    <string name="target_duration_estimate">Target duration: %1$d min · estimate: %2$d min</string>
+    <string name="proposal_short">The proposal is significantly shorter than the target; no exercise is added merely to fill time.</string>
+    <string name="warmup_not_generated">Warm-up and cool-down are not generated in V1.</string>
+    <string name="recent_exposure_warning">Informational warning: history shows recent exposure. This does not measure physiological recovery.</string>
+    <string name="continue_warning">Continue despite warning</string><string name="continue_warning_description">Keep the proposal and allow it to be accepted.</string>
+    <string name="equipment_generator">Equipment: %1$s</string><string name="target_load_none_proposed">Target load: no numeric load proposed.</string><string name="target_load_proposed">Target load: %1$s kg</string>
+    <string name="recent_similar">Similar recent history detected; informational only.</string>
+    <string name="sets_label">Sets</string><string name="user_load_note">Load: user choice, never a recommendation.</string>
+    <string name="automatic">Automatic</string><string name="none">None</string><string name="apply">Apply</string>
+    <string name="modify_target">Edit target</string><string name="modify_target_description">Edit sets, repetitions, rest, or load.</string>
+    <string name="regenerate">Regenerate</string><string name="accept_actual_values">Accept and enter actual values</string>
+    <string name="cancel_proposal">Cancel proposal</string><string name="cancel_proposal_description">Return without writing a draft.</string>
+    <string name="processing">Processing</string><string name="analysis_running">Analysis in progress…</string><string name="message_title">Message</string>
+    <string name="resume">Resume</string><string name="durable_draft_count">%1$s · the durable draft is preserved.</string>
+    <string name="session_proposal">Session proposal</string><string name="planned_for">Planned for %1$s</string>
+    <plurals name="repetition_count"><item quantity="one">%d repetition</item><item quantity="other">%d repetitions</item></plurals>
+    <string name="start">Start</string><string name="start_proposal_description">Copy this proposal into the current session.</string>
+    <string name="draft_already_active">A session is already in progress. The imported draft was preserved.</string>
+    <string name="delete_draft_detail">Draft “%1$s” will be deleted.\nThis action cannot be undone.</string>
+    <string name="training">Training</string><string name="resume_current_session">Resume current session</string>
+    <string name="new_manual_description">Explicitly create a durable draft.</string><string name="latest_session">Latest session</string><string name="quick_access">Quick access</string>
+    <string name="zones_to_work">Zones to work</string><string name="recent_exposure">Recent exposure</string><string name="no_training_history">No training history yet.</string>
+    <string name="invalid_history_timestamp">Insufficient data: a historical timestamp could not be interpreted.</string>
+    <string name="selection_value">Selection: %1$s</string><string name="priorities">Priorities</string><string name="resolved_zone_none">No zone with a resolved exercise is available.</string>
+    <string name="exposure_explanation">These colors describe recently recorded work. They do not measure physiological recovery.</string><string name="understood">Got it</string>
+    <string name="view_exercises">View exercises</string><string name="view_statistics">View statistics</string>
+    <string name="session_type">Session type</string><string name="training_selected">[✓] Training</string><string name="training_unselected">[ ] Training</string>
+    <string name="edit_exercise_description">Edit this exercise without removing it from the session.</string><string name="editor_opened">Editor opened for %1$s — prefilled fields appear below.</string>
+    <string name="editing_scroll_hint">Editing — scroll to ENTRY — %1$s.</string><string name="feedback_value">Feedback · %1$s%2$s</string>
+    <string name="feedback_now_description">Dictate or enter feedback now, before the session ends.</string><string name="feedback_saved_current">Feedback saved in the current session.</string>
+    <string name="create_new_exercise">Create a new exercise</string><string name="finalize_failed">Finalization failed, draft preserved: %1$s</string>
+    <string name="session_exercise_total">%1$s in the session.</string><string name="discard_session_question">Discard the current session?</string>
+    <string name="discard_session_detail">This will delete the draft, its %1$s, and all their recorded data.</string>
+    <string name="remove_exercise_question">Remove “%1$s” from the session?</string><string name="remove_occurrence_detail">This occurrence will be removed.</string>
+    <string name="continuous_fact">the continuous activity</string><string name="max_fact">the MAX value</string>
+    <string name="create_context">Create context</string><string name="context_compatibility">Temporary compatibility for a custom or unresolved exercise.</string>
+    <string name="context_exists">This context already exists.</string><string name="context_create_error">Context not created: %1$s</string><string name="equipment_selected">Equipment selected.</string>
+    <string name="positive_decimal_note">Strictly positive value; both decimal separators are accepted.</string><string name="calculated_target">Calculated target: %1$s kg</string>
+    <string name="set_independent_values">Each set retains its own repetitions and load.</string><string name="add_set_plain">Add a set</string>
+    <string name="add_set_row_description">Add an empty row without changing the other sets.</string><string name="add_to_session">Add to session</string>
+    <string name="delete_set_entered_detail">Its entered repetitions, duration, and load will be deleted.</string>
+    <string name="validation_set_required">Add at least one set.</string><string name="validation_set_reps">Set %1$d: enter repetitions between 0 and %2$d.</string>
+    <string name="validation_set_load">Set %1$d: enter a non-negative load or leave the field empty.</string><string name="validation_sets_invalid">Invalid set values.</string>
+    <string name="exercise_removed">Exercise removed from the session.</string>
+    <string name="target_positive">Enter a strictly positive target load.</string><string name="max_unavailable">Compatible MAX unavailable.</string>
+    <string name="max_assistance_unavailable">%%MAX is unavailable for assistance; choose external resistance.</string>
+    <string name="compatible_load_equipment_required">Choose equipment compatible with a target load.</string><string name="positive_dose_required">Define a positive target dose before the target load.</string>
+    <string name="percent_range">Percentage must be between 1 and 100.</string><string name="max_read_failed">Unable to read MAX.</string>
+    <string name="max_choose_external">Compatible MAX unavailable: choose external-resistance equipment.</string><string name="max_known_external_required">%%MAX is unavailable without known external-resistance equipment.</string><string name="max_exact_unavailable">Compatible MAX unavailable for this exact exercise and equipment.</string>
+    <string name="organization_sets">Sets</string><string name="supplemental_data">Supplemental data</string><string name="not_specified_feminine">Not specified</string><string name="not_specified_plural">Not specified</string>
+    <string name="profile_change_note">Past sessions and the occurrence already in the draft remain unchanged. The new profile applies to future uses.</string>
+    <string name="create_return_session">Create and return to session</string><string name="identity_update_description">Preserve identity and update the catalog.</string>
+    <string name="exercise_name_exists">An exercise with this name already exists.</string><string name="other_exercise_name_exists">Another exercise already has this name.</string><string name="profile_used_error">The profile cannot change after use.</string>
+    <string name="search_prefix">Prefix search</string><string name="profile_change_dialog_detail">Previous sessions and the active draft remain unchanged. New uses follow the new profile.</string>
+    <string name="profile_transition_confirmed">Transition confirmed. Save to apply the profile to future uses.</string>
+    <string name="science_unresolved">Scientific classification unresolved.</string><string name="conditional_interpretation">Conditional interpretation · confirm: %1$s</string>
+    <string name="movements_value">Movements: %1$s</string><string name="compatible_equipment_value">Compatible equipment: %1$s</string><string name="not_established">Not established</string>
+    <string name="create_exercise_description">Add a profile to the local catalog.</string><string name="compatible_equipment">Compatible equipment</string><string name="compatibility_none">Compatibility not established.</string>
+    <string name="latest_result">Latest result: %1$s kg · %2$s</string><string name="science_classification_confidence">Scientific classification · %1$s confidence</string>
+    <string name="conditional_classification">Conditional classification · explicit uncertainty</string><string name="confidence_high">high</string><string name="confidence_moderate">moderate</string><string name="confidence_low">low</string>
+    <string name="zone_not_specified">Zone: Not specified</string>
+    <string name="confidence_uncertain">uncertain</string><string name="primary_zone_value">Primary zone: %1$s</string><string name="secondary_zones_value"> · Secondary zones: %1$s</string><string name="group_value"> · Group: %1$s</string>
+    <string name="goal_general">General</string><string name="goal_strength">Strength</string><string name="goal_hypertrophy">Hypertrophy</string><string name="goal_endurance">Local endurance</string>
+    <string name="generator_weight_invalid">Target load must be a finite positive number.</string><string name="proposal">Proposal</string>
+    <string name="coverage_incomplete">Coverage is incomplete because resolved contexts are unavailable%1$s</string>
+    <string name="exposure_summary">Observed exposure: %1$d primary and %2$d secondary sets over 24 h; %3$d primary and %4$d secondary over 72 h.</string><string name="latest_exposure">Latest observed exposure: %1$s</string>
+    <string name="observed_load_note">Load derived from a dose actually observed on %1$s; its applicability today remains uncertain.</string>
+    <string name="max_percentage_field">MAX percentage (1 to 100)</string><string name="manual_target_load">Manual target load (empty = automatic)</string>
+    <string name="reestimate_description">Re-estimate duration and reclassify the observed load.</string><string name="move_up">Move up</string><string name="move_up_description">Move this exercise before the previous one.</string><string name="move_down">Move down</string><string name="move_down_description">Move this exercise after the next one.</string>
+    <string name="regenerate_description">Run again with the same inputs and reference instant.</string><string name="accept_actual_description">Create the normal draft without prefilling performed sets.</string><string name="acknowledge_exposure_first">Confirm the recent-exposure warning first.</string>
+    <string name="reason_observed_dose">observed repeated dose</string><string name="reason_max_no_prescription">observed maximum without numeric prescription</string><string name="reason_user_max">user-selected MAX percentage</string><string name="reason_max_unavailable">compatible MAX unavailable</string><string name="reason_assistance_omitted">assistance load omitted</string><string name="reason_load_absent">numeric load absent</string><string name="reason_manual_load">manually entered load</string><string name="reason_preferred">preferred exercise</string><string name="reason_primary_zone">requested primary zone</string><string name="reason_secondary_zone">requested secondary zone</string><string name="reason_distinct_movement">distinct movement</string><string name="reason_recent_exercise">same exercise observed recently</string><string name="reason_recent_pattern">similar movement observed recently</string>
+    <string name="shortage_upper">missing upper region</string><string name="shortage_lower">missing lower region</string><string name="shortage_core">missing core</string><string name="shortage_push">missing upper-body push</string><string name="shortage_pull">missing upper-body pull</string><string name="shortage_lower_extension">missing lower-body extension</string><string name="shortage_lower_flexion">missing lower-body flexion</string><string name="shortage_exercises">fewer distinct exercises available</string>
+    <string name="create_equipment">Create equipment</string><string name="create_personal_machine">Add a personal machine.</string><string name="search_equipment">Search by name, label, or alias</string>
+    <string name="unknown_reference">Unknown reference · %1$s</string><string name="definition">Definition</string><string name="personal">Personal</string><string name="provided">Provided</string><string name="label_value">Label: %1$s</string>
+    <string name="confidence_value">%1$s confidence</string><string name="verified_sources">Verified sources: %1$d</string><string name="personal_equipment">Personal equipment</string><string name="create">Create</string>
+    <string name="create_machine_description">Create a personal machine with the current semantics.</string><string name="equipment_name_invalid">Enter a name of 1 to 120 characters.</string><string name="equipment_name_exists">Equipment already has this name.</string><string name="creation_failed">Creation failed: %1$s.</string>
+    <string name="load_none">no load</string><string name="load_external">external load</string><string name="load_assistance">assistance</string><string name="load_bodyweight">bodyweight</string><string name="load_cardio">cardio</string>
+    <string name="existing_draft_warning">A session is already in progress. Resume it or return to the preserved proposal.</string><string name="no_numeric_load_proposed">no numeric load proposed</string>
+    <string name="incompatible_change_detail">This incompatible change will replace:\n- %1$s\nFeedback remains attached to the same entry_id.</string><string name="set_load_field">Set %1$d — %2$s</string>
+    <string name="selected_suffix">, selected</string><string name="not_selected_suffix">, not selected</string><string name="select_zone">Select %1$s</string>
+    <string name="progress_a11y_empty">Progress over six weeks: no comparable event, six empty points</string><string name="progress_a11y_values">Progress over six weeks: %1$s events</string>
+    <string name="chart_insufficient">Not enough data for a chart yet.</string><string name="chart_series_detail">%1$d comparable series · open details</string>
+    <string name="general">General</string><string name="shoulders">Shoulders</string><string name="empty_fields_ignored">Empty fields are ignored.</string><string name="latest_measurements">Latest measurements</string>
+    <string name="state_prioritize">Prioritize</string><string name="state_little_work">Little recent work</string><string name="state_recent_work">Recent work</string><string name="state_high_exposure">High recent exposure</string><string name="state_insufficient">Insufficient data</string><string name="state_unsupported">No resolved exercise available</string><string name="relative_priority">Relative priority</string>
+    <string name="no_primary_exposure">No primary exposure recorded</string><string name="latest_primary_work">Latest primary work: %1$s</string><string name="recent_primary_work">Primary work over 7 days: %1$d</string><string name="recent_secondary_work">Secondary work over 7 days: %1$d</string>
+    <string name="age_never">never recorded</string><string name="age_today">today</string><string name="age_yesterday">1 day ago</string><plurals name="age_days"><item quantity="one">%d day ago</item><item quantity="other">%d days ago</item></plurals>
+    <string name="latest_primary_work_label">Latest primary work: %1$s</string>
+    <string name="frequency_a11y">Frequency over six weeks: %1$s</string><string name="frequency_week_a11y">%1$s %2$s including %3$d MAX</string><string name="current_feminine">current</string>
+    <string name="weight">Weight</string><string name="target_summary">Target: %1$d × %2$s · rest %3$d s</string><string name="primary_zone_value_short">Primary zone: %1$s</string><string name="movement_value">Movement: %1$s</string><string name="reasons_value">Reasons: %1$s</string><string name="rest_seconds">Rest (seconds)</string>
+    <string name="name">Name</string><string name="primary_zone">Primary zone</string><string name="secondary_zones">Secondary zones</string><string name="add_profile_description">Add this profile to the local catalog.</string><string name="invalid_profile_name">Invalid profile or name.</string><string name="invalid_name_profile">Invalid name or profile.</string><string name="zone_filter">Filter by zone</string><string name="all_zones">All zones</string>
+    <string name="confidence_inline">Confidence: %1$s</string><string name="scientific_zones">Scientific zones: %1$s%2$s</string><string name="secondary_suffix"> · secondary: %1$s</string><string name="limitation_value">Limitation: %1$s</string><string name="source_value">Source: %1$s · %2$s%3$s</string><string name="exercise_catalog">Exercise catalog</string><string name="filter">Filter</string><string name="profile">Profile</string>
+    <string name="latest_max_value">Latest MAX · %1$s · %2$s kg · %3$s</string><string name="type_value">Type: %1$s</string><string name="aliases_value">Aliases: %1$s</string><string name="max_weight">MAX weight (kg)</string><string name="add_entry_description">Add this entry to the draft.</string>
+    <string name="neck">Neck</string><string name="chest">Chest</string><string name="waist">Waist</string><string name="hips">Hips</string><string name="limbs">Limbs</string>
+    <string name="left_arm">Left arm</string><string name="right_arm">Right arm</string><string name="left_forearm">Left forearm</string><string name="right_forearm">Right forearm</string><string name="left_thigh">Left thigh</string><string name="right_thigh">Right thigh</string><string name="left_calf">Left calf</string><string name="right_calf">Right calf</string><string name="recording">Recording</string>
+    <string name="body_map">Body map, %1$s</string><string name="body_front">Front</string><string name="body_back">Back</string>
+    <string name="plan_draft_summary">%1$s · %2$d × %3$s%4$s · rest %5$d s</string><string name="possible_exercises_plain">Possible exercises</string>
+    <string name="actions">Actions</string><string name="change_profile_question">Change %1$s’s profile?</string><string name="historical_context_optional">Historical context (optional)</string><string name="new_historical_context">New historical context</string>
+    <string name="organization">Organization</string><string name="continuous">Continuous</string><string name="primary_measurement">Primary measurement</string><string name="cancel_catalog_description">Return to the catalog without changes.</string><string name="contract">Contract</string><string name="knowledge">Knowledge</string>
+    <string name="remove_proposal_exercise">Remove this exercise from the proposal</string><string name="speech_interrupted">Recognition interrupted (code %1$d).</string>
+    <string name="draft_missing">This draft is no longer available.</string><string name="invalid_value">A value is invalid.</string><string name="positive_measure_required">Add at least one positive measurement.</string><plurals name="measurement_count"><item quantity="one">%d measurement</item><item quantity="other">%d measurements</item></plurals><plurals name="available_exercise_count"><item quantity="one">%d exercise available</item><item quantity="other">%d exercises available</item></plurals>
+    <string name="max_test_selected">[✓] MAX test</string><string name="max_test_unselected">[ ] MAX test</string><string name="feedback_add_count">Feedback (%1$d) · + Add feedback</string><string name="delete_facts_detail">This will delete:\n- %1$s</string><string name="plan_rest_fact">targets and rest</string>
+    <string name="context_name_invalid">Enter a valid context name.</string><string name="max_weight_invalid">Enter a strictly positive MAX weight (e.g. 100 or 86.5).</string><string name="invalid_values">Invalid values.</string><string name="return_catalog">Return to catalog.</string>
+    <string name="new_exercise">New exercise</string><string name="primary_zone_required">A primary zone is required for a new muscular exercise.</string>
+    <string name="feedback_voice">🎙 Feedback</string><string name="draft_max_summary">%1$s · MAX: %2$s kg</string><string name="reps_short">reps</string><string name="profile_continuous">CONTINUOUS</string><string name="profile_sets">SETS</string><string name="profile_reps">REPS</string><string name="profile_duration">DURATION</string>
+    <plurals name="point_count"><item quantity="one">%d point</item><item quantity="other">%d points</item></plurals>
+    <string name="database_save_failed">Unable to save to the database.</string><string name="knowledge_expand">+ Knowledge</string><string name="knowledge_collapse">− Knowledge</string>
+    <plurals name="seconds_count"><item quantity="one">%d second</item><item quantity="other">%d seconds</item></plurals><string name="discard">Discard</string>
+    <plurals name="feedback_count"><item quantity="one">%d feedback entry</item><item quantity="other">%d feedback entries</item></plurals><string name="during_session">During the session</string>
+    <string name="profile_speed_suffix"> · speed</string><string name="profile_distance_suffix"> · distance</string>
+    <string name="zone_full_body">Full body</string><string name="zone_upper_body">Upper body</string><string name="zone_chest">Chest</string><string name="zone_back">Back</string><string name="zone_shoulders">Shoulders</string><string name="zone_arms">Arms</string><string name="zone_core">Abdominals / core</string><string name="zone_lower_body">Lower body</string><string name="zone_glutes">Glutes</string><string name="zone_thighs">Thighs</string><string name="zone_calves">Calves</string>
+    <string name="performed_loads">performed loads</string><string name="explicit_max_label">explicit MAX</string>
+    <string name="repository_item_missing">The requested item is no longer available.</string><string name="repository_invalid_data">The requested data is invalid.</string><string name="repository_database_error">The database operation failed.</string><string name="repository_file_access">File access is required.</string><string name="repository_operation_error">The operation failed.</string>
+    <string name="draft_selection_missing">The exercise being entered no longer exists; only the selection was cleared. Partial input and added exercises were preserved.</string>
+    <string name="a11y_reorder_exercise">Reorder exercise</string>
+    <string name="a11y_move_exercise_up">Move exercise up</string>
+    <string name="a11y_move_exercise_down">Move exercise down</string>
+    <string name="exercise_order_saved">Session order saved.</string>
+    <string name="exercise_reorder_failed">Reorder was not saved: %1$s</string>
+    <string name="invalid_decimal_value">Enter a valid decimal value using “,” or “.”.</string>
+</resources>

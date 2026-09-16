@@ -13,6 +13,7 @@ package com.labfytools.trainlog.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
@@ -25,14 +26,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
@@ -57,6 +68,7 @@ import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
 import java.text.Normalizer
 import java.util.Locale
+import com.labfytools.trainlog.R
 
 @Composable
 fun SessionScreen(
@@ -68,6 +80,7 @@ fun SessionScreen(
 ) {
     val colors =
         LocalTrainlogColors.current
+    val strings = localizedContext()
 
     val exercises =
         remember(
@@ -97,13 +110,13 @@ fun SessionScreen(
             >(
                 when (initialLoad) {
                     is ActiveDraftLoadResult.Error ->
-                        initialLoad.message
+                        localizedRepositoryMessage(strings, initialLoad.message)
 
                     ActiveDraftLoadResult.None ->
-                        "Aucune séance en cours."
+                        strings.getString(R.string.current_session_none)
 
                     is ActiveDraftLoadResult.Loaded ->
-                        initialLoad.warning
+                        initialLoad.warning?.let { localizedRepositoryMessage(strings, it) }
                 }
             )
         }
@@ -118,6 +131,7 @@ fun SessionScreen(
     var pendingRemoval by remember { mutableStateOf<Pair<Int, SessionExerciseDraft>?>(null) }
     var pendingDestructiveEdit by remember { mutableStateOf<Pair<Int, SessionExerciseDraft>?>(null) }
     var feedbackRevision by remember { mutableStateOf(0) }
+    var reorderedDuringGesture by remember { mutableStateOf(false) }
 
     val persistDraft:
         (ActiveSessionDraft, String?) -> Unit =
@@ -136,18 +150,17 @@ fun SessionScreen(
 
                 is ActiveDraftMutationResult.Error -> {
                     message =
-                        "Brouillon non sauvegardé : " +
-                            result.message
+                        strings.getString(R.string.draft_unsaved, localizedRepositoryMessage(strings, result.message))
                 }
             }
         }
 
     TrainlogScreen(
-        subtitle = "Séance en cours"
+        subtitle = strings.getString(R.string.route_session_editor)
     ) {
         if (activeDraft == null) {
             TrainlogFrame(
-                title = "Erreur"
+                title = strings.getString(R.string.error_title)
             ) {
                 TrainlogInfo(
                     text = message.orEmpty(),
@@ -161,14 +174,16 @@ fun SessionScreen(
 
         val lastWriteFailed =
             message?.startsWith(
-                "Brouillon non sauvegardé"
+                strings.getString(R.string.draft_unsaved_title)
+            ) == true || message?.startsWith(
+                strings.getString(R.string.exercise_reorder_failed, "")
             ) == true
         TrainlogInfo(
             text =
                 if (lastWriteFailed) {
-                    "Dernière modification non sauvegardée."
+                    strings.getString(R.string.last_change_unsaved)
                 } else {
-                    "Séance sauvegardée localement."
+                    strings.getString(R.string.session_saved_locally)
                 },
             color =
                 if (lastWriteFailed) {
@@ -179,7 +194,7 @@ fun SessionScreen(
         )
 
         TrainlogFrame(
-            title = "Type de séance"
+            title = strings.getString(R.string.session_type)
         ) {
             TrainlogAction(
                 label =
@@ -187,12 +202,12 @@ fun SessionScreen(
                         currentDraft.sessionType ==
                         SessionType.TRAINING
                     ) {
-                        "[✓] Entraînement"
+                        strings.getString(R.string.training_selected)
                     } else {
-                        "[ ] Entraînement"
+                        strings.getString(R.string.training_unselected)
                     },
                 description =
-                    "Séance normale de travail.",
+                    strings.getString(R.string.normal_session_description),
                 accent =
                     if (
                         currentDraft.sessionType ==
@@ -219,12 +234,12 @@ fun SessionScreen(
                         currentDraft.sessionType ==
                         SessionType.MAX_TEST
                     ) {
-                        "[✓] Test max"
+                        strings.getString(R.string.max_test_selected)
                     } else {
-                        "[ ] Test max"
+                        strings.getString(R.string.max_test_unselected)
                     },
                 description =
-                    "Séance explicitement dédiée à une mesure de max.",
+                    strings.getString(R.string.max_session_description),
                 accent =
                     if (
                         currentDraft.sessionType ==
@@ -262,19 +277,19 @@ fun SessionScreen(
         )
 
         TrainlogFrame(
-            title = "Séance en cours"
+            title = strings.getString(R.string.route_session_editor)
         ) {
             TrainlogInfo(
                 text =
-                    "Type : " +
+                    strings.getString(R.string.session_type_value,
                         if (
                             currentDraft.sessionType ==
                             SessionType.MAX_TEST
                         ) {
-                            "TEST MAX"
+                            strings.getString(R.string.session_max_test)
                         } else {
-                            "ENTRAÎNEMENT"
-                        },
+                            strings.getString(R.string.session_training)
+                        }),
                 color =
                     if (
                         currentDraft.sessionType ==
@@ -290,7 +305,7 @@ fun SessionScreen(
                 currentDraft.exercises.isEmpty()
             ) {
                 TrainlogInfo(
-                    "Aucun exercice ajouté."
+                    strings.getString(R.string.exercise_none_added)
                 )
             } else {
                 currentDraft.exercises
@@ -298,32 +313,68 @@ fun SessionScreen(
                             index,
                             draft ->
 
-                        TrainlogInfo(
-                            text =
-                                "${index + 1}. " +
-                                    draftSummary(
-                                        draft
-                                    ),
-                            color =
-                                colors.text,
-                        )
+                        key(draft.entryId) {
+                        var reorderVisualOffset by remember(draft.entryId) { mutableStateOf(0f) }
+                        Column(Modifier.graphicsLayer { translationY = reorderVisualOffset }) {
+
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            BasicText(
+                                text = "${index + 1}. ${draftSummary(draft)}",
+                                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                                style = TrainlogTypography.normal.copy(color = colors.text),
+                            )
+                            ExerciseReorderHandle(
+                                entryId = draft.entryId,
+                                index = index,
+                                itemCount = currentDraft.exercises.size,
+                                onMove = { from, to ->
+                                    activeDraft = reorderActiveSessionDraft(currentDraft, from, to)
+                                    reorderedDuringGesture = true
+                                },
+                                onCommit = {
+                                    if (reorderedDuringGesture) {
+                                        val reordered = activeDraft
+                                        if (reordered != null) when (val result = repository.saveActiveSessionDraft(reordered)) {
+                                            ActiveDraftMutationResult.Saved -> {
+                                                message = strings.getString(R.string.exercise_order_saved)
+                                            }
+                                            is ActiveDraftMutationResult.Error -> {
+                                                activeDraft = when (val durable = repository.loadActiveSessionDraft()) {
+                                                    is ActiveDraftLoadResult.Loaded -> durable.draft
+                                                    else -> currentDraft
+                                                }
+                                                message = strings.getString(
+                                                    R.string.exercise_reorder_failed,
+                                                    localizedRepositoryMessage(strings, result.message),
+                                                )
+                                            }
+                                        }
+                                        reorderedDuringGesture = false
+                                    }
+                                },
+                                onVisualOffset = { reorderVisualOffset = it },
+                            )
+                        }
                         draft.plan?.let { plan ->
                             TrainlogInfo(
-                                "Plan : ${plan.sets} × ${plan.reps ?: plan.durationSeconds} · " +
-                                    "repos ${plan.restSeconds} s · " +
-                                    (plan.weightKg?.let { "charge cible $it kg" }
-                                        ?: "aucune charge numérique proposée"),
+                                strings.getString(R.string.plan_summary, plan.sets,
+                                    (plan.reps ?: plan.durationSeconds).toString(), plan.restSeconds,
+                                    plan.weightKg?.let { strings.getString(R.string.target_load_inline, it) }
+                                        ?: strings.getString(R.string.no_numeric_load_proposed)),
                                 color = colors.muted,
                             )
                             if (draft.sets.isEmpty()) TrainlogInfo(
-                                "Aucune série réalisée saisie : ajoutez les valeurs réellement effectuées.",
+                                strings.getString(R.string.performed_sets_none),
                                 color = colors.warning,
                             )
                         }
 
                         TrainlogAction(
-                            label = "Modifier ${draft.exercise.name}",
-                            description = "Corriger cet exercice sans le supprimer de la séance.",
+                            label = strings.getString(R.string.modify_name, draft.exercise.name),
+                            description = strings.getString(R.string.edit_exercise_description),
                             accent = colors.accent,
                             onClick = {
                                 persistDraft(
@@ -332,11 +383,11 @@ fun SessionScreen(
                                     ),
                                     null,
                                 )
-                                message = "Éditeur ouvert pour ${draft.exercise.name} — les champs préremplis apparaissent ci-dessous."
+                                message = strings.getString(R.string.editor_opened, draft.exercise.name)
                             },
                         )
                         if (currentDraft.form.editingEntryId == draft.entryId) {
-                            TrainlogInfo("Modification en cours — faites défiler jusqu’à SAISIE — ${draft.exercise.name}.", color = colors.accent)
+                            TrainlogInfo(strings.getString(R.string.editing_scroll_hint, draft.exercise.name), color = colors.accent)
                         }
 
                         val draftFeedback = remember(feedbackRevision, draft.entryId) {
@@ -344,26 +395,27 @@ fun SessionScreen(
                         }
                         draftFeedback.forEach { feedback ->
                             TrainlogInfo(
-                                text = "Ressenti · ${feedback.rawText}${if (feedback.modified) " · Modifié" else ""}",
+                                text = strings.getString(R.string.feedback_value, feedback.rawText,
+                                    if (feedback.modified) strings.getString(R.string.modified_suffix) else ""),
                                 color = colors.muted,
                             )
-                            TrainlogAction("Modifier", "Corriger le texte sans changer l’observation.",
+                            TrainlogAction(strings.getString(R.string.modify), strings.getString(R.string.feedback_edit_description),
                                 onClick = { editingFeedbackId = feedback.feedbackId }, accent = colors.accent)
                             if (editingFeedbackId == feedback.feedbackId) FeedbackEditor(
                                 initialText = feedback.rawText, editing = true,
                                 onSave = { text -> when (val result = repository.reviseDraftExerciseFeedback(feedback.feedbackId, text)) {
                                     is SaveFeedbackResult.Saved -> { feedbackRevision++; editingFeedbackId = null; null }
-                                    is SaveFeedbackResult.Invalid -> result.message
-                                    is SaveFeedbackResult.DatabaseError -> result.message
+                                    is SaveFeedbackResult.Invalid -> localizedRepositoryMessage(strings, result.message)
+                                    is SaveFeedbackResult.DatabaseError -> localizedRepositoryMessage(strings, result.message)
                                 } }, onCancel = { editingFeedbackId = null })
                         }
                         TrainlogAction(
                             label = if (draftFeedback.isEmpty()) {
-                                "🎙 Ressenti"
+                                strings.getString(R.string.feedback_voice)
                             } else {
-                                "Ressenti (${draftFeedback.size}) · + Ajouter un ressenti"
+                                strings.getString(R.string.feedback_add_count, draftFeedback.size)
                             },
-                            description = "Dicter ou saisir un ressenti maintenant, avant la fin de la séance.",
+                            description = strings.getString(R.string.feedback_now_description),
                             accent = colors.success,
                             modifier = Modifier.testTag("draft-feedback-${draft.entryId}"),
                             onClick = { feedbackEntryId = draft.entryId },
@@ -375,11 +427,11 @@ fun SessionScreen(
                                         is SaveFeedbackResult.Saved -> {
                                             feedbackRevision += 1
                                             feedbackEntryId = null
-                                            message = "Ressenti sauvegardé dans la séance en cours."
+                                            message = strings.getString(R.string.feedback_saved_current)
                                             null
                                         }
-                                        is SaveFeedbackResult.Invalid -> result.message
-                                        is SaveFeedbackResult.DatabaseError -> result.message
+                                        is SaveFeedbackResult.Invalid -> localizedRepositoryMessage(strings, result.message)
+                                        is SaveFeedbackResult.DatabaseError -> localizedRepositoryMessage(strings, result.message)
                                     }
                                 },
                                 onCancel = { feedbackEntryId = null },
@@ -388,12 +440,14 @@ fun SessionScreen(
 
                         if (currentDraft.sourceSessionId == null) {
                             TrainlogDeleteButton(
-                                contentDescription = "Supprimer cet exercice",
+                                contentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_exercise),
                                 modifier = Modifier.testTag("delete-draft-exercise-${draft.entryId}"),
                                 onClick = {
                                     pendingRemoval = index to draft
                                 },
                             )
+                        }
+                        }
                         }
                     }
             }
@@ -459,23 +513,23 @@ fun SessionScreen(
                                 form =
                                     SessionDraftForm(),
                             ),
-                            if (editIndex == null) "Exercice ajouté à la séance." else "Exercice modifié.",
+                            if (editIndex == null) strings.getString(R.string.exercise_added) else strings.getString(R.string.exercise_modified),
                         )
                 },
             )
         }
 
         TrainlogFrame(
-            title = "Actions",
+            title = strings.getString(R.string.actions),
             active =
                 currentDraft.exercises.isNotEmpty(),
         ) {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("active-session-actions-row"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TrainlogButton("Créer un nouvel exercice", onCreateExercise,
+                TrainlogButton(strings.getString(R.string.create_new_exercise), onCreateExercise,
                     Modifier.weight(1f).fillMaxHeight().testTag("active-session-create-exercise"),
                     containerColor = colors.surfaceAlt, maxLines = 2)
-                TrainlogButton("Enregistrer la séance", onClick = {
+                TrainlogButton(strings.getString(R.string.session_save), onClick = {
                     when (
                         val result =
                             repository.finalizeActiveSessionDraft()
@@ -486,22 +540,22 @@ fun SessionScreen(
                         }
 
                         is FinalizeActiveDraftResult.Invalid -> {
-                            message = result.message
+                            message = localizedRepositoryMessage(strings, result.message)
                         }
 
                         is FinalizeActiveDraftResult.DatabaseError -> {
                             message =
-                                "Échec de finalisation, brouillon conservé : " +
-                                    result.message
+                                strings.getString(R.string.finalize_failed, localizedRepositoryMessage(strings, result.message))
                         }
                     }
                 }, modifier = Modifier.weight(1f).fillMaxHeight().testTag("active-session-save"),
                     containerColor = colors.success, maxLines = 2)
             }
-            TrainlogInfo("${currentDraft.exercises.size} exercice(s) dans la séance.", colors.muted)
+            TrainlogInfo(strings.getString(R.string.session_exercise_total,
+                strings.resources.getQuantityString(R.plurals.exercise_count, currentDraft.exercises.size, currentDraft.exercises.size)), colors.muted)
 
             TrainlogDeleteButton(
-                contentDescription = "Supprimer la séance en cours",
+                contentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_current_session),
                 modifier = Modifier.testTag("delete-active-draft"),
                 onClick = {
                     confirmingDiscard = true
@@ -510,11 +564,12 @@ fun SessionScreen(
 
             if (confirmingDiscard) {
                 DestructiveConfirmationDialog(
-                    title = "Abandonner la séance en cours ?",
-                    detail = "Cette action supprimera le brouillon, ses ${currentDraft.exercises.size} exercice(s) et toutes leurs données enregistrées.",
-                    confirmLabel = "Abandonner",
+                    title = strings.getString(R.string.discard_session_question),
+                    detail = strings.getString(R.string.discard_session_detail,
+                        strings.resources.getQuantityString(R.plurals.exercise_count, currentDraft.exercises.size, currentDraft.exercises.size)),
+                    confirmLabel = strings.getString(R.string.discard),
                     onCancel = { confirmingDiscard = false },
-                    deleteContentDescription = "Supprimer la séance en cours",
+                    deleteContentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_current_session),
                     onConfirm = {
                         when (
                             val result =
@@ -527,7 +582,7 @@ fun SessionScreen(
                             }
 
                             is ActiveDraftMutationResult.Error -> {
-                                message = result.message
+                                message = localizedRepositoryMessage(strings, result.message)
                             }
                         }
                     },
@@ -543,9 +598,10 @@ fun SessionScreen(
                     color =
                         if (
                             message ==
-                            "Exercice ajouté à la séance." ||
+                            strings.getString(R.string.exercise_added) ||
                             message ==
-                            "Exercice retiré de la séance."
+                            strings.getString(R.string.exercise_removed) ||
+                            message == strings.getString(R.string.exercise_order_saved)
                         ) {
                             colors.success
                         } else {
@@ -558,21 +614,21 @@ fun SessionScreen(
         pendingRemoval?.let { (index, draft) ->
             val feedbackCount = repository.listDraftExerciseFeedback(draft.entryId).size
             val facts = buildList {
-                if (draft.sets.isNotEmpty()) add("${draft.sets.size} série(s)")
-                if (draft.continuousDurationSeconds > 0) add("l’activité continue")
-                if (draft.maxWeightKg != null) add("la donnée MAX")
-                if (feedbackCount > 0) add("$feedbackCount ressenti(s)")
+                if (draft.sets.isNotEmpty()) add(strings.resources.getQuantityString(R.plurals.performed_set_count, draft.sets.size, draft.sets.size))
+                if (draft.continuousDurationSeconds > 0) add(strings.getString(R.string.continuous_fact))
+                if (draft.maxWeightKg != null) add(strings.getString(R.string.max_fact))
+                if (feedbackCount > 0) add(strings.resources.getQuantityString(R.plurals.feedback_count, feedbackCount, feedbackCount))
             }
             DestructiveConfirmationDialog(
-                title = "Supprimer \"${draft.exercise.name}\" de la séance ?",
-                detail = if (facts.isEmpty()) "Cette occurrence sera retirée." else
-                    "Cette action supprimera :\n- " + facts.joinToString("\n- "),
-                confirmLabel = "Supprimer",
+                title = strings.getString(R.string.remove_exercise_question, draft.exercise.name),
+                detail = if (facts.isEmpty()) strings.getString(R.string.remove_occurrence_detail) else
+                    strings.getString(R.string.delete_facts_detail, facts.joinToString("\n- ")),
+                confirmLabel = strings.getString(R.string.delete),
                 onCancel = { pendingRemoval = null },
-                deleteContentDescription = "Supprimer cet exercice",
+                deleteContentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_exercise),
                 onConfirm = {
                     persistDraft(currentDraft.copy(exercises = currentDraft.exercises.filterIndexed { i, _ -> i != index }),
-                        "Exercice retiré de la séance.")
+                        strings.getString(R.string.exercise_removed))
                     pendingRemoval = null
                 },
             )
@@ -580,18 +636,18 @@ fun SessionScreen(
         pendingDestructiveEdit?.let { (index, replacement) ->
             val previous=currentDraft.exercises[index]
             val losses=buildList {
-                if(previous.sets.isNotEmpty())add("${previous.sets.size} série(s)")
-                if(previous.continuousDurationSeconds>0)add("l’activité continue")
-                if(previous.maxWeightKg!=null)add("la donnée MAX")
-                if(previous.plan!=null)add("les objectifs et le repos")
+                if(previous.sets.isNotEmpty())add(strings.resources.getQuantityString(R.plurals.performed_set_count, previous.sets.size, previous.sets.size))
+                if(previous.continuousDurationSeconds>0)add(strings.getString(R.string.continuous_fact))
+                if(previous.maxWeightKg!=null)add(strings.getString(R.string.max_fact))
+                if(previous.plan!=null)add(strings.getString(R.string.plan_rest_fact))
             }
             DestructiveConfirmationDialog(
-                title="Changer le profil de ${previous.exercise.name} ?",
-                detail="Ce changement incompatible remplacera :\n- "+losses.joinToString("\n- ")+"\nLes ressentis restent attachés au même entry_id.",
-                confirmLabel="Remplacer",
+                title=strings.getString(R.string.change_profile_question, previous.exercise.name),
+                detail=strings.getString(R.string.incompatible_change_detail, losses.joinToString("\n- ")),
+                confirmLabel=strings.getString(R.string.replace),
                 onCancel={pendingDestructiveEdit=null},
                 onConfirm={
-                    persistDraft(currentDraft.copy(exercises=currentDraft.exercises.mapIndexed{i,item->if(i==index)replacement else item},form=SessionDraftForm()),"Exercice modifié.")
+                    persistDraft(currentDraft.copy(exercises=currentDraft.exercises.mapIndexed{i,item->if(i==index)replacement else item},form=SessionDraftForm()),strings.getString(R.string.exercise_modified))
                     pendingDestructiveEdit=null
                 },
             )
@@ -682,28 +738,29 @@ private fun ExercisePicker(
     onExerciseSelected: (ExerciseProfile) -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
     var searchOpen by remember(selectedExercise?.exerciseId) {
         mutableStateOf(selectedExercise == null)
     }
     var query by remember(selectedExercise?.exerciseId) { mutableStateOf("") }
     val results = remember(exercises, query) { exercisePrefixMatches(exercises, query) }
 
-    TrainlogFrame(title = "Exercice", active = exercises.isNotEmpty()) {
+    TrainlogFrame(title = strings.getString(R.string.exercise_title), active = exercises.isNotEmpty()) {
         if (exercises.isEmpty()) {
-            TrainlogInfo("Aucun exercice.")
+            TrainlogInfo(strings.getString(R.string.exercise_none))
             return@TrainlogFrame
         }
 
         TrainlogAction(
-            label = selectedExercise?.name ?: "Choisir un exercice",
-            description = "Exercice sélectionné. Appuyer pour afficher les suggestions.",
+            label = selectedExercise?.name ?: strings.getString(R.string.choose_exercise),
+            description = strings.getString(R.string.exercise_picker_description),
             accent = if (selectedExercise == null) colors.muted else colors.success,
             modifier = Modifier.testTag("exercise-picker-open"),
             onClick = { searchOpen = true },
         )
 
         TrainlogInputField(
-            label = "Rechercher un exercice…",
+            label = strings.getString(R.string.search_exercise),
             value = query,
             onValueChange = {
                 query = it
@@ -717,7 +774,7 @@ private fun ExercisePicker(
         }
 
         if (results.isEmpty()) {
-            TrainlogInfo("Aucun exercice trouvé", color = colors.muted)
+            TrainlogInfo(strings.getString(R.string.exercise_none_found_short), color = colors.muted)
         } else {
             /* The viewport stays keyboard-friendly while LazyColumn preserves
              * access to every prefix result instead of truncating it. */
@@ -741,8 +798,8 @@ private fun ExercisePicker(
 
         if (selectedExercise != null) {
             TrainlogAction(
-                label = "Annuler la recherche",
-                description = "Conserver ${selectedExercise.name} et les valeurs saisies.",
+                label = strings.getString(R.string.cancel_search),
+                description = strings.getString(R.string.keep_named_values, selectedExercise.name),
                 accent = colors.muted,
                 onClick = {
                     query = ""
@@ -793,22 +850,22 @@ internal fun buildManualTargetPlan(
         ManualTargetChoice.KG -> directKgText.trim().replace(',', '.').toDoubleOrNull()
             ?.takeIf { it.isFinite() && it > 0.0 }
             ?: return Result.failure(IllegalArgumentException(
-                "Saisissez une charge cible strictement positive."))
+                "target_positive"))
         ManualTargetChoice.PERCENT_MAX ->
             (percentResult as? ManualPercentMaxResult.Available)?.targetWeightKg
                 ?: return Result.failure(IllegalArgumentException(
                     (percentResult as? ManualPercentMaxResult.Unavailable)?.message
-                        ?: "MAX compatible indisponible."))
+                        ?: "max_unavailable"))
         ManualTargetChoice.NONE -> error("handled above")
     }
     val mode = when (equipmentSemantics) {
         EquipmentLoadSemantics.EXTERNAL -> SessionLoadMode.EXTERNAL
         EquipmentLoadSemantics.ASSISTANCE -> if (choice == ManualTargetChoice.PERCENT_MAX)
             return Result.failure(IllegalArgumentException(
-                "Le %MAX est indisponible pour une assistance ; choisissez une résistance externe."))
+                "max_assistance_unavailable"))
         else SessionLoadMode.ASSISTANCE
         else -> return Result.failure(IllegalArgumentException(
-            "Choisissez un équipement compatible avec une charge cible."))
+            "compatible_load_equipment_required"))
     }
     val dose = existing ?: when (draft.exercise.trackingMode) {
         TrackingMode.REPS -> SessionExercisePlan(
@@ -826,7 +883,7 @@ internal fun buildManualTargetPlan(
         (draft.exercise.trackingMode == TrackingMode.DURATION &&
             (dose.durationSeconds == null || dose.durationSeconds <= 0)))
         return Result.failure(IllegalArgumentException(
-            "Définissez une dose cible positive avant la charge cible."))
+            "positive_dose_required"))
     return Result.success(dose.copy(weightKg = weight, loadMode = mode))
 }
 
@@ -846,6 +903,7 @@ private fun SessionExerciseForm(
 ) {
     val colors =
         LocalTrainlogColors.current
+    val strings = localizedContext()
 
     var setCountText by
         remember(key) {
@@ -876,7 +934,7 @@ private fun SessionExerciseForm(
     /* CONTRACT: SETS + REPS is edited as occurrence-owned rows. The raw
      * strings (including blanks and invalid fragments) are mirrored into the
      * durable form after every mutation, while the saved occurrence is only
-     * replaced when the user confirms with "Ajouter à la séance". */
+     * replaced when the user confirms the add-to-session action. */
     var setRows by
         remember(key) {
             mutableStateOf(
@@ -939,10 +997,10 @@ private fun SessionExerciseForm(
 
     TrainlogFrame(
         title =
-            "SAISIE — ${exercise.name}"
+            strings.getString(R.string.entry_title, exercise.name)
     ) {
         TrainlogInfo(
-            text = if (sessionType == SessionType.MAX_TEST) "TEST MAX" else exerciseProfileLabel(exercise),
+            text = if (sessionType == SessionType.MAX_TEST) strings.getString(R.string.session_max_test) else exerciseProfileLabel(exercise),
             color = colors.accent,
         )
 
@@ -950,18 +1008,18 @@ private fun SessionExerciseForm(
             /* Legacy/custom/unresolved rows retain the compatibility selector;
              * resolved fixed machines never require a second user choice. */
             TrainlogInputField(
-                label = "Contexte historique (optionnel)",
+                label = strings.getString(R.string.historical_context_optional),
                 value = equipmentSearch,
                 onValueChange = { equipmentSearch = it },
             )
             TrainlogInputField(
-                label = "Nouveau contexte historique",
+                label = strings.getString(R.string.new_historical_context),
                 value = customEquipmentName,
                 onValueChange = { customEquipmentName = it },
             )
             TrainlogAction(
-                label = "Créer le contexte",
-                description = "Compatibilité temporaire pour un exercice custom ou non résolu.",
+                label = strings.getString(R.string.create_context),
+                description = strings.getString(R.string.context_compatibility),
                 accent = colors.success,
                 onClick = {
                     when (val result = repository.createCustomEquipment(customEquipmentName)) {
@@ -971,9 +1029,9 @@ private fun SessionExerciseForm(
                             selectedEquipmentId = result.equipment.equipmentId
                             onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText, maxWeightText))
                         }
-                        CreateEquipmentResult.Invalid -> error = "Donnez un nom de contexte valide."
-                        CreateEquipmentResult.Conflict -> error = "Ce contexte existe déjà."
-                        is CreateEquipmentResult.DatabaseError -> error = "Contexte non créé : ${result.message}"
+                        CreateEquipmentResult.Invalid -> error = strings.getString(R.string.context_name_invalid)
+                        CreateEquipmentResult.Conflict -> error = strings.getString(R.string.context_exists)
+                        is CreateEquipmentResult.DatabaseError -> error = strings.getString(R.string.context_create_error, localizedRepositoryMessage(strings, result.message))
                     }
                 },
             )
@@ -993,7 +1051,7 @@ private fun SessionExerciseForm(
         if (selectedEquipment != null && fixedEquipmentId == null) {
             TrainlogAction(
                 label = "✓ ${selectedEquipment.displayName}",
-                description = selectedEquipment.labelName.ifBlank { "Équipement sélectionné." },
+                description = selectedEquipment.labelName.ifBlank { strings.getString(R.string.equipment_selected) },
                 accent = colors.success,
                 onClick = {
                     selectedEquipmentId = null
@@ -1015,8 +1073,9 @@ private fun SessionExerciseForm(
 
         if (sessionType == SessionType.MAX_TEST) {
             SessionNumberField(
-                label = "Poids max (kg)",
+                label = strings.getString(R.string.max_weight),
                 value = maxWeightText,
+                decimal = true,
                 onValueChange = {
                     maxWeightText = it
                     error = null
@@ -1030,73 +1089,74 @@ private fun SessionExerciseForm(
                 },
             )
             TrainlogInfo(
-                text = "Valeur strictement positive, virgule française acceptée.",
+                text = strings.getString(R.string.positive_decimal_note),
                 color = colors.muted,
             )
         } else if (
             exercise.recordingMode ==
             RecordingMode.SETS
         ) {
-            TrainlogInfo("Charge cible prévue — séparée des charges réellement effectuées.", colors.muted)
+            TrainlogInfo(strings.getString(R.string.target_load_note), colors.muted)
             TrainlogChoiceChips(
                 listOf(
-                    ManualTargetChoice.KG.name to "Valeur en kg",
-                    ManualTargetChoice.PERCENT_MAX.name to "% de mon MAX",
-                    ManualTargetChoice.NONE.name to "Aucune",
+                    ManualTargetChoice.KG.name to strings.getString(R.string.load_kg_value),
+                    ManualTargetChoice.PERCENT_MAX.name to strings.getString(R.string.percent_my_max),
+                    ManualTargetChoice.NONE.name to strings.getString(R.string.value_none_feminine),
                 ),
                 targetChoice.name,
             ) { selected -> targetChoice = ManualTargetChoice.valueOf(selected) }
             when (targetChoice) {
                 ManualTargetChoice.KG -> SessionNumberField(
-                    label = "Charge cible (kg)", value = targetKgText,
+                    label = strings.getString(R.string.field_target_weight), value = targetKgText,
+                    decimal = true,
                     onValueChange = { targetKgText = it; error = null },
                 )
                 ManualTargetChoice.PERCENT_MAX -> {
                     SessionNumberField(
-                        label = "Pourcentage de mon MAX (1 à 100)",
+                        label = strings.getString(R.string.percent_my_max_field),
                         value = targetPercentText,
                         onValueChange = { targetPercentText = it; error = null },
                     )
                     when (val result = percentResult) {
                         is ManualPercentMaxResult.Available -> {
                             TrainlogInfo(
-                                "MAX compatible : ${formatMaxWeight(result.maxWeightKg)} kg · ${result.maxStartedAt}",
+                                strings.getString(R.string.compatible_max, presentationNumber(result.maxWeightKg, 3), formatDate(result.maxStartedAt)),
                                 colors.muted,
                             )
                             TrainlogInfo(
-                                "Cible calculée : ${formatMaxWeight(result.targetWeightKg)} kg",
+                                strings.getString(R.string.calculated_target, presentationNumber(result.targetWeightKg, 3)),
                                 colors.success,
                             )
                         }
                         is ManualPercentMaxResult.Unavailable ->
-                            TrainlogInfo(result.message, colors.error)
+                            TrainlogInfo(localizedTargetError(result.message, strings), colors.error)
                         null -> Unit
                     }
                 }
                 ManualTargetChoice.NONE ->
-                    TrainlogInfo("Aucune charge cible ne sera enregistrée.", colors.muted)
+                    TrainlogInfo(strings.getString(R.string.target_none), colors.muted)
             }
             if (
                 exercise.trackingMode ==
                 TrackingMode.REPS
             ) {
                 TrainlogInfo(
-                    text = "Chaque série conserve ses propres répétitions et sa propre charge.",
+                    text = strings.getString(R.string.set_independent_values),
                     color = colors.muted,
                 )
                 val loadLabel =
                     if (selectedEquipment?.loadSemantics == EquipmentLoadSemantics.ASSISTANCE) {
-                        "Assistance (kg)"
+                        strings.getString(R.string.assistance_kg)
                     } else {
-                        "Charge (kg)"
+                        strings.getString(R.string.field_weight)
                     }
                 setRows.forEachIndexed { index, row ->
                     TrainlogInfo(
-                        text = "Série ${index + 1}",
+                        text = strings.getString(R.string.set_number, index + 1),
                         color = colors.accent,
                     )
                     SessionNumberField(
-                        label = "Série ${index + 1} — Répétitions",
+                        label = strings.getString(R.string.set_reps_field, index + 1),
                         value = row.repsText,
                         testTag = "session-set-$index-reps",
                         onValueChange = { value ->
@@ -1114,8 +1174,9 @@ private fun SessionExerciseForm(
                         },
                     )
                     SessionNumberField(
-                        label = "Série ${index + 1} — $loadLabel",
+                        label = strings.getString(R.string.set_load_field, index + 1, loadLabel),
                         value = row.weightText,
+                        decimal = true,
                         testTag = "session-set-$index-weight",
                         onValueChange = { value ->
                             val updated = setRows.replaceAt(index, row.copy(weightText = value))
@@ -1132,7 +1193,7 @@ private fun SessionExerciseForm(
                         },
                     )
                     TrainlogDeleteButton(
-                        contentDescription = "Supprimer cette série",
+                        contentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_set),
                         modifier = Modifier.testTag("delete-set-${index + 1}"),
                         onClick = {
                             pendingSetRemoval = index
@@ -1140,8 +1201,8 @@ private fun SessionExerciseForm(
                     )
                 }
                 TrainlogAction(
-                    label = "Ajouter une série",
-                    description = "Ajouter une ligne vide sans modifier les autres séries.",
+                    label = strings.getString(R.string.add_set_plain),
+                    description = strings.getString(R.string.add_set_row_description),
                     accent = colors.success,
                     onClick = {
                         if (setRows.size < MAX_SESSION_SETS) {
@@ -1160,13 +1221,13 @@ private fun SessionExerciseForm(
                     },
                 )
                 TrainlogInfo(
-                    text = "Charge facultative ; virgule française acceptée. Une case vide n'est pas zéro.",
+                    text = strings.getString(R.string.optional_load_note),
                     color = colors.muted,
                 )
             } else {
                 SessionNumberField(
                     label =
-                        "Nombre de séries",
+                        strings.getString(R.string.sets_count),
                     value =
                         setCountText,
                     onValueChange = {
@@ -1189,7 +1250,7 @@ private fun SessionExerciseForm(
 
                 SessionNumberField(
                     label =
-                        "Durée par série (secondes)",
+                        strings.getString(R.string.set_duration_seconds),
                     value =
                         durationText,
                     onValueChange = {
@@ -1213,7 +1274,7 @@ private fun SessionExerciseForm(
         } else {
             SessionNumberField(
                 label =
-                    "Durée (minutes)",
+                    strings.getString(R.string.duration_minutes),
                 value =
                     durationText,
                 onValueChange = {
@@ -1241,9 +1302,10 @@ private fun SessionExerciseForm(
             ) {
                 SessionNumberField(
                     label =
-                        "Vitesse km/h",
+                        strings.getString(R.string.speed_kmh),
                     value =
                         speedText,
+                    decimal = true,
                     onValueChange = {
                         speedText = it
                         error = null
@@ -1270,9 +1332,10 @@ private fun SessionExerciseForm(
             ) {
                 SessionNumberField(
                     label =
-                        "Distance km",
+                        strings.getString(R.string.distance_km),
                     value =
                         distanceText,
+                    decimal = true,
                     onValueChange = {
                         distanceText = it
                         error = null
@@ -1293,13 +1356,10 @@ private fun SessionExerciseForm(
             }
         }
 
-        TrainlogAction(
-            label =
-                "Ajouter à la séance",
-            description =
-                "Ajouter cette saisie au brouillon.",
-            accent =
-                colors.success,
+        TrainlogButton(
+            label = strings.getString(R.string.add_to_session),
+            modifier = Modifier.fillMaxWidth().testTag("add-to-session"),
+            containerColor = colors.success,
             onClick = {
                 val draft =
                     buildSessionExerciseDraft(
@@ -1326,14 +1386,14 @@ private fun SessionExerciseForm(
                 if (draft == null) {
                     error =
                         if (sessionType == SessionType.MAX_TEST) {
-                            "Saisissez un poids max strictement positif (ex. 100 ou 86,5)."
+                            strings.getString(R.string.max_weight_invalid)
                         } else if (
                             exercise.recordingMode == RecordingMode.SETS &&
                             exercise.trackingMode == TrackingMode.REPS
                         ) {
-                            setRowValidationError(setRows)
+                            localizedSetRowValidationError(setRowValidationError(setRows), strings)
                         } else {
-                            "Valeurs invalides."
+                            strings.getString(R.string.invalid_values)
                         }
                 } else if (sessionType == SessionType.TRAINING &&
                     exercise.recordingMode == RecordingMode.SETS) {
@@ -1343,7 +1403,7 @@ private fun SessionExerciseForm(
                     )
                     plan.fold(
                         onSuccess = { onAdd(draft.copy(plan = it)) },
-                        onFailure = { error = it.message ?: "Charge cible invalide." },
+                        onFailure = { error = localizedTargetError(it.message, strings) },
                     )
                 } else {
                     onAdd(draft.copy(plan = null))
@@ -1353,9 +1413,9 @@ private fun SessionExerciseForm(
 
         TrainlogAction(
             label =
-                "Annuler la saisie",
+                strings.getString(R.string.cancel_entry),
             description =
-                "Revenir au catalogue.",
+                strings.getString(R.string.return_catalog),
             accent =
                 colors.muted,
             onClick =
@@ -1373,11 +1433,11 @@ private fun SessionExerciseForm(
         }
         pendingSetRemoval?.let { index ->
             DestructiveConfirmationDialog(
-                title = "Supprimer la série ${index + 1} ?",
-                detail = "Ses répétitions, sa durée et sa charge saisies seront supprimées.",
-                confirmLabel = "Supprimer",
+                title = strings.getString(R.string.delete_numbered_set_question, index + 1),
+                detail = strings.getString(R.string.delete_set_entered_detail),
+                confirmLabel = strings.getString(R.string.delete),
                 onCancel = { pendingSetRemoval = null },
-                deleteContentDescription = "Supprimer cette série",
+                deleteContentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_set),
                 onConfirm = {
                     val updated=setRows.filterIndexed { rowIndex, _ -> rowIndex != index }
                     setRows=updated;repsText=encodeRawReps(updated);weightText=encodeRawWeights(updated);error=null
@@ -1387,6 +1447,137 @@ private fun SessionExerciseForm(
             )
         }
     }
+}
+
+/**
+ * WHY: gym execution order changes frequently, while occurrence identity and
+ * its captured facts must not. The dedicated handle avoids accidental row
+ * drags while the user opens an editor.
+ * CONTRACT: movement is a pure list permutation and persistence is requested
+ * only after the gesture completes. Accessibility actions use the same path.
+ * INVARIANT: the exact [SessionExerciseDraft] objects are moved; none of their
+ * entry, exercise, equipment, target, actual, MAX, or feedback keys is rebuilt.
+ */
+@Composable
+internal fun ExerciseReorderHandle(
+    entryId: String,
+    index: Int,
+    itemCount: Int,
+    onMove: (from: Int, to: Int) -> Unit,
+    onCommit: () -> Unit,
+    onVisualOffset: (Float) -> Unit = {},
+) {
+    val strings = localizedContext()
+    val currentIndex by rememberUpdatedState(index)
+    val currentItemCount by rememberUpdatedState(itemCount)
+    val currentMove by rememberUpdatedState(onMove)
+    val currentCommit by rememberUpdatedState(onCommit)
+    val currentVisualOffset by rememberUpdatedState(onVisualOffset)
+    var dragOrigin by remember(entryId) { mutableStateOf<Int?>(null) }
+    var totalDragDistance by remember(entryId) { mutableStateOf(0f) }
+    var residualDragDistance by remember(entryId) { mutableStateOf(0f) }
+    BasicText(
+        text = "≡",
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .testTag("reorder-exercise-$entryId")
+            .semantics {
+                contentDescription = strings.getString(R.string.a11y_reorder_exercise)
+                customActions = buildList {
+                    if (index > 0) add(CustomAccessibilityAction(
+                        strings.getString(R.string.a11y_move_exercise_up),
+                    ) { currentMove(currentIndex, currentIndex - 1); currentCommit(); true })
+                    if (index + 1 < itemCount) add(CustomAccessibilityAction(
+                        strings.getString(R.string.a11y_move_exercise_down),
+                    ) { currentMove(currentIndex, currentIndex + 1); currentCommit(); true })
+                }
+            }
+            /* CONTRACT: entry_id, unlike position, remains stable while rows
+             * move. Keeping this pointer coroutine alive is what permits one
+             * gesture to cross any number of positions. */
+            .pointerInput(entryId) {
+                val stepPx = 48.dp.toPx()
+                detectDragGestures(
+                    onDragStart = {
+                        dragOrigin = currentIndex
+                        totalDragDistance = 0f
+                        residualDragDistance = 0f
+                        currentVisualOffset(0f)
+                    },
+                    onDragEnd = {
+                        dragOrigin = null
+                        totalDragDistance = 0f
+                        residualDragDistance = 0f
+                        currentVisualOffset(0f)
+                        currentCommit()
+                    },
+                    onDragCancel = {
+                        dragOrigin?.let { origin ->
+                            if (currentIndex != origin) currentMove(currentIndex, origin)
+                        }
+                        dragOrigin = null
+                        totalDragDistance = 0f
+                        residualDragDistance = 0f
+                        currentVisualOffset(0f)
+                    },
+                ) { change, amount ->
+                    change.consume()
+                    val origin = dragOrigin ?: currentIndex.also { dragOrigin = it }
+                    totalDragDistance += amount.y
+                    val target = reorderTargetIndex(
+                        origin,
+                        totalDragDistance,
+                        stepPx,
+                        currentItemCount,
+                    )
+                    if (target != currentIndex) {
+                        currentMove(currentIndex, target)
+                    }
+                    residualDragDistance = totalDragDistance - (target - origin) * stepPx
+                    currentVisualOffset(residualDragDistance)
+                }
+            },
+        style = TrainlogTypography.title.copy(color = LocalTrainlogColors.current.muted),
+    )
+}
+
+/** Deterministic direct destination for one continuous pointer gesture. */
+internal fun reorderTargetIndex(
+    origin: Int,
+    totalDragDistancePx: Float,
+    rowStepPx: Float,
+    itemCount: Int,
+): Int {
+    if (itemCount <= 0 || rowStepPx <= 0f || !totalDragDistancePx.isFinite()) return origin
+    val crossedRows = kotlin.math.round(totalDragDistancePx / rowStepPx).toInt()
+    return (origin + crossedRows).coerceIn(0, itemCount - 1)
+}
+
+/** Pure stable permutation used by gesture UI and identity regression tests. */
+internal fun reorderExerciseOccurrences(
+    items: List<SessionExerciseDraft>,
+    from: Int,
+    to: Int,
+): List<SessionExerciseDraft> {
+    if (from !in items.indices || to !in items.indices || from == to) return items
+    return items.toMutableList().apply { add(to, removeAt(from)) }
+}
+
+/** Keep the durable editor anchored to its stable entry after a permutation. */
+internal fun reorderActiveSessionDraft(
+    draft: ActiveSessionDraft,
+    from: Int,
+    to: Int,
+): ActiveSessionDraft {
+    val reordered = reorderExerciseOccurrences(draft.exercises, from, to)
+    val editingIndex = draft.form.editingEntryId?.let { entryId ->
+        reordered.indexOfFirst { it.entryId == entryId }.takeIf { it >= 0 }
+    }
+    return draft.copy(
+        exercises = reordered,
+        form = draft.form.copy(editingExerciseIndex = editingIndex),
+    )
 }
 
 private fun currentForm(
@@ -1418,15 +1609,30 @@ private fun SessionNumberField(
     value: String,
     onValueChange: (String) -> Unit,
     testTag: String? = null,
+    decimal: Boolean = false,
 ) {
     TrainlogInputField(
         label = label,
         value = value,
-        onValueChange =
-            onValueChange,
+        onValueChange = { raw ->
+            if (!decimal || decimalEditorTextValid(raw)) onValueChange(raw)
+        },
         testTag = testTag,
+        keyboardOptions = if (decimal) {
+            KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        } else {
+            KeyboardOptions(keyboardType = KeyboardType.Number)
+        },
     )
 }
+
+/** Permissive typing grammar; numeric/domain validation belongs to commit. */
+internal fun decimalEditorTextValid(raw: String): Boolean =
+    raw.matches(Regex("^-?(?:[0-9]+(?:[.,][0-9]*)?|[.,][0-9]*)?$"))
+
+/** Locale-independent finite parse shared by capture and correction forms. */
+internal fun parseFiniteDecimal(raw: String): Double? =
+    raw.trim().replace(',', '.').toDoubleOrNull()?.takeIf(Double::isFinite)
 
 private const val MAX_SESSION_SETS = 64
 private const val MAX_REPS_PER_SET = 10000
@@ -1506,20 +1712,49 @@ internal fun parseRawSetRows(rows: List<RawSetRow>): List<SessionSetDraft>? {
 }
 
 internal fun setRowValidationError(rows: List<RawSetRow>): String {
-    if (rows.isEmpty()) return "Ajoutez au moins une série."
+    if (rows.isEmpty()) return "set_required"
     rows.forEachIndexed { index, row ->
         val reps = row.repsText.trim().toIntOrNull()
         if (reps == null || reps !in 0..MAX_REPS_PER_SET) {
-            return "Série ${index + 1} : saisissez des répétitions entre 0 et $MAX_REPS_PER_SET."
+            return "set_reps:${index + 1}"
         }
         if (row.weightText.isNotBlank()) {
             val weight = row.weightText.trim().replace(',', '.').toDoubleOrNull()
             if (weight == null || !weight.isFinite() || weight < 0.0) {
-                return "Série ${index + 1} : saisissez une charge non négative ou laissez la case vide."
+                return "set_load:${index + 1}"
             }
         }
     }
-    return "Valeurs de séries invalides."
+    return "sets_invalid"
+}
+
+private fun localizedSetRowValidationError(code: String, context: android.content.Context): String = when {
+    code == "set_required" -> context.getString(R.string.validation_set_required)
+    code.startsWith("set_reps:") -> context.getString(R.string.validation_set_reps,
+        code.substringAfter(':').toInt(), MAX_REPS_PER_SET)
+    code.startsWith("set_load:") -> context.getString(R.string.validation_set_load,
+        code.substringAfter(':').toInt())
+    else -> context.getString(R.string.validation_sets_invalid)
+}
+
+/** CONTRACT: repository diagnostics remain unchanged; this presentation-only
+ * classifier maps stable known outcomes without putting locale into storage.
+ * TECHNICAL_LITERAL: French strings below are legacy diagnostic classification
+ * keys and are never emitted directly to the user. */
+private fun localizedTargetError(raw: String?, context: android.content.Context): String = when (raw) {
+    "target_positive" -> context.getString(R.string.target_positive)
+    "max_unavailable" -> context.getString(R.string.max_unavailable)
+    "max_assistance_unavailable", "Le %MAX est indisponible pour une assistance ; choisissez une résistance externe." -> context.getString(R.string.max_assistance_unavailable)
+    "compatible_load_equipment_required" -> context.getString(R.string.compatible_load_equipment_required)
+    "positive_dose_required" -> context.getString(R.string.positive_dose_required)
+    "Le pourcentage doit être compris entre 1 et 100." -> context.getString(R.string.percent_range)
+    "MAX compatible indisponible : choisissez un équipement à résistance externe." -> context.getString(R.string.max_choose_external)
+    "Exercice introuvable." -> context.getString(R.string.exercise_not_found)
+    "Le %MAX est indisponible sans équipement connu à résistance externe." -> context.getString(R.string.max_known_external_required)
+    "MAX compatible indisponible pour cet exercice et cet équipement exacts." -> context.getString(R.string.max_exact_unavailable)
+    "Lecture du MAX impossible." -> context.getString(R.string.max_read_failed)
+    null -> context.getString(R.string.invalid_target_load)
+    else -> raw
 }
 
 private fun parseRepSequence(
@@ -1851,11 +2086,14 @@ internal fun formForExistingExercise(
         distanceText = draft.distanceKm?.toString().orEmpty(),
     )
 
+@Composable
 private fun draftSummary(
     draft: SessionExerciseDraft,
 ): String {
+    val strings = localizedContext()
+    val locale = presentationLocale()
     return if (draft.maxWeightKg != null) {
-        "${draft.exercise.name} · Max : ${formatMaxWeight(draft.maxWeightKg)} kg"
+        strings.getString(R.string.draft_max_summary, draft.exercise.name, presentationNumber(draft.maxWeightKg, 3))
     } else if (
         draft.exercise.recordingMode ==
         RecordingMode.CONTINUOUS
@@ -1871,15 +2109,13 @@ private fun draftSummary(
 
             draft.speedKmh?.let {
                 append(
-                    " · %.1f km/h"
-                        .format(it)
+                    " · %.1f km/h".format(locale, it)
                 )
             }
 
             draft.distanceKm?.let {
                 append(
-                    " · %.2f km"
-                        .format(it)
+                    " · %.2f km".format(locale, it)
                 )
             }
         }
@@ -1902,16 +2138,16 @@ private fun draftSummary(
             (
                 "${draft.exercise.name} · " +
                 "${reps.size} × " +
-                "${reps.first()} reps"
+                "${reps.first()} ${strings.getString(R.string.reps_short)}"
             )
         } else {
             (
                 "${draft.exercise.name} · " +
-                "${reps.size} séries · " +
+                strings.resources.getQuantityString(R.plurals.performed_set_count, reps.size, reps.size) + " · " +
                 draft.sets.joinToString(separator = " ; ") { set ->
                     buildString {
-                        append("${set.reps} reps")
-                        set.weightKg?.let { append(" @ ${formatMaxWeight(it)} kg") }
+                        append("${set.reps} ${strings.getString(R.string.reps_short)}")
+                        set.weightKg?.let { append(" @ ${formatPresentationNumber(it, locale)} kg") }
                     }
                 }
             )
@@ -1929,11 +2165,15 @@ private fun draftSummary(
 }
 
 private fun formatMaxWeight(value: Double): String =
-    java.math.BigDecimal.valueOf(value)
-        .stripTrailingZeros()
-        .toPlainString()
-        .replace('.', ',')
+    java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString().replace('.', ',')
 
+private fun formatPresentationNumber(value: Double, locale: java.util.Locale): String =
+    java.text.NumberFormat.getNumberInstance(locale).apply {
+        isGroupingUsed = false
+        maximumFractionDigits = 3
+    }.format(value)
+
+@Composable
 private fun exerciseProfileLabel(
     exercise: ExerciseProfile,
 ): String {
@@ -1943,9 +2183,9 @@ private fun exerciseProfileLabel(
                 exercise.recordingMode ==
                 RecordingMode.CONTINUOUS
             ) {
-                "CONTINU"
+                uiString(R.string.profile_continuous)
             } else {
-                "SERIES"
+                uiString(R.string.profile_sets)
             }
         )
 
@@ -1956,9 +2196,9 @@ private fun exerciseProfileLabel(
                 exercise.trackingMode ==
                 TrackingMode.REPS
             ) {
-                "REPS"
+                uiString(R.string.profile_reps)
             } else {
-                "DUREE"
+                uiString(R.string.profile_duration)
             }
         )
 
@@ -1967,7 +2207,7 @@ private fun exerciseProfileLabel(
                 ExerciseDataFields
                     .SPEED_KMH != 0
         ) {
-            append(" · VITESSE")
+            append(uiString(R.string.profile_speed_suffix))
         }
 
         if (
@@ -1975,7 +2215,7 @@ private fun exerciseProfileLabel(
                 ExerciseDataFields
                     .DISTANCE_KM != 0
         ) {
-            append(" · DISTANCE")
+            append(uiString(R.string.profile_distance_suffix))
         }
     }
 }

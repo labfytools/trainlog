@@ -45,16 +45,16 @@ class FeedbackDictationController(
     fun edit(text: String) { if (state.phase != DictationPhase.Listening) update(state.copy(
         phase = DictationPhase.Editing, committedText = text, partialText = "", message = null)) }
 
-    fun start(permissionGranted: Boolean) {
+    fun start(permissionGranted: Boolean, languageTag: String = "fr-FR") {
         if (!permissionGranted) {
             update(state.copy(phase = DictationPhase.Error, partialText = "",
-                message = "Microphone refusé : la saisie manuelle reste disponible."))
+                message = "feedback_microphone_denied"))
         } else if (!recognizer.available) {
             update(state.copy(phase = DictationPhase.Error, partialText = "",
-                message = "Reconnaissance vocale indisponible : utilisez la saisie manuelle."))
+                message = "feedback_speech_unavailable"))
         } else {
             update(state.copy(phase = DictationPhase.Listening, partialText = "", message = null))
-            recognizer.start("fr-FR", this)
+            recognizer.start(languageTag, this)
         }
     }
 
@@ -78,7 +78,7 @@ class FeedbackDictationController(
     fun beginSaving(): String? {
         val text = state.visibleText.trim()
         if (text.isBlank()) { update(state.copy(phase = DictationPhase.Error,
-            message = "Un ressenti vide ne peut pas être enregistré.")); return null }
+            message = "feedback_empty")); return null }
         update(state.copy(phase = DictationPhase.Saving, committedText = text, partialText = ""))
         return text
     }

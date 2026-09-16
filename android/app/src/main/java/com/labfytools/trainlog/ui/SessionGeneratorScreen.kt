@@ -23,6 +23,7 @@ import java.time.OffsetDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.labfytools.trainlog.R
 
 internal object SessionGeneratorPreviewController {
     fun remove(preview: SessionGenerationPreview, index: Int): SessionGenerationPreview {
@@ -45,10 +46,7 @@ internal object SessionGeneratorPreviewController {
 
 internal object SessionGeneratorFormController {
     val goals = listOf(
-        "general" to "Général",
-        "strength" to "Force",
-        "hypertrophy" to "Hypertrophie",
-        "endurance" to "Endurance locale",
+        "general", "strength", "hypertrophy", "endurance",
     )
     fun duration(text: String, allowed: IntRange): Int? = text.toIntOrNull()?.takeIf { it in allowed }
 
@@ -57,7 +55,7 @@ internal object SessionGeneratorFormController {
         if (normalized.isEmpty()) return Result.success(null)
         val value = normalized.toDoubleOrNull()
         return if (value != null && value.isFinite() && value > 0.0) Result.success(value)
-        else Result.failure(IllegalArgumentException("La charge cible doit être un nombre positif fini."))
+        else Result.failure(IllegalArgumentException("generator_weight_invalid"))
     }
 }
 
@@ -112,6 +110,7 @@ fun SessionGeneratorScreen(
     onAccepted: () -> Unit,
     onExistingDraft: () -> Unit,
 ) {
+    val strings = localizedContext()
     val colors = LocalTrainlogColors.current
     val scope = rememberCoroutineScope()
     val options = remember { repository.sessionGenerationFormOptions() }
@@ -146,8 +145,8 @@ fun SessionGeneratorScreen(
                         warningAcknowledged = result.preview.exposure.warningLevel == GenerationWarningLevel.NONE
                         message = null
                     }
-                    is SessionGenerationResult.Invalid -> if (requestIdentity == state.requestIdentity) message = result.message
-                    is SessionGenerationResult.DatabaseError -> if (requestIdentity == state.requestIdentity) message = result.message
+                    is SessionGenerationResult.Invalid -> if (requestIdentity == state.requestIdentity) message = localizedRepositoryMessage(strings, result.message)
+                    is SessionGenerationResult.DatabaseError -> if (requestIdentity == state.requestIdentity) message = localizedRepositoryMessage(strings, result.message)
                 }
             } finally {
                 busy = false
@@ -155,99 +154,100 @@ fun SessionGeneratorScreen(
         }
     }
 
-    TrainlogScreen(subtitle = "Programmer une séance") {
+    TrainlogScreen(subtitle = strings.getString(R.string.route_session_generator)) {
         val current = preview
         if (current == null) {
-            TrainlogFrame("Zone corporelle") {
-                TrainlogChoiceChips(zones.map { it.zoneId to it.displayName }, zoneId) { zoneId = it }
+            TrainlogFrame(strings.getString(R.string.generator_zone)) {
+                TrainlogChoiceChips(zones.map { it.zoneId to localizedBodyZoneName(strings, it.zoneId, it.displayName) }, zoneId) { zoneId = it }
             }
-            TrainlogFrame("Objectif") {
-                TrainlogChoiceChips(SessionGeneratorFormController.goals.filter { it.first in options.goalIds }, goalId) { goalId = it }
+            TrainlogFrame(strings.getString(R.string.generator_goal)) {
+                TrainlogChoiceChips(SessionGeneratorFormController.goals.filter { it in options.goalIds }.map {
+                    it to strings.getString(when (it) { "general" -> R.string.goal_general; "strength" -> R.string.goal_strength
+                        "hypertrophy" -> R.string.goal_hypertrophy; else -> R.string.goal_endurance })
+                }, goalId) { goalId = it }
             }
-            TrainlogFrame("Durée") {
+            TrainlogFrame(strings.getString(R.string.field_duration)) {
                 TrainlogChoiceChips(options.durationPresets.map { it.toString() to "$it min" }, durationText) { durationText = it }
                 TrainlogInputField(
-                    "Durée personnalisée (${options.customMinutes.first} à ${options.customMinutes.last} min)",
+                    strings.getString(R.string.generator_custom_duration, options.customMinutes.first, options.customMinutes.last),
                     durationText,
                     onValueChange = { durationText = it },
                 )
             }
-            TrainlogAction("Générer", "Analyser l'historique en lecture seule et préparer la proposition.", accent = colors.success, onClick = {
+            TrainlogAction(strings.getString(R.string.generate), strings.getString(R.string.generate_description), accent = colors.success, onClick = {
                 val minutes = SessionGeneratorFormController.duration(durationText, options.customMinutes)
-                if (minutes == null) message = "La durée doit être comprise entre ${options.customMinutes.first} et ${options.customMinutes.last} minutes."
+                if (minutes == null) message = strings.getString(R.string.duration_range_error, options.customMinutes.first, options.customMinutes.last)
                 else generate(SessionGenerationRequest(zoneId, goalId, minutes, OffsetDateTime.now().toString()))
             })
         } else {
-            TrainlogFrame("Proposition") {
-                TrainlogInfo("Durée cible : ${current.request.durationMinutes} min · estimation : ${current.estimatedDurationSeconds / 60} min")
+            TrainlogFrame(strings.getString(R.string.proposal)) {
+                TrainlogInfo(strings.getString(R.string.target_duration_estimate, current.request.durationMinutes, current.estimatedDurationSeconds / 60))
                 if (current.request.durationMinutes * 60 - current.estimatedDurationSeconds >= 300)
-                    TrainlogInfo("La proposition est nettement plus courte que la cible ; aucun exercice n'est ajouté pour remplir artificiellement le temps.", colors.warning)
-                TrainlogInfo("Échauffement et retour au calme ne sont pas générés en V1.", colors.muted)
+                    TrainlogInfo(strings.getString(R.string.proposal_short), colors.warning)
+                TrainlogInfo(strings.getString(R.string.warmup_not_generated), colors.muted)
                 if (current.insufficientResolvedCandidates) TrainlogInfo(
-                    "La couverture est incomplète faute de contextes résolus disponibles" +
+                    strings.getString(R.string.coverage_incomplete,
                         current.shortageCodes.takeIf { it.isNotEmpty() }
-                            ?.joinToString(prefix = " : ", postfix = ".") { generationShortageLabel(it) }
-                            .orEmpty(),
+                            ?.joinToString(prefix = " : ", postfix = ".") { generationShortageLabel(it, strings) }.orEmpty()),
                     colors.warning,
                 )
                 val exposure = current.exposure
-                TrainlogInfo("Exposition observée : ${exposure.within24h.primarySetCount} séries principales et ${exposure.within24h.secondarySetCount} secondaires sur 24 h ; ${exposure.within72h.primarySetCount} principales et ${exposure.within72h.secondarySetCount} secondaires sur 72 h.")
-                exposure.latestStartedAt?.let { TrainlogInfo("Dernière exposition observée : $it", colors.muted) }
+                TrainlogInfo(strings.getString(R.string.exposure_summary, exposure.within24h.primarySetCount, exposure.within24h.secondarySetCount, exposure.within72h.primarySetCount, exposure.within72h.secondarySetCount))
+                exposure.latestStartedAt?.let { TrainlogInfo(strings.getString(R.string.latest_exposure, formatStartedAt(it)), colors.muted) }
                 if (exposure.warningLevel != GenerationWarningLevel.NONE) {
-                    TrainlogInfo("Attention informative : l'historique montre une exposition récente. Cela ne mesure pas la récupération physiologique.", colors.warning)
-                    if (!warningAcknowledged) TrainlogAction("Continuer malgré l'avertissement", "Conserver la proposition et autoriser son acceptation.", accent = colors.warning, onClick = {
+                    TrainlogInfo(strings.getString(R.string.recent_exposure_warning), colors.warning)
+                    if (!warningAcknowledged) TrainlogAction(strings.getString(R.string.continue_warning), strings.getString(R.string.continue_warning_description), accent = colors.warning, onClick = {
                         if (!busy) warningAcknowledged = true
                     })
                 }
             }
             current.exercises.forEachIndexed { index, item ->
                 TrainlogFrame("${index + 1}. ${item.exerciseName}") {
-                    TrainlogInfo("Équipement : ${item.equipmentName}")
-                    TrainlogInfo("Cible : ${item.plan.sets} × ${item.plan.reps} · repos ${item.plan.restSeconds} s")
-                    TrainlogInfo(if (item.plan.weightKg == null) "Charge cible : aucune charge numérique proposée."
-                        else "Charge cible : ${item.plan.weightKg} kg")
-                    TrainlogInfo("Zone principale : ${item.primaryZoneName}")
-                    TrainlogInfo("Mouvement : ${item.patternNames.joinToString()}")
+                    TrainlogInfo(strings.getString(R.string.equipment_generator, item.equipmentName))
+                    TrainlogInfo(strings.getString(R.string.target_summary, item.plan.sets, item.plan.reps.toString(), item.plan.restSeconds))
+                    TrainlogInfo(if (item.plan.weightKg == null) strings.getString(R.string.target_load_none_proposed)
+                        else strings.getString(R.string.target_load_proposed, item.plan.weightKg))
+                    TrainlogInfo(strings.getString(R.string.primary_zone_value_short, item.primaryZoneName))
+                    TrainlogInfo(strings.getString(R.string.movement_value, item.patternNames.joinToString()))
                     if (item.recency.recentSameExercise || item.recency.recentSamePattern)
-                        TrainlogInfo("Historique récent similaire détecté ; information uniquement.", colors.warning)
+                        TrainlogInfo(strings.getString(R.string.recent_similar), colors.warning)
                     item.loadSourceStartedAt?.let {
                         TrainlogInfo(
-                            "Charge issue d'une dose réellement observée le $it ; " +
-                                "son applicabilité aujourd'hui reste incertaine.",
+                            strings.getString(R.string.observed_load_note, formatDate(it)),
                             colors.muted,
                         )
                     }
                     TrainlogInfo(
-                        "Raisons : ${item.rationaleCodes.joinToString { generationReasonLabel(it) }}",
+                        strings.getString(R.string.reasons_value, item.rationaleCodes.joinToString { generationReasonLabel(it, strings) }),
                         colors.muted,
                     )
                     if (editingIndex == index) {
-                        TrainlogInputField("Séries", setsText, onValueChange = { setsText = it })
-                        TrainlogInputField("Répétitions", repsText, onValueChange = { repsText = it })
-                        TrainlogInputField("Repos (secondes)", restText, onValueChange = { restText = it })
-                        TrainlogInfo("Charge : choix utilisateur, jamais une recommandation.", colors.muted)
+                        TrainlogInputField(strings.getString(R.string.sets_label), setsText, onValueChange = { setsText = it })
+                        TrainlogInputField(strings.getString(R.string.field_reps), repsText, onValueChange = { repsText = it })
+                        TrainlogInputField(strings.getString(R.string.rest_seconds), restText, onValueChange = { restText = it })
+                        TrainlogInfo(strings.getString(R.string.user_load_note), colors.muted)
                         TrainlogChoiceChips(
-                            listOf("AUTOMATIC" to "Automatique", "PERCENT_MAX" to "% MAX", "NONE" to "Aucune"),
+                            listOf("AUTOMATIC" to strings.getString(R.string.automatic), "PERCENT_MAX" to "% MAX", "NONE" to strings.getString(R.string.none)),
                             loadChoice.name,
                         ) { selected ->
                             loadChoice = GeneratorLoadChoice.valueOf(selected)
                             if (loadChoice != GeneratorLoadChoice.AUTOMATIC) loadText = ""
                         }
                         if (loadChoice == GeneratorLoadChoice.PERCENT_MAX)
-                            TrainlogInputField("Pourcentage du MAX (1 à 100)", maxPercentText,
+                            TrainlogInputField(strings.getString(R.string.max_percentage_field), maxPercentText,
                                 onValueChange = { maxPercentText = it })
                         if (loadChoice == GeneratorLoadChoice.AUTOMATIC)
                             TrainlogInputField(
-                                "Charge cible manuelle (vide = automatique)",
+                                strings.getString(R.string.manual_target_load),
                                 loadText,
                                 onValueChange = { loadText = it },
                             )
-                        TrainlogAction("Appliquer", "Réestimer la durée et requalifier la charge observée.", accent = colors.success, onClick = {
+                        TrainlogAction(strings.getString(R.string.apply), strings.getString(R.string.reestimate_description), accent = colors.success, onClick = {
                             val parsedWeight = if (loadChoice == GeneratorLoadChoice.AUTOMATIC)
                                 SessionGeneratorFormController.manualWeight(loadText)
                             else Result.success(null)
                             if (parsedWeight.isFailure) {
-                                message = parsedWeight.exceptionOrNull()?.message
+                                message = strings.getString(R.string.generator_weight_invalid)
                             } else {
                                 val weight = parsedWeight.getOrNull()
                                 if (!busy) scope.launch {
@@ -260,8 +260,8 @@ fun SessionGeneratorScreen(
                                                 maxPercentText.toIntOrNull())
                                         }) {
                                             is SessionGenerationResult.Generated -> { preview = result.preview; editingIndex = null; message = null }
-                                            is SessionGenerationResult.Invalid -> message = result.message
-                                            is SessionGenerationResult.DatabaseError -> message = result.message
+                                            is SessionGenerationResult.Invalid -> message = localizedRepositoryMessage(strings, result.message)
+                                            is SessionGenerationResult.DatabaseError -> message = localizedRepositoryMessage(strings, result.message)
                                         }
                                     } finally {
                                         busy = false
@@ -269,7 +269,7 @@ fun SessionGeneratorScreen(
                                 }
                             }
                         })
-                    } else TrainlogAction("Modifier la cible", "Modifier séries, répétitions, repos ou charge.", onClick = {
+                    } else TrainlogAction(strings.getString(R.string.modify_target), strings.getString(R.string.modify_target_description), onClick = {
                         if (!busy) {
                             editingIndex = index; setsText = item.plan.sets.toString(); repsText = item.plan.reps.toString()
                             restText = item.plan.restSeconds.toString()
@@ -286,68 +286,64 @@ fun SessionGeneratorScreen(
                                 item.plan.weightKg?.toString().orEmpty() else ""
                         }
                     })
-                    TrainlogAction("Monter", "Déplacer cet exercice avant le précédent.", onClick = {
+                    TrainlogAction(strings.getString(R.string.move_up), strings.getString(R.string.move_up_description), onClick = {
                         if (!busy) preview = SessionGeneratorPreviewController.move(current, index, -1)
                     }, accent = colors.muted)
-                    TrainlogAction("Descendre", "Déplacer cet exercice après le suivant.", onClick = {
+                    TrainlogAction(strings.getString(R.string.move_down), strings.getString(R.string.move_down_description), onClick = {
                         if (!busy) preview = SessionGeneratorPreviewController.move(current, index, 1)
                     }, accent = colors.muted)
-                    TrainlogDeleteButton("Retirer cet exercice de la proposition", onClick = {
+                    TrainlogDeleteButton(strings.getString(R.string.remove_proposal_exercise), onClick = {
                         if (!busy) preview = SessionGeneratorPreviewController.remove(current, index)
                     })
                 }
             }
-            TrainlogAction("Régénérer", "Relancer les mêmes entrées et le même instant de référence.", onClick = { generate(current.request) })
-            TrainlogAction("Accepter et saisir les valeurs réelles", "Créer le brouillon normal sans préremplir les séries réalisées.", accent = colors.success, onClick = {
-                if (!warningAcknowledged) message = "Confirmez d'abord l'avertissement d'exposition récente."
+            TrainlogAction(strings.getString(R.string.regenerate), strings.getString(R.string.regenerate_description), onClick = { generate(current.request) })
+            TrainlogAction(strings.getString(R.string.accept_actual_values), strings.getString(R.string.accept_actual_description), accent = colors.success, onClick = {
+                if (!warningAcknowledged) message = strings.getString(R.string.acknowledge_exposure_first)
                 else if (!busy) scope.launch {
                     busy = true
                     try {
                         when (val result = withContext(Dispatchers.IO) { repository.acceptGeneratedSession(current) }) {
                             AcceptGeneratedSessionResult.Accepted -> onAccepted()
                             AcceptGeneratedSessionResult.ExistingActiveDraft -> onExistingDraft()
-                            is AcceptGeneratedSessionResult.Invalid -> message = result.message
-                            is AcceptGeneratedSessionResult.DatabaseError -> message = result.message
+                            is AcceptGeneratedSessionResult.Invalid -> message = localizedRepositoryMessage(strings, result.message)
+                            is AcceptGeneratedSessionResult.DatabaseError -> message = localizedRepositoryMessage(strings, result.message)
                         }
                     } finally {
                         busy = false
                     }
                 }
             })
-            TrainlogAction("Annuler la proposition", "Revenir sans écrire de brouillon.", onClick = {
+            TrainlogAction(strings.getString(R.string.cancel_proposal), strings.getString(R.string.cancel_proposal_description), onClick = {
                 if (!busy) onBack()
             }, accent = colors.muted)
         }
-        if (busy) TrainlogFrame("Traitement") { TrainlogInfo("Analyse en cours…", colors.muted) }
-        message?.let { TrainlogFrame("Message") { TrainlogInfo(it, colors.error) } }
+        if (busy) TrainlogFrame(strings.getString(R.string.processing)) { TrainlogInfo(strings.getString(R.string.analysis_running), colors.muted) }
+        message?.let { TrainlogFrame(strings.getString(R.string.message_title)) { TrainlogInfo(it, colors.error) } }
     }
 }
 
-private fun generationReasonLabel(code: String): String = when (code) {
-    "observed_repeated_dose_anchor" -> "dose répétée observée"
-    "explicit_max_present_no_numeric_prescription" -> "maximum observé sans prescription numérique"
-    "user_selected_max_percentage" -> "pourcentage de MAX choisi par l'utilisateur"
-    "compatible_max_unavailable" -> "MAX compatible indisponible"
-    "assistance_numeric_load_omitted" -> "charge d'assistance omise"
-    "numeric_load_absent" -> "charge numérique absente"
-    "manual_target_load" -> "charge saisie manuellement"
-    "preferred_exercise" -> "exercice préféré"
-    "requested_primary_zone" -> "zone principale demandée"
-    "requested_secondary_zone" -> "zone secondaire demandée"
-    "new_exact_pattern" -> "mouvement distinct"
-    "recent_same_exercise_penalty" -> "même exercice observé récemment"
-    "recent_same_pattern_penalty" -> "mouvement similaire observé récemment"
-    else -> code.replace('_', ' ')
-}
+private fun generationReasonLabel(code: String, context: android.content.Context): String = context.getString(when (code) {
+    "observed_repeated_dose_anchor" -> R.string.reason_observed_dose
+    "explicit_max_present_no_numeric_prescription" -> R.string.reason_max_no_prescription
+    "user_selected_max_percentage" -> R.string.reason_user_max
+    "compatible_max_unavailable" -> R.string.reason_max_unavailable
+    "assistance_numeric_load_omitted" -> R.string.reason_assistance_omitted
+    "numeric_load_absent" -> R.string.reason_load_absent
+    "manual_target_load" -> R.string.reason_manual_load
+    "preferred_exercise" -> R.string.reason_preferred
+    "requested_primary_zone" -> R.string.reason_primary_zone
+    "requested_secondary_zone" -> R.string.reason_secondary_zone
+    "new_exact_pattern" -> R.string.reason_distinct_movement
+    "recent_same_exercise_penalty" -> R.string.reason_recent_exercise
+    "recent_same_pattern_penalty" -> R.string.reason_recent_pattern
+    else -> return code.replace('_', ' ')
+})
 
-private fun generationShortageLabel(code: String): String = when (code) {
-    "missing_upper_region" -> "région supérieure manquante"
-    "missing_lower_region" -> "région inférieure manquante"
-    "missing_core_region" -> "tronc manquant"
-    "missing_upper_push" -> "poussée du haut du corps manquante"
-    "missing_upper_pull" -> "tirage du haut du corps manquant"
-    "missing_lower_extension" -> "extension du bas du corps manquante"
-    "missing_lower_flexion" -> "flexion du bas du corps manquante"
-    "fewer_than_max_exercises" -> "moins d'exercices distincts disponibles"
-    else -> code.replace('_', ' ')
-}
+private fun generationShortageLabel(code: String, context: android.content.Context): String = context.getString(when (code) {
+    "missing_upper_region" -> R.string.shortage_upper; "missing_lower_region" -> R.string.shortage_lower
+    "missing_core_region" -> R.string.shortage_core; "missing_upper_push" -> R.string.shortage_push
+    "missing_upper_pull" -> R.string.shortage_pull; "missing_lower_extension" -> R.string.shortage_lower_extension
+    "missing_lower_flexion" -> R.string.shortage_lower_flexion; "fewer_than_max_exercises" -> R.string.shortage_exercises
+    else -> return code.replace('_', ' ')
+})

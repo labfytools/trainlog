@@ -22,7 +22,7 @@ class AndroidSpeechRecognitionAdapter(context: Context) : SpeechRecognitionAdapt
         instance.setRecognitionListener(object : RecognitionListener {
             override fun onPartialResults(results: Bundle) = listener.onPartial(best(results))
             override fun onResults(results: Bundle) = listener.onFinal(best(results))
-            override fun onError(error: Int) = listener.onError("Reconnaissance interrompue (code $error).")
+            override fun onError(error: Int) = listener.onError("speech_error:$error")
             override fun onReadyForSpeech(params: Bundle?) = Unit
             override fun onBeginningOfSpeech() = Unit
             override fun onRmsChanged(rmsdB: Float) = Unit

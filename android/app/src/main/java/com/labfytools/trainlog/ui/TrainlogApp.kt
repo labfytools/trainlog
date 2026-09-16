@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import com.labfytools.trainlog.R
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
@@ -32,6 +33,8 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: SyncCatalogInbox, requestOutbox: SyncRequestOutbox, appState: TrainlogAppState) {
+    val localized = localizedContext()
+    val strings = localized.resources
     val navigation = appState.navigation
     val generatorState = appState.generator
     val equipmentState = appState.equipment
@@ -70,9 +73,9 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             is ActiveDraftLoadResult.Loaded -> open(AppRoute.SessionEditor)
             ActiveDraftLoadResult.None -> when (val result = repository.startActiveSessionDraft()) {
                 ActiveDraftMutationResult.Saved -> { draftRevision++; open(AppRoute.SessionEditor) }
-                is ActiveDraftMutationResult.Error -> draftMessage = result.message
+                is ActiveDraftMutationResult.Error -> draftMessage = localizedRepositoryMessage(localized, result.message)
             }
-            is ActiveDraftLoadResult.Error -> draftMessage = draftLoad.message
+            is ActiveDraftLoadResult.Error -> draftMessage = localizedRepositoryMessage(localized, draftLoad.message)
         }
     }
 
@@ -89,7 +92,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
         routeStateHolder.SaveableStateProvider(routeKey) {
         when (val route = navigation.route) {
             AppRoute.Home -> HomeScreen(
-                activeDraft, draftMessage ?: (draftLoad as? ActiveDraftLoadResult.Error)?.message ?: (draftLoad as? ActiveDraftLoadResult.Loaded)?.warning,
+                activeDraft, draftMessage ?: (draftLoad as? ActiveDraftLoadResult.Error)?.let { localizedRepositoryMessage(localized, it.message) } ?: (draftLoad as? ActiveDraftLoadResult.Loaded)?.warning?.let { localizedRepositoryMessage(localized, it) },
                 repository.listSessions().firstOrNull(), repository.listLatestExerciseMaxima().firstOrNull(),
                 repository.getBodyZoneHomeOverview(),
                 ::openManualSession,
@@ -106,7 +109,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) })
             AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exportSnapshot(); draftRevision++ })
             AppRoute.SessionGenerator -> SessionGeneratorScreen(repository, generatorState, { back() }, { generatorState.abandon(); draftRevision++; open(AppRoute.SessionEditor) }, {
-                draftMessage = "Une séance est déjà en cours. Reprenez-la ou revenez à la proposition conservée."
+                draftMessage = strings.getString(R.string.existing_draft_warning)
                 draftRevision++
                 /* WHY: ExistingActiveDraft is discovered only after the accept
                  * action, while the proposal is still dirty. CONTRACT: this
@@ -146,13 +149,13 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
         val generator = guardedRoute == AppRoute.SessionGenerator
         AlertDialog(
             onDismissRequest = navigationController::cancelPending,
-            title = { Text(if (generator) "Proposition non acceptée" else "Modifications non enregistrées") },
-            text = { Text(if (generator) "La proposition peut rester en mémoire pendant que vous changez de rubrique." else "Les champs restent en mémoire tant que vous ne les abandonnez pas explicitement.") },
-            confirmButton = { TextButton(onClick = navigationController::keepAndNavigate) { Text("Conserver et quitter") } },
+            title = { Text(strings.getString(if (generator) R.string.dialog_unaccepted_proposal else R.string.dialog_unsaved_changes)) },
+            text = { Text(strings.getString(if (generator) R.string.dialog_proposal_retained else R.string.dialog_fields_retained)) },
+            confirmButton = { TextButton(onClick = navigationController::keepAndNavigate) { Text(strings.getString(R.string.dialog_keep_leave)) } },
             dismissButton = {
                 TextButton(onClick = {
                     navigationController.discardAndNavigate()
-                }) { Text(if (generator) "Abandonner la proposition" else "Abandonner les modifications") }
+                }) { Text(strings.getString(if (generator) R.string.dialog_discard_proposal else R.string.dialog_discard_changes)) }
             },
         )
     }

@@ -10,6 +10,9 @@ import androidx.compose.runtime.remember
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
+import com.labfytools.trainlog.R
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun HistoryScreen(
@@ -17,6 +20,8 @@ fun HistoryScreen(
     onBack: () -> Unit,
     onOpenSession: (String) -> Unit,
 ) {
+    val locale = presentationLocale()
+    val strings = localizedContext()
     val colors =
         LocalTrainlogColors.current
 
@@ -30,16 +35,16 @@ fun HistoryScreen(
         }
 
     TrainlogScreen(
-        subtitle = "Séances effectuées"
+        subtitle = strings.getString(R.string.route_completed_sessions)
     ) {
         TrainlogFrame(
-            title = "Séances",
+            title = strings.getString(R.string.nav_sessions),
             active =
                 sessions.isNotEmpty(),
         ) {
             if (sessions.isEmpty()) {
                 TrainlogInfo(
-                    "Aucune séance enregistrée."
+                    strings.getString(R.string.history_none)
                 )
             } else {
                 sessions.forEach {
@@ -54,8 +59,8 @@ fun HistoryScreen(
                             sessionTypeLabel(
                                 session.sessionType
                             ) +
-                                " · " +
-                                "${session.exerciseCount} exercice(s)",
+                                " · " + strings.resources.getQuantityString(
+                                    R.plurals.exercise_count, session.exerciseCount, session.exerciseCount),
                         onClick = {
                             onOpenSession(
                                 session.sessionId
@@ -76,21 +81,22 @@ fun HistoryScreen(
         }
 
         TrainlogFrame(
-            title = "Derniers MAX",
+            title = strings.getString(R.string.route_latest_maxima),
             active = latestMaxima.isNotEmpty(),
         ) {
             if (latestMaxima.isEmpty()) {
-                TrainlogInfo("Aucun max explicite enregistré.")
+                TrainlogInfo(strings.getString(R.string.max_none))
             } else {
                 latestMaxima.forEach { max ->
-                    val weight = "%.2f".format(java.util.Locale.FRANCE, max.maxWeightKg)
+                    val weight = "%.2f".format(locale, max.maxWeightKg)
                         .trimEnd('0').trimEnd(',')
                     TrainlogInfo(
-                        text = "${max.exerciseName} · $weight kg · ${formatStartedAt(max.startedAt).take(10)}",
+                        text = "${max.exerciseName} · $weight kg · ${formatDate(max.startedAt)}",
                         color = colors.warning,
                     )
                     TrainlogInfo(
-                        text = "Équipement : ${max.equipmentDisplayName ?: "aucun"}",
+                        text = strings.getString(R.string.equipment_value,
+                            max.equipmentDisplayName ?: strings.getString(R.string.value_none)),
                         color = colors.muted,
                     )
                 }
@@ -99,6 +105,7 @@ fun HistoryScreen(
     }
 }
 
+@Composable
 internal fun sessionTypeLabel(
     value: SessionType,
 ): String =
@@ -106,18 +113,27 @@ internal fun sessionTypeLabel(
         value ==
         SessionType.MAX_TEST
     ) {
-        "TEST MAX"
+        uiString(R.string.session_max_test)
     } else {
-        "ENTRAÎNEMENT"
+        uiString(R.string.session_training)
     }
 
+@Composable
 internal fun formatStartedAt(
     value: String,
 ): String {
-    return value
-        .replace(
-            'T',
-            ' '
-        )
-        .take(16)
+    val locale = presentationLocale()
+    val pattern = uiString(R.string.date_time_pattern)
+    return runCatching {
+        OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern(pattern, locale))
+    }.getOrElse { value.replace('T', ' ').take(16) }
+}
+
+@Composable
+internal fun formatDate(value: String): String {
+    val locale = presentationLocale()
+    val pattern = uiString(R.string.date_pattern)
+    return runCatching {
+        OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern(pattern, locale))
+    }.getOrElse { value.take(10) }
 }
