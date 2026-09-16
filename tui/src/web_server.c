@@ -10,6 +10,8 @@
 #include <string.h>
 #include <sys/select.h>
 
+#include "web_assets.h"
+
 #define TRAINLOG_HTTP_CONNECTION_LIMIT 32U
 #define TRAINLOG_HTTP_PER_IP_LIMIT 32U
 #define TRAINLOG_HTTP_CONNECTION_MEMORY_LIMIT (16U * 1024U)
@@ -35,7 +37,7 @@ static void web_diagnostic(char *output, size_t capacity, const char *message)
 }
 
 static enum MHD_Result queue_json(struct MHD_Connection *connection,
-    unsigned int status, const char *body)
+    unsigned int status, const char *body, const char *allow)
 {
     struct MHD_Response *response;
     enum MHD_Result result;
@@ -56,15 +58,57 @@ static enum MHD_Result queue_json(struct MHD_Connection *connection,
         MHD_destroy_response(response);
         return MHD_NO;
     }
-    if (status == MHD_HTTP_METHOD_NOT_ALLOWED &&
-        MHD_add_response_header(response, MHD_HTTP_HEADER_ALLOW, "GET") !=
-            MHD_YES) {
+    if (allow != NULL && MHD_add_response_header(response,
+            MHD_HTTP_HEADER_ALLOW, allow) != MHD_YES) {
         MHD_destroy_response(response);
         return MHD_NO;
     }
     result = MHD_queue_response(connection, status, response);
     MHD_destroy_response(response);
     return result;
+}
+
+static enum MHD_Result queue_asset(struct MHD_Connection *connection,
+    const TrainlogWebAsset *asset)
+{
+    static const char CSP[] = "default-src 'self'; script-src 'self'; "
+        "style-src 'self'; connect-src 'self'; img-src 'self'; "
+        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+    const char *cache = asset->immutable
+        ? "public, max-age=31536000, immutable" : "no-cache";
+    struct MHD_Response *response = MHD_create_response_from_buffer(asset->size,
+        (void *)asset->bytes, MHD_RESPMEM_PERSISTENT);
+    enum MHD_Result result;
+    if (response == NULL) return MHD_NO;
+    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
+            asset->mime) != MHD_YES ||
+        MHD_add_response_header(response,
+            MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL,
+            cache) != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_ETAG,
+            asset->etag) != MHD_YES ||
+        MHD_add_response_header(response, "Content-Security-Policy", CSP) !=
+            MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION,
+            "close") != MHD_YES) {
+        MHD_destroy_response(response);
+        return MHD_NO;
+    }
+    result = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return result;
+}
+
+static bool is_ui_route(const char *url)
+{
+    static const char *const routes[] = {
+        "/", "/analyse", "/programmes", "/seances", "/exercices"
+    };
+    size_t index;
+    for (index = 0U; index < sizeof(routes) / sizeof(routes[0]); ++index)
+        if (strcmp(url, routes[index]) == 0) return true;
+    return false;
 }
 
 static bool valid_host(const TrainlogWebContext *context, const char *host)
@@ -103,7 +147,10 @@ static enum MHD_Result handle_request(void *closure,
     TrainlogWebContext *context = closure;
     TrainlogHttpRequestState *state = *request_closure;
     const union MHD_ConnectionInfo *header_info;
+    const TrainlogWebAsset *asset;
     const char *host;
+    bool is_get;
+    bool is_head;
     (void)version;
     if (state == NULL) {
         state = calloc(1U, sizeof(*state));
@@ -127,22 +174,39 @@ static enum MHD_Result handle_request(void *closure,
     if (header_info == NULL || header_info->header_size >
             TRAINLOG_HTTP_HEADER_LIMIT)
         return queue_json(connection, MHD_HTTP_REQUEST_HEADER_FIELDS_TOO_LARGE,
-            "{\"error\":\"headers_too_large\"}\n");
+            "{\"error\":\"headers_too_large\"}\n", NULL);
     if (state->body_too_large)
         return queue_json(connection, MHD_HTTP_CONTENT_TOO_LARGE,
-            "{\"error\":\"body_too_large\"}\n");
+            "{\"error\":\"body_too_large\"}\n", NULL);
     host = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
         MHD_HTTP_HEADER_HOST);
     if (!valid_host(context, host))
         return queue_json(connection, MHD_HTTP_BAD_REQUEST,
-            "{\"error\":\"invalid_host\"}\n");
-    if (strcmp(url, "/api/v1/health") != 0)
+            "{\"error\":\"invalid_host\"}\n", NULL);
+    is_get = strcmp(method, MHD_HTTP_METHOD_GET) == 0;
+    is_head = strcmp(method, MHD_HTTP_METHOD_HEAD) == 0;
+    if (strcmp(url, "/api/v1/health") == 0) {
+        if (!is_get)
+            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
+                "{\"error\":\"method_not_allowed\"}\n", "GET");
+        return queue_json(connection, MHD_HTTP_OK, HEALTH, NULL);
+    }
+    /* INVARIANT: API paths never fall through to the SPA index. */
+    if (strncmp(url, "/api/", 5U) == 0)
         return queue_json(connection, MHD_HTTP_NOT_FOUND,
-            "{\"error\":\"not_found\"}\n");
-    if (strcmp(method, MHD_HTTP_METHOD_GET) != 0)
+            "{\"error\":\"not_found\"}\n", NULL);
+    if (strstr(url, "..") != NULL)
+        return queue_json(connection, MHD_HTTP_NOT_FOUND,
+            "{\"error\":\"not_found\"}\n", NULL);
+    asset = is_ui_route(url) ? trainlog_web_index_asset()
+        : trainlog_web_asset_find(url);
+    if (asset == NULL)
+        return queue_json(connection, MHD_HTTP_NOT_FOUND,
+            "{\"error\":\"not_found\"}\n", NULL);
+    if (!is_get && !is_head)
         return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-            "{\"error\":\"method_not_allowed\"}\n");
-    return queue_json(connection, MHD_HTTP_OK, HEALTH);
+            "{\"error\":\"method_not_allowed\"}\n", "GET, HEAD");
+    return queue_asset(connection, asset);
 }
 
 static void request_completed(void *closure, struct MHD_Connection *connection,
@@ -176,6 +240,11 @@ int trainlog_web_server_run(TrainlogDatabase *database, uint16_t port,
     int result = 0;
     if (database == NULL || stop_requested == NULL) return -1;
     web_diagnostic(diagnostic, diagnostic_capacity, "");
+    if (!trainlog_web_assets_available()) {
+        web_diagnostic(diagnostic, diagnostic_capacity,
+            "support frontend absent de ce binaire");
+        return -1;
+    }
     (void)memset(&bind_address, 0, sizeof(bind_address));
     bind_address.sin_family = AF_INET;
     bind_address.sin_port = htons(port);

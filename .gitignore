@@ -3,6 +3,9 @@ build/
 builddir/
 meson-logs/
 meson-private/
+/web/node_modules/
+/web/dist/
+/web/coverage/
 
 # Android / Gradle
 .gradle/

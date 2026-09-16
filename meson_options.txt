@@ -1,0 +1,6 @@
+option(
+  'web',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build and embed the Trainlog Web frontend',
+)

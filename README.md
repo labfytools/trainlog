@@ -169,6 +169,27 @@ Desktop builds require:
   headers;
 - Python 3 for generated sources, validators, import/export helpers, and tests.
 
+The embedded Web frontend additionally uses Node and npm at build time only.
+Prepare its exact locked dependencies explicitly, then enable the release
+frontend build:
+
+```bash
+cd web
+npm ci
+npm run typecheck
+npm test
+cd ..
+meson setup build -Dweb=enabled
+meson compile -C build
+```
+
+Meson never runs `npm install` or downloads packages. The default `web=auto`
+embeds the frontend when Node, npm, and the prepared `web/node_modules` are
+available; otherwise it preserves a desktop-only build and `trainlog -w`
+reports that frontend support is absent. Release builds must use
+`-Dweb=enabled`. `-Dweb=disabled` is the explicit desktop-only choice. Node,
+npm, `node_modules`, and `web/dist` are not runtime dependencies.
+
 Android builds require JDK 17, an Android SDK supporting the configured API
 levels, and the Gradle wrapper committed in this repository. People installing
 the APK do not need Java, Gradle, or the Android SDK.
@@ -231,7 +252,8 @@ As of 2026-09-15:
 - `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`;
 - `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
   Android-triggered bidirectional smoke test.
-- `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`.
+- `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
+  `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`.
 
 The latest executable result belongs in
 [current state](docs/current_state.md), not in multiple README narratives.

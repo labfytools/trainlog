@@ -15,6 +15,7 @@
 
 #include "trainlog/database.h"
 #include "trainlog/web_server.h"
+#include "web_assets.h"
 
 #define CHECK(value) do { if (!(value)) {                                  \
     (void)fprintf(stderr, "CHECK failed at %s:%d: %s\n",                 \
@@ -97,10 +98,36 @@ static bool exchange(uint16_t port, const char *request, char *response,
     return true;
 }
 
+static bool asset_path(const char *html, const char *suffix, char *output,
+    size_t capacity)
+{
+    const char *start = html;
+    size_t suffix_length = strlen(suffix);
+    while ((start = strstr(start, "/assets/")) != NULL) {
+        const char *end = start;
+        size_t length;
+        while (*end != '\0' && *end != '"' && *end != '\'' && *end != '<' &&
+            *end != '>') ++end;
+        length = (size_t)(end - start);
+        if (length >= suffix_length &&
+            memcmp(end - suffix_length, suffix, suffix_length) == 0 &&
+            length < capacity) {
+            (void)memcpy(output, start, length);
+            output[length] = '\0';
+            return true;
+        }
+        start = end;
+    }
+    return false;
+}
+
 static bool test_http_contract(TrainlogDatabase *database)
 {
     char response[32768];
     char large_request[12000];
+    char request[512];
+    char javascript_path[256];
+    char stylesheet_path[256];
     uint16_t port;
     pid_t child;
     int status;
@@ -130,7 +157,45 @@ static bool test_http_contract(TrainlogDatabase *database)
         "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
         "\"version\":\"0.1.2\"}") != NULL);
     CHECK(exchange(port, "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        response, sizeof(response)) && strstr(response, "HTTP/1.1 200") != NULL);
+    CHECK(strstr(response, "Content-Type: text/html; charset=utf-8") != NULL);
+    CHECK(strstr(response, "Cache-Control: no-cache") != NULL);
+    CHECK(strstr(response, "Content-Security-Policy: default-src 'self'") != NULL);
+    CHECK(strstr(response, "unsafe-inline") == NULL);
+    CHECK(strstr(response, "unsafe-eval") == NULL);
+    CHECK(strstr(response, "<title>Trainlog</title>") != NULL);
+    CHECK(asset_path(response, ".js", javascript_path, sizeof(javascript_path)));
+    CHECK(asset_path(response, ".css", stylesheet_path, sizeof(stylesheet_path)));
+    (void)snprintf(request, sizeof(request),
+        "GET %s HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", javascript_path);
+    CHECK(exchange(port, request, response, sizeof(response)) &&
+        strstr(response, "HTTP/1.1 200") != NULL);
+    CHECK(strstr(response, "Content-Type: text/javascript; charset=utf-8") != NULL);
+    CHECK(strstr(response,
+        "Cache-Control: public, max-age=31536000, immutable") != NULL);
+    CHECK(strstr(response, "ETag: \"sha256-") != NULL);
+    (void)snprintf(request, sizeof(request),
+        "GET %s HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", stylesheet_path);
+    CHECK(exchange(port, request, response, sizeof(response)) &&
+        strstr(response, "Content-Type: text/css; charset=utf-8") != NULL);
+    CHECK(exchange(port,
+        "GET /analyse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        response, sizeof(response)) && strstr(response, "<title>Trainlog</title>") != NULL);
+    CHECK(exchange(port,
+        "GET /api/v1/unknown HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        response, sizeof(response)) && strstr(response, "HTTP/1.1 404") != NULL &&
+        strstr(response, "<title>Trainlog</title>") == NULL);
+    CHECK(exchange(port,
+        "GET /assets/unknown.js HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
         response, sizeof(response)) && strstr(response, "HTTP/1.1 404") != NULL);
+    CHECK(exchange(port,
+        "GET /assets/../index.html HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        response, sizeof(response)) && strstr(response, "HTTP/1.1 404") != NULL);
+    (void)snprintf(request, sizeof(request),
+        "HEAD %s HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", javascript_path);
+    CHECK(exchange(port, request, response, sizeof(response)) &&
+        strstr(response, "HTTP/1.1 200") != NULL &&
+        strstr(response, "Content-Type: text/javascript; charset=utf-8") != NULL);
     CHECK(exchange(port,
         "POST /api/v1/health HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n",
         response, sizeof(response)) && strstr(response, "HTTP/1.1 405") != NULL);
@@ -180,7 +245,14 @@ int main(void)
     bool passed;
     if (trainlog_database_open(":memory:", &database) != TRAINLOG_STATUS_OK)
         return 1;
-    passed = test_http_contract(database) && test_port_in_use(database);
+    if (!trainlog_web_assets_available()) {
+        volatile sig_atomic_t stop = 0;
+        char diagnostic[256];
+        passed = trainlog_web_server_run(database, 8080U, &stop, diagnostic,
+            sizeof(diagnostic)) != 0 && strstr(diagnostic, "frontend") != NULL;
+    } else {
+        passed = test_http_contract(database) && test_port_in_use(database);
+    }
     trainlog_database_close(database);
     return passed ? 0 : 1;
 }

@@ -11,9 +11,10 @@ closed incidents belong in [reviews](reviews/) and the
 Android is the field companion: it captures training and body data, preserves
 the active draft, receives AI proposals, triggers synchronization, and shows
 quick summaries. The C17/Notcurses TUI is the administration, inspection,
-maintenance, import/export, and technical-tooling surface. The documented but
-not yet implemented local Web sibling will own analysis, visualization, and
-program/session preparation through Trainlog Core.
+maintenance, import/export, and technical-tooling surface. The local Web
+sibling now provides its embedded application shell; its future business
+surfaces will own analysis, visualization, and program/session preparation
+through Trainlog Core.
 
 Trainlog Core owns business truth. The desktop SQLite database remains the
 canonical local source of truth and long-term history; no interface owns a
@@ -40,6 +41,7 @@ parallel implementation of its rules.
 | Dashboard Core read model | `WEB_DASHBOARD_CORE_READ_MODEL_V1=PASS/FROZEN` |
 | TUI Dashboard adoption | `WEB_TUI_READ_MODEL_ADOPTION_V1=PASS/FROZEN` |
 | Web CLI/HTTP infrastructure | `WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN` |
+| Web frontend shell | `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
@@ -137,10 +139,12 @@ the result. No Dashboard HTTP endpoint exists yet.
 
 `TRAINLOG_WEB_V1` architecture, API independence, local-network boundary,
 browser shell, Dashboard, layout ownership, build/runtime separation, and
-security invariants are canonical. The CLI and local HTTP infrastructure are
-implemented: `-w`/`--web`, optional `--port`, exact IPv4 loopback binding and
-the technical `/api/v1/health` route. No frontend, embedded asset, Dashboard
-route, business mutation, browser launch or layout persistence exists yet.
+security invariants are canonical. The CLI/local HTTP infrastructure and
+embedded frontend shell are implemented: `-w`/`--web`, optional `--port`, exact
+IPv4 loopback binding, `/api/v1/health`, React navigation and the persistent
+Header/Body/Footer shell. Production assets are generated from the npm lockfile
+and linked into the binary. No Dashboard business route, real metric, grid
+engine, business mutation, browser launch or layout persistence exists yet.
 
 ## Data semantics
 
@@ -176,6 +180,11 @@ The CLI/HTTP infrastructure tranche passes **67/67 normal Meson tests**, adding
 pure CLI parsing, process-level help/version checks and an isolated loopback
 HTTP lifecycle/security suite. The same suite is required under ASan/UBSan.
 
+The frontend shell tranche passes **70/70 normal and ASan/UBSan Meson tests**,
+including TypeScript typecheck, 10 Vitest component tests, deterministic asset
+generation bounds, real embedded-asset HTTP coverage, SPA/API separation and
+runtime execution without Node/npm or `web/dist`.
+
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus
 Android resource-parity, language-owner, typed sync-presentation, and
@@ -188,8 +197,9 @@ smoke test are not automated. The latter is why
 
 ## Active limitations
 
-- `TRAINLOG_WEB_V1` has only its Core prerequisite and CLI/HTTP infrastructure;
-  the next cursor is the frontend shell. No Dashboard HTTP route exists.
+- `TRAINLOG_WEB_V1` has its Core prerequisite, CLI/HTTP infrastructure and
+  embedded frontend shell. The next cursor begins the explicitly partitioned
+  Dashboard V1 work; no Dashboard HTTP route or real Web metric exists yet.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - AI proposal exchange still awaits one real Drive plus Android-triggered
   bidirectional smoke test.

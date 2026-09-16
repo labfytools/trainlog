@@ -1,0 +1,19 @@
+export type RouteId = 'dashboard' | 'analysis' | 'programs' | 'sessions' | 'exercises'
+
+export interface AppRoute {
+  id: RouteId
+  path: string
+  label: string
+}
+
+export const routes: readonly AppRoute[] = [
+  { id: 'dashboard', path: '/', label: 'Dashboard' },
+  { id: 'analysis', path: '/analyse', label: 'Analyse' },
+  { id: 'programs', path: '/programmes', label: 'Programmes' },
+  { id: 'sessions', path: '/seances', label: 'Séances' },
+  { id: 'exercises', path: '/exercices', label: 'Exercices' },
+]
+
+export function routeFromPath(pathname: string): AppRoute {
+  return routes.find((route) => route.path === pathname) ?? routes[0]
+}

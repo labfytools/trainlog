@@ -25,19 +25,20 @@ Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
 exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
-CLI/HTTP infrastructure exists, but no frontend or business endpoint exists.
+CLI/HTTP infrastructure and embedded frontend shell exist, but no Dashboard
+business endpoint or real Web metric exists.
 
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=WEB_FRONTEND_SHELL_V1
+CURRENT_OPERATIONAL_CURSOR=WEB_DASHBOARD_V1
 ```
 
-`WEB_CLI_HTTP_INFRASTRUCTURE_V1=PASS/FROZEN`. `trainlog -w` and `--web` now
-dispatch through the common process owner to a bounded, single-threaded
-loopback HTTP adapter after one database open. Only `/api/v1/health` exists.
-The next slice is the frontend shell and embedded production assets; it does
-not authorize Dashboard business routes or new metrics.
+`WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
+TypeScript and Vite shell with its five client routes, Catppuccin Mocha design
+system, permanent Header/Footer, empty-data states and health status. The next
+Dashboard tranche is partitioned below; this cursor does not authorize an
+undifferentiated implementation of every Dashboard concern.
 
 ## TRAINLOG_WEB_V1 implementation gate
 
@@ -48,7 +49,7 @@ WEB_DASHBOARD_CHARACTERIZATION_V1
         -> WEB_DASHBOARD_CORE_READ_MODEL_V1 [PASS/FROZEN]
         -> WEB_TUI_READ_MODEL_ADOPTION_V1 [PASS/FROZEN]
         -> WEB_CLI_HTTP_INFRASTRUCTURE_V1 [PASS/FROZEN]
-        -> WEB_FRONTEND_SHELL_V1
+        -> WEB_FRONTEND_SHELL_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_V1
 ```
 
@@ -63,6 +64,20 @@ the `127.0.0.1:8080` default, explicit `--port`, no silent port fallback, a
 single serialized Core/SQLite owner, build-only Node/npm, and no change to
 business SQLite or frozen exchange formats. Dashboard Activité and Progression
 mathematics remain specification gates before their read models.
+
+`WEB_DASHBOARD_V1` must advance through independently reviewable slices:
+
+```text
+missing Dashboard API/read models
+        -> grid-library spike and bounded grid engine
+        -> separately versioned layout persistence
+        -> real-data tile delivery
+        -> real-data visualization delivery
+```
+
+The slice order may be refined by the next contract, but it must preserve the
+existing Core ownership, keep visual layout outside business SQLite and frozen
+formats, and specify Activité/Progression before implementing those metrics.
 
 ## Next
 

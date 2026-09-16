@@ -27,6 +27,34 @@ SIGTERM shutdown and explicit failure on an already occupied port. It never
 uses the Internet. A separate real-launch smoke uses an isolated XDG directory,
 performs the health request and stops the production binary with SIGINT.
 
+`WEB_FRONTEND_SHELL_V1` adds TypeScript typechecking and 10 Vitest/jsdom
+component tests for the persistent shell, five client destinations, active
+navigation, browser history, unavailable factual fields, successful/failed/
+invalid health responses and accessible landmarks. Production Vite output is
+then generated and embedded for the C HTTP test, which additionally verifies
+HTML root and SPA routes, JS/CSS MIME, HTML and immutable cache policies,
+SHA-256 ETag, strict CSP, HEAD, unknown assets, traversal rejection and the
+invariant that unknown `/api/` paths never receive `index.html`.
+
+The generator contract test proves byte-for-byte deterministic output, stable
+path ordering and the 128-asset bound. Runtime smoke coverage starts the linked
+binary with Node/npm absent from `PATH`, removes any dependency on `web/dist`,
+and checks root, health and SIGINT. A separate `-Dweb=disabled` build verifies
+the explicit diagnostic instead of pretending that a frontend exists.
+
+Frontend preparation and direct validation are:
+
+```bash
+cd web
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+Release-oriented Meson builds must use `-Dweb=enabled`; Meson never provisions
+or downloads npm dependencies.
+
 ## 2. Frozen Trainlog JSON v1
 
 Run:

@@ -1,4 +1,5 @@
 cc = meson.get_compiler('c')
+fs = import('fs')
 
 sqlite3_dep = dependency('sqlite3', required: true)
 uuid_dep = dependency('uuid', required: true)
@@ -16,6 +17,86 @@ endif
 m_dep = cc.find_library('m', required: true)
 
 trainlog_include = include_directories('include')
+trainlog_private_include = include_directories('src')
+
+web_option = get_option('web')
+node = find_program('node', required: web_option.enabled())
+npm = find_program('npm', required: web_option.enabled())
+web_dependencies_ready = fs.is_dir(meson.project_source_root() / 'web/node_modules')
+if web_option.enabled() and not web_dependencies_ready
+  error('Web enabled but web/node_modules is absent; run npm ci in web/')
+endif
+web_assets_enabled = not web_option.disabled() and node.found() and npm.found() and web_dependencies_ready
+if web_option.auto() and not web_assets_enabled
+  warning('Web frontend disabled in auto mode; install Node/npm and run npm ci in web/')
+endif
+
+if web_assets_enabled
+  frontend_sources = files(
+    '../web/package.json',
+    '../web/package-lock.json',
+    '../web/tsconfig.json',
+    '../web/tsconfig.app.json',
+    '../web/tsconfig.node.json',
+    '../web/vite.config.ts',
+    '../web/index.html',
+    '../web/src/main.tsx',
+    '../web/src/vite-env.d.ts',
+    '../web/src/api/health.ts',
+    '../web/src/app/App.tsx',
+    '../web/src/app/routes.ts',
+    '../web/src/app/useRoute.ts',
+    '../web/src/components/EmptyState.tsx',
+    '../web/src/components/Footer.tsx',
+    '../web/src/components/Header.tsx',
+    '../web/src/components/Tile.tsx',
+    '../web/src/routes/DashboardPage.tsx',
+    '../web/src/routes/PlaceholderPage.tsx',
+    '../web/src/theme/app.css',
+    '../web/src/theme/tokens.css',
+  )
+  web_dist = meson.current_build_dir() / 'web-dist'
+  web_frontend_build = custom_target(
+    'web_frontend_build',
+    input: meson.project_source_root() / 'web/package-lock.json',
+    output: 'web-frontend.stamp',
+    depend_files: frontend_sources,
+    command: [
+      find_program('python3'),
+      meson.project_source_root() / 'tools/build_web_frontend.py',
+      npm,
+      meson.project_source_root() / 'web',
+      web_dist,
+      '@OUTPUT@',
+    ],
+  )
+  web_assets_source = custom_target(
+    'web_assets_generated',
+    input: web_frontend_build,
+    output: 'web_assets_generated.c',
+    depend_files: meson.project_source_root() / 'tools/generate_web_assets.py',
+    command: [
+      find_program('python3'),
+      meson.project_source_root() / 'tools/generate_web_assets.py',
+      web_dist,
+      '@OUTPUT@',
+    ],
+  )
+  test(
+    'web_frontend_typecheck',
+    npm,
+    args: ['run', 'typecheck'],
+    workdir: meson.project_source_root() / 'web',
+  )
+  test(
+    'web_frontend',
+    npm,
+    args: ['test'],
+    workdir: meson.project_source_root() / 'web',
+  )
+else
+  web_assets_source = files('src/web_assets_disabled.c')
+endif
 
 equipment_catalog_generated = custom_target(
   'equipment_catalog_generated',
@@ -154,6 +235,7 @@ trainlog_tui_sources = files(
   'src/tui.c',
   'src/web_server.c',
 )
+trainlog_tui_sources += web_assets_source
 
 trainlog_exe = executable(
   'trainlog',
@@ -163,6 +245,7 @@ trainlog_exe = executable(
     notcurses_dep,
     microhttpd_dep,
   ],
+  include_directories: trainlog_private_include,
   c_args: strict_c_args,
   install: true,
 )
@@ -233,8 +316,9 @@ test('cli', test_cli)
 
 test_web_server = executable(
   'test_web_server',
-  ['tests/test_web_server.c', 'src/web_server.c'],
+  ['tests/test_web_server.c', 'src/web_server.c', web_assets_source],
   dependencies: [trainlog_core_dep, microhttpd_dep],
+  include_directories: trainlog_private_include,
   c_args: strict_c_args,
 )
 test('web_server', test_web_server, timeout: 30)
@@ -248,6 +332,14 @@ test_web_headers = executable(
   c_args: strict_c_args,
 )
 test('web_headers', test_web_headers)
+test(
+  'web_asset_generator',
+  find_program('python3'),
+  args: [
+    meson.project_source_root() / 'tools/test_generate_web_assets.py',
+    meson.project_source_root() / 'tools/generate_web_assets.py',
+  ],
+)
 
 test_training_knowledge = executable(
   'test_training_knowledge',

@@ -207,8 +207,8 @@ the process event-loop thread. A concrete IPv4 `sockaddr_in` binds only
 handlers only set a `sig_atomic_t` flag. The loop then stops libmicrohttpd,
 returns to the process owner and lets it close the database.
 
-The only implemented route is read-only `GET /api/v1/health`; `/` and every
-unknown route return 404, and other methods on health return 405. The adapter
+The read-only technical route remains `GET /api/v1/health`; unknown API routes
+return JSON 404 and never fall through to the SPA. The adapter
 bounds concurrent/per-IP connections at 32, listen backlog at 32, per-connection
 memory at 16 KiB, decoded request headers at 8 KiB, request bodies at 4 KiB and
 idle time at 10 seconds. It validates `Host` against `127.0.0.1` and the active
@@ -216,6 +216,29 @@ port, emits explicit JSON content type, `nosniff`, `no-store`, a deny-all CSP
 and no permissive CORS header. Assets, telemetry and remote resources are
 absent. Before the first mutation route, origin validation and explicit
 CSRF protection remain mandatory in addition to these transport bounds.
+
+`WEB_FRONTEND_SHELL_V1=PASS/FROZEN` adds the sibling `web/` React 19,
+TypeScript and Vite application. A History API router owned by Trainlog handles
+the five fixed shell destinations without another runtime dependency. `/`,
+`/analyse`, `/programmes`, `/seances`, and `/exercices` receive the embedded
+`index.html`; exact generated asset URLs receive only their manifest bytes.
+Unknown assets and traversal attempts are 404. `HEAD` is supported for UI
+assets; other asset methods are 405. API dispatch remains separate.
+
+Vite writes only into the Meson build directory. A bounded deterministic
+Python generator sorts at most 128 known files, rejects files over 4 MiB or a
+manifest over 16 MiB, assigns MIME and SHA-256 ETag metadata, then emits static
+C arrays linked into `trainlog`. Runtime serving performs exact URL lookup and
+never reads a filesystem path. HTML uses `no-cache`; hash-named Vite assets use
+one-year immutable caching. The CSP permits only same-origin scripts, styles,
+connections and images, with no `unsafe-inline` or `unsafe-eval`.
+
+The Meson feature option `web=auto|enabled|disabled` separates provisioning
+from compilation. Meson never installs npm packages. `auto` embeds assets only
+when Node, npm and prepared `web/node_modules` exist; `enabled` makes those
+build prerequisites mandatory and is required for releases; `disabled`
+produces a desktop-only binary whose Web launch fails explicitly. An embedded
+binary requires neither Node/npm nor `web/dist` at runtime.
 
 Every Web page retains one application shell:
 
@@ -235,7 +258,11 @@ the architecture. React, TypeScript, Vite, and Apache ECharts are the intended
 frontend stack. Node and npm are build-only dependencies; installed Trainlog
 must not require either. All production assets are local, built ahead of time,
 and incorporated into the `trainlog` binary from the sibling root `web/`
-directory. The grid library remains open pending a dedicated spike.
+directory. The shell implements semantic Header/Body/Footer landmarks,
+keyboard-visible focus, responsive tile scaffolding and reduced-motion rules.
+Absent user/session/zone facts remain visibly unavailable. The grid library
+remains open pending a dedicated spike; ECharts remains deferred until a real
+visualization exists.
 
 The Dashboard is a canonical 12-column grid containing exactly seven V1 tiles:
 
