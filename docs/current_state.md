@@ -25,9 +25,9 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v18 |
-| Android SQLite | schema v17 |
-| Mobile snapshot | V3 active; V1/V2 readable legacy inputs |
+| Desktop SQLite | schema v19 |
+| Android SQLite | schema v18 |
+| Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
@@ -48,9 +48,10 @@ parallel implementation of its rules.
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
-| Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
+| Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS` |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
+| Synchronization data/lifecycle slice | `TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -71,6 +72,13 @@ history summaries stay opaque operational bytes. Android and the TUI render
 their current synchronization state from local typed status and counters; they
 never inject a raw cross-device French summary into the visible interface. No
 raw exchange or protocol format changed for interface language support.
+
+Schema v19/v18 now persists enriched history (`ended_at`, causal session,
+occurrence and observation notes, and observation-to-session links), stable
+execution-draft identities, bounded pending drafts and finalization ledgers.
+The explicit `trainlog-mobile-export` V4 and `trainlog-execution-drafts` V1
+codecs are validation-stage entry points only. The active sync engine and
+Android inbox/outbox still select V3 and do not move the draft artifact.
 
 ## Storage and synchronization
 

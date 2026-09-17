@@ -166,7 +166,7 @@ It is not the canonical analytics store.
 The Android UI is driven by exercise metadata, never by exercise-name
 heuristics.
 
-Android local SQLite schema v17 retains the exactly-one durable active-session
+Android local SQLite schema v18 retains the exactly-one durable active-session
 draft introduced in v4.
 Every meaningful draft/form mutation is persisted by the repository. Back,
 backgrounding and process death never delete the draft. Home offers explicit
@@ -180,7 +180,7 @@ from actual occurrence data after the additive v10 -> v11 migration. Existing
 rows retain `load_mode=none`, zero rest and NULL targets. Android v12 adds the
 durable flattened exercise-alias mapping used to resolve retired creator IDs.
 Desktop schema v12 owns the same alias compatibility boundary. Later additive
-desktop migrations reach v18 and Android migrations reach v17 without changing
+desktop migrations reach v19 and Android migrations reach v18 without changing
 that identity contract. The active
 completed-session exchange is the separate strict
 `trainlog-mobile-export` V3; V1/V2 remain readable and `TRAINLOG_FORMAT_V1`
@@ -237,7 +237,7 @@ Desktop SQLite schema is versioned with:
 PRAGMA user_version;
 ```
 
-The current desktop schema is v18. Schema v9 added an occurrence-owned explicit
+The current desktop schema is v19. Schema v9 added an occurrence-owned explicit
 maximum result; v10/v11 added body-zone and planning metadata; v12 added durable
 flattened exercise aliases; v13-v18 add machine metadata, feedback and
 revisions, occurrence tracking snapshots, causal profile state, and AI proposal

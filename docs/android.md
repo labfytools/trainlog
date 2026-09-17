@@ -90,6 +90,15 @@ so an unchanged companion replay is a skip and cannot resurrect a started or
 deleted proposal. Neither action manufactures performed sets, completed history,
 MAX, or feedback.
 
+Android schema v18 additively gives the execution draft its future stable
+`session_id`, revision ancestry and `started_at`; adds bounded pending draft,
+revision and finalization storage; and adds causal note state plus optional
+observation-to-session ownership. Finalization inserts the completed session
+with the same stable identities and records its ledger in the transaction that
+removes the active draft. Retrying finalization is idempotent, and a stale
+draft replay cannot recreate the finalized draft. Raw partial form strings
+remain local and are absent from the lifecycle artifact.
+
 The manual synchronization action publishes one prepared Android→PC bundle
 before it exposes `trainlog-sync-request-v1.json`. The bundle contains mobile
 V3, mobile equipment definitions, equipment associations V2, exercise aliases

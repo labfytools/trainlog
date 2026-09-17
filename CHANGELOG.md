@@ -2,6 +2,14 @@
 
 ## Unreleased — 0.1.2
 
+- Completed `TRAINLOG_SYNC_DATA_LIFECYCLE_V1` with desktop schema v19 and
+  Android schema v18. Added explicit staged V4 enriched-history codecs,
+  causal notes, body-observation session links, stable execution-draft
+  identities, bounded pending drafts, explicit activation and atomic,
+  idempotent finalization with stale-replay protection. Active synchronization
+  remains V3; no service, user database, phone, tag or release artifact was
+  changed or deployed.
+
 - Completed `TRAINLOG_SYNC_CHARACTERIZATION_V1` without changing production
   synchronization, schemas, or formats. Added a real Android V3 exporter →
   desktop importer/exporter → fresh Android importer round trip, and completed

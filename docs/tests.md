@@ -399,6 +399,15 @@ python3 tools/validate_sync_isolated.py --suite smoke
 python3 tools/validate_sync_isolated.py --suite full --jdk /usr/lib/jvm/java-17-openjdk
 ```
 
+`TRAINLOG_SYNC_DATA_LIFECYCLE_V1` adds schema v19/v18 migration assertions and
+Android lifecycle coverage for confirmed-only serialization, persistent
+pending state, occupied-singleton refusal, explicit activation, identity-
+preserving idempotent finalization and stale replay. The full isolated run at
+closure passed 73/73 normal native tests, 73/73 ASan/UBSan native tests and 205
+Android tests (201 passed, four unchanged historical-fixture skips), plus both
+Python validators and `assembleDebug`. These are artifact/repository proofs;
+they do not claim transport activation or global synchronization atomicity.
+
 Use `--jdk /absolute/jdk17/home` when auto-detection is unsuitable and
 `--run-parent /absolute/private/parent` to select another parent outside the
 problematic system `/tmp`. `--keep-run-dir` retains a successful run for

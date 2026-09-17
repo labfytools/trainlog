@@ -468,7 +468,9 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v18 is canonical long-term history. Its v15 -> v16
+Desktop SQLite schema v19 is canonical long-term history. Its additive v18 ->
+v19 migration stores causal notes and execution-draft lifecycle state without
+activating a new transport. Its v15 -> v16
 transactional rebuild adds the occurrence-owned `tracking_mode` snapshot; the
 one-time backfill copies the linked catalogue mode without changing child rows
 or stable identities. The additive v16 -> v17 migration adds deterministic

@@ -2,7 +2,7 @@
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v18 and Android schema v17 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v19 and Android schema v18 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -44,6 +44,7 @@ SESSION_GENERATOR_V1=PASS
 BODY_ZONE_SYNC_V1=PASS
 BODY_ZONE_SYNC_V1_LIVE_DEVICE=PASS
 TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING
+TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN
 
 TRAINLOG_FORMAT_V1=FROZEN_UNCHANGED
 ```
@@ -58,6 +59,13 @@ general correction; its older resumed-MAX compatibility remains bounded.
 
 Synchronization artifacts are separate from the frozen Trainlog session JSON
 v1 format.
+
+V4 history and execution-draft V1 are staged codecs with explicit repository
+and command-line entry points. They are deliberately absent from
+`trainlog_sync_run()`, request/receipt publication and the Android automatic
+inbox/outbox. Deployment must stop the old user worker, replace the installed
+binary/scripts as one unit, migrate only through the new binary, and restart
+only after compatibility checks; this ticket performs none of those steps.
 
 ## 2. Exchange directory
 

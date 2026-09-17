@@ -400,7 +400,7 @@ de fichiers Android anciens.
    isolé reproductible ;
 2. `TRAINLOG_SYNC_CHARACTERIZATION_V1` : compléter les preuves actuelles sur
    toutes plateformes ;
-3. `TRAINLOG_SYNC_DATA_LIFECYCLE_V1` : mobile V4, drafts et champs perdus ;
+3. `TRAINLOG_SYNC_DATA_LIFECYCLE_V1`: mobile V4, drafts and previously lost fields — `PASS/FROZEN`;
 4. `TRAINLOG_SYNC_CAUSAL_DELETE_V1` : opérations causales et tombstones ;
 5. `TRAINLOG_SYNC_GENERATION_ACK_V1` : manifest, staging, publication,
    consommation, reprise et ack ;

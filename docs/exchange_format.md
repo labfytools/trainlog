@@ -78,6 +78,13 @@ The active completed-session synchronization artifact is separately versioned
 `trainlog-mobile-export` V3 and is documented in [Synchronization
 exchange](sync_exchange.md). It does not redefine this frozen V1 schema.
 
+An explicit staged `trainlog-mobile-export` V4 codec carries nullable
+`ended_at`, causal note values/revisions and observation `session_id`. A
+separate strict `trainlog-execution-drafts` V1 codec carries confirmed business
+state, stable draft/session and occurrence identities, ancestry and pending
+state; it never carries raw UI form strings. Neither staged codec changes
+`TRAINLOG_FORMAT_V1` or is selected by the active synchronization transport.
+
 ## 2. Design goal
 
 Trainlog v1 must represent the training patterns required by the initial applications without turning the Android recorder into a complex training platform.

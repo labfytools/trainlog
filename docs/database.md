@@ -16,8 +16,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=18
-DATABASE_SCHEMA_V18=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=19
+DATABASE_SCHEMA_V19=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -36,7 +36,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-18
+19
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -48,6 +48,12 @@ widen actual `weight_kg` from finite `> 0` to finite `>= 0`.
 Supported historical databases are migrated explicitly through the implemented
 migration chain. A database newer than the running binary understands is
 rejected.
+
+Version 19 additively stores causal note revisions/current state and staged
+execution drafts, their immutable revisions, pending/active state and durable
+finalization ledger. It changes no published V1 format and performs no user
+database migration until a v19 binary is deliberately deployed and opens that
+database.
 
 Version 7 assigns `session_exercises.entry_id` to each stable occurrence.
 `exercise_id` remains only the catalogue identity and may occur more than once
