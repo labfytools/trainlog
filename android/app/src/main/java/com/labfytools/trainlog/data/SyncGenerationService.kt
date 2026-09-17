@@ -1,7 +1,5 @@
 package com.labfytools.trainlog.data
 
-import android.system.Os
-import android.system.OsConstants
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
@@ -27,18 +25,7 @@ internal data class CapturedSyncGeneration(
  * CONTRACT: artifacts are immutable, bounded and published before the manifest marker. INVARIANT:
  * causal operation payloads are never rewritten to attach generation identity.
  */
-internal class SyncGenerationService(
-    private val repository: TrainlogRepository,
-    private val syncArchiveDirectory: (File) -> Unit = { directory ->
-        val descriptor =
-            Os.open(directory.absolutePath, OsConstants.O_RDONLY or O_DIRECTORY, 0)
-        try {
-            Os.fsync(descriptor)
-        } finally {
-            Os.close(descriptor)
-        }
-    },
-) {
+internal class SyncGenerationService(private val repository: TrainlogRepository) {
     companion object {
         const val MAX_MANIFEST_BYTES = 64 * 1024
         const val MAX_ARTIFACTS = 32
@@ -48,10 +35,6 @@ internal class SyncGenerationService(
         const val MAX_PATH_BYTES = 240
         const val MAX_DIAGNOSTIC_BYTES = 1024
         const val MAX_RETAINED_PER_PEER = 8
-        // Android's public OsConstants omits Linux O_DIRECTORY even though
-        // Os.open forwards the platform flag. Keep the fixed Linux ABI value
-        // local to the directory-fsync boundary.
-        private const val O_DIRECTORY = 0x10000
         private val ID =
             Regex(
                 "^(gen|peer|sy)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
@@ -252,7 +235,13 @@ internal class SyncGenerationService(
                 }
                 if (!temporary.renameTo(destination))
                     throw SyncGenerationException("cannot commit generation archive")
-                syncArchiveDirectory(root)
+                /* Android emulated external storage rejects directory fsync.
+                 * Reopen and sync the commit marker after the atomic rename so
+                 * the supported FUSE durability barrier covers the committed
+                 * namespace before the internal SQLite ledger can advance. */
+                java.io.FileOutputStream(File(destination, "manifest.json"), true).use {
+                    it.fd.sync()
+                }
             }
             validatePublished(destination, row[3])
             val checksum = archiveDigest(destination)

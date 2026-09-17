@@ -101,11 +101,7 @@ class SyncDeploymentConversationTest {
             }
             val conversations = if (suppliedTransport == null) 24 else 1
             repeat(conversations) {
-                // Robolectric cannot open a directory file descriptor. The
-                // production default performs the real directory fsync; this
-                // test substitutes only that kernel primitive while retaining
-                // the production copy, validation, rename and ledger path.
-                val coordinator = SyncGenerationForegroundCoordinator(repository) {}
+                val coordinator = SyncGenerationForegroundCoordinator(repository)
                 val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
                 val result =
                     executor.submit<ForegroundGenerationResult> {

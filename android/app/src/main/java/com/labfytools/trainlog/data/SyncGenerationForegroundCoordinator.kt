@@ -14,13 +14,8 @@ internal sealed interface ForegroundGenerationResult {
 }
 
 /** Owns the bounded, user-initiated Android side of a generation conversation. */
-internal class SyncGenerationForegroundCoordinator(
-    private val repository: TrainlogRepository,
-    archiveDirectorySync: ((File) -> Unit)? = null,
-) {
-    private val service =
-        archiveDirectorySync?.let { SyncGenerationService(repository, it) }
-            ?: SyncGenerationService(repository)
+internal class SyncGenerationForegroundCoordinator(private val repository: TrainlogRepository) {
+    private val service = SyncGenerationService(repository)
 
     private fun requireExactKeys(value: JSONObject, expected: Set<String>, label: String) {
         val actual = value.keys().asSequence().toSet()
