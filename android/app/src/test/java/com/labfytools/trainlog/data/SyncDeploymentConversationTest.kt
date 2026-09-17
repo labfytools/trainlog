@@ -57,6 +57,14 @@ class SyncDeploymentConversationTest {
         var localWorker: Process? = null
         try {
             transport.mkdirs()
+            // A previous interrupted exchange leaves durable coordination
+            // objects behind. The next run must wait for correlated replacements.
+            File(transport, "desktop-consumption-ack-v1.json").writeText(
+                """{"run_id":"sy_11111111-1111-4111-8111-111111111111","generation_id":"gen_11111111-1111-4111-8111-111111111111"}"""
+            )
+            File(transport, "desktop-generation-v1.json").writeText(
+                """{"run_id":"sy_11111111-1111-4111-8111-111111111111","generation_id":"gen_22222222-2222-4222-8222-222222222222"}"""
+            )
             val exercise =
                 (repository.createExercise(
                         NewExerciseProfile(

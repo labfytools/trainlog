@@ -36,6 +36,27 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
         return path
     }
 
+    private fun awaitCorrelated(
+        path: File,
+        deadline: Long,
+        predicate: (JSONObject) -> Boolean,
+    ): ByteArray {
+        while (true) {
+            if (path.isFile && path.length() <= 64 * 1024) {
+                try {
+                    val raw = path.readBytes()
+                    if (predicate(JSONObject(raw.toString(Charsets.UTF_8)))) return raw
+                } catch (_: Exception) {
+                    // Publication replaces the file atomically, but an old or
+                    // concurrently observed object is not evidence of failure.
+                }
+            }
+            if (System.nanoTime() >= deadline)
+                throw SyncGenerationException("timeout waiting for correlated ${path.name}")
+            Thread.sleep(50)
+        }
+    }
+
     fun run(
         directory: File,
         timeout: Duration = Duration.ofMinutes(5),
@@ -88,13 +109,20 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                     .toString(),
             )
             afterPublication?.invoke()
-            service.acceptAcknowledgement(
-                await(File(directory, "desktop-consumption-ack-v1.json"), deadline).readBytes()
-            )
-            val reference =
-                JSONObject(
-                    await(File(directory, "desktop-generation-v1.json"), deadline).readText()
-                )
+            // CONTRACT: durable objects from earlier conversations remain in
+            // the exchange directory. Only this run's exact generation ACK
+            // can advance its lineage; stale bytes are retained and ignored.
+            val desktopAck =
+                awaitCorrelated(File(directory, "desktop-consumption-ack-v1.json"), deadline) {
+                    it.optString("run_id") == captured.runId &&
+                        it.optString("generation_id") == captured.generationId
+                }
+            service.acceptAcknowledgement(desktopAck)
+            val referenceRaw =
+                awaitCorrelated(File(directory, "desktop-generation-v1.json"), deadline) {
+                    it.optString("run_id") == captured.runId
+                }
+            val reference = JSONObject(referenceRaw.toString(Charsets.UTF_8))
             val acknowledgement =
                 service.consume(File(directory, reference.getString("relative_path")))
             publish(File(directory, "android-consumption-ack-v1.json"), acknowledgement)
