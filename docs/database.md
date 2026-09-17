@@ -532,6 +532,12 @@ foreign-key checks. Reconciliation validation also uses coherent Android and
 desktop v9 copies before applying migrations to the real stores. SQLite files
 are never synchronization artifacts.
 
+Desktop schema v22 adds `sync_generation_archives` as an append-only archive
+ledger. A row retains the generation identity, verified manifest digest,
+deterministic archive digest, durable location, timestamp and canonical audit
+record. Generation, artifact, ACK, consumption and causal-publication rows are
+not deleted or rewritten when a payload becomes archived.
+
 The schemas deliberately differ where ownership differs. Desktop sessions own
 `ended_at`, notes, planned targets and session-specific load semantics; the
 Android capture schema does not. Desktop body observations may link to a

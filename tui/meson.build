@@ -771,6 +771,12 @@ test(
   timeout: 120,
 )
 test(
+  'generation_archival',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_generation_archival.py'],
+  timeout: 120,
+)
+test(
   'sync_orchestrator',
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_sync_orchestrator.py'],

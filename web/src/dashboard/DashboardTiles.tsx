@@ -41,10 +41,25 @@ export function NextSessionTile({
       <p className="primary-label">{heading}</p>
       <strong>{title}</strong>
       {size !== 'compact' && (
-        <dl className="fact-list horizontal">
-          <Fact label="Éléments" value={String(item.occurrence_count)} />
-          <Fact label="Prévue" value={item.planned_for ? formatDate(item.planned_for) : 'Non renseignée'} />
-        </dl>
+        <>
+          <dl className="fact-list horizontal">
+            <Fact label="Éléments" value={String(item.occurrence_count)} />
+            <Fact label="Prévue" value={item.planned_for ? formatDate(item.planned_for) : 'Non renseignée'} />
+          </dl>
+          {preparedItems.items.length > 1 && (
+            <details className="prepared-items-list">
+              <summary>{preparedItems.items.length} éléments préparés</summary>
+              <ul>
+                {preparedItems.items.map((prepared) => (
+                  <li key={`${prepared.kind}:${prepared.identity}`} data-prepared-identity={prepared.identity}>
+                    {prepared.title || (prepared.kind === 'ai_proposal' ? 'Proposition sans titre' : 'Séance préparée')}
+                    {' · '}{prepared.kind === 'ai_proposal' ? 'proposition' : 'brouillon d’exécution'}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
       )}
       {failed && <small>Dernière lecture conservée · actualisation indisponible</small>}
       {pending && !failed && <small>Actualisation…</small>}

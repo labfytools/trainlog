@@ -1323,10 +1323,22 @@ Android generation service, desktop consumers and durable ACK path remain real.
 backup including an active draft, raw partial input, stable peer identity and
 preferences, and rejects corrupt and traversal entries. The bridge build runs
 the analogous test on the exact schema-v17 source and feeds its archive to
-`BridgeBackupMigrationTest`, which verifies normal migration to schema v20.
+`BridgeBackupMigrationTest`, which verifies normal migration to schema v21.
 These are software proofs. They do not claim physical USB/MTP behavior,
 installation over the signed release, a real user backup, or a real-device
 restore.
+
+The production Android coordinator and desktop peer worker also complete 24
+successive bidirectional conversations against their real SQLite services with
+no cleanup between runs. The test crosses multiple archive cycles and checks
+that the active draft survives. After the eighth exchange it also reproduces
+the deployed legacy evidence gap by retaining acknowledged generations while
+removing only their producer-side ACK rows; the next production conversation
+must restore the desktop consumer's exact correlated ACKs, archive eligible
+generations, and complete without deleting or duplicating any generation.
+Focused archive tests cover interrupted-copy resume, invalid archives,
+simulated insufficient space, missing and late ACKs, and idempotent ACK replay
+after archival.
 
 ## Readability validation
 

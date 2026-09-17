@@ -21,8 +21,9 @@ CREATE TABLE sync_generations(generation_id TEXT PRIMARY KEY,run_id TEXT,produce
 CREATE TABLE sync_generation_artifacts(generation_id TEXT,logical_name TEXT,format TEXT,version INTEGER,filename TEXT,size_bytes INTEGER,sha256 TEXT,required INTEGER,PRIMARY KEY(generation_id,logical_name),UNIQUE(generation_id,filename));
 CREATE TABLE sync_consumed_generations(generation_id TEXT PRIMARY KEY,run_id TEXT,producer_peer_id TEXT,consumer_peer_id TEXT,parent_generation_id TEXT,manifest_sha256 TEXT,consumed_at TEXT,result TEXT,durability TEXT,diagnostic TEXT,ack_json TEXT,UNIQUE(producer_peer_id,generation_id));
 CREATE TABLE sync_acknowledgements(ack_id TEXT PRIMARY KEY,generation_id TEXT,run_id TEXT,producer_peer_id TEXT,consumer_peer_id TEXT,manifest_sha256 TEXT,result TEXT,durability TEXT,created_at TEXT,diagnostic TEXT,payload_sha256 TEXT);
+CREATE TABLE sync_generation_archives(generation_id TEXT PRIMARY KEY,archive_path TEXT UNIQUE,manifest_sha256 TEXT,archive_sha256 TEXT,archived_at TEXT,audit_json TEXT);
 CREATE TABLE sync_causal_publications(operation_id TEXT,generation_id TEXT,first_emission INTEGER,PRIMARY KEY(operation_id,generation_id));
-PRAGMA user_version=21;
+PRAGMA user_version=22;
 """
 
 class GenerationTest(unittest.TestCase):

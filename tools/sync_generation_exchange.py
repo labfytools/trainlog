@@ -199,8 +199,8 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    if db.execute("PRAGMA user_version").fetchone()[0] != 21:
-        raise GenerationError("desktop schema v21 required")
+    if db.execute("PRAGMA user_version").fetchone()[0] != 22:
+        raise GenerationError("desktop schema v22 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -213,6 +213,106 @@ def peer_identity(db: sqlite3.Connection, kind: str) -> str:
     identity = "peer_" + str(uuid.uuid4())
     db.execute("INSERT INTO sync_peer_identity VALUES(1,?,?)", (identity, kind))
     return identity
+
+
+def archive_digest(directory: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(value for value in directory.rglob("*") if value.is_file()):
+        if path.is_symlink():
+            raise GenerationError("archive contains symbolic link")
+        relative = path.relative_to(directory).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        digest.update(bytes.fromhex(digest_file(path)[1]))
+    return digest.hexdigest()
+
+
+def archive_acknowledged(database: Path, owned_root: Path, consumer: str) -> int:
+    """Durably archive eligible acknowledged payloads without deleting evidence.
+
+    WHY: acknowledged generations otherwise consume the bounded active window
+    forever. CONTRACT: exact correlated consumed ACK evidence is required and
+    the newest two acknowledged lineage members remain active for recovery.
+    INVARIANT: generation, artifact, ACK and causal rows are never removed or
+    rewritten; a ledger row is committed only after a verified atomic copy.
+    """
+    archive_root = owned_root / "archives" / "generations"
+    archive_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with closing(connect_database(database)) as db:
+        require_schema(db)
+        rows = db.execute(
+            "SELECT g.generation_id,g.run_id,g.producer_peer_id,g.consumer_peer_id,"
+            "g.manifest_sha256,g.staging_path,g.manifest_json FROM sync_generations g "
+            "WHERE g.consumer_peer_id=? AND g.status='acknowledged' "
+            "AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id) "
+            "ORDER BY g.generated_at DESC,g.generation_id DESC",
+            (consumer,),
+        ).fetchall()
+    archived = 0
+    for generation, run, producer, target, manifest_sha, staging, manifest_json in rows[2:]:
+        with closing(connect_database(database)) as db:
+            ack = db.execute(
+                "SELECT ack_id FROM sync_acknowledgements WHERE generation_id=? AND run_id=? "
+                "AND producer_peer_id=? AND consumer_peer_id=? AND manifest_sha256=? "
+                "AND result='consumed' AND durability='sqlite-commit-full' LIMIT 2",
+                (generation, run, producer, target, manifest_sha),
+            ).fetchall()
+        if len(ack) != 1:
+            continue
+        source = Path(staging)
+        if source.is_symlink():
+            raise GenerationError("generation staging is a symbolic link")
+        manifest = validate_manifest_bytes(manifest_json.encode(), target)
+        validate_published(source, target)
+        destination = archive_root / generation
+        temporary = archive_root / ("." + generation + ".tmp")
+        if destination.exists():
+            if destination.is_symlink():
+                raise GenerationError("generation archive is a symbolic link")
+            validate_published(destination, target)
+            checksum = archive_digest(destination)
+        else:
+            if temporary.exists():
+                if temporary.is_symlink():
+                    raise GenerationError("temporary generation archive is a symbolic link")
+                shutil.rmtree(temporary)
+            shutil.copytree(source, temporary, copy_function=shutil.copy2)
+            validate_published(temporary, target)
+            checksum = archive_digest(temporary)
+            for copied in temporary.rglob("*"):
+                if copied.is_file():
+                    with copied.open("rb") as stream:
+                        os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+            directory_fd = os.open(archive_root, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        audit = canonical({
+            "format": "trainlog-sync-generation-archive-audit",
+            "version": 1,
+            "generation_id": generation,
+            "run_id": run,
+            "manifest_sha256": manifest_sha,
+            "ack_id": ack[0][0],
+            "archive_sha256": checksum,
+        }).decode()
+        with closing(connect_database(database)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute(
+                "SELECT status,manifest_sha256 FROM sync_generations WHERE generation_id=?",
+                (generation,),
+            ).fetchone()
+            if current != ("acknowledged", manifest_sha):
+                raise GenerationError("generation changed during archive")
+            db.execute(
+                "INSERT OR IGNORE INTO sync_generation_archives VALUES(?,?,?,?,?,?)",
+                (generation, str(destination), manifest_sha, checksum, now(), audit),
+            )
+            db.commit()
+        archived += 1
+    return archived
 
 
 def run_export(tool: str, extra: tuple[str, ...], output: Path, snapshot: Path) -> None:
@@ -249,9 +349,10 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
     run = run_id or "sy_" + str(uuid.uuid4())
     if not valid_id(generation, "gen") or not valid_id(run, "sy"):
         raise GenerationError("invalid generation/run")
+    archive_acknowledged(database, owned_root, consumer)
     with closing(connect_database(database)) as admission:
         require_schema(admission)
-        retained = admission.execute("SELECT COUNT(*) FROM sync_generations WHERE consumer_peer_id=? AND status IN('captured','published','waiting_acknowledgement','acknowledged')", (consumer,)).fetchone()[0]
+        retained = admission.execute("SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? AND status IN('captured','published','waiting_acknowledgement','acknowledged') AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id)", (consumer,)).fetchone()[0]
         if retained >= MAX_RETAINED_PER_PEER:
             raise GenerationError("generation retention capacity exhausted")
     stage = owned_root / "staging" / generation
@@ -539,10 +640,23 @@ def accept_ack(database: Path, path: Path) -> str:
             raise GenerationError("ACK has no pending generation")
         ack = validate_ack(raw, row)
         status = "acknowledged" if ack["result"] == "consumed" else "rejected"
+        db.execute(
+            "INSERT OR IGNORE INTO sync_acknowledgements VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (ack["ack_id"], ack["generation_id"], ack["run_id"],
+             ack["producer_peer_id"], ack["consumer_peer_id"],
+             ack["manifest_sha256"], ack["result"], ack["durability"],
+             ack["consumed_at"], ack["diagnostic"], ack["payload_sha256"]),
+        )
+        stored = db.execute(
+            "SELECT payload_sha256 FROM sync_acknowledgements WHERE ack_id=?",
+            (ack["ack_id"],),
+        ).fetchone()
+        if stored != (ack["payload_sha256"],):
+            raise GenerationError("conflicting ACK replay")
         if row[5] in ("acknowledged", "rejected"):
             if row[5] != status:
                 raise GenerationError("conflicting ACK replay")
-            db.rollback(); return "unchanged"
+            db.commit(); return "unchanged"
         if row[5] != "waiting_acknowledgement":
             raise GenerationError("generation is not awaiting ACK")
         db.execute("UPDATE sync_generations SET status=?,acknowledged_at=? WHERE generation_id=?",

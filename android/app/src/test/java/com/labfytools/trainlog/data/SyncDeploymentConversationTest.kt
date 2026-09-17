@@ -1,6 +1,7 @@
 package com.labfytools.trainlog.data
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.NewExerciseProfile
@@ -86,18 +87,9 @@ class SyncDeploymentConversationTest {
                     ActiveSessionDraft(exercises = listOf(occurrence))
                 ),
             )
-            val coordinator = SyncGenerationForegroundCoordinator(repository)
             val release = System.getenv("TRAINLOG_SYNC_TEST_RELEASE_FILE")
-            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-            val result =
-                executor.submit<ForegroundGenerationResult> {
-                    coordinator.run(transport, Duration.ofSeconds(30)) {
-                        release?.let { awaitFile(File(it)) }
-                    }
-                }
-            val peer = JSONObject(awaitFile(File(transport, "android-peer-v1.json")).readText())
+            val desktop = File(transport, "desktop.sqlite")
             if (suppliedTransport == null) {
-                val desktop = File(transport, "desktop.sqlite")
                 val fixture =
                     ProcessBuilder(
                             File(repositoryRoot, "build/tui/sync-generation-fixture").absolutePath,
@@ -106,7 +98,24 @@ class SyncDeploymentConversationTest {
                         .directory(repositoryRoot)
                         .start()
                 assertEquals(0, fixture.waitFor())
-                localWorker =
+            }
+            val conversations = if (suppliedTransport == null) 24 else 1
+            repeat(conversations) {
+                // Robolectric cannot open a directory file descriptor. The
+                // production default performs the real directory fsync; this
+                // test substitutes only that kernel primitive while retaining
+                // the production copy, validation, rename and ledger path.
+                val coordinator = SyncGenerationForegroundCoordinator(repository) {}
+                val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                val result =
+                    executor.submit<ForegroundGenerationResult> {
+                        coordinator.run(transport, Duration.ofSeconds(30)) {
+                            release?.let { awaitFile(File(it)) }
+                        }
+                    }
+                val peer = JSONObject(awaitFile(File(transport, "android-peer-v1.json")).readText())
+                if (suppliedTransport == null) {
+                    localWorker =
                     ProcessBuilder(
                             "python3",
                             File(repositoryRoot, "tools/sync_peer_worker.py").absolutePath,
@@ -126,19 +135,56 @@ class SyncDeploymentConversationTest {
                         .directory(repositoryRoot)
                         .redirectErrorStream(true)
                         .start()
+                }
+                val completed = result.get(35, java.util.concurrent.TimeUnit.SECONDS)
+                executor.shutdownNow()
+                assertTrue(
+                    "conversation ${it + 1}: $completed",
+                    completed is ForegroundGenerationResult.Completed,
+                )
+                var workerOutput = ""
+                localWorker?.let { worker ->
+                    workerOutput = worker.inputStream.bufferedReader().readText()
+                    assertEquals("worker failed:\n$workerOutput", 0, worker.waitFor())
+                    assertTrue(workerOutput.contains("\"result\":\"completed\""))
+                }
+                if (suppliedTransport == null && it == 7) {
+                    // Reproduce the deployed pre-archive state: those builds
+                    // advanced producer status but did not retain received
+                    // ACK rows. The next real worker conversation must return
+                    // the desktop consumer's exact evidence and unblock the
+                    // full active quota without deleting any generation.
+                    repository.inSyncGenerationTransaction { database ->
+                        database.delete("sync_acknowledgements", null, null)
+                        database.rawQuery(
+                            "SELECT COUNT(*) FROM sync_generations WHERE status='acknowledged'",
+                            null,
+                        ).use { cursor ->
+                            assertTrue(cursor.moveToFirst())
+                            assertEquals(8, cursor.getInt(0))
+                        }
+                    }
+                }
+                localWorker = null
             }
-            assertTrue(
-                result.get(35, java.util.concurrent.TimeUnit.SECONDS)
-                    is ForegroundGenerationResult.Completed
-            )
-            executor.shutdownNow()
             repository.close()
             repository = TrainlogRepository(context, databaseName)
             assertTrue(repository.loadActiveSessionDraft() is ActiveDraftLoadResult.Loaded)
-            localWorker?.let { worker ->
-                val output = worker.inputStream.bufferedReader().readText()
-                assertEquals("worker failed:\n$output", 0, worker.waitFor())
-                assertTrue(output.contains("\"result\":\"completed\""))
+            if (suppliedTransport == null) {
+                SQLiteDatabase.openDatabase(
+                    context.getDatabasePath(databaseName).absolutePath,
+                    null,
+                    SQLiteDatabase.OPEN_READONLY,
+                ).use { database ->
+                    database.rawQuery("SELECT COUNT(*) FROM sync_generation_archives", null).use {
+                        assertTrue(it.moveToFirst())
+                        assertTrue(it.getInt(0) >= 16)
+                    }
+                    database.rawQuery("SELECT COUNT(*) FROM sync_generations", null).use {
+                        assertTrue(it.moveToFirst())
+                        assertEquals(24, it.getInt(0))
+                    }
+                }
             }
         } finally {
             localWorker?.destroyForcibly()

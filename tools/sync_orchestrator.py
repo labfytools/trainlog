@@ -123,6 +123,8 @@ def failure_code(error: BaseException) -> str:
     diagnostic = str(error).lower()
     if "transport_timeout:" in diagnostic or "peer worker timed out" in diagnostic:
         return "transport_timeout"
+    if "peer_capacity_exhausted:" in diagnostic:
+        return "peer_capacity_exhausted"
     if "expected android peer not found" in diagnostic:
         return "device_unavailable"
     if "capacity exhausted" in diagnostic or "retained generation capacity" in diagnostic:

@@ -24,7 +24,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v21, Android schema v20, Notcurses, direct
+Desktop schema v22, Android schema v21, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft

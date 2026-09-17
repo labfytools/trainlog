@@ -870,6 +870,20 @@ static const char *const MIGRATE_V20_TO_V21_SQL =
     "CREATE TABLE sync_causal_publications(operation_id TEXT NOT NULL REFERENCES sync_causal_operations(operation_id),generation_id TEXT NOT NULL,first_emission INTEGER NOT NULL CHECK(first_emission IN(0,1)),PRIMARY KEY(operation_id,generation_id));"
     "PRAGMA user_version=21;COMMIT;";
 
+/* WHY: acknowledged payload copies cannot consume active admission forever,
+ * but generation identity, lineage and ACK evidence must remain permanent.
+ * CONTRACT: v22 adds an append-only archive ledger; it neither fabricates an
+ * ACK nor changes a generation status. INVARIANT: an archive row is valid only
+ * after production code has durably copied and verified the complete payload. */
+static const char *const MIGRATE_V21_TO_V22_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE sync_generation_archives("
+    "generation_id TEXT PRIMARY KEY REFERENCES sync_generations(generation_id),"
+    "archive_path TEXT NOT NULL UNIQUE,manifest_sha256 TEXT NOT NULL,"
+    "archive_sha256 TEXT NOT NULL,archived_at TEXT NOT NULL,"
+    "audit_json TEXT NOT NULL);"
+    "PRAGMA user_version=22;COMMIT;";
+
 /* CONTRACT: v18 was already deployed before bounded draft publication was
  * added. Keep its version number and add only the nullable lifecycle cursor;
  * NULL deliberately means retryable/not yet published. */
@@ -1565,7 +1579,7 @@ static TrainlogStatus initialize_or_validate_schema(
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
                version == 15 || version == 16 || version == 17 || version == 18 ||
-               version == 19 || version == 20 || version == 21) {
+               version == 19 || version == 20 || version == 21 || version == 22) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1738,6 +1752,9 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 21) {
         status = execute_sql(database, MIGRATE_V20_TO_V21_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 22) {
+        status = execute_sql(database, MIGRATE_V21_TO_V22_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -1753,7 +1770,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v21" : "migrate database to schema v21",
+            version == 0 ? "create schema v22" : "migrate database to schema v22",
             database->connection,
             SQLITE_ERROR
         );

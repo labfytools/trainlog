@@ -598,6 +598,10 @@ TrainlogStatus trainlog_generation_mtp_pull(const TrainlogGenerationMtpIo *io,
         status = pull_named_file(
             io, &selection, selection.root, "android-consumption-ack-v1.json", local, false);
     }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = pull_named_file(
+            io, &selection, selection.root, "android-generation-error-v1.json", local, false);
+    }
     if (status == TRAINLOG_STATUS_OK &&
         referenced_android_generation(local, generation, sizeof(generation))) {
         status = pull_referenced_generation(io, &selection, local, generation);

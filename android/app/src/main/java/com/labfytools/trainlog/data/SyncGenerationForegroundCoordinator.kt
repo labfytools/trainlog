@@ -14,8 +14,65 @@ internal sealed interface ForegroundGenerationResult {
 }
 
 /** Owns the bounded, user-initiated Android side of a generation conversation. */
-internal class SyncGenerationForegroundCoordinator(private val repository: TrainlogRepository) {
-    private val service = SyncGenerationService(repository)
+internal class SyncGenerationForegroundCoordinator(
+    private val repository: TrainlogRepository,
+    archiveDirectorySync: ((File) -> Unit)? = null,
+) {
+    private val service =
+        archiveDirectorySync?.let { SyncGenerationService(repository, it) }
+            ?: SyncGenerationService(repository)
+
+    private fun requireExactKeys(value: JSONObject, expected: Set<String>, label: String) {
+        val actual = value.keys().asSequence().toSet()
+        if (actual != expected) throw SyncGenerationException("invalid $label fields")
+    }
+
+    private fun reconcileArchiveAcknowledgements(
+        raw: ByteArray,
+        runId: String,
+        androidPeerId: String,
+        desktopPeerId: String,
+    ) {
+        /* WHY: releases before archive-v1 advanced generation status without
+         * retaining the consumer's ACK locally. The desktop consumer may
+         * return its exact durable ACK so the Android producer can repair
+         * that evidence gap without fabricating or weakening proof.
+         * CONTRACT: the envelope is strictly correlated and contains at most
+         * 32 ACKs; acceptAcknowledgement revalidates every ACK against the
+         * immutable local manifest before any archive can become eligible.
+         * INVARIANT: a missing, rejected, or ambiguous ACK leaves its
+         * generation active and protected. */
+        val envelope = JSONObject(raw.toString(Charsets.UTF_8))
+        requireExactKeys(
+            envelope,
+            setOf(
+                "format",
+                "version",
+                "run_id",
+                "android_peer_id",
+                "desktop_peer_id",
+                "acknowledgements",
+            ),
+            "archive acknowledgement envelope",
+        )
+        if (
+            envelope.getString("format") != "trainlog-sync-archive-acknowledgements" ||
+                envelope.getInt("version") != 1 ||
+                envelope.getString("run_id") != runId ||
+                envelope.getString("android_peer_id") != androidPeerId ||
+                envelope.getString("desktop_peer_id") != desktopPeerId
+        ) {
+            throw SyncGenerationException("archive acknowledgement envelope is not correlated")
+        }
+        val acknowledgements = envelope.getJSONArray("acknowledgements")
+        if (acknowledgements.length() > 32)
+            throw SyncGenerationException("too many archive acknowledgements")
+        for (index in 0 until acknowledgements.length()) {
+            service.acceptAcknowledgement(
+                acknowledgements.getJSONObject(index).toString().toByteArray(Charsets.UTF_8)
+            )
+        }
+    }
 
     private fun publish(path: File, value: String) {
         val temporary = File(path.parentFile, ".${path.name}.tmp-${UUID.randomUUID()}")
@@ -81,15 +138,41 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                                 "causal-delete-v1",
                                 "mobile-history-v4",
                                 "execution-draft-v1",
+                                "generation-archive-v1",
                             )
                         ),
                     )
                     .toString(),
             )
             val deadline = System.nanoTime() + timeout.toNanos()
-            val request = JSONObject(await(File(directory, "request-v1.json"), deadline).readText())
+            val requestRaw =
+                awaitCorrelated(File(directory, "request-v1.json"), deadline) { candidate ->
+                    val runId = candidate.optString("run_id")
+                    runId.startsWith("sy_") &&
+                        !repository.inSyncGenerationTransaction { db ->
+                            db.rawQuery(
+                                "SELECT 1 FROM sync_generations WHERE run_id=? LIMIT 1",
+                                arrayOf(runId),
+                            ).use { it.moveToFirst() }
+                        }
+                }
+            val request = JSONObject(requestRaw.toString(Charsets.UTF_8))
             if (request.getString("android_peer_id") != peer)
                 throw SyncGenerationException("request targets another Android peer")
+            val archiveAckRaw =
+                awaitCorrelated(
+                    File(directory, "desktop-archive-acknowledgements-v1.json"),
+                    deadline,
+                ) {
+                    it.optString("run_id") == request.getString("run_id") &&
+                        it.optString("android_peer_id") == peer
+                }
+            reconcileArchiveAcknowledgements(
+                archiveAckRaw,
+                request.getString("run_id"),
+                peer,
+                request.getString("desktop_peer_id"),
+            )
             val captured =
                 service.capture(
                     directory,
@@ -128,6 +211,25 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
             publish(File(directory, "android-consumption-ack-v1.json"), acknowledgement)
             ForegroundGenerationResult.Completed(captured.runId)
         } catch (error: Exception) {
+            if (error.message == "generation retention capacity exhausted") {
+                try {
+                    val request = JSONObject(File(directory, "request-v1.json").readText())
+                    publish(
+                        File(directory, "android-generation-error-v1.json"),
+                        JSONObject()
+                            .put("format", "trainlog-sync-generation-error")
+                            .put("version", 1)
+                            .put("run_id", request.getString("run_id"))
+                            .put("android_peer_id", service.peerId())
+                            .put("code", "peer_capacity_exhausted")
+                            .put("action", "Archive acknowledged generations, then retry explicitly.")
+                            .toString(),
+                    )
+                } catch (_: Exception) {
+                    // Preserve the original local failure when error reporting
+                    // cannot itself be durably published.
+                }
+            }
             ForegroundGenerationResult.Error(error.message ?: "generation synchronization failed")
         }
 }

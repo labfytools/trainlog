@@ -52,7 +52,7 @@ def merge_revisions(db,table,parent_column,parent_id,revisions):
 def apply_feedback(db,root,complete_causal_envelope=False):
     roots_added=roots_skipped=revisions_added=revisions_skipped=0
     db.execute("PRAGMA foreign_keys=ON")
-    if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18,19,20,21):fail("schema desktop v15-v21 requis")
+    if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18,19,20,21,22):fail("schema desktop v15-v22 requis")
     if not complete_causal_envelope and db.execute("PRAGMA user_version").fetchone()[0]>=20 and db.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='feedback' AND deleted=1 LIMIT 1").fetchone():fail("causal feedback protection requires the staged artifact")
     seen=set()
     for index,item in enumerate(root["exercise_feedback"]):

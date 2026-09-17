@@ -50,8 +50,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v21 |
-| Android SQLite | schema v20 |
+| Desktop SQLite | schema v22 |
+| Android SQLite | schema v21 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -359,7 +359,7 @@ The focused causal closeout additionally proves child-data delete/update
 conflicts including change-and-revert, imported built-in and alias protection,
 active/pending/desktop draft-revision equivalence, protected companion refusal,
 current-view retirement and bounded pre-effect admission. The later generation
-slice additively advances schemas to desktop v21/Android v20 without changing
+slice additively advances schemas to desktop v22/Android v21 without changing
 active V3 transport selection.
 
 The residual causal evidence also proves legitimate Android and desktop

@@ -34,6 +34,9 @@ function statusAction(status: SyncStatus | null): string {
   if (status?.phase === 'failed' && status.error_code === 'transport_timeout') {
     return 'Vérifiez le dialogue USB/MTP sur Android avant de relancer.'
   }
+  if (status?.phase === 'failed' && status.error_code === 'peer_capacity_exhausted') {
+    return 'Conservez l’application Android ouverte : les générations acquittées doivent être archivées avant une relance explicite.'
+  }
   return ''
 }
 

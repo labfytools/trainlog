@@ -187,7 +187,7 @@ def main():
     payload = json.loads(args.artifact.read_text(encoding="utf-8"))
     connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21):
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
             fail("schema desktop v8 à v21 requis")
         proof_path = args.mobile_export
         if proof_path is None:

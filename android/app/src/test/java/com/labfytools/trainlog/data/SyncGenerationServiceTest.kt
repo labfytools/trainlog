@@ -46,6 +46,7 @@ class SyncGenerationServiceTest {
         SQLiteDatabase.openDatabase(path.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db
             ->
             listOf(
+                    "sync_generation_archives",
                     "sync_causal_publications",
                     "sync_acknowledgements",
                     "sync_consumed_generations",
@@ -62,7 +63,7 @@ class SyncGenerationServiceTest {
                 .use { db ->
                     db.rawQuery("PRAGMA user_version", null).use {
                         assertTrue(it.moveToFirst())
-                        assertEquals(20, it.getInt(0))
+                        assertEquals(21, it.getInt(0))
                     }
                     db.rawQuery("SELECT COUNT(*) FROM exercises", null).use {
                         assertTrue(it.moveToFirst())

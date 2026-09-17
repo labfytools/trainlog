@@ -7934,7 +7934,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    20,
+    21,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -7979,6 +7979,7 @@ private class TrainlogDatabaseHelper(
         createSyncDataLifecycleTables(db)
         createCausalDeleteTables(db)
         createSyncGenerationTables(db)
+        createSyncGenerationArchiveTable(db)
         seedEquipment(db)
     }
 
@@ -8146,6 +8147,14 @@ private class TrainlogDatabaseHelper(
             createSyncGenerationTables(db)
             version = 20
         }
+        if (version < 21 && newVersion >= 21) {
+            /* WHY: acknowledged payloads must leave bounded active admission
+             * without losing immutable identity, lineage or ACK evidence.
+             * CONTRACT: v21 adds only an append-only verified archive ledger.
+             * INVARIANT: migration archives nothing and invents no ACK. */
+            createSyncGenerationArchiveTable(db)
+            version = 21
+        }
 
         if (version != newVersion) {
             error(
@@ -8242,6 +8251,15 @@ private class TrainlogDatabaseHelper(
         db.execSQL("CREATE TABLE IF NOT EXISTS sync_consumed_generations(generation_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,parent_generation_id TEXT,manifest_sha256 TEXT NOT NULL,consumed_at TEXT NOT NULL,result TEXT NOT NULL CHECK(result IN('consumed','rejected')),durability TEXT NOT NULL,diagnostic TEXT NOT NULL,ack_json TEXT NOT NULL,UNIQUE(producer_peer_id,generation_id));")
         db.execSQL("CREATE TABLE IF NOT EXISTS sync_acknowledgements(ack_id TEXT PRIMARY KEY,generation_id TEXT NOT NULL,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,manifest_sha256 TEXT NOT NULL,result TEXT NOT NULL CHECK(result IN('consumed','rejected')),durability TEXT NOT NULL,created_at TEXT NOT NULL,diagnostic TEXT NOT NULL,payload_sha256 TEXT NOT NULL);")
         db.execSQL("CREATE TABLE IF NOT EXISTS sync_causal_publications(operation_id TEXT NOT NULL REFERENCES sync_causal_operations(operation_id),generation_id TEXT NOT NULL,first_emission INTEGER NOT NULL CHECK(first_emission IN(0,1)),PRIMARY KEY(operation_id,generation_id));")
+    }
+
+    private fun createSyncGenerationArchiveTable(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_generation_archives(" +
+                "generation_id TEXT PRIMARY KEY REFERENCES sync_generations(generation_id)," +
+                "archive_path TEXT NOT NULL UNIQUE,manifest_sha256 TEXT NOT NULL," +
+                "archive_sha256 TEXT NOT NULL,archived_at TEXT NOT NULL,audit_json TEXT NOT NULL);",
+        )
     }
 
     private fun createAiSessionDraftTables(db: SQLiteDatabase) {

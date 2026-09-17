@@ -2,6 +2,17 @@
 
 ## Unreleased — 0.1.2
 
+- Added compatible non-destructive generation archival on desktop schema v22
+  and Android schema v21. Only exactly acknowledged generations older than the
+  two active recovery tips leave admission after a verified durable payload
+  copy and audit record; all identities, manifests, ACKs, lineage and causal
+  evidence remain stored. Older Android stores can recover exact missing
+  producer-side ACK rows from the desktop consumer's durable ledger, with
+  strict run, peer, generation and manifest revalidation. A correlated Android
+  capacity error now reaches the Web without waiting for a transport timeout,
+  and the prepared-items tile can inspect every proposal rather than only its
+  first compact summary.
+
 - Fixed a production full-generation timeout caused by recursively uploading
   retained staging and unrelated transport history on every MTP push. Each
   phase now publishes a private bounded outbox containing only its request,

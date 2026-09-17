@@ -1,7 +1,11 @@
 package com.labfytools.trainlog.data
 
+import android.system.Os
+import android.system.OsConstants
 import java.io.File
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -23,7 +27,18 @@ internal data class CapturedSyncGeneration(
  * CONTRACT: artifacts are immutable, bounded and published before the manifest marker. INVARIANT:
  * causal operation payloads are never rewritten to attach generation identity.
  */
-internal class SyncGenerationService(private val repository: TrainlogRepository) {
+internal class SyncGenerationService(
+    private val repository: TrainlogRepository,
+    private val syncArchiveDirectory: (File) -> Unit = { directory ->
+        val descriptor =
+            Os.open(directory.absolutePath, OsConstants.O_RDONLY or O_DIRECTORY, 0)
+        try {
+            Os.fsync(descriptor)
+        } finally {
+            Os.close(descriptor)
+        }
+    },
+) {
     companion object {
         const val MAX_MANIFEST_BYTES = 64 * 1024
         const val MAX_ARTIFACTS = 32
@@ -33,6 +48,10 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
         const val MAX_PATH_BYTES = 240
         const val MAX_DIAGNOSTIC_BYTES = 1024
         const val MAX_RETAINED_PER_PEER = 8
+        // Android's public OsConstants omits Linux O_DIRECTORY even though
+        // Os.open forwards the platform flag. Keep the fixed Linux ABI value
+        // local to the directory-fsync boundary.
+        private const val O_DIRECTORY = 0x10000
         private val ID =
             Regex(
                 "^(gen|peer|sy)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
@@ -160,6 +179,105 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
      * callers cannot supply or replace it. */
     internal fun peerId(): String = stablePeerId("android")
 
+    private fun archiveDigest(directory: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        directory.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(directory).path }
+            .forEach { file ->
+                if (java.nio.file.Files.isSymbolicLink(file.toPath()))
+                    throw SyncGenerationException("archive contains symbolic link")
+                val name = file.relativeTo(directory).invariantSeparatorsPath.toByteArray()
+                digest.update(ByteBuffer.allocate(4).putInt(name.size).array())
+                digest.update(name)
+                digest.update(MessageDigest.getInstance("SHA-256").digest(file.readBytes()))
+            }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    internal fun archiveAcknowledged(ownedRoot: File, consumerPeerId: String): Int {
+        /* WHY: acknowledged payloads must not occupy active admission forever.
+         * CONTRACT: an exact consumed ACK is required and the newest two
+         * acknowledged lineage members remain active for recovery.
+         * INVARIANT: generation, artifact, ACK and causal rows remain intact;
+         * the ledger is committed only after a verified atomic archive copy. */
+        val rows = repository.inSyncGenerationTransaction { db ->
+            db.rawQuery(
+                "SELECT g.generation_id,g.run_id,g.producer_peer_id,g.consumer_peer_id," +
+                    "g.manifest_sha256,g.staging_path,g.manifest_json FROM sync_generations g " +
+                    "WHERE g.consumer_peer_id=? AND g.status='acknowledged' AND NOT EXISTS(" +
+                    "SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id) " +
+                    "ORDER BY g.generated_at DESC,g.generation_id DESC",
+                arrayOf(consumerPeerId),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(List(7) { cursor.getString(it) })
+                }
+            }
+        }
+        val root = File(File(ownedRoot, "archives"), "generations")
+        if (!root.exists() && !root.mkdirs())
+            throw SyncGenerationException("cannot create generation archive")
+        var count = 0
+        rows.drop(2).forEach { row ->
+            val eligible = repository.inSyncGenerationTransaction { db ->
+                db.rawQuery(
+                    "SELECT ack_id FROM sync_acknowledgements WHERE generation_id=? AND run_id=? " +
+                        "AND producer_peer_id=? AND consumer_peer_id=? AND manifest_sha256=? " +
+                        "AND result='consumed' AND durability='sqlite-commit-full' LIMIT 2",
+                    arrayOf(row[0], row[1], row[2], row[3], row[4]),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else cursor.getString(0).also {
+                        if (cursor.moveToNext()) throw SyncGenerationException("ambiguous ACK evidence")
+                    }
+                }
+            } ?: return@forEach
+            val source = File(row[5])
+            if (Files.isSymbolicLink(source.toPath()))
+                throw SyncGenerationException("generation staging is a symbolic link")
+            validatePublished(source, row[3])
+            val destination = File(root, row[0])
+            val temporary = File(root, ".${row[0]}.tmp")
+            if (Files.isSymbolicLink(destination.toPath()))
+                throw SyncGenerationException("generation archive is a symbolic link")
+            if (!destination.exists()) {
+                if (Files.isSymbolicLink(temporary.toPath()))
+                    throw SyncGenerationException("temporary generation archive is a symbolic link")
+                if (temporary.exists() && !temporary.deleteRecursively())
+                    throw SyncGenerationException("cannot reset interrupted generation archive")
+                if (!source.copyRecursively(temporary, overwrite = false))
+                    throw SyncGenerationException("cannot copy generation archive")
+                validatePublished(temporary, row[3])
+                temporary.walkTopDown().filter { it.isFile }.forEach { file ->
+                    java.io.FileOutputStream(file, true).use { it.fd.sync() }
+                }
+                if (!temporary.renameTo(destination))
+                    throw SyncGenerationException("cannot commit generation archive")
+                syncArchiveDirectory(root)
+            }
+            validatePublished(destination, row[3])
+            val checksum = archiveDigest(destination)
+            val audit =
+                canonical(
+                    JSONObject()
+                        .put("format", "trainlog-sync-generation-archive-audit")
+                        .put("version", 1)
+                        .put("generation_id", row[0])
+                        .put("run_id", row[1])
+                        .put("manifest_sha256", row[4])
+                        .put("ack_id", eligible)
+                        .put("archive_sha256", checksum),
+                )
+            repository.inSyncGenerationTransaction { db ->
+                db.execSQL(
+                    "INSERT OR IGNORE INTO sync_generation_archives VALUES(?,?,?,?,?,?)",
+                    arrayOf(row[0], destination.absolutePath, row[4], checksum, OffsetDateTime.now().toString(), audit),
+                )
+            }
+            count += 1
+        }
+        return count
+    }
+
     fun capture(
         ownedRoot: File,
         consumerPeerId: String,
@@ -169,10 +287,11 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
         requireId(consumerPeerId, "peer")
         requireId(runId, "sy")
         requireId(generationId, "gen")
+        archiveAcknowledged(ownedRoot, consumerPeerId)
         repository.inSyncGenerationTransaction { db ->
             val retained =
                 db.rawQuery(
-                        "SELECT COUNT(*) FROM sync_generations WHERE consumer_peer_id=? AND status IN('captured','published','waiting_acknowledgement','acknowledged')",
+                    "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? AND status IN('captured','published','waiting_acknowledgement','acknowledged') AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id)",
                         arrayOf(consumerPeerId),
                     )
                     .use {
@@ -869,6 +988,32 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                         throw SyncGenerationException("ACK does not match pending generation")
                     val target =
                         if (ack.getString("result") == "consumed") "acknowledged" else "rejected"
+                    /* CONTRACT: the correlated ACK is permanent causal
+                     * evidence and is committed atomically with generation
+                     * state. Replay is byte-identical or rejected below. */
+                    db.execSQL(
+                        "INSERT OR IGNORE INTO sync_acknowledgements VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        arrayOf(
+                            ack.getString("ack_id"),
+                            ack.getString("generation_id"),
+                            ack.getString("run_id"),
+                            ack.getString("producer_peer_id"),
+                            ack.getString("consumer_peer_id"),
+                            ack.getString("manifest_sha256"),
+                            ack.getString("result"),
+                            ack.getString("durability"),
+                            ack.getString("consumed_at"),
+                            ack.getString("diagnostic"),
+                            claimed,
+                        ),
+                    )
+                    db.rawQuery(
+                        "SELECT payload_sha256 FROM sync_acknowledgements WHERE ack_id=?",
+                        arrayOf(ack.getString("ack_id")),
+                    ).use { stored ->
+                        if (!stored.moveToFirst() || stored.getString(0) != claimed)
+                            throw SyncGenerationException("conflicting ACK replay")
+                    }
                     if (row.getString(4) in setOf("acknowledged", "rejected")) {
                         if (row.getString(4) != target)
                             throw SyncGenerationException("conflicting ACK replay")

@@ -961,6 +961,8 @@ The authorized private rollout used the bridge only to add the backup surface
 without clearing package data, verified the resulting plaintext archive, then
 installed the current signed release variant through a strictly increasing
 version-code chain. The final installed private candidate retains product
-version 0.1.2 and schema v20. Its full-generation foreground coordinator waits
-for correlated objects, tolerates stale objects left by interrupted runs, and
+version 0.1.2 and schema v21. Schema v21 adds the verified generation archive
+ledger without changing any domain identity. Its full-generation foreground
+coordinator waits for correlated objects, tolerates stale objects left by
+interrupted runs, strictly revalidates desktop-retained historical ACKs, and
 shows completion only after both durable peer acknowledgements.

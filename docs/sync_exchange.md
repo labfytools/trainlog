@@ -18,7 +18,7 @@ available because availability is independently guarded by causal state.
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v21 and Android schema v20 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v22 and Android schema v21 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -756,8 +756,32 @@ transaction while calling the existing domain exporters. Both validate domain
 and outer limits before recording a captured generation. Publication copies
 verified immutable bytes into `generations/<generation_id>/`, resumes only
 byte-identical partial publication, and writes `manifest.json` last. Capacity
-admits at most eight retained outgoing generations per consumer; exhaustion is
-recoverable and never evicts an unacknowledged generation or causal proof.
+admits at most eight active outgoing generations per consumer. Acknowledged
+generations older than the two newest lineage members leave active admission
+only after their exact consumed ACK, manifest, artifact sizes and digests have
+been reconciled and a complete atomic archive copy has been verified and
+journaled. Archive rows preserve identity, lineage, late-ACK and replay
+protection; pending, rejected, ambiguous and recovery-tip generations remain
+active. Archive directories are outside bounded MTP polling and are never
+uploaded recursively. Failure or interruption leaves admission closed rather
+than fabricating an ACK or discarding evidence.
+
+Before Android captures for a negotiated `generation-archive-v1` conversation,
+the desktop consumer publishes
+`desktop-archive-acknowledgements-v1.json`. Its strictly correlated envelope
+contains at most 32 exact consumed ACK documents already retained in the
+desktop consumption ledger. This repairs the evidence gap left by older
+Android producers that advanced generation status without retaining the
+received ACK. Android revalidates every document against its immutable local
+generation and manifest before storing it; missing, mismatched, rejected, or
+ambiguous evidence cannot make a generation archivable. The object is a
+bounded coordination artifact, not a new ACK source.
+
+If Android still cannot admit a generation, it durably publishes the
+run-correlated `android-generation-error-v1.json` with
+`peer_capacity_exhausted`. The desktop worker and Web surface preserve that
+cause and its archive/retry action instead of converting it to a later
+transport timeout.
 
 The required artifact order is causal deletions, catalog/profile identity,
 custom-equipment definitions, V4 history, aliases and occurrence equipment,

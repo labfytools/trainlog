@@ -30,6 +30,7 @@ CAPS = {
     "causal-delete-v1",
     "mobile-history-v4",
     "execution-draft-v1",
+    "generation-archive-v1",
 }
 
 
@@ -53,9 +54,12 @@ def bounded(path: Path, limit: int = 65536) -> bytes:
 
 def publish_json(path: Path, value: dict) -> None:
     """Publish a coordination object only after all bytes are durable."""
+    raw = generation.canonical(value)
+    if len(raw) > 65536:
+        raise RuntimeError(f"{path.name} exceeds bound")
     temporary = path.with_name("." + path.name + ".tmp-" + str(os.getpid()))
     with temporary.open("wb") as stream:
-        stream.write(generation.canonical(value))
+        stream.write(raw)
         stream.flush()
         os.fsync(stream.fileno())
     os.chmod(temporary, 0o600)
@@ -166,6 +170,27 @@ def wait_json(path: Path, deadline: float, predicate, pump=None) -> dict:
         time.sleep(0.05)
 
 
+def correlated_peer_error(root: Path, run_id: str) -> None:
+    path = root / "android-generation-error-v1.json"
+    if not path.is_file():
+        return
+    try:
+        value = json.loads(bounded(path))
+    except (OSError, json.JSONDecodeError):
+        return
+    if (
+        isinstance(value, dict)
+        and value.get("format") == "trainlog-sync-generation-error"
+        and value.get("version") == 1
+        and value.get("run_id") == run_id
+        and value.get("code") == "peer_capacity_exhausted"
+    ):
+        raise RuntimeError(
+            "peer_capacity_exhausted: Android active generation capacity is exhausted; "
+            "archive acknowledged generations, then retry explicitly"
+        )
+
+
 def load_peer(root: Path, expected: str) -> dict:
     value = json.loads(bounded(root / "android-peer-v1.json"))
     if (
@@ -225,12 +250,28 @@ def main() -> int:
     }
     request_path = args.transport_root / "request-v1.json"
     publish_json(request_path, request)
+    with closing(generation.connect_database(args.database)) as db:
+        acknowledgement_rows = db.execute(
+            "SELECT ack_json FROM sync_consumed_generations WHERE producer_peer_id=? "
+            "AND consumer_peer_id=? AND result='consumed' ORDER BY consumed_at,generation_id LIMIT 32",
+            (peer["peer_id"], desktop_peer),
+        ).fetchall()
+    archive_acknowledgements = {
+        "format": "trainlog-sync-archive-acknowledgements",
+        "version": 1,
+        "run_id": args.run_id,
+        "android_peer_id": peer["peer_id"],
+        "desktop_peer_id": desktop_peer,
+        "acknowledgements": [json.loads(row[0]) for row in acknowledgement_rows],
+    }
+    archive_ack_path = args.transport_root / "desktop-archive-acknowledgements-v1.json"
+    publish_json(archive_ack_path, archive_acknowledgements)
     if args.mode == "mtp":
         push_adapter(
             args.mtp_adapter,
             args.expected_peer,
             args.transport_root,
-            ["request-v1.json"],
+            ["request-v1.json", "desktop-archive-acknowledgements-v1.json"],
             deadline,
         )
     emit(
@@ -240,8 +281,13 @@ def main() -> int:
         consumer_peer_id=desktop_peer,
     )
     inbound_ref = args.transport_root / "android-generation-v1.json"
+    def pump_inbound():
+        if pump is not None:
+            pump()
+        correlated_peer_error(args.transport_root, args.run_id)
+
     inbound = wait_json(
-        inbound_ref, deadline, lambda value: value.get("run_id") == args.run_id, pump
+        inbound_ref, deadline, lambda value: value.get("run_id") == args.run_id, pump_inbound
     )
     inbound_dir = args.transport_root / inbound["relative_path"]
     ack = generation.consume_desktop(args.database, inbound_dir)
@@ -252,7 +298,7 @@ def main() -> int:
             args.mtp_adapter,
             args.expected_peer,
             args.transport_root,
-            ["request-v1.json", "desktop-consumption-ack-v1.json"],
+            ["request-v1.json", "desktop-archive-acknowledgements-v1.json", "desktop-consumption-ack-v1.json"],
             deadline,
         )
     if ack["result"] != "consumed":
@@ -291,6 +337,7 @@ def main() -> int:
             args.transport_root,
             [
                 "request-v1.json",
+                "desktop-archive-acknowledgements-v1.json",
                 "desktop-consumption-ack-v1.json",
                 "desktop-generation-v1.json",
                 ref["relative_path"],
