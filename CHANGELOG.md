@@ -8,6 +8,9 @@
   ACK, and current referenced generation, while preserving every retained
   generation, tombstone, and causal proof. Transport expiry has a stable
   browser-facing code and action instead of a truncated traceback.
+  The reciprocal pull now reads only current coordination objects and the
+  exactly referenced Android generation instead of recursively mirroring
+  retained Android and desktop history.
 
 - Replaced the Web Next Session placeholder with a separate read-only Core
   projection that distinguishes AI proposals from active/pending execution

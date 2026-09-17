@@ -9,6 +9,9 @@ deployment-tool tests cover consistent SQLite backup and candidate inventory.
 The incident regressions also prove that a phase-owned MTP outbox excludes
 retained staging and unrelated legacy files, adapter expiry produces the stable
 `transport_timeout` code, and operational failure classes remain distinct.
+The C MTP regression keeps a malformed retained generation beside the current
+reference and proves that pull downloads only the referenced generation while
+still rejecting a truncated object inside that current generation.
 
 `web_prepared_items` exercises the production SQLite projection and JSON
 serializer with a proposal and an execution draft, then proves finalized and

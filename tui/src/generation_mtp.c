@@ -253,6 +253,116 @@ static TrainlogStatus pull_folder(const TrainlogGenerationMtpIo *io,
     return TRAINLOG_STATUS_OK;
 }
 
+static TrainlogStatus pull_named_file(const TrainlogGenerationMtpIo *io,
+                                      const Selection *selection,
+                                      uint32_t parent,
+                                      const char *name,
+                                      const char *local,
+                                      bool required) {
+    TrainlogMtpEntry entry;
+    TrainlogStatus status = one_named(io, selection, parent, name, false, &entry);
+    char path[1024], temporary[1060];
+    struct stat value;
+    int written;
+    if (status == TRAINLOG_STATUS_NOT_FOUND && !required) {
+        return TRAINLOG_STATUS_OK;
+    }
+    if (status != TRAINLOG_STATUS_OK || entry.size_bytes > 65536U) {
+        return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_INVALID_ARGUMENT : status;
+    }
+    written = snprintf(path, sizeof(path), "%s/%s", local, name);
+    if (written < 0 || (size_t)written >= sizeof(path)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    written = snprintf(temporary, sizeof(temporary), "%s.part.%ld", path, (long)getpid());
+    if (written < 0 || (size_t)written >= sizeof(temporary)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    (void)unlink(temporary);
+    status = io->receive(selection->bus, selection->device, entry.item_id, temporary);
+    if (status == TRAINLOG_STATUS_OK &&
+        (stat(temporary, &value) != 0 || value.st_size < 0 ||
+         (uint64_t)value.st_size != entry.size_bytes || rename(temporary, path) != 0)) {
+        status = TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    if (status != TRAINLOG_STATUS_OK) {
+        (void)unlink(temporary);
+    }
+    return status;
+}
+
+static bool referenced_android_generation(const char *local, char *generation, size_t size) {
+    char path[1024], buffer[65537];
+    int fd, written;
+    ssize_t count;
+    yyjson_doc *document;
+    yyjson_val *root, *relative;
+    const char *value, *prefix = "android-objects/generations/";
+    bool valid = false;
+    written = snprintf(path, sizeof(path), "%s/android-generation-v1.json", local);
+    if (written < 0 || (size_t)written >= sizeof(path) ||
+        (fd = open(path, O_RDONLY | O_CLOEXEC)) < 0) {
+        return false;
+    }
+    count = read(fd, buffer, sizeof(buffer));
+    (void)close(fd);
+    if (count <= 0 || (size_t)count >= sizeof(buffer)) {
+        return false;
+    }
+    document = yyjson_read(buffer, (size_t)count, YYJSON_READ_NOFLAG);
+    if (document == NULL) {
+        return false;
+    }
+    root = yyjson_doc_get_root(document);
+    relative = yyjson_obj_get(root, "relative_path");
+    value = yyjson_get_str(relative);
+    if (yyjson_is_obj(root) && value != NULL && strncmp(value, prefix, strlen(prefix)) == 0) {
+        const char *leaf = value + strlen(prefix);
+        if (safe_leaf(leaf) && strlen(leaf) < size) {
+            (void)memcpy(generation, leaf, strlen(leaf) + 1U);
+            valid = true;
+        }
+    }
+    yyjson_doc_free(document);
+    return valid;
+}
+
+static TrainlogStatus pull_referenced_generation(const TrainlogGenerationMtpIo *io,
+                                                 const Selection *selection,
+                                                 const char *local,
+                                                 const char *generation) {
+    TrainlogMtpEntry android_objects, generations, selected;
+    char path[1024];
+    uint64_t total = 0U;
+    size_t objects = 0U;
+    TrainlogStatus status;
+    status = one_named(io, selection, selection->root, "android-objects", true, &android_objects);
+    if (status == TRAINLOG_STATUS_OK) {
+        status = one_named(io, selection, android_objects.item_id, "generations", true, &generations);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = one_named(io, selection, generations.item_id, generation, true, &selected);
+    }
+    if (status != TRAINLOG_STATUS_OK ||
+        snprintf(path, sizeof(path), "%s/android-objects/generations/%s", local, generation) < 0 ||
+        strlen(local) + strlen("/android-objects/generations/") + strlen(generation) >= sizeof(path)) {
+        return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_INVALID_ARGUMENT : status;
+    }
+    char parent[1024];
+    if (snprintf(parent, sizeof(parent), "%s/android-objects/generations", local) < 0 ||
+        strlen(local) + strlen("/android-objects/generations") >= sizeof(parent) ||
+        mkdir_private(local) != TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    char objects_path[1024];
+    if (snprintf(objects_path, sizeof(objects_path), "%s/android-objects", local) < 0 ||
+        strlen(local) + strlen("/android-objects") >= sizeof(objects_path) ||
+        mkdir_private(objects_path) != TRAINLOG_STATUS_OK || mkdir_private(parent) != TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    return pull_folder(io, selection, selected.item_id, path, 0U, &total, &objects);
+}
+
 static bool same_files(const char *left, const char *right) {
     int left_fd = open(left, O_RDONLY | O_CLOEXEC);
     int right_fd = open(right, O_RDONLY | O_CLOEXEC);
@@ -459,9 +569,8 @@ TrainlogStatus trainlog_generation_mtp_pull(const TrainlogGenerationMtpIo *io,
                                             char *diagnostic,
                                             size_t diagnostic_size) {
     Selection selection;
-    uint64_t total = 0U;
-    size_t objects = 0U;
     TrainlogStatus status;
+    char generation[256];
     if (io == NULL || expected == NULL || local == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
@@ -470,7 +579,28 @@ TrainlogStatus trainlog_generation_mtp_pull(const TrainlogGenerationMtpIo *io,
         status = select_peer(io, expected, local, &selection, diagnostic, diagnostic_size);
     }
     if (status == TRAINLOG_STATUS_OK) {
-        status = pull_folder(io, &selection, selection.root, local, 0U, &total, &objects);
+        /* WHY: Documents/Trainlog retains prior generations and causal evidence.
+         * Recursively mirroring that durable history makes foreground sync cost
+         * grow with retention and can exhaust the run deadline before admission.
+         * CONTRACT: pull only current coordination objects and the one Android
+         * generation named by the current reference. Missing optional objects
+         * remain a normal polling state for the Python conversation.
+         * INVARIANT: no remote object, ACK, tombstone, or retained generation is
+         * removed or rewritten by this bounded read. */
+        status = pull_named_file(
+            io, &selection, selection.root, "android-peer-v1.json", local, true);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = pull_named_file(
+            io, &selection, selection.root, "android-generation-v1.json", local, false);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = pull_named_file(
+            io, &selection, selection.root, "android-consumption-ack-v1.json", local, false);
+    }
+    if (status == TRAINLOG_STATUS_OK &&
+        referenced_android_generation(local, generation, sizeof(generation))) {
+        status = pull_referenced_generation(io, &selection, local, generation);
     }
     return status;
 }

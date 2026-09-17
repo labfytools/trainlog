@@ -234,6 +234,10 @@ files, prior ACKs, and causal evidence are not recursively re-uploaded. Adapter
 timeouts are persisted as the stable `transport_timeout` status instead of a
 truncated Python traceback. The browser polls through one abortable scheduler,
 orders revisions per `run_id`, and rejects stale responses from older runs.
+The reciprocal MTP read is bounded to the Android peer advertisement, current
+generation reference and consumption ACK, plus the single Android generation
+named by that reference. Historical generations and other retained evidence
+are neither traversed nor deleted during polling.
 
 ## Data semantics
 

@@ -809,6 +809,12 @@ rewrite any source object. A bounded adapter timeout is an ambiguous transport
 failure with stable code `transport_timeout`; it is not evidence of rollback
 and does not authorize automatic mutation replay.
 
+MTP polling follows the same bounded ownership rule in the opposite direction.
+It reads the peer advertisement, current Android generation reference and
+current Android consumption ACK, then downloads only the generation directory
+named by that validated reference. It does not recursively mirror retained
+Android generations, desktop publications, or unrelated exchange history.
+
 `GET /api/v1/prepared-items` is a separate read-only Web projection. It does not
 change the frozen Dashboard `next_session.available` field or any exchange
 format. It lists bounded durable desktop AI proposals and relevant execution

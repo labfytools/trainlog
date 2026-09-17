@@ -146,7 +146,7 @@ static TrainlogStatus receive(unsigned int b, unsigned int d, uint32_t id, const
     if (!f) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
-    bytes = id == 9U ? 3U : o->size;
+    bytes = id == 12U ? 3U : o->size;
     if (fwrite(o->data, 1, bytes, f) != bytes) {
         fclose(f);
         return TRAINLOG_STATUS_SYSTEM_ERROR;
@@ -232,11 +232,20 @@ static int test_pull_and_manifest_last(void) {
     char *manifest;
     reset();
     CHECK(mkdtemp(root) != NULL);
-    add(4, 2, true, "android-objects", NULL);
-    add(5, 4, true, "generations", NULL);
-    add(6, 5, true, "gen_11111111-1111-4111-8111-111111111111", NULL);
-    add(7, 6, false, "payload.json", "payload");
-    add(8, 6, false, "manifest.json", "manifest");
+    add(4,
+        2,
+        false,
+        "android-generation-v1.json",
+        "{\"relative_path\":\"android-objects/generations/gen_11111111-1111-4111-8111-"
+        "111111111111\"}");
+    add(5, 2, true, "android-objects", NULL);
+    add(6, 5, true, "generations", NULL);
+    add(7, 6, true, "gen_11111111-1111-4111-8111-111111111111", NULL);
+    add(8, 7, false, "payload.json", "payload");
+    add(9, 7, false, "manifest.json", "manifest");
+    add(10, 6, true, "gen_22222222-2222-4222-8222-222222222222", NULL);
+    add(11, 10, false, "retained.bin", "old");
+    find(11)->size = 99U;
     CHECK(trainlog_generation_mtp_pull(
               &io, "peer_11111111-1111-4111-8111-111111111111", root, diag, sizeof(diag)) ==
           TRAINLOG_STATUS_OK);
@@ -287,12 +296,25 @@ static int test_ambiguity_and_truncation(void) {
               &io, "peer_11111111-1111-4111-8111-111111111111", root, diag, sizeof(diag)) ==
           TRAINLOG_STATUS_NOT_FOUND);
     reset();
-    add(9, 2, false, "bad.bin", "abc");
-    find(9)->size = 99U;
+    add(4,
+        2,
+        false,
+        "android-generation-v1.json",
+        "{\"relative_path\":\"android-objects/generations/gen_11111111-1111-4111-8111-"
+        "111111111111\"}");
+    add(5, 2, true, "android-objects", NULL);
+    add(6, 5, true, "generations", NULL);
+    add(7, 6, true, "gen_11111111-1111-4111-8111-111111111111", NULL);
+    add(12, 7, false, "bad.bin", "abc");
+    find(12)->size = 99U;
     status = trainlog_generation_mtp_pull(
         &io, "peer_11111111-1111-4111-8111-111111111111", root, diag, sizeof(diag));
     CHECK(status != TRAINLOG_STATUS_OK);
-    CHECK(trainlog_test_join_path(path, sizeof(path), root, "bad.bin"));
+    CHECK(trainlog_test_join_path(
+        path,
+        sizeof(path),
+        root,
+        "android-objects/generations/gen_11111111-1111-4111-8111-111111111111/bad.bin"));
     CHECK(access(path, F_OK) != 0);
     return 0;
 }
