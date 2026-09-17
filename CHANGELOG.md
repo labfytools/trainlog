@@ -2,6 +2,18 @@
 
 ## Unreleased — 0.1.2
 
+- Completed the authorized private full-generation rollout over production
+  direct MTP: verified Android and desktop backups, signing-preserving Android
+  updates, schema migrations, persistent peer pairing, bidirectional durable
+  ACKs, restart and idempotent replay. This did not publish a release or modify
+  v0.1.1.
+
+- Fixed rollout-discovered feedback idempotence across SQLite row modes,
+  packaged the complete generation exporter closure, ignored stale Android
+  coordination objects until their run/generation correlation matches, and
+  made the Android screen report completed generation conversations instead of
+  waiting for a legacy receipt.
+
 - Packaged `trainlog-sync-once` and `trainlog-syncd` with the relocatable sync
   candidate so user services cannot mix a versioned install with live-checkout
   helpers during rollout.

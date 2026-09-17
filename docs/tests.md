@@ -1361,3 +1361,17 @@ SQLite value type and value before restore, migrates through the production
 repository owner, and compares that complete historical shape afterward. The
 draft assertion follows the archived state instead of requiring the synthetic
 fixture's sample draft.
+
+## Private full-generation rollout validation
+
+The authorized 2026-09-17 rollout added regression coverage for production
+failures found only after installation: feedback import under `sqlite3.Row`,
+the complete exporter inventory of the relocatable package, stale Android ACK
+and generation-reference correlation, and the completed-generation UI state.
+The real direct-libmtp smoke then completed three bidirectional conversations
+on the paired phone. Restart and replay preserved identical logical hashes for
+23 desktop business tables and 540 rows; SQLite integrity and foreign-key
+checks passed, both outgoing desktop generations were acknowledged, and the
+Android UI displayed completion. The private journal retains exact IDs and
+hashes. Drive and `connectedDebugAndroidTest` were not run; the personal phone
+was used only for non-destructive install, backup and manual sync validation.

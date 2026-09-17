@@ -1,9 +1,9 @@
 # Roadmap
 
-Before controlled rollout, complete and validate the physical libmtp generation
-adapter, establish a legitimate installed-Android backup path, verify release
-signing continuity and obtain explicit rollout approval. Do not enable generation
-mode or advance `main` before those gates.
+The controlled private rollout is complete for the paired daily installation:
+physical libmtp, verified backups, signing continuity, migrations, correlated
+ACKs, restart, and idempotent replay passed. Generation mode remains an
+explicit per-installation opt-in; Drive is still unconfigured and unvalidated.
 
 This document owns future work. The implemented baseline is summarized in
 [current_state.md](current_state.md); completed narratives and evidence belong
@@ -38,7 +38,7 @@ visualizations are implemented; the other four Web routes remain placeholders.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_DEPLOYMENT_READINESS_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_V1_NEXT_CONTRACT
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
@@ -47,9 +47,10 @@ cross-platform draft revision identity and resource-bound admission are closed.
 `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN`: both platforms expose explicit
 coherent capture, immutable manifest publication, whole-generation
 transactional consumption, durable correlated ACK and restart/replay entry
-points. The orchestrator, Web API and Web control are now complete behind an
-explicit trusted opt-in. Automatic V3 selection remains unchanged. The next
-boundary is deployment readiness; no rollout starts here.
+points. The orchestrator, Web API and Web control are complete behind an
+explicit trusted opt-in. The authorized private direct-MTP rollout passed on
+real hardware; automatic V3 selection remains unchanged without that opt-in.
+The next work returns to separately contracted Web surfaces.
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.

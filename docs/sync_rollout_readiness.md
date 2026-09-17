@@ -1,6 +1,17 @@
 # Full-generation sync rollout readiness
 
-## Deployment-readiness candidate
+## Operational rollout status
+
+`TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` on 2026-09-17 for the
+authorized private daily installation. Verified real Android and desktop
+backups were retained, migration copies passed before live updates, the signing
+identity and increasing Android version-code chain were verified, and the
+production libmtp adapter completed bidirectional manifest/ACK conversations.
+Restart and idempotent replay also passed. Drive was not configured. No public
+release or tag was created, and v0.1.1 was not modified. The sanitized evidence
+record is [sync rollout V1 deployment](reviews/sync_rollout_v1_deployment.md).
+
+## Deployment-readiness contract
 
 The generation path remains disabled unless desktop configuration authorizes a
 specific persisted Android peer and Android contains the strict opt-in document
@@ -10,12 +21,10 @@ bounded typed progress and its descendant process group. The foreground Android
 coordinator advertises its real peer identity, publishes manifest-last bytes,
 consumes the return generation and emits a durable correlated ACK.
 
-The integrated proof uses the production generation adapter with only its
-typed libudev/libmtp I/O callbacks replaced by an object-store double. This is
-software evidence for selection, bounds, publication ordering and the complete
-conversation, but not evidence for a particular phone's physical libmtp
-behavior. Generation mode must remain disabled until that hardware gate and
-the separately authorized rollout are complete.
+The isolated proof still uses the production generation adapter with only its
+typed libudev/libmtp I/O callbacks replaced by an object-store double. The
+separate deployment record owns the physical-phone evidence; neither proof
+generalizes pairing to another phone or enables generation mode by default.
 
 ### Candidate, backup and recovery
 
@@ -54,12 +63,10 @@ the separately authorized rollout are complete.
    preserve pending generations, tombstones, finalizations and ACK ledgers; it
    must never trigger hidden eviction.
 
-Actual rollout needs one separate approval for the signed APK, desktop bundle,
-verified user backups, coordinated service quiescence, pairing, synthetic smoke
-and non-destructive hardware smoke. Drive remains separate and untested here.
-
-This is a non-executed rollout checklist. The development branch implements the
-path; the daily installation still uses V3.
+The grouped rollout approval covered the signed APK, desktop bundle, verified
+user backups, coordinated service quiescence, pairing, synthetic smoke and
+non-destructive hardware smoke. Those steps are complete for the recorded
+private installation. Drive remains separate and untested.
 
 The latest software-only candidate set was rebuilt under the private root
 `/home/fy59/.cache/trainlog/sync-rollout-candidate-v1.NEoMDx` from source commit
@@ -106,5 +113,6 @@ operator diagnosis; this tranche adds no tombstone or evidence garbage
 collection. A migrated database is recovered from its verified backup, never by
 assuming an older binary reverses its migration.
 
-Physical MTP, actual Drive configuration, service coordination, installed APK,
-main merge and deployment are intentionally not performed here.
+The recorded private installation completed physical MTP, service coordination
+and APK/desktop deployment. Actual Drive configuration remains untested; the
+eight-generation admission bound and foreground-phone requirement remain.

@@ -1,12 +1,13 @@
 # Current implementation state
 
-The development branch has opt-in full-generation coordination with durable Web
-progress and a foreground Android conversation. Its production generation MTP
-adapter is integrated and tested through an object-I/O boundary double. Android
-also has a complete same-installation backup/verify/restore container, and a
-non-installed schema-v17 bridge candidate is reproducibly built and tested.
-Physical-device MTP, release signing, real user backup/restore, main integration
-and deployment are not complete.
+The opt-in full-generation path is operational on the private daily
+installation. The loopback Web control and foreground Android coordinator use
+the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
+persistent peer identities. The controlled rollout verified real backups, the
+schema-v17 to v20 Android update chain, desktop v18 to v21 migration, three
+complete hardware conversations, restart, and idempotent replay. Drive was not
+configured and remains outside this local MTP result. This is a private 0.1.2
+development deployment, not a public release; v0.1.1 is unchanged.
 
 `TRAINLOG_NATIVE_BUILD_AND_CANDIDATE_V1` closes the native warning gate. Strict
 GCC 16.2.1 and Clang 22.1.8 builds now pass the same 81-test inventory, and the
@@ -75,6 +76,7 @@ parallel implementation of its rules.
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
 | Sync Web end-to-end wrapper | `TRAINLOG_SYNC_WEB_END_TO_END_V1=PASS/FROZEN` (isolated) |
+| Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (direct MTP, one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS` |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |

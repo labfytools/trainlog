@@ -91,6 +91,16 @@ Android and the TUI in each stable release share the same Trainlog product
 version on both mirrors. Database schemas and JSON protocol versions are
 independent.
 
+### Daily synchronization on an opted-in installation
+
+Connect and unlock the paired phone, keep Trainlog's Synchronization screen in
+the foreground, then select **Synchronize** in the local Web Dashboard and
+**Synchronize now** on Android. Wait until Web reports completion and Android
+shows that synchronization completed on both Android and PC. A failure remains
+durable and should be diagnosed before retrying; do not delete generation,
+ACK, database, or backup files. Full-generation mode is a trusted local opt-in;
+other installations continue to use the established V3 request/receipt path.
+
 ### Build from source
 
 Desktop:

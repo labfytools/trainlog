@@ -776,6 +776,19 @@ idempotently. Causal V1 operation bytes remain unchanged across first emission
 and retransmission because generation membership lives only in
 `sync_causal_publications`.
 
+The foreground Android coordinator correlates both durable desktop ACKs and
+desktop generation references by the active run (and the Android generation
+for its ACK). Objects retained from an interrupted conversation are ignored
+until atomically replaced by matching objects. After both peer ACKs, Android
+reports completion directly; it does not enter the legacy receipt wait state.
+
+The 2026-09-17 private rollout exercised this path with the production libmtp
+adapter on one paired Samsung phone. Three complete bidirectional conversations
+passed, including service/application restart and an idempotent replay whose
+23 desktop business tables and 540 rows retained identical logical hashes.
+Rejected pre-fix generations and their ACKs were retained as causal evidence.
+No Drive transport was configured or claimed by this validation.
+
 The generation MTP adapter resolves `Documents/Trainlog` through libudev and
 libmtp, selects one exact advertised peer/capability set across bounded devices
 and storages, and mirrors only bounded regular object names. It downloads to

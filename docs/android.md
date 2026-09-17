@@ -956,3 +956,11 @@ The installed schema-v17 release has no backup UI. The reproducible
 adds only the backup surface, assigns a higher candidate version code and
 builds/tests an APK without installing it. Its synthetic v17 archive is also
 restored by current code and migrated through the normal v17-to-v20 path.
+
+The authorized private rollout used the bridge only to add the backup surface
+without clearing package data, verified the resulting plaintext archive, then
+installed the current signed release variant through a strictly increasing
+version-code chain. The final installed private candidate retains product
+version 0.1.2 and schema v20. Its full-generation foreground coordinator waits
+for correlated objects, tolerates stale objects left by interrupted runs, and
+shows completion only after both durable peer acknowledgements.
