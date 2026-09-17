@@ -14,6 +14,9 @@ Clang ASan/UBSan build passes it with leak detection. Bounded path assembly and
 the Web sync accepted response reject insufficient capacity without publishing
 partial output. Fresh desktop, current-Android and schema-v17 bridge candidates
 were rebuilt from commit `2c5a8be2827e31fc5be2accb65073bfeb79d6068`.
+The rollout packager now keeps the legacy request daemon and one-shot helper in
+the same relocatable, hashed bundle as the Web generation coordinator, avoiding
+mixed-checkout user-service execution during the controlled rollout.
 
 Snapshot date: **2026-09-17**.
 

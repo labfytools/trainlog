@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_TOOLS = [
+    "trainlog_syncd.py",
     "sync_orchestrator.py",
     "sync_peer_worker.py",
     "sync_generation_exchange.py",
@@ -49,16 +50,20 @@ def main() -> int:
     if args.output.exists():
         raise RuntimeError("candidate output already exists")
     binary = args.build / "tui/trainlog"
+    sync_once = args.build / "tui/trainlog-sync-once"
     mtp_adapter = args.build / "tui/trainlog-generation-mtp-adapter"
     if not binary.is_file():
         raise RuntimeError("compiled trainlog executable is missing")
     if not mtp_adapter.is_file():
         raise RuntimeError("compiled generation MTP adapter is missing")
+    if not sync_once.is_file():
+        raise RuntimeError("compiled legacy synchronization helper is missing")
     (args.output / "bin").mkdir(parents=True)
     (args.output / "libexec").mkdir(parents=True)
     (args.output / "tools").mkdir(parents=True)
     (args.output / "catalog").mkdir(parents=True)
     shutil.copy2(binary, args.output / "libexec/trainlog")
+    shutil.copy2(sync_once, args.output / "libexec/trainlog-sync-once")
     shutil.copy2(mtp_adapter, args.output / "libexec/trainlog-generation-mtp-adapter")
     for name in RUNTIME_TOOLS:
         shutil.copy2(ROOT / "tools" / name, args.output / "tools" / name)
@@ -67,6 +72,14 @@ def main() -> int:
     launcher = args.output / "bin/trainlog"
     launcher.write_text(
         '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR="$root/tools"\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec "$root/libexec/trainlog" "$@"\n'
+    )
+    sync_once_launcher = args.output / "bin/trainlog-sync-once"
+    sync_once_launcher.write_text(
+        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nexec "$root/libexec/trainlog-sync-once" "$@"\n'
+    )
+    syncd_launcher = args.output / "bin/trainlog-syncd"
+    syncd_launcher.write_text(
+        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
     )
     files = sorted(path for path in args.output.rglob("*") if path.is_file())
     inventory = {
@@ -88,6 +101,8 @@ def main() -> int:
         ],
         "entry_points": [
             "bin/trainlog",
+            "bin/trainlog-sync-once",
+            "bin/trainlog-syncd",
             "libexec/trainlog-generation-mtp-adapter",
             "tools/sync_orchestrator.py",
         ],
@@ -113,7 +128,10 @@ def main() -> int:
         json.dumps(inventory, indent=2, sort_keys=True) + "\n"
     )
     os.chmod(args.output / "bin/trainlog", 0o755)
+    os.chmod(args.output / "bin/trainlog-sync-once", 0o755)
+    os.chmod(args.output / "bin/trainlog-syncd", 0o755)
     os.chmod(args.output / "libexec/trainlog", 0o755)
+    os.chmod(args.output / "libexec/trainlog-sync-once", 0o755)
     os.chmod(args.output / "libexec/trainlog-generation-mtp-adapter", 0o755)
     return 0
 

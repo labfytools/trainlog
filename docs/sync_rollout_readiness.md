@@ -22,6 +22,10 @@ the separately authorized rollout are complete.
 1. Build and validate one revision, then run `python3
    tools/package_sync_candidate.py --output <new-private-directory>`. Its
    inventory records hashes, schemas, protocols, entry points and dependencies.
+   The relocatable bundle includes `trainlog`, `trainlog-sync-once`,
+   `trainlog-syncd`, the production generation MTP adapter and their matching
+   Python codecs. User units must point only into one versioned bundle; they
+   must not combine a packaged binary with helpers from a live checkout.
 2. `assembleDebug` is development evidence only. Rollout requires the existing
    release signing identity, verification of its public certificate and a valid
    increasing `versionCode`; this mission reads no signing secret.

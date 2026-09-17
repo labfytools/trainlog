@@ -1333,6 +1333,12 @@ JDK 17. The real Firefox/object-I/O-boundary MTP conversation also passes after
 formatting. A source comparison against the pre-readability commit confirms
 that the scoped test names and assertion counts are unchanged.
 
+The deployment-tools regression also constructs the relocatable candidate and
+requires its inventory to include the packaged `trainlog-sync-once` binary,
+the `trainlog-syncd` launcher and daemon source, and the generation worker.
+This prevents a user unit from silently executing a helper from a different
+checkout than the installed desktop candidate.
+
 The isolated JDK 17 harness reports **220 Android tests: 215 passed, five
 skipped, zero failures/errors**. The skips are optional, externally supplied
 copy gates: `BridgeBackupMigrationTest.verifiedSchemaSeventeenBridgeBackupMigratesThroughCurrentOwner`,

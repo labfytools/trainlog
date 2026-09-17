@@ -2,6 +2,10 @@
 
 ## Unreleased — 0.1.2
 
+- Packaged `trainlog-sync-once` and `trainlog-syncd` with the relocatable sync
+  candidate so user services cannot mix a versioned install with live-checkout
+  helpers during rollout.
+
 - Closed the native candidate warning gate with checked path and HTTP response
   bounds, strict GCC and Clang builds, full Clang ASan/UBSan validation, and a
   stable concurrent object-I/O MTP double. Rebuilt the desktop, current Android
