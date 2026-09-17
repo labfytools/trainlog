@@ -295,6 +295,8 @@
     <string name="session_proposal">Proposition de séance</string><string name="planned_for">Prévue le %1$s</string>
     <plurals name="repetition_count"><item quantity="one">%d répétition</item><item quantity="other">%d répétitions</item></plurals>
     <string name="start">Démarrer</string><string name="start_proposal_description">Copier cette proposition dans la séance en cours.</string>
+    <string name="manual_preparation">Préparation manuelle</string>
+    <string name="start_preparation_description">Démarrer cette préparation sans écraser une séance en cours.</string>
     <string name="draft_already_active">Une séance est déjà en cours. Le brouillon importé a été conservé.</string>
     <string name="delete_draft_detail">Le brouillon « %1$s » sera supprimé.\nCette action est irréversible.</string>
     <string name="training">Entraînement</string><string name="resume_current_session">Reprendre la séance en cours</string>

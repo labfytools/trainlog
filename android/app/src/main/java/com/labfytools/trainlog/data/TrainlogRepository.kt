@@ -24,6 +24,7 @@ import com.labfytools.trainlog.model.ExerciseFeedback
 import com.labfytools.trainlog.model.DraftExerciseFeedback
 import com.labfytools.trainlog.model.LatestExerciseMax
 import com.labfytools.trainlog.model.NewExerciseProfile
+import com.labfytools.trainlog.model.PreparedSession
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionDraftForm
@@ -1872,6 +1873,147 @@ class TrainlogRepository(
                 readAiSessionDraftEntries(db, draftId))
         }}
         return output
+    }
+
+    /**
+     * Consumes immutable manual-preparation deliveries without touching AI
+     * proposals or the active draft. GenerationService owns the outer
+     * transaction, so any later participant failure rolls these rows back.
+     */
+    internal fun applySessionPreparationsJson(json: String): AiSessionDraftImportResult {
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return AiSessionDraftImportResult.Invalid("Artifact de préparations invalide.")
+        }
+        if (!root.hasExactKeys(setOf("format", "version", "generated_at", "deliveries")) ||
+            root.optString("format") != "trainlog-session-preparations" || root.optInt("version") != 1)
+            return AiSessionDraftImportResult.Invalid("Artifact de préparations v1 non supporté.")
+        val values = root.optJSONArray("deliveries")
+            ?: return AiSessionDraftImportResult.Invalid("Livraisons de préparations manquantes.")
+        if (values.length() > 128) return AiSessionDraftImportResult.Invalid("Trop de préparations.")
+        val db = database.writableDatabase
+        var imported = 0
+        var skipped = 0
+        return try {
+            for (deliveryIndex in 0 until values.length()) {
+                val delivery = values.getJSONObject(deliveryIndex)
+                val required = setOf("delivery_id", "preparation_id", "revision_id", "execution_session_id",
+                    "state", "title", "session_type", "planned_for", "notes", "source_proposal_id",
+                    "source_payload_sha256", "occurrences")
+                require(delivery.hasExactKeys(required)) { "Forme de préparation invalide." }
+                val deliveryId = delivery.getString("delivery_id")
+                val preparationId = delivery.getString("preparation_id")
+                val revisionId = delivery.getString("revision_id")
+                val executionId = delivery.getString("execution_session_id")
+                require(deliveryId.startsWith("spd_") && preparationId.startsWith("sp_") &&
+                    revisionId.startsWith("spr_") && executionId.startsWith("se_")) { "Identité de préparation invalide." }
+                require(delivery.getString("state") in setOf("pending", "remote_unknown")) { "État de livraison invalide." }
+                val occurrences = delivery.getJSONArray("occurrences")
+                require(occurrences.length() in 1..64) { "Occurrences de préparation invalides." }
+                parsePreparedOccurrences(db, occurrences)
+                val existing = db.rawQuery(
+                    "SELECT revision_id,payload_json FROM session_preparation_deliveries WHERE delivery_id=?",
+                    arrayOf(deliveryId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null }
+                val canonical = delivery.toString()
+                if (existing == null) {
+                    db.insertOrThrow("session_preparation_deliveries", null, ContentValues().apply {
+                        put("delivery_id", deliveryId); put("preparation_id", preparationId)
+                        put("revision_id", revisionId); put("execution_session_id", executionId)
+                        put("state", "pending"); put("payload_json", canonical)
+                        put("received_at", OffsetDateTime.now(java.time.ZoneOffset.UTC).toString())
+                    })
+                    imported++
+                } else {
+                    require(existing.first == revisionId && JSONObject(existing.second).toString() == canonical) {
+                        "Identité de livraison réutilisée avec un contenu différent."
+                    }
+                    skipped++
+                }
+            }
+            AiSessionDraftImportResult.Applied(imported, skipped)
+        } catch (error: IllegalArgumentException) {
+            AiSessionDraftImportResult.Invalid(error.message ?: "Préparation invalide.")
+        } catch (_: Exception) {
+            AiSessionDraftImportResult.DatabaseError
+        }
+    }
+
+    private fun parsePreparedOccurrences(db: SQLiteDatabase, values: JSONArray): List<SessionExerciseDraft> =
+        buildList {
+            val identities = mutableSetOf<String>()
+            for (itemIndex in 0 until values.length()) {
+                val item = values.getJSONObject(itemIndex)
+                val entryId = item.getString("entry_id")
+                require(entryId.startsWith("spe_") && identities.add(entryId)) { "Occurrence dupliquée." }
+                val exerciseId = item.getString("exercise_id")
+                val exercise = readExerciseProfileExact(db, exerciseId)
+                    ?: throw IllegalArgumentException("Exercice de préparation inconnu : $exerciseId")
+                require(item.getString("recording_mode") == exercise.recordingMode.wireValue &&
+                    item.getString("tracking_mode") == exercise.trackingMode.wireValue &&
+                    item.getInt("data_fields") == exercise.dataFields) { "Profil de préparation divergent." }
+                val equipmentId = if (item.isNull("equipment_id")) null else item.getString("equipment_id")
+                require(equipmentId == null || lookupEquipmentRowIdOrNull(db, equipmentId) != null) {
+                    "Équipement de préparation inconnu."
+                }
+                val loadMode = SessionLoadMode.fromWire(item.getString("load_mode"))
+                val sets = if (item.isNull("target_sets")) null else item.getInt("target_sets")
+                val reps = if (item.isNull("target_reps")) null else item.getInt("target_reps")
+                val duration = if (item.isNull("target_duration_seconds")) null else item.getInt("target_duration_seconds")
+                val weight = if (item.isNull("target_weight_kg")) null else item.getDouble("target_weight_kg")
+                require(item.getInt("position") == size && item.getInt("rest_seconds") in 0..MAX_PLAN_REST_SECONDS)
+                require(if (exercise.recordingMode == RecordingMode.CONTINUOUS) {
+                    sets == null && reps == null && duration != null && loadMode == SessionLoadMode.NONE && weight == null
+                } else {
+                    sets != null && sets in 1..99 && ((reps != null) xor (duration != null)) &&
+                        ((loadMode == SessionLoadMode.NONE) == (weight == null))
+                }) { "Objectifs de préparation invalides." }
+                add(SessionExerciseDraft(entryId = entryId, exercise = exercise, equipmentId = equipmentId,
+                    plan = SessionExercisePlan(sets ?: 0, reps = reps, durationSeconds = duration,
+                        weightKg = weight, loadMode = loadMode, restSeconds = item.getInt("rest_seconds"))))
+            }
+        }
+
+    fun listPreparedSessions(): List<PreparedSession> {
+        val db = database.readableDatabase
+        return buildList {
+            db.rawQuery("SELECT delivery_id,preparation_id,revision_id,execution_session_id,payload_json " +
+                "FROM session_preparation_deliveries WHERE state='pending' ORDER BY received_at,delivery_id", null)
+                .use { cursor -> while (cursor.moveToNext()) {
+                    val payload = JSONObject(cursor.getString(4))
+                    add(PreparedSession(cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                        cursor.getString(3), if (payload.isNull("planned_for")) null else payload.getString("planned_for"),
+                        payload.getString("title"), if (payload.isNull("notes")) null else payload.getString("notes"),
+                        parsePreparedOccurrences(db, payload.getJSONArray("occurrences"))))
+                }}
+        }
+    }
+
+    fun startPreparedSession(deliveryId: String): StartAiSessionDraftResult {
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            try {
+                if (db.rawQuery("SELECT 1 FROM active_session_draft WHERE id=1", null).use { it.moveToFirst() })
+                    return StartAiSessionDraftResult.ExistingActiveDraft
+                val row = db.rawQuery("SELECT execution_session_id,payload_json,state FROM session_preparation_deliveries WHERE delivery_id=?",
+                    arrayOf(deliveryId)).use { cursor ->
+                    if (!cursor.moveToFirst()) null else Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2))
+                } ?: return StartAiSessionDraftResult.NotPending
+                if (row.third != "pending") return StartAiSessionDraftResult.NotPending
+                val payload = JSONObject(row.second)
+                val entries = parsePreparedOccurrences(db, payload.getJSONArray("occurrences"))
+                val type = if (payload.getString("session_type") == "max_test") SessionType.MAX_TEST else SessionType.TRAINING
+                /* INVARIANT: the desktop-reserved execution identity survives
+                 * start and replay; no performed value is manufactured. */
+                persistActiveSessionDraft(db, ActiveSessionDraft(sessionId = row.first, exercises = entries, sessionType = type))
+                db.execSQL("UPDATE session_preparation_deliveries SET state='started',started_at=? WHERE delivery_id=? AND state='pending'",
+                    arrayOf(OffsetDateTime.now(java.time.ZoneOffset.UTC).toString(), deliveryId))
+                db.setTransactionSuccessful()
+                StartAiSessionDraftResult.Started
+            } finally { db.endTransaction() }
+        } catch (error: Exception) {
+            StartAiSessionDraftResult.Error(error.message ?: "Démarrage de la préparation impossible.")
+        }
     }
 
     fun deleteAiSessionDraft(draftId: String): ActiveDraftMutationResult = try {
@@ -7934,7 +8076,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    21,
+    22,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -7980,6 +8122,7 @@ private class TrainlogDatabaseHelper(
         createCausalDeleteTables(db)
         createSyncGenerationTables(db)
         createSyncGenerationArchiveTable(db)
+        createSessionPreparationTables(db)
         seedEquipment(db)
     }
 
@@ -8155,6 +8298,12 @@ private class TrainlogDatabaseHelper(
             createSyncGenerationArchiveTable(db)
             version = 21
         }
+        if (version < 22 && newVersion >= 22) {
+            /* CONTRACT: prepared deliveries are separate from proposals and
+             * the active singleton. Migration creates no delivery or start. */
+            createSessionPreparationTables(db)
+            version = 22
+        }
 
         if (version != newVersion) {
             error(
@@ -8260,6 +8409,18 @@ private class TrainlogDatabaseHelper(
                 "archive_path TEXT NOT NULL UNIQUE,manifest_sha256 TEXT NOT NULL," +
                 "archive_sha256 TEXT NOT NULL,archived_at TEXT NOT NULL,audit_json TEXT NOT NULL);",
         )
+    }
+
+    private fun createSessionPreparationTables(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS session_preparation_deliveries(" +
+                "delivery_id TEXT PRIMARY KEY,preparation_id TEXT NOT NULL,revision_id TEXT NOT NULL," +
+                "execution_session_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL " +
+                "CHECK(state IN('pending','started','cancelled')),payload_json TEXT NOT NULL," +
+                "received_at TEXT NOT NULL,started_at TEXT);",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS session_preparation_identity ON " +
+            "session_preparation_deliveries(preparation_id,revision_id);")
     }
 
     private fun createAiSessionDraftTables(db: SQLiteDatabase) {

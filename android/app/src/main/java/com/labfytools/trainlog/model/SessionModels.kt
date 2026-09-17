@@ -130,6 +130,18 @@ data class AiSessionDraft(
     val entries: List<SessionExerciseDraft>,
 )
 
+/** Immutable desktop preparation delivery waiting for an explicit start. */
+data class PreparedSession(
+    val deliveryId: String,
+    val preparationId: String,
+    val revisionId: String,
+    val executionSessionId: String,
+    val plannedFor: String?,
+    val title: String,
+    val notes: String?,
+    val entries: List<SessionExerciseDraft>,
+)
+
 data class SessionSummary(
     val sessionId: String,
     val startedAt: String,

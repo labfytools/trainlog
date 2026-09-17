@@ -83,9 +83,36 @@ fun AiSessionDraftsScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var pendingDeletion by remember { mutableStateOf<Pair<String, String>?>(null) }
     val drafts = remember(externalRevision, revision) { repository.listAiSessionDrafts() }
+    val preparations = remember(externalRevision, revision) { repository.listPreparedSessions() }
     TrainlogScreen(strings.getString(R.string.route_ai_drafts)) {
         message?.let { TrainlogInfo(it) }
-        if (drafts.isEmpty()) TrainlogInfo(strings.getString(R.string.draft_none))
+        if (drafts.isEmpty() && preparations.isEmpty()) TrainlogInfo(strings.getString(R.string.draft_none))
+        preparations.forEach { preparation ->
+            TrainlogFrame(preparation.title, active = true) {
+                TrainlogInfo(listOfNotNull(
+                    strings.getString(R.string.manual_preparation),
+                    preparation.plannedFor?.let { strings.getString(R.string.planned_for, formatDate(it)) },
+                    strings.resources.getQuantityString(R.plurals.exercise_count, preparation.entries.size, preparation.entries.size),
+                ).joinToString(" · "))
+                preparation.notes?.let { TrainlogInfo(it) }
+                preparation.entries.forEach { entry ->
+                    val plan = checkNotNull(entry.plan)
+                    val metric = plan.reps?.let { strings.resources.getQuantityString(R.plurals.repetition_count, it, it) }
+                        ?: plan.durationSeconds?.let { strings.resources.getQuantityString(R.plurals.seconds_count, it, it) }.orEmpty()
+                    val weight = plan.weightKg?.let { " · $it kg" }.orEmpty()
+                    TrainlogInfo(strings.getString(R.string.plan_draft_summary, entry.exercise.name, plan.sets, metric, weight, plan.restSeconds))
+                }
+                TrainlogPrimaryAction(strings.getString(R.string.start), strings.getString(R.string.start_preparation_description)) {
+                    when (val result = repository.startPreparedSession(preparation.deliveryId)) {
+                        StartAiSessionDraftResult.Started -> { onPendingChanged(); onStarted() }
+                        StartAiSessionDraftResult.ExistingActiveDraft ->
+                            message = strings.getString(R.string.draft_already_active)
+                        StartAiSessionDraftResult.NotPending -> { message = strings.getString(R.string.draft_missing); revision++; onPendingChanged() }
+                        is StartAiSessionDraftResult.Error -> message = localizedRepositoryMessage(strings, result.message)
+                    }
+                }
+            }
+        }
         drafts.forEach { draft ->
             TrainlogFrame(draft.title ?: strings.getString(R.string.session_proposal), active = true) {
                 TrainlogInfo(listOfNotNull(

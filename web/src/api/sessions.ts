@@ -65,6 +65,8 @@ export interface PreparationInput {
   notes: string | null
   editing_state: 'draft' | 'ready'
   occurrences: PreparationOccurrence[]
+  source_proposal_id?: string
+  source_payload_sha256?: string
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -172,4 +174,25 @@ export async function savePreparation(
   if (!object(value) || typeof value.preparation_id !== 'string' ||
       typeof value.revision_id !== 'string') throw new TypeError('réponse de sauvegarde invalide')
   return { preparation_id: value.preparation_id, revision_id: value.revision_id }
+}
+
+export async function prepareForAndroid(identity: string, revision: string): Promise<void> {
+  const csrf = await mutationCsrfToken()
+  const response = await fetch(
+    `/api/v1/sessions/preparation/${encodeURIComponent(identity)}/deliver`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Trainlog-CSRF-Token': csrf,
+        'X-Trainlog-Request-ID': requestId(),
+        'If-Match': `"${revision}"`,
+      },
+      body: '{}',
+    })
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    const reason = object(value) && typeof value.error === 'string' ? value.error : `HTTP ${response.status}`
+    throw new Error(reason)
+  }
 }

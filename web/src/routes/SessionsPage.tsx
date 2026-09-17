@@ -3,6 +3,7 @@ import {
   fetchCatalog,
   fetchSessionDetail,
   fetchReadonlySessionDetail,
+  prepareForAndroid,
   fetchSessionPage,
   savePreparation,
   type CatalogChoice,
@@ -37,7 +38,13 @@ function Editor({ initial, onSaved, onCancel }: {
 }) {
   const [input, setInput] = useState<PreparationInput>(() => initial ? {
     title: initial.title, session_type: initial.session_type, planned_for: initial.planned_for,
-    notes: initial.notes, editing_state: 'draft', occurrences: initial.occurrences,
+    notes: initial.notes, editing_state: 'draft', occurrences: initial.occurrences.map((value) => ({
+      ...value, entry_id: initial.kind === 'proposal' ? undefined : value.entry_id,
+    })),
+    ...(initial.kind === 'proposal' ? {
+      source_proposal_id: initial.identity,
+      source_payload_sha256: initial.source_fingerprint ?? undefined,
+    } : {}),
   } : emptyInput())
   const [catalog, setCatalog] = useState<CatalogChoice[]>([])
   const [catalogSearch, setCatalogSearch] = useState('')
@@ -72,7 +79,9 @@ function Editor({ initial, onSaved, onCancel }: {
     setSaving(true); setError('')
     try {
       const result = await savePreparation({ ...input, editing_state: ready ? 'ready' : 'draft' },
-        initial?.identity, initial?.revision_id)
+        initial?.kind === 'preparation' ? initial.identity : undefined,
+        initial?.kind === 'preparation' ? initial.revision_id : undefined)
+      if (ready) await prepareForAndroid(result.preparation_id, result.revision_id)
       onSaved(result.preparation_id)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Sauvegarde impossible')
@@ -149,7 +158,8 @@ function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'pro
   if (!detail) return <p aria-live="polite">Chargement de la fiche…</p>
   return <article className="session-detail"><div className="sessions-toolbar">
     <button type="button" className="quiet-action" onClick={onBack}>← Retour à la liste</button>
-    {kind === 'preparation' && <button type="button" className="primary-action" onClick={() => onEdit(detail)}>Modifier</button>}</div>
+    <button type="button" className="primary-action" onClick={() => onEdit(detail)}>
+      {kind === 'preparation' ? 'Modifier' : 'Préparer à partir de cette proposition'}</button></div>
     <header className="detail-summary"><p className="eyebrow">{kind === 'proposal' ? 'PROPOSITION IA' : 'PRÉPARATION MANUELLE'}</p>
       <h2>{detail.title || 'Sans titre'}</h2><p>{detail.planned_for ?? 'Aucune date planifiée'} · {detail.state}</p></header>
     {detail.notes && <section className="detail-tile"><h3>Note</h3><p>{detail.notes}</p></section>}

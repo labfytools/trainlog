@@ -726,7 +726,8 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
                                                char **output_json,
                                                size_t *output_size) {
     static const char *const ALLOWED[] = {
-        "title", "session_type", "planned_for", "notes", "editing_state", "occurrences"};
+        "title", "session_type", "planned_for", "notes", "editing_state", "occurrences",
+        "source_proposal_id", "source_payload_sha256"};
     yyjson_doc *input = NULL;
     yyjson_val *root;
     yyjson_val *occurrences;
@@ -738,6 +739,8 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
     const char *title;
     const char *session_type;
     const char *editing_state;
+    const char *source_proposal = NULL;
+    const char *source_fingerprint = NULL;
     size_t index;
     TrainlogStatus status = TRAINLOG_STATUS_OK;
     yyjson_mut_doc *response;
@@ -765,6 +768,21 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
     occurrences = yyjson_obj_get(root, "occurrences");
     if (!yyjson_is_arr(occurrences) || yyjson_arr_size(occurrences) > 64U ||
         (strcmp(editing_state, "ready") == 0 && (title[0] == '\0' || yyjson_arr_size(occurrences) == 0U))) {
+        yyjson_doc_free(input);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    if (yyjson_obj_get(root, "source_proposal_id") != NULL &&
+        (!bounded_json_string(yyjson_obj_get(root, "source_proposal_id"),
+                              TRAINLOG_ID_MAX + 1U,
+                              &source_proposal) ||
+         !bounded_json_string(yyjson_obj_get(root, "source_payload_sha256"),
+                              65U,
+                              &source_fingerprint) ||
+         strlen(source_fingerprint) != 64U)) {
+        yyjson_doc_free(input);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    if (preparation_id != NULL && preparation_id[0] != '\0' && source_proposal != NULL) {
         yyjson_doc_free(input);
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
@@ -797,6 +815,20 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
         return *output_json == NULL ? TRAINLOG_STATUS_SYSTEM_ERROR : TRAINLOG_STATUS_OK;
     }
     if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+        statement = NULL;
+    }
+    if ((preparation_id == NULL || preparation_id[0] == '\0') && source_proposal != NULL) {
+        if (sqlite3_prepare_v2(database->connection,
+                              "UPDATE session_preparations SET source_proposal_id=?1,source_payload_sha256=?2 WHERE preparation_id=?3 AND EXISTS(SELECT 1 FROM ai_session_draft_imports i WHERE i.draft_id=?1 AND i.payload_sha256=?2)",
+                              -1, &statement, NULL) != SQLITE_OK ||
+            sqlite3_bind_text(statement, 1, source_proposal, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_bind_text(statement, 2, source_fingerprint, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_bind_text(statement, 3, actual_preparation, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_step(statement) != SQLITE_DONE || sqlite3_changes(database->connection) != 1) {
+            status = TRAINLOG_STATUS_CONFLICT;
+            goto rollback;
+        }
         (void)sqlite3_finalize(statement);
         statement = NULL;
     }
@@ -912,5 +944,123 @@ rollback:
     *output_json = NULL;
     *output_size = 0U;
     yyjson_doc_free(input);
+    return status;
+}
+
+TrainlogStatus trainlog_web_sessions_deliver_json(TrainlogDatabase *database,
+                                                  const char *preparation_id,
+                                                  const char *expected_revision,
+                                                  const char *request_id,
+                                                  char **output_json,
+                                                  size_t *output_size) {
+    sqlite3_stmt *statement = NULL;
+    char delivery_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char execution_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char now[TRAINLOG_TIMESTAMP_MAX + 1U];
+    yyjson_mut_doc *response = NULL;
+    yyjson_mut_val *root;
+    TrainlogStatus status = TRAINLOG_STATUS_DATABASE_ERROR;
+
+    if (database == NULL || preparation_id == NULL || expected_revision == NULL ||
+        request_id == NULL || request_id[0] == '\0' || output_json == NULL || output_size == NULL ||
+        trainlog_id_generate("spd", delivery_id, sizeof(delivery_id)) != TRAINLOG_STATUS_OK ||
+        trainlog_id_generate("se", execution_id, sizeof(execution_id)) != TRAINLOG_STATUS_OK ||
+        !timestamp_now(now)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    *output_json = NULL;
+    *output_size = 0U;
+    if (sqlite3_exec(database->connection, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (sqlite3_prepare_v2(database->connection,
+                           "SELECT response_json FROM session_preparation_requests WHERE request_id=?1 AND command='deliver'",
+                           -1, &statement, NULL) == SQLITE_OK &&
+        sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT) == SQLITE_OK &&
+        sqlite3_step(statement) == SQLITE_ROW) {
+        const char *saved = (const char *)sqlite3_column_text(statement, 0);
+        *output_size = saved == NULL ? 0U : strlen(saved);
+        *output_json = saved == NULL ? NULL : strdup(saved);
+        (void)sqlite3_finalize(statement);
+        (void)sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL);
+        return *output_json == NULL ? TRAINLOG_STATUS_SYSTEM_ERROR : TRAINLOG_STATUS_OK;
+    }
+    if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+        statement = NULL;
+    }
+    if (sqlite3_prepare_v2(database->connection,
+                          "SELECT 1 FROM session_preparations p WHERE p.preparation_id=?1 AND p.current_revision_id=?2 AND p.editing_state='ready' AND EXISTS(SELECT 1 FROM session_preparation_entries e WHERE e.revision_id=p.current_revision_id)",
+                          -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_ROW) {
+        status = TRAINLOG_STATUS_CONFLICT;
+        goto delivery_rollback;
+    }
+    (void)sqlite3_finalize(statement);
+    statement = NULL;
+    if (sqlite3_prepare_v2(database->connection,
+                          "INSERT INTO session_preparation_deliveries VALUES(?1,?2,?3,?4,'pending',?5,NULL,NULL)",
+                          -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, delivery_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 4, execution_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 5, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE) {
+        goto delivery_rollback;
+    }
+    (void)sqlite3_finalize(statement);
+    statement = NULL;
+    response = yyjson_mut_doc_new(NULL);
+    root = response == NULL ? NULL : yyjson_mut_obj(response);
+    if (response == NULL || root == NULL) {
+        status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto delivery_rollback;
+    }
+    yyjson_mut_doc_set_root(response, root);
+    (void)yyjson_mut_obj_add_uint(response, root, "api_version", 1U);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "delivery_id", delivery_id);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "execution_session_id", execution_id);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "revision_id", expected_revision);
+    status = write_document(response, output_json, output_size);
+    response = NULL;
+    if (status != TRAINLOG_STATUS_OK ||
+        sqlite3_prepare_v2(database->connection,
+                          "INSERT INTO session_preparation_requests VALUES(?1,'deliver',?2,?3,?4,?5)",
+                          -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 4, *output_json, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 5, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        goto delivery_rollback;
+    }
+    statement = NULL;
+    if (sqlite3_prepare_v2(database->connection,
+                          "UPDATE session_preparations SET delivery_state='pending' WHERE preparation_id=?1 AND current_revision_id=?2",
+                          -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_changes(database->connection) != 1 ||
+        sqlite3_finalize(statement) != SQLITE_OK ||
+        sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) != SQLITE_OK) {
+        statement = NULL;
+        goto delivery_rollback;
+    }
+    return TRAINLOG_STATUS_OK;
+
+delivery_rollback:
+    if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+    }
+    yyjson_mut_doc_free(response);
+    (void)sqlite3_exec(database->connection, "ROLLBACK", NULL, NULL, NULL);
+    free(*output_json);
+    *output_json = NULL;
+    *output_size = 0U;
     return status;
 }

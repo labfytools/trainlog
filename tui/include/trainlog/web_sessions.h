@@ -65,4 +65,12 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
                                                char **output_json,
                                                size_t *output_size);
 
+/* Creates one explicit immutable delivery for a ready current revision. */
+TrainlogStatus trainlog_web_sessions_deliver_json(TrainlogDatabase *database,
+                                                  const char *preparation_id,
+                                                  const char *expected_revision,
+                                                  const char *request_id,
+                                                  char **output_json,
+                                                  size_t *output_size);
+
 #endif

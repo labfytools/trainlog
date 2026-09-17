@@ -37,6 +37,7 @@ RUNTIME_TOOLS = [
     "export_exercise_body_zones.py",
     "export_training_feedback.py",
     "export_ai_session_drafts.py",
+    "export_session_preparations.py",
 ]
 
 
@@ -96,7 +97,7 @@ def main() -> int:
         ).strip(),
         "product_version": "0.1.2",
         "desktop_schema": 23,
-        "android_schema": 21,
+        "android_schema": 22,
         "protocols": [
             "mobile-export-v3",
             "mobile-history-v4",

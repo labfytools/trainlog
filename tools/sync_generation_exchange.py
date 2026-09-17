@@ -70,6 +70,8 @@ ARTIFACTS = (
      "causal_delete_exchange.py", ("export",)),
     ("ai-proposals", "trainlog-ai-session-drafts", 1, "ai-proposals-v1.json", False,
      "export_ai_session_drafts.py", ()),
+    ("session-preparations", "trainlog-session-preparations", 1,
+     "session-preparations-v1.json", False, "export_session_preparations.py", ()),
 )
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS}
 
@@ -403,6 +405,22 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                 [(generation, value["logical_name"], value["format"], value["version"],
                   value["filename"], value["size"], value["sha256"], int(value["required"]))
                  for value in descriptors])
+            # CONTRACT: the exact generation relation is recorded only after
+            # its complete immutable artifact has been captured successfully.
+            preparation_path = stage / "session-preparations-v1.json"
+            if preparation_path.is_file():
+                captured_preparations = strict_json(
+                    preparation_path.read_bytes(), MAX_ARTIFACT
+                )["deliveries"]
+                for delivery in captured_preparations:
+                    cursor = db.execute(
+                        "UPDATE session_preparation_deliveries SET generation_id=? "
+                        "WHERE delivery_id=? AND revision_id=? AND "
+                        "state IN('pending','remote_unknown') AND generation_id IS NULL",
+                        (generation, delivery["delivery_id"], delivery["revision_id"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise GenerationError("preparation delivery changed during capture")
             causal_path = stage / "causal-deletions-v1.json"
             if causal_path.is_file():
                 for operation in json.loads(causal_path.read_text())["operations"]:
@@ -661,6 +679,20 @@ def accept_ack(database: Path, path: Path) -> str:
             raise GenerationError("generation is not awaiting ACK")
         db.execute("UPDATE sync_generations SET status=?,acknowledged_at=? WHERE generation_id=?",
                    (status, ack["consumed_at"], ack["generation_id"]))
+        if status == "acknowledged":
+            db.execute(
+                "UPDATE session_preparation_deliveries SET state='acknowledged',acknowledged_at=? "
+                "WHERE generation_id=? AND state IN('pending','remote_unknown')",
+                (ack["consumed_at"], ack["generation_id"]),
+            )
+            db.execute(
+                "UPDATE session_preparations SET delivery_state='acknowledged' WHERE EXISTS("
+                "SELECT 1 FROM session_preparation_deliveries d WHERE "
+                "d.preparation_id=session_preparations.preparation_id AND "
+                "d.revision_id=session_preparations.current_revision_id AND "
+                "d.generation_id=? AND d.state='acknowledged')",
+                (ack["generation_id"],),
+            )
         db.commit(); return status
 
 

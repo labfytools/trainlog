@@ -810,12 +810,15 @@ static enum MHD_Result handle_request(void *closure,
             const char *identity = NULL;
             const char *expected = "";
             char expected_buffer[TRAINLOG_ID_MAX + 1U];
+            char identity_buffer[TRAINLOG_ID_MAX + 1U];
+            bool delivery = false;
             TrainlogStatus status;
 
             if ((strcmp(url, "/api/v1/sessions/preparations") == 0 &&
                  strcmp(method, MHD_HTTP_METHOD_POST) != 0) ||
                 (strcmp(url, "/api/v1/sessions/preparations") != 0 &&
-                 strcmp(method, MHD_HTTP_METHOD_PUT) != 0)) {
+                 strcmp(method, MHD_HTTP_METHOD_PUT) != 0 &&
+                 strcmp(method, MHD_HTTP_METHOD_POST) != 0)) {
                 return queue_json(connection,
                                   MHD_HTTP_METHOD_NOT_ALLOWED,
                                   "{\"error\":\"method_not_allowed\"}\n",
@@ -837,6 +840,28 @@ static enum MHD_Result handle_request(void *closure,
             if (strcmp(url, "/api/v1/sessions/preparations") != 0) {
                 size_t length;
                 identity = url + strlen("/api/v1/sessions/preparation/");
+                length = strlen(identity);
+                if (length > strlen("/deliver") &&
+                    strcmp(identity + length - strlen("/deliver"), "/deliver") == 0) {
+                    size_t identity_length = length - strlen("/deliver");
+                    if (identity_length == 0U || identity_length > TRAINLOG_ID_MAX) {
+                        return queue_json(connection,
+                                          MHD_HTTP_BAD_REQUEST,
+                                          "{\"error\":\"invalid_identity\"}\n",
+                                          NULL);
+                    }
+                    (void)memcpy(identity_buffer, identity, identity_length);
+                    identity_buffer[identity_length] = '\0';
+                    identity = identity_buffer;
+                    delivery = true;
+                }
+                if ((delivery && strcmp(method, MHD_HTTP_METHOD_POST) != 0) ||
+                    (!delivery && strcmp(method, MHD_HTTP_METHOD_PUT) != 0)) {
+                    return queue_json(connection,
+                                      MHD_HTTP_METHOD_NOT_ALLOWED,
+                                      "{\"error\":\"method_not_allowed\"}\n",
+                                      delivery ? "POST" : "PUT");
+                }
                 if (if_match == NULL || if_match[0] != '"') {
                     return queue_json(connection,
                                       MHD_HTTP_PRECONDITION_REQUIRED,
@@ -855,14 +880,23 @@ static enum MHD_Result handle_request(void *closure,
                 expected_buffer[length - 2U] = '\0';
                 expected = expected_buffer;
             }
-            status = trainlog_web_sessions_save_json(context->database,
-                                                     identity,
-                                                     expected,
-                                                     request_id,
-                                                     state->body,
-                                                     state->body_size,
-                                                     &json,
-                                                     &json_size);
+            if (delivery) {
+                status = trainlog_web_sessions_deliver_json(context->database,
+                                                            identity,
+                                                            expected,
+                                                            request_id,
+                                                            &json,
+                                                            &json_size);
+            } else {
+                status = trainlog_web_sessions_save_json(context->database,
+                                                         identity,
+                                                         expected,
+                                                         request_id,
+                                                         state->body,
+                                                         state->body_size,
+                                                         &json,
+                                                         &json_size);
+            }
             if (status == TRAINLOG_STATUS_CONFLICT) {
                 free(json);
                 return queue_json(

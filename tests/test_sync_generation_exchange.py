@@ -23,6 +23,8 @@ CREATE TABLE sync_consumed_generations(generation_id TEXT PRIMARY KEY,run_id TEX
 CREATE TABLE sync_acknowledgements(ack_id TEXT PRIMARY KEY,generation_id TEXT,run_id TEXT,producer_peer_id TEXT,consumer_peer_id TEXT,manifest_sha256 TEXT,result TEXT,durability TEXT,created_at TEXT,diagnostic TEXT,payload_sha256 TEXT);
 CREATE TABLE sync_generation_archives(generation_id TEXT PRIMARY KEY,archive_path TEXT UNIQUE,manifest_sha256 TEXT,archive_sha256 TEXT,archived_at TEXT,audit_json TEXT);
 CREATE TABLE sync_causal_publications(operation_id TEXT,generation_id TEXT,first_emission INTEGER,PRIMARY KEY(operation_id,generation_id));
+CREATE TABLE session_preparation_deliveries(delivery_id TEXT PRIMARY KEY,preparation_id TEXT,revision_id TEXT,execution_session_id TEXT,state TEXT,created_at TEXT,generation_id TEXT,acknowledged_at TEXT);
+CREATE TABLE session_preparations(preparation_id TEXT PRIMARY KEY,current_revision_id TEXT,delivery_state TEXT);
 PRAGMA user_version=23;
 """
 

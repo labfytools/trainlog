@@ -62,7 +62,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
     val draftLoad = remember(draftRevision, catalogRevision) { repository.loadActiveSessionDraft() }
     val activeDraft = (draftLoad as? ActiveDraftLoadResult.Loaded)?.draft
     val pendingAiDraftCount = remember(draftRevision, catalogRevision) {
-        repository.listAiSessionDrafts().size
+        repository.listAiSessionDrafts().size + repository.listPreparedSessions().size
     }
 
     fun open(route: AppRoute) { navigationController.open(route) }

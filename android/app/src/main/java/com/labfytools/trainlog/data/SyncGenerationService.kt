@@ -69,7 +69,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
             )
         private val SUPPORTED =
             (ANDROID_KINDS.values +
-                    Kind("trainlog-ai-session-drafts", 1, "ai-proposals-v1.json", false))
+                    Kind("trainlog-ai-session-drafts", 1, "ai-proposals-v1.json", false) +
+                    Kind("trainlog-session-preparations", 1, "session-preparations-v1.json", false))
                 .map { it.format to it.version }
                 .toSet()
 
@@ -834,6 +835,12 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 if ("ai-proposals" in a)
                     apply("ai-proposals") {
                         repository.applyAiSessionDraftsJson(checkNotNull(a["ai-proposals"]))
+                    }
+                if ("session-preparations" in a)
+                    apply("session-preparations") {
+                        repository.applySessionPreparationsJson(
+                            checkNotNull(a["session-preparations"])
+                        )
                     }
                 val consumedAt = OffsetDateTime.now().toString()
                 val ack =
