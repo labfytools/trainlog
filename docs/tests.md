@@ -1323,3 +1323,10 @@ GCC 16.2.1 now compiles beyond the former `misleading-indentation` failures in
 blocked by distinct pre-existing `format-truncation` diagnostics in the Web
 accepted-response buffer and bounded test path buffers. Warning policy remains
 unchanged; GCC is not reported as green.
+
+The readability closeout preserves the **81/81** normal Meson and **81/81**
+ASan/UBSan inventories. The isolated Android run reports **220 tests: 215
+passed, five skipped, zero failures/errors**, and `assembleDebug` succeeds on
+JDK 17. The real Firefox/object-I/O-boundary MTP conversation also passes after
+formatting. A source comparison against the pre-readability commit confirms
+that the scoped test names and assertion counts are unchanged.
