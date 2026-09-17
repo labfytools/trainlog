@@ -1,12 +1,14 @@
 import type { MouseEvent } from 'react'
 import { routes, type AppRoute } from '../app/routes'
+import { SyncControl } from './SyncControl'
 
 interface HeaderProps {
   activeRoute: AppRoute
   onNavigate: (path: string) => void
+  onSyncCommitted: () => void
 }
 
-export function Header({ activeRoute, onNavigate }: HeaderProps) {
+export function Header({ activeRoute, onNavigate, onSyncCommitted }: HeaderProps) {
   const follow = (event: MouseEvent<HTMLAnchorElement>, path: string) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
@@ -30,6 +32,7 @@ export function Header({ activeRoute, onNavigate }: HeaderProps) {
           </a>
         ))}
       </nav>
+      <SyncControl onCommitted={onSyncCommitted} />
     </header>
   )
 }

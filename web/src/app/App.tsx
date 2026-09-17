@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchHealth, type Health } from '../api/health'
 import { fetchDashboard, type DashboardSnapshot } from '../api/dashboard'
 import { Footer } from '../components/Footer'
@@ -23,6 +23,10 @@ export function App() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null)
   const [dashboardPending, setDashboardPending] = useState(true)
   const [dashboardFailed, setDashboardFailed] = useState(false)
+  const reloadDashboard = useCallback(() => {
+    fetchDashboard().then((value) => { setDashboard(value); setDashboardFailed(false) })
+      .catch(() => setDashboardFailed(true)).finally(() => setDashboardPending(false))
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -46,7 +50,7 @@ export function App() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Aller au contenu</a>
-      <Header activeRoute={route} onNavigate={navigate} />
+      <Header activeRoute={route} onNavigate={navigate} onSyncCommitted={reloadDashboard} />
       <main className="app-main" id="main-content">{content}</main>
       <Footer health={health} healthPending={healthPending} healthFailed={healthFailed} dashboard={dashboard} />
     </div>
