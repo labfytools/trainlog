@@ -80,7 +80,10 @@ class DeploymentToolsTest(unittest.TestCase):
                 [
                     "python3",
                     "-c",
-                    "import sync_peer_worker; import sync_orchestrator",
+                    "import pathlib; import sync_peer_worker; import sync_orchestrator; "
+                    "import sync_generation_exchange as g; "
+                    "assert all((pathlib.Path.cwd()/row[5]).is_file() "
+                    "for row in g.ARTIFACTS)",
                 ],
                 cwd=output / "tools",
                 capture_output=True,

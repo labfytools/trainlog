@@ -29,10 +29,14 @@ RUNTIME_TOOLS = [
     "causal_delete_exchange.py",
     "import_exercise_profile_state.py",
     "export_exercise_profile_state.py",
+    "export_pc_catalog.py",
     "export_pc_mobile.py",
+    "export_exercise_aliases.py",
     "export_equipment_definitions.py",
+    "export_equipment_associations.py",
     "export_exercise_body_zones.py",
     "export_training_feedback.py",
+    "export_ai_session_drafts.py",
 ]
 
 
