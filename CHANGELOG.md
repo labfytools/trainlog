@@ -2,6 +2,11 @@
 
 ## Unreleased — 0.1.2
 
+- Added opt-in foreground generation coordination, peer-evidenced capabilities,
+  truthful bounded Web progress, descendant cleanup, an integrated Android ↔
+  desktop Firefox proof, and synthetic candidate/SQLite recovery tooling on the
+  development branch. Physical MTP and deployment remain pending.
+
 - Completed the grouped `TRAINLOG_SYNC_WEB_END_TO_END_V1` mission: the opt-in
   full-generation orchestrator, protected asynchronous Web API, global sync
   control, durable reconnect reporting, Dashboard refresh and read-only draft

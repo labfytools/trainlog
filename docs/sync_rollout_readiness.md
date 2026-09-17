@@ -1,5 +1,46 @@
 # Full-generation sync rollout readiness
 
+## Deployment-readiness candidate
+
+The generation path remains disabled unless desktop configuration authorizes a
+specific persisted Android peer and Android contains the strict opt-in document
+`Documents/Trainlog/trainlog-sync-generation-opt-in-v1.json`. Absence preserves
+V3; malformed opt-in fails explicitly. The Web coordinator owns a fixed worker,
+bounded typed progress and its descendant process group. The foreground Android
+coordinator advertises its real peer identity, publishes manifest-last bytes,
+consumes the return generation and emits a durable correlated ACK.
+
+The integrated proof uses a directory object-I/O double. It is not evidence for
+physical libmtp behavior. The shipped physical generation adapter is not yet
+complete, so generation mode must not be enabled on services.
+
+### Candidate, backup and recovery
+
+1. Build and validate one revision, then run `python3
+   tools/package_sync_candidate.py --output <new-private-directory>`. Its
+   inventory records hashes, schemas, protocols, entry points and dependencies.
+2. `assembleDebug` is development evidence only. Rollout requires the existing
+   release signing identity, verification of its public certificate and a valid
+   increasing `versionCode`; this mission reads no signing secret.
+3. Quiesce old writers only during an authorized rollout. Desktop backup uses
+   `backup_trainlog_sqlite.py` and SQLite's backup API, then integrity and
+   foreign-key checks.
+4. V3 is not an Android backup and omits active-draft and causal state. No safe
+   backup path for the installed release was demonstrated without device access.
+   This is a hard gate: an authorized procedure must capture the app database,
+   WAL-consistent state and active draft before update.
+5. Replacing a binary does not roll back a schema. Before any exchange, a
+   mutually compatible captured pair may be restored. After causal writes or
+   ACKs, never restore only one peer: stop synchronization, preserve both stores
+   and all artifacts, and use an explicit paired recovery plan.
+6. The eight-generation-per-peer ceiling is an admission gate. Exhaustion must
+   preserve pending generations, tombstones, finalizations and ACK ledgers; it
+   must never trigger hidden eviction.
+
+Actual rollout needs one separate approval for the signed APK, desktop bundle,
+verified user backups, coordinated service quiescence, pairing, synthetic smoke
+and non-destructive hardware smoke. Drive remains separate and untested here.
+
 This is a non-executed rollout checklist. The development branch implements the
 path; the daily installation still uses V3.
 

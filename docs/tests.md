@@ -1,5 +1,12 @@
 # Tests and validation
 
+`SyncDeploymentConversationTest` executes both production generation services
+and reopens Android storage. `test_web_sync_browser.py` adds a real Firefox click
+through the C adapter, observes the desktop commit at an Android test barrier,
+then releases the real ACK. This proves the directory transport double, not
+physical MTP. Orchestrator tests cover bounded streams and descendant cleanup;
+deployment-tool tests cover consistent SQLite backup and candidate inventory.
+
 The `ai_history_export` test covers an empty database, a simple session,
 distinct multi-occurrences of one exercise, ordered sets, exact occurrence
 feedback, session-owned follow-up feedback, JSON escaping/UTF-8, MAX history,

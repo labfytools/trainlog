@@ -1,5 +1,12 @@
 # Architecture
 
+Full-generation synchronization uses the common admission lock and a fixed
+coordinator worker. Browser input cannot select commands, paths, timeouts or
+capabilities. Peer identity/capabilities come from Android advertisement;
+Android participates only during a foreground user action. Typed progress is
+bounded and durable, and completion is corroborated by SQLite generation/ACK
+records.
+
 ## 1. System boundary
 
 Trainlog Core is the product authority and separates capture, durable history,

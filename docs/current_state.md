@@ -1,5 +1,10 @@
 # Current implementation state
 
+The development branch has opt-in full-generation coordination with durable Web
+progress and a foreground Android conversation. The cross-implementation
+directory-I/O-double proof is integrated. Physical MTP, release signing, user
+backups, main integration and deployment are not complete.
+
 Snapshot date: **2026-09-17**.
 
 This document owns the current implemented state. Historical checkpoints and

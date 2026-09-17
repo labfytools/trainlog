@@ -1,0 +1,29 @@
+import json, sqlite3, subprocess, tempfile, unittest
+from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[1]
+
+class DeploymentToolsTest(unittest.TestCase):
+  def test_sqlite_backup_captures_committed_wal_and_restores_invariants(self):
+    with tempfile.TemporaryDirectory() as directory:
+      root=Path(directory);source=root/"source.db";backup=root/"backup.db"
+      db=sqlite3.connect(source);db.execute("PRAGMA journal_mode=WAL");db.execute("PRAGMA foreign_keys=ON")
+      db.executescript("CREATE TABLE parent(id INTEGER PRIMARY KEY);CREATE TABLE child(parent_id INTEGER REFERENCES parent);INSERT INTO parent VALUES(7);INSERT INTO child VALUES(7);");db.commit()
+      result=subprocess.run(["python3",str(ROOT/"tools/backup_trainlog_sqlite.py"),str(source),str(backup)],capture_output=True,text=True)
+      self.assertEqual(result.returncode,0,result.stderr)
+      with sqlite3.connect(backup) as restored:
+        self.assertEqual(restored.execute("SELECT * FROM child").fetchall(),[(7,)])
+        self.assertEqual(restored.execute("PRAGMA integrity_check").fetchone(),("ok",))
+      db.close()
+
+  def test_candidate_is_self_contained_and_hashed(self):
+    with tempfile.TemporaryDirectory() as directory:
+      output=Path(directory)/"candidate"
+      result=subprocess.run(["python3",str(ROOT/"tools/package_sync_candidate.py"),"--output",str(output)],capture_output=True,text=True)
+      self.assertEqual(result.returncode,0,result.stderr)
+      inventory=json.loads((output/"candidate-inventory.json").read_text())
+      self.assertEqual(inventory["product_version"],"0.1.2")
+      self.assertTrue((output/"bin/trainlog").is_file())
+      self.assertTrue(any(row["path"]=="tools/sync_peer_worker.py" for row in inventory["files"]))
+
+if __name__=="__main__": unittest.main()

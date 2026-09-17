@@ -1,5 +1,10 @@
 # Roadmap
 
+Before controlled rollout, complete and validate the physical libmtp generation
+adapter, establish a legitimate installed-Android backup path, verify release
+signing continuity and obtain explicit rollout approval. Do not enable generation
+mode or advance `main` before those gates.
+
 This document owns future work. The implemented baseline is summarized in
 [current_state.md](current_state.md); completed narratives and evidence belong
 in [reviews](reviews/) and [CHANGELOG.md](../CHANGELOG.md).
