@@ -40,15 +40,18 @@ static const TrainlogDashboardTileLayout defaults[TRAINLOG_DASHBOARD_LAYOUT_TILE
 
 static int contract_index(const char *id) {
     size_t index;
-    for (index = 0U; index < TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT; ++index)
-        if (strcmp(id, contracts[index].id) == 0)
+    for (index = 0U; index < TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT; ++index) {
+        if (strcmp(id, contracts[index].id) == 0) {
             return (int)index;
+        }
+    }
     return -1;
 }
 
 void trainlog_dashboard_layout_default(TrainlogDashboardLayout *layout) {
-    if (layout == NULL)
+    if (layout == NULL) {
         return;
+    }
     layout->revision = 0U;
     (void)memcpy(layout->tiles, defaults, sizeof(defaults));
 }
@@ -61,25 +64,30 @@ static bool overlap(const TrainlogDashboardTileLayout *a, const TrainlogDashboar
 bool trainlog_dashboard_layout_validate(const TrainlogDashboardLayout *layout) {
     bool seen[TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT] = {false};
     size_t index;
-    if (layout == NULL || layout->revision > TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION)
+    if (layout == NULL || layout->revision > TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION) {
         return false;
+    }
     for (index = 0U; index < TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT; ++index) {
         const TrainlogDashboardTileLayout *tile = &layout->tiles[index];
         int found = contract_index(tile->id);
         const TileContract *contract;
         size_t other;
-        if (found < 0 || seen[(size_t)found])
+        if (found < 0 || seen[(size_t)found]) {
             return false;
+        }
         seen[(size_t)found] = true;
         contract = &contracts[(size_t)found];
         if (tile->y > TRAINLOG_DASHBOARD_LAYOUT_MAX_Y || tile->width < contract->min_width ||
             tile->width > contract->max_width || tile->height < contract->min_height ||
             tile->height > contract->max_height ||
-            tile->x + tile->width > TRAINLOG_DASHBOARD_LAYOUT_COLUMNS)
+            tile->x + tile->width > TRAINLOG_DASHBOARD_LAYOUT_COLUMNS) {
             return false;
-        for (other = index + 1U; other < TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT; ++other)
-            if (overlap(tile, &layout->tiles[other]))
+        }
+        for (other = index + 1U; other < TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT; ++other) {
+            if (overlap(tile, &layout->tiles[other])) {
                 return false;
+            }
+        }
     }
     return true;
 }
@@ -90,11 +98,13 @@ static bool exact_object(const yyjson_val *value, size_t expected) {
 
 static bool read_u16(yyjson_val *value, uint16_t *output) {
     uint64_t number;
-    if (!yyjson_is_uint(value))
+    if (!yyjson_is_uint(value)) {
         return false;
+    }
     number = yyjson_get_uint(value);
-    if (number > UINT16_MAX)
+    if (number > UINT16_MAX) {
         return false;
+    }
     *output = (uint16_t)number;
     return true;
 }
@@ -111,11 +121,13 @@ trainlog_dashboard_layout_parse(const char *json, size_t size, TrainlogDashboard
     yyjson_val *tiles;
     size_t index;
     if (json == NULL || layout == NULL || size == 0U ||
-        size >= TRAINLOG_DASHBOARD_LAYOUT_JSON_CAPACITY)
+        size >= TRAINLOG_DASHBOARD_LAYOUT_JSON_CAPACITY) {
         return TRAINLOG_DASHBOARD_LAYOUT_INVALID;
+    }
     document = yyjson_read_opts((char *)json, size, YYJSON_READ_NOFLAG, NULL, &error);
-    if (document == NULL)
+    if (document == NULL) {
         return TRAINLOG_DASHBOARD_LAYOUT_INVALID;
+    }
     root = yyjson_doc_get_root(document);
     if (!exact_object(root, 5U) ||
         !yyjson_equals_str(yyjson_obj_get(root, "format"), "trainlog-dashboard-layout") ||
@@ -162,14 +174,16 @@ bool trainlog_dashboard_layout_path(char *output, size_t capacity) {
     const char *base = getenv("XDG_CONFIG_HOME");
     const char *home;
     int length;
-    if (output == NULL || capacity == 0U)
+    if (output == NULL || capacity == 0U) {
         return false;
-    if (base != NULL && base[0] != '\0')
+    }
+    if (base != NULL && base[0] != '\0') {
         length = snprintf(output, capacity, "%s/trainlog/web/dashboard-layout-v1.json", base);
-    else {
+    } else {
         home = getenv("HOME");
-        if (home == NULL || home[0] == '\0')
+        if (home == NULL || home[0] == '\0') {
             return false;
+        }
         length =
             snprintf(output, capacity, "%s/.config/trainlog/web/dashboard-layout-v1.json", home);
     }
@@ -181,32 +195,40 @@ static bool ensure_private_directories(const char *path) {
     char trainlog[4096];
     char *last;
     struct stat status;
-    if (path == NULL || strlen(path) >= sizeof(web))
+    if (path == NULL || strlen(path) >= sizeof(web)) {
         return false;
+    }
     (void)snprintf(web, sizeof(web), "%s", path);
     last = strrchr(web, '/');
-    if (last == NULL)
+    if (last == NULL) {
         return false;
+    }
     *last = '\0';
     (void)snprintf(trainlog, sizeof(trainlog), "%s", web);
     last = strrchr(trainlog, '/');
-    if (last == NULL)
+    if (last == NULL) {
         return false;
+    }
     *last = '\0';
     /* CONTRACT: only the two Trainlog-owned directories are created/chmodded;
      * an existing symlink or non-directory is never followed. */
     {
-        if (mkdir(trainlog, 0700) != 0 && errno != EEXIST)
+        if (mkdir(trainlog, 0700) != 0 && errno != EEXIST) {
             return false;
-        if (lstat(trainlog, &status) != 0 || !S_ISDIR(status.st_mode))
+        }
+        if (lstat(trainlog, &status) != 0 || !S_ISDIR(status.st_mode)) {
             return false;
-        if (chmod(trainlog, 0700) != 0)
+        }
+        if (chmod(trainlog, 0700) != 0) {
             return false;
+        }
     }
-    if (mkdir(web, 0700) != 0 && errno != EEXIST)
+    if (mkdir(web, 0700) != 0 && errno != EEXIST) {
         return false;
-    if (lstat(web, &status) != 0 || !S_ISDIR(status.st_mode))
+    }
+    if (lstat(web, &status) != 0 || !S_ISDIR(status.st_mode)) {
         return false;
+    }
     return chmod(web, 0700) == 0;
 }
 
@@ -215,19 +237,23 @@ static bool sync_parent(const char *path) {
     char *slash;
     int fd;
     bool ok;
-    if (strlen(path) >= sizeof(parent))
+    if (strlen(path) >= sizeof(parent)) {
         return false;
+    }
     (void)snprintf(parent, sizeof(parent), "%s", path);
     slash = strrchr(parent, '/');
-    if (slash == NULL)
+    if (slash == NULL) {
         return false;
+    }
     *slash = '\0';
     fd = open(parent, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    if (fd < 0)
+    if (fd < 0) {
         return false;
+    }
     ok = fsync(fd) == 0;
-    if (close(fd) != 0)
+    if (close(fd) != 0) {
         ok = false;
+    }
     return ok;
 }
 
@@ -244,8 +270,9 @@ bool trainlog_dashboard_layout_serialize(const TrainlogDashboardLayout *layout,
                               : source == TRAINLOG_DASHBOARD_LAYOUT_INVALID_PERSISTED
                                   ? "invalid_persisted"
                                   : "default";
-    if (!trainlog_dashboard_layout_validate(layout) || output == NULL || size == NULL)
+    if (!trainlog_dashboard_layout_validate(layout) || output == NULL || size == NULL) {
         return false;
+    }
 #define APPEND(...)                                                                                \
     do {                                                                                           \
         count = snprintf(output + used, capacity - used, __VA_ARGS__);                             \
@@ -256,8 +283,9 @@ bool trainlog_dashboard_layout_serialize(const TrainlogDashboardLayout *layout,
     APPEND("{\"format\":\"trainlog-dashboard-layout\",\"version\":1,"
            "\"revision\":%llu,\"columns\":12",
            (unsigned long long)layout->revision);
-    if (include_source)
+    if (include_source) {
         APPEND(",\"source\":\"%s\"", source_name);
+    }
     APPEND(",\"tiles\":[");
     for (index = 0U; index < TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT; ++index) {
         const TrainlogDashboardTileLayout *tile = &layout->tiles[index];
@@ -284,15 +312,17 @@ trainlog_dashboard_layout_load(TrainlogDashboardLayout *layout,
     ssize_t count;
     int fd;
     TrainlogDashboardLayoutResult result;
-    if (layout == NULL || source == NULL || !trainlog_dashboard_layout_path(path, sizeof(path)))
+    if (layout == NULL || source == NULL || !trainlog_dashboard_layout_path(path, sizeof(path))) {
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
+    }
     trainlog_dashboard_layout_default(layout);
     *source = TRAINLOG_DASHBOARD_LAYOUT_DEFAULT;
     fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     if (fd < 0) {
         if (errno == ENOENT || errno == ELOOP) {
-            if (errno == ELOOP)
+            if (errno == ELOOP) {
                 *source = TRAINLOG_DASHBOARD_LAYOUT_INVALID_PERSISTED;
+            }
             return TRAINLOG_DASHBOARD_LAYOUT_OK;
         }
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
@@ -312,8 +342,9 @@ trainlog_dashboard_layout_load(TrainlogDashboardLayout *layout,
     if (result != TRAINLOG_DASHBOARD_LAYOUT_OK) {
         trainlog_dashboard_layout_default(layout);
         *source = TRAINLOG_DASHBOARD_LAYOUT_INVALID_PERSISTED;
-    } else
+    } else {
         *source = TRAINLOG_DASHBOARD_LAYOUT_PERSISTED;
+    }
     return TRAINLOG_DASHBOARD_LAYOUT_OK;
 }
 
@@ -321,10 +352,12 @@ static bool write_all(int fd, const char *data, size_t size) {
     size_t used = 0U;
     while (used < size) {
         ssize_t count = write(fd, data + used, size - used);
-        if (count < 0 && errno == EINTR)
+        if (count < 0 && errno == EINTR) {
             continue;
-        if (count <= 0)
+        }
+        if (count <= 0) {
             return false;
+        }
         used += (size_t)count;
     }
     return true;
@@ -341,26 +374,32 @@ TrainlogDashboardLayoutResult trainlog_dashboard_layout_save(const TrainlogDashb
     bool ok;
     if (layout == NULL || saved == NULL || !trainlog_dashboard_layout_validate(layout) ||
         layout->revision != expected_revision ||
-        expected_revision >= TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION)
+        expected_revision >= TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION) {
         return TRAINLOG_DASHBOARD_LAYOUT_INVALID;
-    if (trainlog_dashboard_layout_load(&current, &source) != TRAINLOG_DASHBOARD_LAYOUT_OK)
+    }
+    if (trainlog_dashboard_layout_load(&current, &source) != TRAINLOG_DASHBOARD_LAYOUT_OK) {
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
-    if (current.revision != expected_revision)
+    }
+    if (current.revision != expected_revision) {
         return TRAINLOG_DASHBOARD_LAYOUT_CONFLICT;
+    }
     *saved = *layout;
     saved->revision = expected_revision + 1U;
     if (!trainlog_dashboard_layout_path(path, sizeof(path)) || !ensure_private_directories(path) ||
         !trainlog_dashboard_layout_serialize(
             saved, TRAINLOG_DASHBOARD_LAYOUT_PERSISTED, false, json, sizeof(json), &size) ||
-        snprintf(temporary, sizeof(temporary), "%s.tmp.XXXXXX", path) >= (int)sizeof(temporary))
+        snprintf(temporary, sizeof(temporary), "%s.tmp.XXXXXX", path) >= (int)sizeof(temporary)) {
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
+    }
     fd = mkstemp(temporary);
-    if (fd < 0)
+    if (fd < 0) {
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
+    }
     ok = fchmod(fd, 0600) == 0 && fcntl(fd, F_SETFD, FD_CLOEXEC) == 0 &&
          write_all(fd, json, size) && fsync(fd) == 0;
-    if (close(fd) != 0)
+    if (close(fd) != 0) {
         ok = false;
+    }
     if (!ok || rename(temporary, path) != 0) {
         (void)unlink(temporary);
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
@@ -376,12 +415,15 @@ TrainlogDashboardLayoutResult trainlog_dashboard_layout_delete(uint64_t expected
     TrainlogDashboardLayout current;
     TrainlogDashboardLayoutSource source;
     char path[4096];
-    if (trainlog_dashboard_layout_load(&current, &source) != TRAINLOG_DASHBOARD_LAYOUT_OK)
+    if (trainlog_dashboard_layout_load(&current, &source) != TRAINLOG_DASHBOARD_LAYOUT_OK) {
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
-    if (current.revision != expected_revision)
+    }
+    if (current.revision != expected_revision) {
         return TRAINLOG_DASHBOARD_LAYOUT_CONFLICT;
-    if (!trainlog_dashboard_layout_path(path, sizeof(path)))
+    }
+    if (!trainlog_dashboard_layout_path(path, sizeof(path))) {
         return TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
+    }
     if (unlink(path) != 0) {
         return errno == ENOENT ? TRAINLOG_DASHBOARD_LAYOUT_OK : TRAINLOG_DASHBOARD_LAYOUT_IO_ERROR;
     }

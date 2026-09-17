@@ -23,25 +23,31 @@ static const char *tracking_name(TrainlogTrackingMode value) {
     return value == TRAINLOG_TRACKING_DURATION ? "duration" : "reps";
 }
 static const char *load_name(TrainlogLoadMode value) {
-    if (value == TRAINLOG_LOAD_EXTERNAL)
+    if (value == TRAINLOG_LOAD_EXTERNAL) {
         return "external";
-    if (value == TRAINLOG_LOAD_ASSISTANCE)
+    }
+    if (value == TRAINLOG_LOAD_ASSISTANCE) {
         return "assistance";
+    }
     return "none";
 }
 static bool point_improved(const TrainlogDashboardSnapshot *p, size_t i) {
     const TrainlogExercisePerformancePoint *a, *b;
-    if (i == 0U)
+    if (i == 0U) {
         return false;
+    }
     a = &p->performance[i - 1U];
     b = &p->performance[i];
-    if (!a->has_weight && !b->has_weight)
+    if (!a->has_weight && !b->has_weight) {
         return b->metric_value > a->metric_value;
-    if (a->has_weight != b->has_weight)
+    }
+    if (a->has_weight != b->has_weight) {
         return false;
-    if (p->performance_load_mode == TRAINLOG_LOAD_ASSISTANCE)
+    }
+    if (p->performance_load_mode == TRAINLOG_LOAD_ASSISTANCE) {
         return b->weight_kg < a->weight_kg ||
                (b->weight_kg == a->weight_kg && b->metric_value > a->metric_value);
+    }
     return b->weight_kg > a->weight_kg ||
            (b->weight_kg == a->weight_kg && b->metric_value > a->metric_value);
 }
@@ -72,8 +78,9 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
                                                 size_t *out_size) {
     TrainlogJsonWriter w;
     size_t i;
-    if (s == NULL || out == NULL || out_size == NULL)
+    if (s == NULL || out == NULL || out_size == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     *out_size = 0U;
     trainlog_json_init(&w, out, cap);
     RAW("{\"api_version\":1,\"data\":{\"footer\":{\"user\":");
@@ -84,12 +91,14 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
         (void)memcpy(date, s->last_session.started_at, 10U);
         date[10] = '\0';
         STR(date);
-    } else
+    } else {
         RAW("null");
+    }
     RAW(",\"last_zones\":[");
     for (i = 0U; i < s->last_session.zone_count; ++i) {
-        if (i > 0U)
+        if (i > 0U) {
             RAW(",");
+        }
         STR(s->last_session.zones[i].label);
     }
     RAW("]},");
@@ -99,8 +108,9 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
     RAW("\"activity\":{\"available\":true,\"window_days\":90,\"days\":[");
     for (i = 0U; i < s->activity_count; ++i) {
         const TrainlogWebActivityDay *d = &s->activity[i];
-        if (i > 0U)
+        if (i > 0U) {
             RAW(",");
+        }
         RAW("{\"date\":");
         STR(d->date);
         RAW(",\"active\":");
@@ -129,26 +139,31 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
         RAW(",\"load_mode\":");
         STR(load_name(s->progression.performance_load_mode));
         RAW(",\"dose\":");
-        if (!trainlog_json_i64(&w, (long long)s->progression.performance_dose))
+        if (!trainlog_json_i64(&w, (long long)s->progression.performance_dose)) {
             goto overflow;
+        }
         RAW("},\"points\":[");
         for (i = 0U; i < s->progression.performance_count; ++i) {
             const TrainlogExercisePerformancePoint *p = &s->progression.performance[i];
-            if (i > 0U)
+            if (i > 0U) {
                 RAW(",");
+            }
             RAW("{\"session_id\":");
             STR(p->session_id);
             RAW(",\"timestamp\":");
             STR(p->started_at);
             RAW(",\"metric_value\":");
-            if (!trainlog_json_i64(&w, (long long)p->metric_value))
+            if (!trainlog_json_i64(&w, (long long)p->metric_value)) {
                 goto overflow;
+            }
             RAW(",\"weight_kg\":");
             if (p->has_weight) {
-                if (!trainlog_json_double(&w, p->weight_kg))
+                if (!trainlog_json_double(&w, p->weight_kg)) {
                     goto overflow;
-            } else
+                }
+            } else {
                 RAW("null");
+            }
             RAW(",\"improved\":");
             RAW(point_improved(&s->progression, i) ? "true" : "false");
             RAW("}");
@@ -166,16 +181,19 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
         RAW(",\"started_at\":");
         STR(l->started_at);
         RAW(",\"ended_at\":");
-        if (l->has_ended_at)
+        if (l->has_ended_at) {
             STR(l->ended_at);
-        else
+        } else {
             RAW("null");
+        }
         RAW(",\"duration_seconds\":");
         if (l->has_duration) {
-            if (!trainlog_json_i64(&w, (long long)l->duration_seconds))
+            if (!trainlog_json_i64(&w, (long long)l->duration_seconds)) {
                 goto overflow;
-        } else
+            }
+        } else {
             RAW("null");
+        }
         RAW(",\"exercise_count\":");
         NUM(l->exercise_count);
         RAW(",\"set_count\":");
@@ -186,23 +204,27 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
         NUM(l->max_count);
         RAW(",\"primary_zones\":[");
         for (i = 0U; i < l->zone_count; ++i) {
-            if (i > 0U)
+            if (i > 0U) {
                 RAW(",");
-            if (!write_zone(&w, &l->zones[i]))
+            }
+            if (!write_zone(&w, &l->zones[i])) {
                 goto overflow;
+            }
         }
         RAW("]");
     }
     RAW("},");
     RAW("\"max_records\":{\"available\":");
     RAW(s->max_record_count > 0U ? "true" : "false");
-    if (s->max_record_count == 0U)
+    if (s->max_record_count == 0U) {
         RAW(",\"reason\":\"no_explicit_max_results\"");
+    }
     RAW(",\"records\":[");
     for (i = 0U; i < s->max_record_count; ++i) {
         const TrainlogWebMaxRecord *r = &s->max_records[i];
-        if (i > 0U)
+        if (i > 0U) {
             RAW(",");
+        }
         RAW("{\"session_id\":");
         STR(r->session_id);
         RAW(",\"entry_id\":");
@@ -214,8 +236,9 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
         RAW(",\"equipment_id\":");
         STR(r->equipment_id);
         RAW(",\"weight_kg\":");
-        if (!trainlog_json_double(&w, r->weight_kg))
+        if (!trainlog_json_double(&w, r->weight_kg)) {
             goto overflow;
+        }
         RAW(",\"timestamp\":");
         STR(r->timestamp);
         RAW("}");
@@ -223,14 +246,17 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
     RAW("]},");
     RAW("\"muscle_distribution\":{\"available\":");
     RAW(s->muscle_zone_count > 0U ? "true" : "false");
-    if (s->muscle_zone_count == 0U)
+    if (s->muscle_zone_count == 0U) {
         RAW(",\"reason\":\"no_worked_primary_zones\"");
+    }
     RAW(",\"window_days\":30,\"primary_zones\":[");
     for (i = 0U; i < s->muscle_zone_count; ++i) {
-        if (i > 0U)
+        if (i > 0U) {
             RAW(",");
-        if (!write_zone(&w, &s->muscle_zones[i]))
+        }
+        if (!write_zone(&w, &s->muscle_zones[i])) {
             goto overflow;
+        }
     }
     RAW("]},");
     RAW("\"cardio\":{\"available\":false,\"reason\":");
@@ -242,12 +268,14 @@ TrainlogStatus trainlog_web_dashboard_serialize(const TrainlogWebDashboardSnapsh
     RAW(",\"generated_at\":");
     STR(s->generated_at);
     RAW("}}\n");
-    if (w.failed)
+    if (w.failed) {
         goto overflow;
+    }
     *out_size = w.size;
     return TRAINLOG_STATUS_OK;
 overflow:
-    if (cap > 0U)
+    if (cap > 0U) {
         out[0] = '\0';
+    }
     return TRAINLOG_STATUS_SYSTEM_ERROR;
 }

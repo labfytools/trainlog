@@ -30,12 +30,13 @@ static uint32_t scan(const char *path, uint32_t parent) {
     const char *slash = strrchr(path, '/');
     snprintf(n->name, sizeof(n->name), "%s", slash ? slash + 1 : path);
     if (n->folder && (d = opendir(path)) != NULL) {
-        while ((e = readdir(d)))
+        while ((e = readdir(d))) {
             if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) {
                 char child[1024];
                 snprintf(child, sizeof(child), "%s/%s", path, e->d_name);
                 scan(child, self);
             }
+        }
         closedir(d);
     }
     return self;
@@ -46,14 +47,17 @@ static void rebuild(void) {
 }
 static Node *node(uint32_t id) {
     size_t i;
-    for (i = 0; i < node_count; i++)
-        if (nodes[i].id == id)
+    for (i = 0; i < node_count; i++) {
+        if (nodes[i].id == id) {
             return &nodes[i];
+        }
+    }
     return NULL;
 }
 static TrainlogStatus devices(TrainlogUsbDevice *o, size_t c, size_t *n) {
-    if (c < 1U)
+    if (c < 1U) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     memset(o, 0, sizeof(*o));
     o->bus_number = 1;
     o->device_number = 1;
@@ -64,8 +68,9 @@ static TrainlogStatus
 storages(unsigned int b, unsigned int d, TrainlogMtpStorage *o, size_t c, size_t *n) {
     (void)b;
     (void)d;
-    if (c < 1U)
+    if (c < 1U) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     memset(o, 0, sizeof(*o));
     o->storage_id = 1;
     *n = 1;
@@ -83,12 +88,14 @@ static TrainlogStatus children(unsigned int b,
     (void)d;
     (void)s;
     rebuild();
-    if (p == UINT32_MAX)
+    if (p == UINT32_MAX) {
         p = nodes[0].id;
-    for (i = 0; i < node_count; i++)
+    }
+    for (i = 0; i < node_count; i++) {
         if (nodes[i].parent == p) {
-            if (k >= c)
+            if (k >= c) {
                 return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
             memset(&o[k], 0, sizeof(o[k]));
             o[k].item_id = nodes[i].id;
             o[k].parent_id = p;
@@ -98,6 +105,7 @@ static TrainlogStatus children(unsigned int b,
             snprintf(o[k].name, sizeof(o[k].name), "%s", nodes[i].name);
             k++;
         }
+    }
     *n = k;
     return TRAINLOG_STATUS_OK;
 }
@@ -115,33 +123,39 @@ static TrainlogStatus ensure(unsigned int b,
     (void)s;
     rebuild();
     parent = node(p);
-    if (!parent)
+    if (!parent) {
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
     snprintf(path, sizeof(path), "%s/%s", parent->path, name);
-    if (mkdir(path, 0700) == 0)
+    if (mkdir(path, 0700) == 0) {
         *created = true;
-    else if (access(path, F_OK) == 0)
+    } else if (access(path, F_OK) == 0) {
         *created = false;
-    else
+    } else {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     rebuild();
     size_t i;
-    for (i = 0; i < node_count; i++)
+    for (i = 0; i < node_count; i++) {
         if (strcmp(nodes[i].path, path) == 0) {
             *id = nodes[i].id;
             return TRAINLOG_STATUS_OK;
         }
+    }
     return TRAINLOG_STATUS_SYSTEM_ERROR;
 }
 static int copy(const char *a, const char *b) {
     FILE *in = fopen(a, "rb"), *out = fopen(b, "wb");
     char buf[8192];
     size_t n;
-    if (!in || !out)
+    if (!in || !out) {
         return -1;
-    while ((n = fread(buf, 1, sizeof(buf), in)) > 0)
-        if (fwrite(buf, 1, n, out) != n)
+    }
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) {
             return -1;
+        }
+    }
     return fclose(in) | fclose(out);
 }
 static TrainlogStatus receive(unsigned int b, unsigned int d, uint32_t id, const char *path) {
@@ -166,18 +180,21 @@ static TrainlogStatus send_file(unsigned int b,
     (void)s;
     rebuild();
     parent = node(p);
-    if (!parent)
+    if (!parent) {
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
     snprintf(path, sizeof(path), "%s/%s", parent->path, name);
-    if (copy(local, path) != 0)
+    if (copy(local, path) != 0) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     rebuild();
     size_t i;
-    for (i = 0; i < node_count; i++)
+    for (i = 0; i < node_count; i++) {
         if (strcmp(nodes[i].path, path) == 0) {
             *id = nodes[i].id;
             return TRAINLOG_STATUS_OK;
         }
+    }
     return TRAINLOG_STATUS_SYSTEM_ERROR;
 }
 static TrainlogStatus remove_object(unsigned int b, unsigned int d, uint32_t id) {
@@ -195,29 +212,41 @@ static TrainlogStatus rename_object(unsigned int b, unsigned int d, uint32_t id,
     (void)d;
     rebuild();
     n = node(id);
-    if (!n)
+    if (!n) {
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
     snprintf(path, sizeof(path), "%s", n->path);
     slash = strrchr(path, '/');
-    if (!slash)
+    if (!slash) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     snprintf(slash + 1, (size_t)(path + sizeof(path) - (slash + 1)), "%s", name);
     return rename(n->path, path) == 0 ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_SYSTEM_ERROR;
 }
 static const TrainlogGenerationMtpIo io = {
-    devices, storages, children, ensure, receive, send_file, remove_object, rename_object};
+    .devices = devices,
+    .storages = storages,
+    .children = children,
+    .ensure_folder = ensure,
+    .receive = receive,
+    .send = send_file,
+    .remove = remove_object,
+    .rename = rename_object,
+};
 int main(int argc, char **argv) {
     char diag[1024] = {0};
     TrainlogStatus status;
     remote = getenv("TRAINLOG_MTP_DOUBLE_ROOT");
-    if (argc != 4 || !remote)
+    if (argc != 4 || !remote) {
         return 64;
-    if (strcmp(argv[1], "pull") == 0)
+    }
+    if (strcmp(argv[1], "pull") == 0) {
         status = trainlog_generation_mtp_pull(&io, argv[2], argv[3], diag, sizeof(diag));
-    else if (strcmp(argv[1], "push") == 0)
+    } else if (strcmp(argv[1], "push") == 0) {
         status = trainlog_generation_mtp_push(&io, argv[2], argv[3], diag, sizeof(diag));
-    else
+    } else {
         return 64;
+    }
     if (status != TRAINLOG_STATUS_OK) {
         fprintf(stderr, "double failed %d %s\n", status, diag);
         return 2;

@@ -50,8 +50,9 @@ static void reset(void) {
 }
 static TrainlogStatus devices(TrainlogUsbDevice *out, size_t cap, size_t *count) {
     size_t i;
-    if (cap < device_count)
+    if (cap < device_count) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     *count = device_count;
     for (i = 0; i < device_count; i++) {
         memset(&out[i], 0, sizeof(out[i]));
@@ -63,8 +64,9 @@ static TrainlogStatus devices(TrainlogUsbDevice *out, size_t cap, size_t *count)
 static TrainlogStatus
 storages(unsigned int bus, unsigned int dev, TrainlogMtpStorage *out, size_t cap, size_t *count) {
     (void)bus;
-    if (cap < 1U)
+    if (cap < 1U) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     memset(out, 0, sizeof(*out));
     out->storage_id = dev;
     *count = 1U;
@@ -80,10 +82,11 @@ static TrainlogStatus children(unsigned int bus,
     size_t i, n = 0;
     (void)bus;
     (void)storage;
-    for (i = 0; i < object_count; i++)
+    for (i = 0; i < object_count; i++) {
         if (objects[i].parent == parent && (dev == 1U || objects[i].id <= 3U)) {
-            if (n >= cap)
+            if (n >= cap) {
                 return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
             memset(&out[n], 0, sizeof(out[n]));
             out[n].item_id = objects[i].id;
             out[n].parent_id = parent;
@@ -93,6 +96,7 @@ static TrainlogStatus children(unsigned int bus,
             snprintf(out[n].name, sizeof(out[n].name), "%s", objects[i].name);
             n++;
         }
+    }
     *count = n;
     return TRAINLOG_STATUS_OK;
 }
@@ -107,12 +111,13 @@ static TrainlogStatus ensure_folder(unsigned int b,
     (void)b;
     (void)d;
     (void)s;
-    for (i = 0; i < object_count; i++)
+    for (i = 0; i < object_count; i++) {
         if (objects[i].parent == p && objects[i].folder && strcmp(objects[i].name, name) == 0) {
             *id = objects[i].id;
             *created = false;
             return TRAINLOG_STATUS_OK;
         }
+    }
     *id = (uint32_t)(100U + object_count);
     *created = true;
     add(*id, p, true, name, NULL);
@@ -120,9 +125,11 @@ static TrainlogStatus ensure_folder(unsigned int b,
 }
 static Object *find(uint32_t id) {
     size_t i;
-    for (i = 0; i < object_count; i++)
-        if (objects[i].id == id)
+    for (i = 0; i < object_count; i++) {
+        if (objects[i].id == id) {
             return &objects[i];
+        }
+    }
     return NULL;
 }
 static TrainlogStatus receive(unsigned int b, unsigned int d, uint32_t id, const char *path) {
@@ -131,11 +138,13 @@ static TrainlogStatus receive(unsigned int b, unsigned int d, uint32_t id, const
     size_t bytes;
     (void)b;
     (void)d;
-    if (!o)
+    if (!o) {
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
     f = fopen(path, "wb");
-    if (!f)
+    if (!f) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     bytes = id == 9U ? 3U : o->size;
     if (fwrite(o->data, 1, bytes, f) != bytes) {
         fclose(f);
@@ -157,8 +166,9 @@ static TrainlogStatus send_file(unsigned int b,
     (void)d;
     (void)s;
     f = fopen(path, "rb");
-    if (!f)
+    if (!f) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     fseek(f, 0, SEEK_END);
     size = ftell(f);
     rewind(f);
@@ -183,8 +193,9 @@ static TrainlogStatus remove_object(unsigned int b, unsigned int d, uint32_t id)
     Object *o = find(id);
     (void)b;
     (void)d;
-    if (!o)
+    if (!o) {
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
     o->name[0] = '\0';
     return TRAINLOG_STATUS_OK;
 }
@@ -192,13 +203,22 @@ static TrainlogStatus rename_object(unsigned int b, unsigned int d, uint32_t id,
     Object *o = find(id);
     (void)b;
     (void)d;
-    if (!o)
+    if (!o) {
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
     snprintf(o->name, sizeof(o->name), "%s", name);
     return TRAINLOG_STATUS_OK;
 }
 static const TrainlogGenerationMtpIo io = {
-    devices, storages, children, ensure_folder, receive, send_file, remove_object, rename_object};
+    .devices = devices,
+    .storages = storages,
+    .children = children,
+    .ensure_folder = ensure_folder,
+    .receive = receive,
+    .send = send_file,
+    .remove = remove_object,
+    .rename = rename_object,
+};
 static int write_file(const char *path, const char *value) {
     FILE *f = fopen(path, "wb");
     CHECK(f != NULL);

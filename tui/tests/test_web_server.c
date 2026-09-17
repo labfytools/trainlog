@@ -39,8 +39,9 @@ static int reserve_port(uint16_t *port, int keep_open) {
     struct sockaddr_in address;
     socklen_t length = (socklen_t)sizeof(address);
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd < 0)
+    if (socket_fd < 0) {
         return -1;
+    }
     (void)memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -70,10 +71,12 @@ static int connect_with_retry(uint16_t port) {
     for (attempt = 0U; attempt < 200U; ++attempt) {
         int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd >= 0 &&
-            connect(socket_fd, (const struct sockaddr *)&address, sizeof(address)) == 0)
+            connect(socket_fd, (const struct sockaddr *)&address, sizeof(address)) == 0) {
             return socket_fd;
-        if (socket_fd >= 0)
+        }
+        if (socket_fd >= 0) {
             (void)close(socket_fd);
+        }
         (void)nanosleep(&delay, NULL);
     }
     return -1;
@@ -93,8 +96,9 @@ static bool exchange(uint16_t port, const char *request, char *response, size_t 
     (void)shutdown(socket_fd, SHUT_WR);
     while (used + 1U < capacity) {
         ssize_t count = recv(socket_fd, response + used, capacity - used - 1U, 0);
-        if (count == 0)
+        if (count == 0) {
             break;
+        }
         CHECK(count > 0);
         used += (size_t)count;
     }
@@ -109,8 +113,9 @@ static bool asset_path(const char *html, const char *suffix, char *output, size_
     while ((start = strstr(start, "/assets/")) != NULL) {
         const char *end = start;
         size_t length;
-        while (*end != '\0' && *end != '"' && *end != '\'' && *end != '<' && *end != '>')
+        while (*end != '\0' && *end != '"' && *end != '\'' && *end != '<' && *end != '>') {
             ++end;
+        }
         length = (size_t)(end - start);
         if (length >= suffix_length && memcmp(end - suffix_length, suffix, suffix_length) == 0 &&
             length < capacity) {
@@ -127,15 +132,18 @@ static bool response_header(const char *response, const char *name, char *output
     const char *start = strstr(response, name);
     const char *end;
     size_t length;
-    if (start == NULL)
+    if (start == NULL) {
         return false;
+    }
     start += strlen(name);
     end = strstr(start, "\r\n");
-    if (end == NULL)
+    if (end == NULL) {
         return false;
+    }
     length = (size_t)(end - start);
-    if (length >= capacity)
+    if (length >= capacity) {
         return false;
+    }
     (void)memcpy(output, start, length);
     output[length] = '\0';
     return true;
@@ -451,10 +459,12 @@ int main(void) {
     char config_root[] = "/tmp/trainlog-web-config-XXXXXX";
     TrainlogDatabase *database = NULL;
     bool passed;
-    if (mkdtemp(config_root) == NULL || setenv("XDG_CONFIG_HOME", config_root, 1) != 0)
+    if (mkdtemp(config_root) == NULL || setenv("XDG_CONFIG_HOME", config_root, 1) != 0) {
         return 1;
-    if (trainlog_database_open(":memory:", &database) != TRAINLOG_STATUS_OK)
+    }
+    if (trainlog_database_open(":memory:", &database) != TRAINLOG_STATUS_OK) {
         return 1;
+    }
     if (!trainlog_web_assets_available()) {
         volatile sig_atomic_t stop = 0;
         char diagnostic[256];

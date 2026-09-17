@@ -18,23 +18,27 @@
 static bool copy_column(sqlite3_stmt *s, int column, char *out, size_t cap) {
     const unsigned char *text;
     int bytes;
-    if (sqlite3_column_type(s, column) != SQLITE_TEXT)
+    if (sqlite3_column_type(s, column) != SQLITE_TEXT) {
         return false;
+    }
     text = sqlite3_column_text(s, column);
     bytes = sqlite3_column_bytes(s, column);
-    if (text == NULL || bytes < 0 || (size_t)bytes >= cap)
+    if (text == NULL || bytes < 0 || (size_t)bytes >= cap) {
         return false;
+    }
     (void)memcpy(out, text, (size_t)bytes);
     out[bytes] = '\0';
     return true;
 }
 static bool read_size(sqlite3_stmt *s, int c, size_t *out) {
     sqlite3_int64 v;
-    if (sqlite3_column_type(s, c) != SQLITE_INTEGER)
+    if (sqlite3_column_type(s, c) != SQLITE_INTEGER) {
         return false;
+    }
     v = sqlite3_column_int64(s, c);
-    if (v < 0 || (uint64_t)v > (uint64_t)SIZE_MAX)
+    if (v < 0 || (uint64_t)v > (uint64_t)SIZE_MAX) {
         return false;
+    }
     *out = (size_t)v;
     return true;
 }
@@ -45,8 +49,9 @@ static bool prepare(TrainlogDatabase *d, const char *sql, sqlite3_stmt **s) {
 static bool format_generated(int64_t now, char out[TRAINLOG_TIMESTAMP_MAX + 1U]) {
     time_t value = (time_t)now;
     struct tm utc;
-    if ((int64_t)value != now || gmtime_r(&value, &utc) == NULL)
+    if ((int64_t)value != now || gmtime_r(&value, &utc) == NULL) {
         return false;
+    }
     return strftime(out, TRAINLOG_TIMESTAMP_MAX + 1U, "%Y-%m-%dT%H:%M:%SZ", &utc) > 0U;
 }
 static bool format_local_date(time_t value, char out[11]) {
@@ -59,8 +64,9 @@ static bool load_user(char out[TRAINLOG_NAME_MAX + 1U]) {
     char buffer[4096];
     int rc = getpwuid_r(geteuid(), &value, buffer, sizeof(buffer), &result);
     if (rc != 0 || result == NULL || result->pw_name == NULL || result->pw_name[0] == '\0' ||
-        strlen(result->pw_name) > TRAINLOG_NAME_MAX)
+        strlen(result->pw_name) > TRAINLOG_NAME_MAX) {
         return false;
+    }
     (void)snprintf(out, TRAINLOG_NAME_MAX + 1U, "%s", result->pw_name);
     return true;
 }
@@ -83,10 +89,12 @@ load_activity(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *ou
     size_t i;
     time_t reference = (time_t)now;
     struct tm current;
-    if ((int64_t)reference != now)
+    if ((int64_t)reference != now) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
-    if (localtime_r(&reference, &current) == NULL)
+    }
+    if (localtime_r(&reference, &current) == NULL) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     out->activity_count = TRAINLOG_WEB_ACTIVITY_DAYS;
     for (i = 0U; i < TRAINLOG_WEB_ACTIVITY_DAYS; ++i) {
         struct tm day = current;
@@ -94,32 +102,38 @@ load_activity(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *ou
         day.tm_mday -= (int)(TRAINLOG_WEB_ACTIVITY_DAYS - 1U - i);
         day.tm_isdst = -1;
         normalized = mktime(&day);
-        if (normalized == (time_t)-1 || !format_local_date(normalized, out->activity[i].date))
+        if (normalized == (time_t)-1 || !format_local_date(normalized, out->activity[i].date)) {
             return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
     }
     if (!prepare(d, SQL, &s) || sqlite3_bind_int64(s, 1, now) != SQLITE_OK ||
-        sqlite3_bind_text(s, 2, out->activity[0].date, -1, SQLITE_TRANSIENT) != SQLITE_OK)
+        sqlite3_bind_text(s, 2, out->activity[0].date, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
         goto fail;
+    }
     while ((step = sqlite3_step(s)) == SQLITE_ROW) {
         char date[11];
         size_t sessions, sets;
         if (!copy_column(s, 0, date, sizeof(date)) || !read_size(s, 1, &sessions) ||
-            !read_size(s, 2, &sets))
+            !read_size(s, 2, &sets)) {
             goto fail;
-        for (i = 0U; i < out->activity_count; ++i)
+        }
+        for (i = 0U; i < out->activity_count; ++i) {
             if (strcmp(date, out->activity[i].date) == 0) {
                 out->activity[i].active = true;
                 out->activity[i].session_count = sessions;
                 out->activity[i].set_count = sets;
                 break;
             }
+        }
     }
-    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK)
+    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     return TRAINLOG_STATUS_OK;
 fail:
-    if (s != NULL)
+    if (s != NULL) {
         (void)sqlite3_finalize(s);
+    }
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
@@ -146,8 +160,9 @@ static TrainlogStatus load_last(TrainlogDatabase *d, int64_t now, TrainlogWebLas
     sqlite3_stmt *s = NULL;
     int step;
     TrainlogTimestampKey start, end;
-    if (!prepare(d, SESSION_SQL, &s) || sqlite3_bind_int64(s, 1, now) != SQLITE_OK)
+    if (!prepare(d, SESSION_SQL, &s) || sqlite3_bind_int64(s, 1, now) != SQLITE_OK) {
         goto fail;
+    }
     step = sqlite3_step(s);
     if (step == SQLITE_DONE) {
         (void)sqlite3_finalize(s);
@@ -157,8 +172,9 @@ static TrainlogStatus load_last(TrainlogDatabase *d, int64_t now, TrainlogWebLas
         !copy_column(s, 1, out->started_at, sizeof(out->started_at)) ||
         !copy_column(s, 2, out->ended_at, sizeof(out->ended_at)) ||
         !read_size(s, 3, &out->exercise_count) || !read_size(s, 4, &out->set_count) ||
-        !read_size(s, 5, &out->continuous_count) || !read_size(s, 6, &out->max_count))
+        !read_size(s, 5, &out->continuous_count) || !read_size(s, 6, &out->max_count)) {
         goto fail;
+    }
     out->available = true;
     out->has_ended_at = out->ended_at[0] != '\0';
     if (!trainlog_timestamp_parse(out->started_at, strlen(out->started_at), &start)) {
@@ -167,17 +183,20 @@ static TrainlogStatus load_last(TrainlogDatabase *d, int64_t now, TrainlogWebLas
     }
     if (out->has_ended_at) {
         if (!trainlog_timestamp_parse(out->ended_at, strlen(out->ended_at), &end) ||
-            end.utc_second < start.utc_second)
+            end.utc_second < start.utc_second) {
             goto invalid;
+        }
         out->has_duration = true;
         out->duration_seconds = (uint64_t)(end.utc_second - start.utc_second);
     }
-    if (sqlite3_step(s) != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK)
+    if (sqlite3_step(s) != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     s = NULL;
     if (!prepare(d, ZONE_SQL, &s) ||
-        sqlite3_bind_text(s, 1, out->session_id, -1, SQLITE_TRANSIENT) != SQLITE_OK)
+        sqlite3_bind_text(s, 1, out->session_id, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
         goto fail;
+    }
     while ((step = sqlite3_step(s)) == SQLITE_ROW) {
         TrainlogWebWorkedZone *z;
         const TrainlogBodyZone *catalog;
@@ -186,25 +205,30 @@ static TrainlogStatus load_last(TrainlogDatabase *d, int64_t now, TrainlogWebLas
         }
         z = &out->zones[out->zone_count];
         if (!copy_column(s, 0, z->zone_id, sizeof(z->zone_id)) ||
-            !read_size(s, 1, &z->occurrence_count) || !read_size(s, 2, &z->set_count))
+            !read_size(s, 1, &z->occurrence_count) || !read_size(s, 2, &z->set_count)) {
             goto fail;
+        }
         z->session_count = 1U;
         catalog = trainlog_body_zone_catalog_lookup(z->zone_id);
-        if (catalog == NULL || strlen(catalog->display_name) > TRAINLOG_NAME_MAX)
+        if (catalog == NULL || strlen(catalog->display_name) > TRAINLOG_NAME_MAX) {
             goto invalid;
+        }
         (void)snprintf(z->label, sizeof(z->label), "%s", catalog->display_name);
         ++out->zone_count;
     }
-    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK)
+    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     return TRAINLOG_STATUS_OK;
 invalid:
-    if (s != NULL)
+    if (s != NULL) {
         (void)sqlite3_finalize(s);
+    }
     return TRAINLOG_STATUS_INVALID_ARGUMENT;
 fail:
-    if (s != NULL)
+    if (s != NULL) {
         (void)sqlite3_finalize(s);
+    }
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
@@ -220,8 +244,9 @@ load_maxima(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *out)
     sqlite3_stmt *s = NULL;
     int step;
     if (!prepare(d, SQL, &s) || sqlite3_bind_int64(s, 1, now) != SQLITE_OK ||
-        sqlite3_bind_int64(s, 2, (sqlite3_int64)(TRAINLOG_WEB_MAX_RECORDS + 1U)) != SQLITE_OK)
+        sqlite3_bind_int64(s, 2, (sqlite3_int64)(TRAINLOG_WEB_MAX_RECORDS + 1U)) != SQLITE_OK) {
         goto fail;
+    }
     while ((step = sqlite3_step(s)) == SQLITE_ROW) {
         TrainlogWebMaxRecord *r;
         if (out->max_record_count == TRAINLOG_WEB_MAX_RECORDS) {
@@ -244,12 +269,14 @@ load_maxima(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *out)
         r->weight_kg = sqlite3_column_double(s, 5);
         ++out->max_record_count;
     }
-    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK)
+    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     return TRAINLOG_STATUS_OK;
 fail:
-    if (s != NULL)
+    if (s != NULL) {
         (void)sqlite3_finalize(s);
+    }
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
@@ -271,8 +298,9 @@ load_zones(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *out) 
         sqlite3_bind_text(
             s, 1, out->activity[TRAINLOG_WEB_ACTIVITY_DAYS - 30U].date, -1, SQLITE_TRANSIENT) !=
             SQLITE_OK ||
-        sqlite3_bind_int64(s, 2, now) != SQLITE_OK)
+        sqlite3_bind_int64(s, 2, now) != SQLITE_OK) {
         goto fail;
+    }
     while ((step = sqlite3_step(s)) == SQLITE_ROW) {
         TrainlogWebWorkedZone *z;
         const TrainlogBodyZone *catalog;
@@ -283,8 +311,9 @@ load_zones(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *out) 
         z = &out->muscle_zones[out->muscle_zone_count];
         if (!copy_column(s, 0, z->zone_id, sizeof(z->zone_id)) ||
             !read_size(s, 1, &z->session_count) || !read_size(s, 2, &z->occurrence_count) ||
-            !read_size(s, 3, &z->set_count))
+            !read_size(s, 3, &z->set_count)) {
             goto fail;
+        }
         catalog = trainlog_body_zone_catalog_lookup(z->zone_id);
         if (catalog == NULL || strlen(catalog->display_name) > TRAINLOG_NAME_MAX) {
             out->invalid_data = true;
@@ -293,12 +322,14 @@ load_zones(TrainlogDatabase *d, int64_t now, TrainlogWebDashboardSnapshot *out) 
         (void)snprintf(z->label, sizeof(z->label), "%s", catalog->display_name);
         ++out->muscle_zone_count;
     }
-    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK)
+    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     return TRAINLOG_STATUS_OK;
 fail:
-    if (s != NULL)
+    if (s != NULL) {
         (void)sqlite3_finalize(s);
+    }
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
@@ -313,8 +344,9 @@ static TrainlogStatus scan_quality(TrainlogDatabase *d, TrainlogWebDashboardSnap
     sqlite3_stmt *s = NULL;
     int step;
     size_t count = 0U;
-    if (!prepare(d, SQL, &s))
+    if (!prepare(d, SQL, &s)) {
         goto fail;
+    }
     while ((step = sqlite3_step(s)) == SQLITE_ROW) {
         char started[TRAINLOG_TIMESTAMP_MAX + 1U], ended[TRAINLOG_TIMESTAMP_MAX + 1U];
         TrainlogTimestampKey start_key, end_key;
@@ -327,15 +359,18 @@ static TrainlogStatus scan_quality(TrainlogDatabase *d, TrainlogWebDashboardSnap
             !copy_column(s, 1, ended, sizeof(ended)) ||
             !trainlog_timestamp_parse(started, strlen(started), &start_key) ||
             (ended[0] != '\0' && (!trainlog_timestamp_parse(ended, strlen(ended), &end_key) ||
-                                  trainlog_timestamp_compare(&end_key, &start_key) < 0)))
+                                  trainlog_timestamp_compare(&end_key, &start_key) < 0))) {
             out->invalid_data = true;
+        }
     }
-    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK)
+    if (step != SQLITE_DONE || sqlite3_finalize(s) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     return TRAINLOG_STATUS_OK;
 fail:
-    if (s != NULL)
+    if (s != NULL) {
         (void)sqlite3_finalize(s);
+    }
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
@@ -344,20 +379,24 @@ TrainlogStatus trainlog_web_dashboard_load(TrainlogDatabase *d,
                                            TrainlogWebDashboardSnapshot *out) {
     TrainlogStatus status, end_status;
     TrainlogDashboardQuery progression_query;
-    if (d == NULL || q == NULL || out == NULL)
+    if (d == NULL || q == NULL || out == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     (void)memset(out, 0, sizeof(*out));
     out->next_session_reason = "no_persisted_executable_plan";
     out->cardio_reason = "no_cardio_data_source";
     if (!format_generated(q->reference_unix_second, out->generated_at) ||
-        !load_user(out->user_display_name))
+        !load_user(out->user_display_name)) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
     status = trainlog_database_read_snapshot_begin(d);
-    if (status != TRAINLOG_STATUS_OK)
+    if (status != TRAINLOG_STATUS_OK) {
         return status;
+    }
     status = load_activity(d, q->reference_unix_second, out);
-    if (status == TRAINLOG_STATUS_OK)
+    if (status == TRAINLOG_STATUS_OK) {
         status = scan_quality(d, out);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         progression_query.period = TRAINLOG_DASHBOARD_90_DAYS;
         progression_query.reference_unix_second = q->reference_unix_second;
@@ -372,12 +411,15 @@ TrainlogStatus trainlog_web_dashboard_load(TrainlogDatabase *d,
             status = TRAINLOG_STATUS_OK;
         }
     }
-    if (status == TRAINLOG_STATUS_OK)
+    if (status == TRAINLOG_STATUS_OK) {
         status = load_maxima(d, q->reference_unix_second, out);
-    if (status == TRAINLOG_STATUS_OK)
+    }
+    if (status == TRAINLOG_STATUS_OK) {
         status = load_zones(d, q->reference_unix_second, out);
+    }
     end_status = trainlog_database_read_snapshot_end(d, status == TRAINLOG_STATUS_OK);
-    if (end_status != TRAINLOG_STATUS_OK)
+    if (end_status != TRAINLOG_STATUS_OK) {
         status = end_status;
+    }
     return status;
 }

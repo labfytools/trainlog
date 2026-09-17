@@ -18,8 +18,9 @@ typedef struct Selection {
 } Selection;
 
 static void diag(char *output, size_t size, const char *value) {
-    if (output != NULL && size > 0U)
+    if (output != NULL && size > 0U) {
         (void)snprintf(output, size, "%s", value);
+    }
 }
 
 static bool safe_leaf(const char *name) {
@@ -50,16 +51,18 @@ static TrainlogStatus one_named(const TrainlogGenerationMtpIo *io,
     TrainlogMtpEntry entries[TRAINLOG_GENERATION_MTP_MAX_CHILDREN];
     size_t count = 0U, index, matches = 0U;
     TrainlogStatus status = children(io, selection, parent, entries, &count);
-    if (status != TRAINLOG_STATUS_OK)
+    if (status != TRAINLOG_STATUS_OK) {
         return status;
+    }
     for (index = 0U; index < count; ++index) {
         if (entries[index].folder == folder && strcmp(entries[index].name, name) == 0) {
             *result = entries[index];
             ++matches;
         }
     }
-    if (matches > 1U)
+    if (matches > 1U) {
         return TRAINLOG_STATUS_CONFLICT;
+    }
     return matches == 1U ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_NOT_FOUND;
 }
 
@@ -71,16 +74,19 @@ static bool peer_document_matches(const char *path, const char *expected) {
     yyjson_val *root, *capabilities, *item;
     size_t index, maximum;
     bool manifest = false, acknowledgement = false, valid;
-    if (fd < 0)
+    if (fd < 0) {
         return false;
+    }
     count = read(fd, buffer, sizeof(buffer));
     (void)close(fd);
-    if (count <= 0 || (size_t)count >= sizeof(buffer))
+    if (count <= 0 || (size_t)count >= sizeof(buffer)) {
         return false;
+    }
     buffer[count] = '\0';
     document = yyjson_read(buffer, (size_t)count, YYJSON_READ_NOFLAG);
-    if (document == NULL)
+    if (document == NULL) {
         return false;
+    }
     root = yyjson_doc_get_root(document);
     capabilities = yyjson_obj_get(root, "capabilities");
     valid = yyjson_is_obj(root) && yyjson_obj_size(root) == 4U &&
@@ -95,10 +101,12 @@ static bool peer_document_matches(const char *path, const char *expected) {
                 valid = false;
                 break;
             }
-            if (yyjson_equals_str(item, "generation-manifest-v1"))
+            if (yyjson_equals_str(item, "generation-manifest-v1")) {
                 manifest = true;
-            if (yyjson_equals_str(item, "generation-ack-v1"))
+            }
+            if (yyjson_equals_str(item, "generation-ack-v1")) {
                 acknowledgement = true;
+            }
         }
     }
     yyjson_doc_free(document);
@@ -131,8 +139,9 @@ static TrainlogStatus select_peer(const TrainlogGenerationMtpIo *io,
                               storages,
                               TRAINLOG_GENERATION_MTP_MAX_STORAGES,
                               &storage_count);
-        if (status != TRAINLOG_STATUS_OK)
+        if (status != TRAINLOG_STATUS_OK) {
             continue;
+        }
         for (si = 0U; si < storage_count; ++si) {
             Selection candidate = {
                 devices[di].bus_number, devices[di].device_number, storages[si].storage_id, 0U};
@@ -140,18 +149,21 @@ static TrainlogStatus select_peer(const TrainlogGenerationMtpIo *io,
             if (one_named(io, &candidate, UINT32_MAX, "Documents", true, &documents) !=
                     TRAINLOG_STATUS_OK ||
                 one_named(io, &candidate, documents.item_id, "Trainlog", true, &root) !=
-                    TRAINLOG_STATUS_OK)
+                    TRAINLOG_STATUS_OK) {
                 continue;
+            }
             candidate.root = root.item_id;
             if (one_named(io, &candidate, candidate.root, "android-peer-v1.json", false, &peer) !=
-                TRAINLOG_STATUS_OK)
+                TRAINLOG_STATUS_OK) {
                 continue;
+            }
             (void)unlink(peer_path);
             if (peer.size_bytes > 16384U ||
                 io->receive(candidate.bus, candidate.device, peer.item_id, peer_path) !=
                     TRAINLOG_STATUS_OK ||
-                !peer_document_matches(peer_path, expected))
+                !peer_document_matches(peer_path, expected)) {
                 continue;
+            }
             *output = candidate;
             ++matches;
         }
@@ -169,8 +181,9 @@ static TrainlogStatus select_peer(const TrainlogGenerationMtpIo *io,
 }
 
 static TrainlogStatus mkdir_private(const char *path) {
-    if (mkdir(path, 0700) == 0 || errno == EEXIST)
+    if (mkdir(path, 0700) == 0 || errno == EEXIST) {
         return TRAINLOG_STATUS_OK;
+    }
     return TRAINLOG_STATUS_SYSTEM_ERROR;
 }
 
@@ -184,70 +197,89 @@ static TrainlogStatus pull_folder(const TrainlogGenerationMtpIo *io,
     TrainlogMtpEntry entries[TRAINLOG_GENERATION_MTP_MAX_CHILDREN];
     size_t count = 0U, index;
     TrainlogStatus status;
-    if (depth > TRAINLOG_GENERATION_MTP_MAX_DEPTH)
+    if (depth > TRAINLOG_GENERATION_MTP_MAX_DEPTH) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     status = mkdir_private(local);
-    if (status != TRAINLOG_STATUS_OK)
+    if (status != TRAINLOG_STATUS_OK) {
         return status;
+    }
     status = children(io, selection, parent, entries, &count);
-    if (status != TRAINLOG_STATUS_OK)
+    if (status != TRAINLOG_STATUS_OK) {
         return status;
-    if (*objects > TRAINLOG_GENERATION_MTP_MAX_CHILDREN - count)
+    }
+    if (*objects > TRAINLOG_GENERATION_MTP_MAX_CHILDREN - count) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     *objects += count;
     for (index = 0U; index < count; ++index) {
         char path[1024], temporary[1060];
         int written;
         written = snprintf(path, sizeof(path), "%s/%s", local, entries[index].name);
-        if (!safe_leaf(entries[index].name) || written < 0 || (size_t)written >= sizeof(path))
+        if (!safe_leaf(entries[index].name) || written < 0 || (size_t)written >= sizeof(path)) {
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
         if (entries[index].folder) {
             status = pull_folder(
                 io, selection, entries[index].item_id, path, depth + 1U, total, objects);
         } else {
             struct stat value;
             if (entries[index].size_bytes > TRAINLOG_GENERATION_MTP_MAX_TOTAL_BYTES ||
-                *total > TRAINLOG_GENERATION_MTP_MAX_TOTAL_BYTES - entries[index].size_bytes)
+                *total > TRAINLOG_GENERATION_MTP_MAX_TOTAL_BYTES - entries[index].size_bytes) {
                 return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
             *total += entries[index].size_bytes;
             written = snprintf(temporary, sizeof(temporary), "%s.part.%ld", path, (long)getpid());
-            if (written < 0 || (size_t)written >= sizeof(temporary))
+            if (written < 0 || (size_t)written >= sizeof(temporary)) {
                 return TRAINLOG_STATUS_INVALID_ARGUMENT;
+            }
             (void)unlink(temporary);
             status =
                 io->receive(selection->bus, selection->device, entries[index].item_id, temporary);
             if (status == TRAINLOG_STATUS_OK &&
                 (stat(temporary, &value) != 0 || value.st_size < 0 ||
                  (uint64_t)value.st_size != entries[index].size_bytes ||
-                 rename(temporary, path) != 0))
+                 rename(temporary, path) != 0)) {
                 status = TRAINLOG_STATUS_SYSTEM_ERROR;
-            if (status != TRAINLOG_STATUS_OK)
+            }
+            if (status != TRAINLOG_STATUS_OK) {
                 (void)unlink(temporary);
+            }
         }
-        if (status != TRAINLOG_STATUS_OK)
+        if (status != TRAINLOG_STATUS_OK) {
             return status;
+        }
     }
     return TRAINLOG_STATUS_OK;
 }
 
 static bool same_files(const char *left, const char *right) {
-    int a = open(left, O_RDONLY | O_CLOEXEC), b = open(right, O_RDONLY | O_CLOEXEC);
-    char ab[8192], bb[8192];
-    ssize_t ac = 0, bc;
+    int left_fd = open(left, O_RDONLY | O_CLOEXEC);
+    int right_fd = open(right, O_RDONLY | O_CLOEXEC);
+    char left_buffer[8192];
+    char right_buffer[8192];
+    ssize_t left_count = 0;
+    ssize_t right_count;
     bool same = true;
-    if (a < 0 || b < 0)
+    if (left_fd < 0 || right_fd < 0) {
         same = false;
-    while (same && (ac = read(a, ab, sizeof(ab))) > 0) {
-        bc = read(b, bb, (size_t)ac);
-        if (bc != ac || memcmp(ab, bb, (size_t)ac) != 0)
-            same = false;
     }
-    if (same && (ac < 0 || read(b, bb, 1U) != 0))
+    while (same && (left_count = read(left_fd, left_buffer, sizeof(left_buffer))) > 0) {
+        right_count = read(right_fd, right_buffer, (size_t)left_count);
+        if (right_count != left_count ||
+            memcmp(left_buffer, right_buffer, (size_t)left_count) != 0) {
+            same = false;
+        }
+    }
+    if (same && (left_count < 0 || read(right_fd, right_buffer, 1U) != 0)) {
         same = false;
-    if (a >= 0)
-        (void)close(a);
-    if (b >= 0)
-        (void)close(b);
+    }
+    if (left_fd >= 0) {
+        (void)close(left_fd);
+    }
+    if (right_fd >= 0) {
+        (void)close(right_fd);
+    }
     return same;
 }
 
@@ -265,8 +297,9 @@ static TrainlogStatus push_file(const TrainlogGenerationMtpIo *io,
         (void)snprintf(comparison, sizeof(comparison), "%s.compare.%ld", local, (long)getpid());
         (void)unlink(comparison);
         status = io->receive(selection->bus, selection->device, existing.item_id, comparison);
-        if (status != TRAINLOG_STATUS_OK)
+        if (status != TRAINLOG_STATUS_OK) {
             return status;
+        }
         if (same_files(local, comparison)) {
             (void)unlink(comparison);
             return TRAINLOG_STATUS_OK;
@@ -281,8 +314,9 @@ static TrainlogStatus push_file(const TrainlogGenerationMtpIo *io,
                           local,
                           temporary_name,
                           &uploaded);
-        if (status != TRAINLOG_STATUS_OK)
+        if (status != TRAINLOG_STATUS_OK) {
             return status;
+        }
         (void)snprintf(comparison, sizeof(comparison), "%s.verify.%ld", local, (long)getpid());
         (void)unlink(comparison);
         status = io->receive(selection->bus, selection->device, uploaded, comparison);
@@ -293,16 +327,19 @@ static TrainlogStatus push_file(const TrainlogGenerationMtpIo *io,
         }
         (void)unlink(comparison);
         status = io->remove(selection->bus, selection->device, existing.item_id);
-        if (status == TRAINLOG_STATUS_OK)
+        if (status == TRAINLOG_STATUS_OK) {
             status = io->rename(selection->bus, selection->device, uploaded, name);
+        }
         return status;
     }
-    if (status != TRAINLOG_STATUS_NOT_FOUND)
+    if (status != TRAINLOG_STATUS_NOT_FOUND) {
         return status;
+    }
     status = io->send(
         selection->bus, selection->device, selection->storage, parent, local, name, &uploaded);
-    if (status != TRAINLOG_STATUS_OK)
+    if (status != TRAINLOG_STATUS_OK) {
         return status;
+    }
     (void)snprintf(comparison, sizeof(comparison), "%s.verify.%ld", local, (long)getpid());
     (void)unlink(comparison);
     status = io->receive(selection->bus, selection->device, uploaded, comparison);
@@ -324,17 +361,20 @@ static TrainlogStatus push_folder(const TrainlogGenerationMtpIo *io,
     DIR *directory;
     struct dirent *entry;
     TrainlogStatus status = TRAINLOG_STATUS_OK;
-    if (depth > TRAINLOG_GENERATION_MTP_MAX_DEPTH || (directory = opendir(local)) == NULL)
+    if (depth > TRAINLOG_GENERATION_MTP_MAX_DEPTH || (directory = opendir(local)) == NULL) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     while ((entry = readdir(directory)) != NULL && status == TRAINLOG_STATUS_OK) {
         char path[1024];
         struct stat value;
         uint32_t child;
         bool created;
-        if (!safe_leaf(entry->d_name) || entry->d_name[0] == '.')
+        if (!safe_leaf(entry->d_name) || entry->d_name[0] == '.') {
             continue;
-        if ((strcmp(entry->d_name, "manifest.json") == 0) != manifests)
+        }
+        if ((strcmp(entry->d_name, "manifest.json") == 0) != manifests) {
             continue;
+        }
         int written = snprintf(path, sizeof(path), "%s/%s", local, entry->d_name);
         if (written < 0 || (size_t)written >= sizeof(path) || lstat(path, &value) != 0 ||
             S_ISLNK(value.st_mode)) {
@@ -342,8 +382,9 @@ static TrainlogStatus push_folder(const TrainlogGenerationMtpIo *io,
             break;
         }
         if (S_ISDIR(value.st_mode)) {
-            if (manifests)
+            if (manifests) {
                 continue;
+            }
             status = io->ensure_folder(selection->bus,
                                        selection->device,
                                        selection->storage,
@@ -351,12 +392,15 @@ static TrainlogStatus push_folder(const TrainlogGenerationMtpIo *io,
                                        entry->d_name,
                                        &child,
                                        &created);
-            if (status == TRAINLOG_STATUS_OK)
+            if (status == TRAINLOG_STATUS_OK) {
                 status = push_folder(io, selection, child, path, depth + 1U, false);
-            if (status == TRAINLOG_STATUS_OK)
+            }
+            if (status == TRAINLOG_STATUS_OK) {
                 status = push_folder(io, selection, child, path, depth + 1U, true);
-        } else if (S_ISREG(value.st_mode))
+            }
+        } else if (S_ISREG(value.st_mode)) {
             status = push_file(io, selection, parent, path, entry->d_name);
+        }
     }
     (void)closedir(directory);
     return status;
@@ -367,14 +411,16 @@ validate_local_folder(const char *local, unsigned int depth, uint64_t *total, si
     DIR *directory;
     struct dirent *entry;
     TrainlogStatus status = TRAINLOG_STATUS_OK;
-    if (depth > TRAINLOG_GENERATION_MTP_MAX_DEPTH || (directory = opendir(local)) == NULL)
+    if (depth > TRAINLOG_GENERATION_MTP_MAX_DEPTH || (directory = opendir(local)) == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     while ((entry = readdir(directory)) != NULL && status == TRAINLOG_STATUS_OK) {
         char path[1024];
         struct stat value;
         int written;
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
+        }
         if (!safe_leaf(entry->d_name) || entry->d_name[0] == '.') {
             status = TRAINLOG_STATUS_INVALID_ARGUMENT;
             break;
@@ -390,16 +436,18 @@ validate_local_folder(const char *local, unsigned int depth, uint64_t *total, si
             break;
         }
         ++*objects;
-        if (S_ISDIR(value.st_mode))
+        if (S_ISDIR(value.st_mode)) {
             status = validate_local_folder(path, depth + 1U, total, objects);
-        else if (S_ISREG(value.st_mode)) {
+        } else if (S_ISREG(value.st_mode)) {
             if (value.st_size < 0 ||
-                (uint64_t)value.st_size > TRAINLOG_GENERATION_MTP_MAX_TOTAL_BYTES - *total)
+                (uint64_t)value.st_size > TRAINLOG_GENERATION_MTP_MAX_TOTAL_BYTES - *total) {
                 status = TRAINLOG_STATUS_INVALID_ARGUMENT;
-            else
+            } else {
                 *total += (uint64_t)value.st_size;
-        } else
+            }
+        } else {
             status = TRAINLOG_STATUS_INVALID_ARGUMENT;
+        }
     }
     (void)closedir(directory);
     return status;
@@ -414,13 +462,16 @@ TrainlogStatus trainlog_generation_mtp_pull(const TrainlogGenerationMtpIo *io,
     uint64_t total = 0U;
     size_t objects = 0U;
     TrainlogStatus status;
-    if (io == NULL || expected == NULL || local == NULL)
+    if (io == NULL || expected == NULL || local == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     status = mkdir_private(local);
-    if (status == TRAINLOG_STATUS_OK)
+    if (status == TRAINLOG_STATUS_OK) {
         status = select_peer(io, expected, local, &selection, diagnostic, diagnostic_size);
-    if (status == TRAINLOG_STATUS_OK)
+    }
+    if (status == TRAINLOG_STATUS_OK) {
         status = pull_folder(io, &selection, selection.root, local, 0U, &total, &objects);
+    }
     return status;
 }
 
@@ -433,26 +484,32 @@ TrainlogStatus trainlog_generation_mtp_push(const TrainlogGenerationMtpIo *io,
     TrainlogStatus status;
     uint64_t total = 0U;
     size_t objects = 0U;
-    if (io == NULL || expected == NULL || local == NULL)
+    if (io == NULL || expected == NULL || local == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     status = validate_local_folder(local, 0U, &total, &objects);
-    if (status == TRAINLOG_STATUS_OK)
+    if (status == TRAINLOG_STATUS_OK) {
         status = select_peer(io, expected, local, &selection, diagnostic, diagnostic_size);
-    if (status == TRAINLOG_STATUS_OK)
+    }
+    if (status == TRAINLOG_STATUS_OK) {
         status = push_folder(io, &selection, selection.root, local, 0U, false);
-    if (status == TRAINLOG_STATUS_OK)
+    }
+    if (status == TRAINLOG_STATUS_OK) {
         status = push_folder(io, &selection, selection.root, local, 0U, true);
+    }
     return status;
 }
 
-static const TrainlogGenerationMtpIo production = {trainlog_usb_list_mtp_devices,
-                                                   trainlog_mtp_list_storages,
-                                                   trainlog_mtp_list_folder,
-                                                   trainlog_mtp_ensure_folder,
-                                                   trainlog_mtp_receive_file,
-                                                   trainlog_mtp_send_text_file,
-                                                   trainlog_mtp_delete_object,
-                                                   trainlog_mtp_rename_object};
+static const TrainlogGenerationMtpIo production = {
+    .devices = trainlog_usb_list_mtp_devices,
+    .storages = trainlog_mtp_list_storages,
+    .children = trainlog_mtp_list_folder,
+    .ensure_folder = trainlog_mtp_ensure_folder,
+    .receive = trainlog_mtp_receive_file,
+    .send = trainlog_mtp_send_text_file,
+    .remove = trainlog_mtp_delete_object,
+    .rename = trainlog_mtp_rename_object,
+};
 const TrainlogGenerationMtpIo *trainlog_generation_mtp_production_io(void) {
     return &production;
 }
