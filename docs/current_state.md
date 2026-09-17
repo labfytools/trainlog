@@ -8,6 +8,13 @@ non-installed schema-v17 bridge candidate is reproducibly built and tested.
 Physical-device MTP, release signing, real user backup/restore, main integration
 and deployment are not complete.
 
+`TRAINLOG_NATIVE_BUILD_AND_CANDIDATE_V1` closes the native warning gate. Strict
+GCC 16.2.1 and Clang 22.1.8 builds now pass the same 81-test inventory, and the
+Clang ASan/UBSan build passes it with leak detection. Bounded path assembly and
+the Web sync accepted response reject insufficient capacity without publishing
+partial output. Fresh desktop, current-Android and schema-v17 bridge candidates
+were rebuilt from commit `2c5a8be2827e31fc5be2accb65073bfeb79d6068`.
+
 Snapshot date: **2026-09-17**.
 
 `TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,

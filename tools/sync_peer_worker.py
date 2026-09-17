@@ -139,7 +139,12 @@ def main() -> int:
         if args.mtp_adapter is None:
             raise RuntimeError("MTP adapter is required")
         pump = lambda: run_adapter(
-            args.mtp_adapter, "pull", args.expected_peer, args.transport_root, deadline, True
+            args.mtp_adapter,
+            "pull",
+            args.expected_peer,
+            args.transport_root,
+            deadline,
+            True,
         )
         # Android publishes its durable identity only while participating.  A
         # missing expected advertisement is therefore a bounded wait state;
@@ -162,7 +167,9 @@ def main() -> int:
     request_path = args.transport_root / "request-v1.json"
     publish_json(request_path, request)
     if args.mode == "mtp":
-        run_adapter(args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline)
+        run_adapter(
+            args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline
+        )
     emit(
         args.run_id,
         "waiting_android_publication",
@@ -178,7 +185,9 @@ def main() -> int:
     ack_path = args.transport_root / "desktop-consumption-ack-v1.json"
     publish_json(ack_path, ack)
     if args.mode == "mtp":
-        run_adapter(args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline)
+        run_adapter(
+            args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline
+        )
     if ack["result"] != "consumed":
         raise RuntimeError("desktop rejected Android generation")
     emit(
@@ -209,8 +218,15 @@ def main() -> int:
     }
     publish_json(args.transport_root / "desktop-generation-v1.json", ref)
     if args.mode == "mtp":
-        run_adapter(args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline)
-    emit(args.run_id, "published", outbound_generation_id=outgoing_id, manifest_sha256=digest)
+        run_adapter(
+            args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline
+        )
+    emit(
+        args.run_id,
+        "published",
+        outbound_generation_id=outgoing_id,
+        manifest_sha256=digest,
+    )
     emit(args.run_id, "waiting_acknowledgement", outbound_generation_id=outgoing_id)
     android_ack = args.transport_root / "android-consumption-ack-v1.json"
     android_ack_value = wait_json(

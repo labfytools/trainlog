@@ -7,7 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / os.environ.get("TRAINLOG_WEB_E2E_BUILD", "build") / "tui"
 GECKO = Path(
-    os.environ.get("TRAINLOG_GECKODRIVER", "/home/fy59/.cache/trainlog/web-e2e-tools/geckodriver")
+    os.environ.get(
+        "TRAINLOG_GECKODRIVER", "/home/fy59/.cache/trainlog/web-e2e-tools/geckodriver"
+    )
 )
 
 
@@ -40,7 +42,9 @@ class BrowserSyncTest(unittest.TestCase):
             transport.mkdir()
             owned = root / "owned"
             owned.mkdir()
-            remote = (root / "device/Documents/Trainlog") if mode == "mtp" else transport
+            remote = (
+                (root / "device/Documents/Trainlog") if mode == "mtp" else transport
+            )
             remote.mkdir(parents=True, exist_ok=True)
             release = root / "release-android"
             android_log = (root / "android.log").open("wb")
@@ -140,11 +144,15 @@ class BrowserSyncTest(unittest.TestCase):
                 driver.get(f"http://127.0.0.1:{port}/")
                 wait = WebDriverWait(driver, 15)
                 button = wait.until(
-                    lambda d: d.find_element(By.XPATH, "//button[normalize-space()='Synchroniser']")
+                    lambda d: d.find_element(
+                        By.XPATH, "//button[normalize-space()='Synchroniser']"
+                    )
                 )
                 wait.until(lambda _: button.is_enabled())
                 button.click()
-                state_path = Path(str(xdg / "trainlog" / "trainlog.db") + ".sync-run.json")
+                state_path = Path(
+                    str(xdg / "trainlog" / "trainlog.db") + ".sync-run.json"
+                )
                 observed = await_condition(
                     lambda: (
                         json.loads(state_path.read_text())
@@ -164,7 +172,10 @@ class BrowserSyncTest(unittest.TestCase):
                 self.assertEqual(committed["result"], "running")
                 with sqlite3.connect(xdg / "trainlog" / "trainlog.db") as database:
                     self.assertEqual(
-                        database.execute("SELECT COUNT(*) FROM execution_drafts").fetchone()[0], 1
+                        database.execute(
+                            "SELECT COUNT(*) FROM execution_drafts"
+                        ).fetchone()[0],
+                        1,
                     )
                 release.touch()
                 final = await_condition(
@@ -186,16 +197,21 @@ class BrowserSyncTest(unittest.TestCase):
                 )
                 summary.click()
                 wait.until(
-                    lambda d: "Brouillons reçus" in d.page_source and "active" in d.page_source
+                    lambda d: "Brouillons reçus" in d.page_source
+                    and "active" in d.page_source
                 )
                 driver.refresh()
                 wait.until(lambda d: "Synchronisation confirmée" in d.page_source)
                 state = json.loads(
-                    Path(str(xdg / "trainlog" / "trainlog.db") + ".sync-run.json").read_text()
+                    Path(
+                        str(xdg / "trainlog" / "trainlog.db") + ".sync-run.json"
+                    ).read_text()
                 )
                 self.assertEqual(state["phase"], "completed")
                 self.assertEqual(
-                    android.wait(timeout=30), 0, (root / "android.log").read_text(errors="replace")
+                    android.wait(timeout=30),
+                    0,
+                    (root / "android.log").read_text(errors="replace"),
                 )
             finally:
                 if driver is not None:

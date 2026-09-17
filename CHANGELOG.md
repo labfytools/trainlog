@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.2
 
+- Closed the native candidate warning gate with checked path and HTTP response
+  bounds, strict GCC and Clang builds, full Clang ASan/UBSan validation, and a
+  stable concurrent object-I/O MTP double. Rebuilt the desktop, current Android
+  and non-installed schema-v17 bridge candidates with recorded digests; no
+  service, device, user database, signing secret or deployment was touched.
+
 - Normalized the recent synchronization, generation-MTP, Android backup,
   Web Dashboard serialization, tests, I/O doubles and packaging code for human
   readability. Added scoped C formatting rules and review guidance without

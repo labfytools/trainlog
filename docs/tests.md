@@ -1317,12 +1317,14 @@ behavioral assertions. Python syntax/orchestrator tests, Android generation and
 backup tests, the I/O-boundary MTP browser proof, JSON/import validators and
 the isolated harness cover the other normalized sources.
 
-GCC 16.2.1 now compiles beyond the former `misleading-indentation` failures in
-`json_writer.c`, `web_dashboard_json.c`, `web_dashboard.c`,
-`dashboard_layout.c`, and `generation_mtp.c`. The separate strict build remains
-blocked by distinct pre-existing `format-truncation` diagnostics in the Web
-accepted-response buffer and bounded test path buffers. Warning policy remains
-unchanged; GCC is not reported as green.
+GCC 16.2.1 and Clang 22.1.8 both pass separate strict C17 builds and the full
+**81/81** Meson inventory with `werror=true` and warning level 3. The former GCC
+`format-truncation` findings are closed by exact checked path construction in
+the generation-MTP tests/double and by a production accepted-response
+serializer that reports its byte count. Boundary tests cover exact fit,
+one-byte insufficiency and multibyte path components; failure leaves no partial
+path or response available to a caller. Clang ASan/UBSan passes the same
+**81/81** inventory with leak detection.
 
 The readability closeout preserves the **81/81** normal Meson and **81/81**
 ASan/UBSan inventories. The isolated Android run reports **220 tests: 215
@@ -1330,3 +1332,14 @@ passed, five skipped, zero failures/errors**, and `assembleDebug` succeeds on
 JDK 17. The real Firefox/object-I/O-boundary MTP conversation also passes after
 formatting. A source comparison against the pre-readability commit confirms
 that the scoped test names and assertion counts are unchanged.
+
+The isolated JDK 17 harness reports **220 Android tests: 215 passed, five
+skipped, zero failures/errors**. The skips are optional, externally supplied
+copy gates: `BridgeBackupMigrationTest.verifiedSchemaSeventeenBridgeBackupMigratesThroughCurrentOwner`,
+`RealAndroidV9BodyZonesMigrationTest.realVersionNineCopyMigratesWithoutChangingExistingTables`,
+`RealAndroidV14FeedbackRevisionMigrationTest.freshRealCopyMigratesLosslesslyToVersionFifteen`,
+and the version-thirteen and version-twelve methods in
+`RealAndroidV12MachineExerciseMigrationTest`. They require respectively the
+bridge backup input, a real v9 fixture, a real v14 fixture/output directory,
+and real v13/v12 fixtures with explicit output directories. Synthetic bridge
+and current-schema migration proofs run separately; no user database is read.
