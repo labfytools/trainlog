@@ -6,13 +6,38 @@ import { ActivityTile, CardioTile, LastSessionTile, MaxRecordsTile, MuscleDistri
 describe('tuiles Dashboard alimentées par le contrat', () => {
   it('présente les indisponibilités sans exposer les raisons techniques ni inventer de faits', () => {
     const snapshot = dashboardFixture()
-    const { rerender } = render(<NextSessionTile snapshot={snapshot} size="large" />)
-    expect(screen.getByText('Aucune séance préparée')).toBeInTheDocument()
+    const { rerender } = render(<NextSessionTile preparedItems={{api_version:1,generated_at:'2026-09-17T12:00:00Z',partial:false,items:[]}} pending={false} failed={false} size="large" />)
+    expect(screen.getByText('Aucun élément disponible')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent('no_persisted_executable_plan')
     rerender(<CardioTile snapshot={snapshot} size="large" />)
     expect(screen.getByText('Aucune donnée cardio disponible')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent('no_cardio_data_source')
     expect(document.body).not.toHaveTextContent(/bpm|%/i)
+  })
+
+  it('sépare proposition à valider et brouillon actif sans fabriquer de réalisé', () => {
+    const proposal = {
+      api_version: 1 as const,
+      generated_at: '2026-09-17T12:00:00Z',
+      partial: false,
+      items: [{ identity: 'aid_one', kind: 'ai_proposal' as const, title: 'Préparation', planned_for: '2026-09-18', state: 'published', occurrence_count: 6, provenance: 'ai_import' }],
+    }
+    const { rerender } = render(
+      <NextSessionTile size="large" preparedItems={proposal} pending={false} failed={false} />,
+    )
+    expect(screen.getByText('Proposition préparée · à valider')).toBeInTheDocument()
+    expect(screen.getByText('Préparation')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/réalisée|terminée/i)
+
+    rerender(<NextSessionTile size="large" preparedItems={{ ...proposal, items: [{ ...proposal.items[0], identity: 'se_one', kind: 'execution_draft', title: 'training', planned_for: null, state: 'active', occurrence_count: 2, provenance: 'execution_store' }] }} pending={false} failed={false} />)
+    expect(screen.getByText('Brouillon d’exécution · à reprendre')).toBeInTheDocument()
+  })
+
+  it('conserve une lecture durable lorsque son actualisation échoue', () => {
+    render(<NextSessionTile size="medium" preparedItems={{ api_version: 1, generated_at: '2026-09-17T12:00:00Z', partial: false, items: [{ identity: 'aid_one', kind: 'ai_proposal', title: 'Conservée', planned_for: null, state: 'published', occurrence_count: 1, provenance: 'ai_import' }] }} pending={false} failed />)
+    expect(screen.getByText('Conservée')).toBeInTheDocument()
+    expect(screen.getByText(/Dernière lecture conservée/)).toBeInTheDocument()
+    expect(screen.queryByText('Aucun élément disponible')).not.toBeInTheDocument()
   })
 
   it.each(['compact', 'medium', 'large'] as const)('rend les 90 jours et les sommes factuelles en taille %s', (size) => {

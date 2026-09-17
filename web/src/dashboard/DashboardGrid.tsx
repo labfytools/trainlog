@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import GridLayout, { useContainerWidth, verticalCompactor, type Layout } from 'react-grid-layout'
 import { Tile } from '../components/Tile'
 import type { DashboardSnapshot } from '../api/dashboard'
+import type { PreparedItemsSnapshot } from '../api/preparedItems'
 import { fetchDashboardLayout, saveDashboardLayout, type DashboardLayoutSnapshot } from '../api/dashboardLayout'
 import {
   cloneLayout,
@@ -35,9 +36,23 @@ function breakpoint(width: number): { columns: 12 | 6 | 1, rowHeight: number } {
   return { columns: 12, rowHeight: 52 }
 }
 
-interface DashboardGridProps { dashboard?: DashboardSnapshot | null; pending?: boolean; failed?: boolean }
+interface DashboardGridProps {
+  dashboard?: DashboardSnapshot | null
+  pending?: boolean
+  failed?: boolean
+  preparedItems?: PreparedItemsSnapshot | null
+  preparedItemsPending?: boolean
+  preparedItemsFailed?: boolean
+}
 
-export function DashboardGrid({ dashboard = null, pending = false, failed = false }: DashboardGridProps) {
+export function DashboardGrid({
+  dashboard = null,
+  pending = false,
+  failed = false,
+  preparedItems = null,
+  preparedItemsPending = false,
+  preparedItemsFailed = false,
+}: DashboardGridProps) {
   const [layout, setLayout] = useState<TileLayout[]>(() => cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
   const [editing, setEditing] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -169,7 +184,10 @@ export function DashboardGrid({ dashboard = null, pending = false, failed = fals
             const content = dashboardTiles[id]
             const dimensions = visibleLayout.find((tile) => tile.id === id) ?? DEFAULT_DASHBOARD_LAYOUT[0]
             const size = tileSize(dimensions)
-            const available = dashboard === null ? false : tileAvailable(dashboard, id)
+            const available = id === 'next-session'
+              ? (preparedItems?.items.length ?? 0) > 0
+              : dashboard !== null && tileAvailable(dashboard, id)
+            const tilePending = id === 'next-session' ? preparedItemsPending : pending
             const partial = dashboard?.meta.partial === true && id === 'max-records'
             const TileContent = content.component
             return (
@@ -180,10 +198,21 @@ export function DashboardGrid({ dashboard = null, pending = false, failed = fals
                   size={size}
                   editable={editing && desktop}
                   onKeyDown={(event) => onTileKeyDown(event, id)}
-                  stateLabel={pending ? 'CHARGEMENT' : available ? (partial ? 'RÉCENT' : 'DISPONIBLE') : 'INDISPONIBLE'}
+                  stateLabel={tilePending ? 'CHARGEMENT' : available ? (partial ? 'RÉCENT' : 'DISPONIBLE') : 'INDISPONIBLE'}
                   stateTone={available ? (partial ? 'partial' : 'available') : 'unavailable'}
                 >
-                  {dashboard === null ? <div className="tile-data-placeholder" aria-hidden="true"><span /><span /><span /></div> : <TileContent snapshot={dashboard} size={size} />}
+                  {id === 'next-session' ? (
+                    <NextSessionTile
+                      size={size}
+                      preparedItems={preparedItems}
+                      pending={preparedItemsPending}
+                      failed={preparedItemsFailed}
+                    />
+                  ) : dashboard === null ? (
+                    <div className="tile-data-placeholder" aria-hidden="true"><span /><span /><span /></div>
+                  ) : (
+                    <TileContent snapshot={dashboard} size={size} />
+                  )}
                 </Tile>
               </div>
             )
@@ -195,7 +224,7 @@ export function DashboardGrid({ dashboard = null, pending = false, failed = fals
 }
 
 function tileAvailable(snapshot: DashboardSnapshot, id: TileId): boolean {
-  if (id === 'next-session') return snapshot.data.next_session.available
+  if (id === 'next-session') return false
   if (id === 'activity') return snapshot.data.activity.available
   if (id === 'progression') return snapshot.data.progression.available
   if (id === 'last-session') return snapshot.data.last_session.available

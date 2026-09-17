@@ -2,6 +2,19 @@
 
 ## Unreleased — 0.1.2
 
+- Fixed a production full-generation timeout caused by recursively uploading
+  retained staging and unrelated transport history on every MTP push. Each
+  phase now publishes a private bounded outbox containing only its request,
+  ACK, and current referenced generation, while preserving every retained
+  generation, tombstone, and causal proof. Transport expiry has a stable
+  browser-facing code and action instead of a truncated traceback.
+
+- Replaced the Web Next Session placeholder with a separate read-only Core
+  projection that distinguishes AI proposals from active/pending execution
+  drafts without redefining the frozen Dashboard field or counting targets as
+  performed work. The browser preserves the last successful durable view
+  across refresh failures and uses one abortable, per-run ordered sync poller.
+
 - Completed the authorized private full-generation rollout over production
   direct MTP: verified Android and desktop backups, signing-preserving Android
   updates, schema migrations, persistent peer pairing, bidirectional durable

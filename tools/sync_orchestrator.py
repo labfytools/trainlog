@@ -118,6 +118,20 @@ def update(state_path: Path, state: dict, phase: str, **fields: object) -> None:
     atomic_write(state_path, state)
 
 
+def failure_code(error: BaseException) -> str:
+    """Map bounded operational evidence to one stable browser-facing code."""
+    diagnostic = str(error).lower()
+    if "transport_timeout:" in diagnostic or "peer worker timed out" in diagnostic:
+        return "transport_timeout"
+    if "expected android peer not found" in diagnostic:
+        return "device_unavailable"
+    if "capacity exhausted" in diagnostic or "retained generation capacity" in diagnostic:
+        return "capacity_exhausted"
+    if "conflict" in diagnostic or "wrong consumer" in diagnostic:
+        return "data_conflict"
+    return "internal_error"
+
+
 def validate_result(value: dict, run_id: str) -> dict:
     required = {
         "format",
@@ -303,6 +317,7 @@ def run(args: argparse.Namespace) -> int:
                 state,
                 "failed",
                 result="conflict",
+                error_code="sync_in_progress",
                 diagnostic="Another synchronization owns the common lock",
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
@@ -418,6 +433,7 @@ def main() -> int:
                 state,
                 phase,
                 result=phase,
+                error_code=("interrupted" if phase == "interrupted" else failure_code(error)),
                 diagnostic=str(error)[:MAX_DIAGNOSTIC],
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )

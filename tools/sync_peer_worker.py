@@ -7,7 +7,17 @@ always produced and consumed by the existing generation services.
 """
 
 from __future__ import annotations
-import argparse, hashlib, json, os, sys, time, uuid
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
 from contextlib import closing, redirect_stdout
 from pathlib import Path
 
@@ -61,13 +71,21 @@ def run_adapter(
     allow_missing_peer: bool = False,
 ) -> bool:
     remaining = max(1, int(deadline - time.monotonic()))
-    result = __import__("subprocess").run(
-        [str(adapter), operation, peer, str(root)],
-        stdin=__import__("subprocess").DEVNULL,
-        capture_output=True,
-        timeout=min(remaining, 30),
-        check=False,
-    )
+    timeout = min(remaining, 30)
+    try:
+        result = subprocess.run(
+            [str(adapter), operation, peer, str(root)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        # CONTRACT: an adapter timeout is an ambiguous transport failure. It
+        # never implies rollback, replay, or permission to retry a mutation.
+        raise RuntimeError(
+            f"transport_timeout: MTP {operation} did not finish within {timeout} seconds"
+        ) from error
     if result.returncode != 0:
         diagnostic = (
             result.stderr.decode("utf-8", "replace")[:1024] or "MTP adapter failed"
@@ -80,6 +98,47 @@ def run_adapter(
             return False
         raise RuntimeError(diagnostic)
     return True
+
+
+def push_adapter(
+    adapter: Path,
+    peer: str,
+    root: Path,
+    relative_paths: list[str],
+    deadline: float,
+) -> None:
+    """Publish only the phase-owned bounded MTP objects.
+
+    WHY: the durable transport root also retains inbound objects, legacy files,
+    and staging evidence; recursively uploading that root makes each exchange
+    grow with history and can time out before Android sees the request.
+    CONTRACT: callers name fixed relative files/directories already durably
+    published below ``root``. The adapter receives a private disposable view.
+    INVARIANT: no retained generation, ACK, tombstone, or source object is
+    deleted or modified while constructing the view.
+    """
+    with tempfile.TemporaryDirectory(prefix="trainlog-mtp-outbox-", dir=root.parent) as directory:
+        outbox = Path(directory)
+        os.chmod(outbox, 0o700)
+        for relative in relative_paths:
+            source = root / relative
+            destination = outbox / relative
+            if (
+                source.is_symlink()
+                or not source.exists()
+                or not source.resolve().is_relative_to(root.resolve())
+            ):
+                raise RuntimeError(f"invalid MTP outbox source: {relative}")
+            if source.is_dir() and any(path.is_symlink() for path in source.rglob("*")):
+                raise RuntimeError(f"MTP outbox source contains a symbolic link: {relative}")
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if source.is_dir():
+                shutil.copytree(source, destination, copy_function=shutil.copy2)
+            elif source.is_file():
+                shutil.copy2(source, destination)
+            else:
+                raise RuntimeError(f"invalid MTP outbox object: {relative}")
+        run_adapter(adapter, "push", peer, outbox, deadline)
 
 
 def wait_file(path: Path, deadline: float, pump=None) -> None:
@@ -167,8 +226,12 @@ def main() -> int:
     request_path = args.transport_root / "request-v1.json"
     publish_json(request_path, request)
     if args.mode == "mtp":
-        run_adapter(
-            args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline
+        push_adapter(
+            args.mtp_adapter,
+            args.expected_peer,
+            args.transport_root,
+            ["request-v1.json"],
+            deadline,
         )
     emit(
         args.run_id,
@@ -185,8 +248,12 @@ def main() -> int:
     ack_path = args.transport_root / "desktop-consumption-ack-v1.json"
     publish_json(ack_path, ack)
     if args.mode == "mtp":
-        run_adapter(
-            args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline
+        push_adapter(
+            args.mtp_adapter,
+            args.expected_peer,
+            args.transport_root,
+            ["request-v1.json", "desktop-consumption-ack-v1.json"],
+            deadline,
         )
     if ack["result"] != "consumed":
         raise RuntimeError("desktop rejected Android generation")
@@ -218,8 +285,17 @@ def main() -> int:
     }
     publish_json(args.transport_root / "desktop-generation-v1.json", ref)
     if args.mode == "mtp":
-        run_adapter(
-            args.mtp_adapter, "push", args.expected_peer, args.transport_root, deadline
+        push_adapter(
+            args.mtp_adapter,
+            args.expected_peer,
+            args.transport_root,
+            [
+                "request-v1.json",
+                "desktop-consumption-ack-v1.json",
+                "desktop-generation-v1.json",
+                ref["relative_path"],
+            ],
+            deadline,
         )
     emit(
         args.run_id,

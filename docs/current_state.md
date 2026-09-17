@@ -219,6 +219,22 @@ persistence with optimistic conflict and CSRF/Origin protection. It provides no
 business mutation or automatic browser launch. Analyse, Programmes, Sessions,
 and Exercises remain explicit placeholders.
 
+The Next Session tile no longer treats the frozen Dashboard
+`next_session.available` placeholder as a durable inventory. A separate bounded
+`GET /api/v1/prepared-items` Core projection distinguishes imported AI
+proposals from active or pending execution drafts and exposes stable identity,
+state, title/date, occurrence count, and provenance. Reload and later sync
+failure do not erase the last successfully read projection. Proposal targets
+remain planning data and never alter Dashboard actual-work metrics.
+
+Full-generation MTP publication now uses a private phase-owned outbox. The
+request, desktop consumption ACK, and current desktop generation are published
+only when their phase requires them; retained staging, inbound objects, legacy
+files, prior ACKs, and causal evidence are not recursively re-uploaded. Adapter
+timeouts are persisted as the stable `transport_timeout` status instead of a
+truncated Python traceback. The browser polls through one abortable scheduler,
+orders revisions per `run_id`, and rejects stale responses from older runs.
+
 ## Data semantics
 
 - `exercise_id` identifies a catalogue exercise; `entry_id` identifies one

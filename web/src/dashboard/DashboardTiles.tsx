@@ -3,13 +3,53 @@ import { lazy, Suspense, type ComponentType } from 'react'
 import type { TileSize } from './dashboardLayout'
 import { count, formatDate, formatDateTime, formatDose, formatDuration, formatWeight } from './dashboardFormat'
 import { BodyZoneFigure } from './BodyZoneFigure'
+import type { PreparedItemsSnapshot } from '../api/preparedItems'
 
 const ProgressionChart = lazy(() => import('../charts/ProgressionChart').then((module) => ({ default: module.ProgressionChart })))
 
 interface TileDataProps { snapshot: DashboardSnapshot; size: TileSize }
 
-export function NextSessionTile({ size }: TileDataProps) {
-  return <div className="unavailable-content"><strong aria-hidden="true">—</strong><p>Aucune séance préparée</p>{size !== 'compact' && <small>Aucune séance préparée n’est actuellement disponible.</small>}{size === 'large' && <span className="future-action" aria-hidden="true">Préparation à venir</span>}</div>
+export interface NextSessionTileProps {
+  size: TileSize
+  preparedItems?: PreparedItemsSnapshot | null
+  pending?: boolean
+  failed?: boolean
+}
+
+export function NextSessionTile({
+  size,
+  preparedItems = null,
+  pending = false,
+  failed = false,
+}: NextSessionTileProps) {
+  if (preparedItems === null) {
+    return <Unavailable text={failed ? 'Données indisponibles' : 'Chargement des préparations…'} />
+  }
+  const item = preparedItems.items[0]
+  if (item === undefined) {
+    return <Unavailable text={failed ? 'Données indisponibles' : 'Aucun élément disponible'} />
+  }
+  const proposal = item.kind === 'ai_proposal'
+  const heading = proposal
+    ? 'Proposition préparée · à valider'
+    : item.state === 'active'
+      ? 'Brouillon d’exécution · à reprendre'
+      : 'Brouillon d’exécution · en attente'
+  const title = item.title || (proposal ? 'Proposition sans titre' : 'Séance préparée')
+  return (
+    <div className="session-content">
+      <p className="primary-label">{heading}</p>
+      <strong>{title}</strong>
+      {size !== 'compact' && (
+        <dl className="fact-list horizontal">
+          <Fact label="Éléments" value={String(item.occurrence_count)} />
+          <Fact label="Prévue" value={item.planned_for ? formatDate(item.planned_for) : 'Non renseignée'} />
+        </dl>
+      )}
+      {failed && <small>Dernière lecture conservée · actualisation indisponible</small>}
+      {pending && !failed && <small>Actualisation…</small>}
+    </div>
+  )
 }
 
 export function ActivityTile({ snapshot, size }: TileDataProps) {

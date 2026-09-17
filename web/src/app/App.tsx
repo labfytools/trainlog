@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchHealth, type Health } from '../api/health'
 import { fetchDashboard, type DashboardSnapshot } from '../api/dashboard'
+import { fetchPreparedItems, type PreparedItemsSnapshot } from '../api/preparedItems'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { DashboardPage } from '../routes/DashboardPage'
@@ -23,9 +24,23 @@ export function App() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot | null>(null)
   const [dashboardPending, setDashboardPending] = useState(true)
   const [dashboardFailed, setDashboardFailed] = useState(false)
+  const [preparedItems, setPreparedItems] = useState<PreparedItemsSnapshot | null>(null)
+  const [preparedItemsPending, setPreparedItemsPending] = useState(true)
+  const [preparedItemsFailed, setPreparedItemsFailed] = useState(false)
   const reloadDashboard = useCallback(() => {
     fetchDashboard().then((value) => { setDashboard(value); setDashboardFailed(false) })
       .catch(() => setDashboardFailed(true)).finally(() => setDashboardPending(false))
+  }, [])
+  const reloadPreparedItems = useCallback(() => {
+    setPreparedItemsPending(true)
+    fetchPreparedItems().then((value) => {
+      setPreparedItems(value)
+      setPreparedItemsFailed(false)
+    }).catch(() => {
+      // INVARIANT: a transient reread failure does not erase the last durable
+      // projection already shown to the user.
+      setPreparedItemsFailed(true)
+    }).finally(() => setPreparedItemsPending(false))
   }, [])
 
   useEffect(() => {
@@ -39,10 +54,25 @@ export function App() {
     }).catch(() => {
       setDashboard(null); setDashboardFailed(true)
     }).finally(() => setDashboardPending(false))
+    fetchPreparedItems(controller.signal).then((value) => {
+      setPreparedItems(value)
+      setPreparedItemsFailed(false)
+    }).catch(() => {
+      setPreparedItemsFailed(true)
+    }).finally(() => setPreparedItemsPending(false))
     return () => controller.abort()
   }, [])
 
-  const content = route.id === 'dashboard' ? <DashboardPage dashboard={dashboard} pending={dashboardPending} failed={dashboardFailed} /> :
+  const content = route.id === 'dashboard' ? (
+    <DashboardPage
+      dashboard={dashboard}
+      pending={dashboardPending}
+      failed={dashboardFailed}
+      preparedItems={preparedItems}
+      preparedItemsPending={preparedItemsPending}
+      preparedItemsFailed={preparedItemsFailed}
+    />
+  ) :
     <PlaceholderPage title={placeholderContent[route.id][0]}
       eyebrow={placeholderContent[route.id][1]}
       description={placeholderContent[route.id][2]} />
@@ -50,7 +80,10 @@ export function App() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Aller au contenu</a>
-      <Header activeRoute={route} onNavigate={navigate} onSyncCommitted={reloadDashboard} />
+      <Header activeRoute={route} onNavigate={navigate} onSyncCommitted={() => {
+        reloadDashboard()
+        reloadPreparedItems()
+      }} />
       <main className="app-main" id="main-content">{content}</main>
       <Footer health={health} healthPending={healthPending} healthFailed={healthFailed} dashboard={dashboard} />
     </div>

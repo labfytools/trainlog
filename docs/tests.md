@@ -6,6 +6,18 @@ through the C adapter, observes the desktop commit at an Android test barrier,
 then releases the real ACK. This proves the directory transport double, not
 physical MTP. Orchestrator tests cover bounded streams and descendant cleanup;
 deployment-tool tests cover consistent SQLite backup and candidate inventory.
+The incident regressions also prove that a phase-owned MTP outbox excludes
+retained staging and unrelated legacy files, adapter expiry produces the stable
+`transport_timeout` code, and operational failure classes remain distinct.
+
+`web_prepared_items` exercises the production SQLite projection and JSON
+serializer with a proposal and an execution draft, then proves finalized and
+causally deleted execution drafts are absent. The HTTP test covers the
+read-only route and method rejection. Vitest distinguishes proposal, active
+draft, loading, empty and failed-refresh states; it retains an already rendered
+durable value across a reread failure. Sync-control tests cover a single
+abortable polling scheduler, per-run revisions, rejection of an older run's
+late terminal response, stable error/action rendering, and cleanup on unmount.
 
 The `ai_history_export` test covers an empty database, a simple session,
 distinct multi-occurrences of one exercise, ordered sets, exact occurrence

@@ -21,6 +21,7 @@
 #include <yyjson.h>
 
 #include "trainlog/web_dashboard.h"
+#include "trainlog/web_prepared_items.h"
 #include "trainlog/dashboard_layout.h"
 #include "web_assets.h"
 
@@ -703,6 +704,27 @@ static enum MHD_Result handle_request(void *closure,
             return queue_json(connection,
                               MHD_HTTP_INTERNAL_SERVER_ERROR,
                               "{\"error\":\"dashboard_unavailable\"}\n",
+                              NULL);
+        }
+        return queue_json(connection, MHD_HTTP_OK, json, NULL);
+    }
+    if (strcmp(url, "/api/v1/prepared-items") == 0) {
+        char json[TRAINLOG_WEB_PREPARED_ITEMS_JSON_CAPACITY];
+        size_t json_size = 0U;
+        TrainlogWebPreparedItems items;
+
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
+        if (trainlog_web_prepared_items_load(context->database, &items) != TRAINLOG_STATUS_OK ||
+            trainlog_web_prepared_items_serialize(&items, json, sizeof(json), &json_size) !=
+                TRAINLOG_STATUS_OK) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"prepared_items_unavailable\"}\n",
                               NULL);
         }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);

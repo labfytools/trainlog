@@ -34,6 +34,9 @@ CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
 tile rendering exist. The Dashboard's bounded progression and BODY ZONES
 visualizations are implemented; the other four Web routes remain placeholders.
+The corrective prepared-item projection and bounded phase-owned MTP outbox are
+implemented without opening the Sessions route, changing schemas, or changing
+the frozen Dashboard and exchange contracts.
 
 ## Current cursor
 

@@ -798,6 +798,23 @@ truncation, and publishes generation manifests last. Production behavior is
 tested by replacing only the typed libmtp/udev I/O callbacks with a filesystem
 object double; the same compiled transport algorithm remains under test.
 
+Each worker push is additionally scoped by a private disposable outbox. The
+first push contains only the correlated request; the post-import push adds the
+desktop consumption ACK; the publication push adds the current desktop
+generation reference and exactly its referenced generation directory. The
+durable transport root remains the owner of retained generations, staging,
+legacy compatibility artifacts, and evidence, but those unrelated objects are
+not recursively sent on every phase. Constructing an outbox does not delete or
+rewrite any source object. A bounded adapter timeout is an ambiguous transport
+failure with stable code `transport_timeout`; it is not evidence of rollback
+and does not authorize automatic mutation replay.
+
+`GET /api/v1/prepared-items` is a separate read-only Web projection. It does not
+change the frozen Dashboard `next_session.available` field or any exchange
+format. It lists bounded durable desktop AI proposals and relevant execution
+drafts as distinct kinds. Completed sessions remain outside this projection,
+and finalized or causally deleted execution drafts are excluded.
+
 ## 19. Legacy active-protocol limitations
 
 The Web end-to-end tranche adds an explicit opt-in application orchestrator.

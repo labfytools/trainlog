@@ -76,7 +76,9 @@ class OrchestratorTest(unittest.TestCase):
                 values = self.fixture(root, **override)
                 result = self.invoke(ORCHESTRATOR, values)
                 self.assertEqual(result.returncode, 2)
-                self.assertEqual(json.loads(values[1].read_text())["phase"], "failed")
+                final = json.loads(values[1].read_text())
+                self.assertEqual(final["phase"], "failed")
+                self.assertEqual(final["error_code"], "internal_error")
 
     def test_stdout_bound_is_enforced_before_complete_accumulation(self):
         with tempfile.TemporaryDirectory() as directory:
