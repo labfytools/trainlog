@@ -145,6 +145,29 @@ def push_adapter(
         run_adapter(adapter, "push", peer, outbox, deadline)
 
 
+def push_desktop_generation(
+    adapter: Path,
+    peer: str,
+    root: Path,
+    relative_path: str,
+    deadline: float,
+) -> None:
+    """Commit immutable bytes before making their correlated reference visible."""
+    push_adapter(adapter, peer, root, [relative_path], deadline)
+    push_adapter(
+        adapter,
+        peer,
+        root,
+        [
+            "request-v1.json",
+            "desktop-archive-acknowledgements-v1.json",
+            "desktop-consumption-ack-v1.json",
+            "desktop-generation-v1.json",
+        ],
+        deadline,
+    )
+
+
 def wait_file(path: Path, deadline: float, pump=None) -> None:
     while not path.is_file():
         if time.monotonic() >= deadline:
@@ -331,17 +354,15 @@ def main() -> int:
     }
     publish_json(args.transport_root / "desktop-generation-v1.json", ref)
     if args.mode == "mtp":
-        push_adapter(
+        # CONTRACT: the immutable generation must be fully visible before its
+        # mutable run-correlated reference. Publishing both in one MTP walk
+        # lets Android observe the reference while artifacts are still being
+        # transferred, turning a complete generation into a false rejection.
+        push_desktop_generation(
             args.mtp_adapter,
             args.expected_peer,
             args.transport_root,
-            [
-                "request-v1.json",
-                "desktop-archive-acknowledgements-v1.json",
-                "desktop-consumption-ack-v1.json",
-                "desktop-generation-v1.json",
-                ref["relative_path"],
-            ],
+            ref["relative_path"],
             deadline,
         )
     emit(

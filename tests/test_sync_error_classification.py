@@ -73,6 +73,47 @@ class SyncErrorClassificationTest(unittest.TestCase):
                 )
             self.assertEqual(observed, ["request-v1.json"])
 
+    def test_desktop_generation_directory_precedes_reference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            generation = (
+                "desktop-objects/generations/"
+                "gen_11111111-1111-4111-8111-111111111111"
+            )
+            (root / generation).mkdir(parents=True)
+            (root / generation / "manifest.json").write_text("manifest")
+            for name in (
+                "request-v1.json",
+                "desktop-archive-acknowledgements-v1.json",
+                "desktop-consumption-ack-v1.json",
+                "desktop-generation-v1.json",
+            ):
+                (root / name).write_text("{}")
+            observed = []
+
+            def inspect(_adapter, _operation, _peer, outbox, _deadline):
+                observed.append(
+                    sorted(
+                        str(path.relative_to(outbox))
+                        for path in outbox.rglob("*")
+                        if path.is_file()
+                    )
+                )
+                return True
+
+            with mock.patch.object(sync_peer_worker, "run_adapter", side_effect=inspect):
+                sync_peer_worker.push_desktop_generation(
+                    Path("adapter"),
+                    "peer",
+                    root,
+                    generation,
+                    sync_peer_worker.time.monotonic() + 60,
+                )
+            self.assertEqual(len(observed), 2)
+            self.assertEqual(observed[0], [generation + "/manifest.json"])
+            self.assertNotIn("desktop-generation-v1.json", observed[0])
+            self.assertIn("desktop-generation-v1.json", observed[1])
+
 
 if __name__ == "__main__":
     unittest.main()
