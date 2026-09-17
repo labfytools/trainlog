@@ -171,8 +171,8 @@ def run(args: argparse.Namespace) -> int:
         raise RuntimeError("invalid trusted sync configuration")
     if config["format"] != "trainlog-sync-orchestrator-config" or config["version"] != 1 or config["enabled"] is not True:
         raise RuntimeError("full-generation synchronization is disabled")
-    if config["mode"] not in ("directory","mtp"):
-        raise RuntimeError("invalid transport mode")
+    if config["mode"] != "directory":
+        raise RuntimeError("physical MTP generation transport is not implemented")
     for key in ("transport_root","owned_root"):
         if not isinstance(config[key],str) or not Path(config[key]).is_absolute(): raise RuntimeError("trusted paths must be absolute")
     if not isinstance(config["expected_peer_id"],str) or not re.fullmatch(r"peer_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",config["expected_peer_id"]): raise RuntimeError("invalid expected peer identity")

@@ -17,7 +17,7 @@ class OrchestratorTest(unittest.TestCase):
     db,state,config,run,request=values
     return subprocess.run(["python3",str(executable),"--database",str(db),"--state",str(state),"--config",str(config),"--run-id",run,"--request-id",request],capture_output=True,text=True)
   def test_browser_configuration_cannot_select_command_or_boolean_timeout(self):
-    for override in ({"peer_command":["evil"]},{"timeout_seconds":True}):
+    for override in ({"peer_command":["evil"]},{"timeout_seconds":True},{"mode":"mtp"}):
       with self.subTest(override=override),tempfile.TemporaryDirectory() as directory:
         root=Path(directory);values=self.fixture(root,**override);result=self.invoke(ORCHESTRATOR,values)
         self.assertEqual(result.returncode,2);self.assertEqual(json.loads(values[1].read_text())["phase"],"failed")
