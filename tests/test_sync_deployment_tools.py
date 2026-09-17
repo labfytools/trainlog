@@ -66,6 +66,16 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertTrue((output / "bin/trainlog-sync-once").is_file())
             self.assertTrue((output / "bin/trainlog-syncd").is_file())
             self.assertTrue((output / "libexec/trainlog-sync-once").is_file())
+            stable_bin = Path(directory) / "stable-bin"
+            stable_bin.mkdir()
+            (stable_bin / "trainlog").symlink_to(output / "bin/trainlog")
+            linked = subprocess.run(
+                [str(stable_bin / "trainlog"), "--version"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(linked.returncode, 0, linked.stderr)
+            self.assertIn("trainlog 0.1.2", linked.stdout)
             self.assertTrue(
                 any(
                     row["path"] == "tools/trainlog_syncd.py"

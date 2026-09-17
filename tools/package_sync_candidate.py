@@ -71,15 +71,15 @@ def main() -> int:
         shutil.copy2(source, args.output / "catalog" / source.name)
     launcher = args.output / "bin/trainlog"
     launcher.write_text(
-        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR="$root/tools"\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec "$root/libexec/trainlog" "$@"\n'
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR="$root/tools"\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec "$root/libexec/trainlog" "$@"\n'
     )
     sync_once_launcher = args.output / "bin/trainlog-sync-once"
     sync_once_launcher.write_text(
-        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nexec "$root/libexec/trainlog-sync-once" "$@"\n'
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexec "$root/libexec/trainlog-sync-once" "$@"\n'
     )
     syncd_launcher = args.output / "bin/trainlog-syncd"
     syncd_launcher.write_text(
-        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
     )
     files = sorted(path for path in args.output.rglob("*") if path.is_file())
     inventory = {
@@ -114,6 +114,7 @@ def main() -> int:
             "libudev",
             "libmtp",
             "notcurses",
+            "coreutils-readlink",
         ],
         "files": [
             {

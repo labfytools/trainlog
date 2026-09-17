@@ -14,6 +14,9 @@
   SQLite value whether a real backup contains an active draft or legitimately
   contains none.
 
+- Made relocatable launchers resolve stable user-bin symlinks to their physical
+  versioned bundle before loading matching binaries and helpers.
+
 - Closed the native candidate warning gate with checked path and HTTP response
   bounds, strict GCC and Clang builds, full Clang ASan/UBSan validation, and a
   stable concurrent object-I/O MTP double. Rebuilt the desktop, current Android

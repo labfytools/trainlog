@@ -26,6 +26,8 @@ the separately authorized rollout are complete.
    `trainlog-syncd`, the production generation MTP adapter and their matching
    Python codecs. User units must point only into one versioned bundle; they
    must not combine a packaged binary with helpers from a live checkout.
+   Stable user-bin symlinks are supported: each launcher resolves the link to
+   its physical bundle before locating `libexec` and `tools`.
 2. `assembleDebug` is development evidence only. Rollout requires the existing
    release signing identity, verification of its public certificate and a valid
    increasing `versionCode`. A bounded `TRAINLOG_ANDROID_VERSION_CODE` build
