@@ -27,7 +27,8 @@ exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
-tile rendering exist. Advanced visualizations remain a future slice.
+tile rendering exist. The Dashboard's bounded progression and BODY ZONES
+visualizations are implemented; the other four Web routes remain placeholders.
 
 ## Current cursor
 
@@ -46,9 +47,9 @@ and it does not authorize a protocol, schema, endpoint or button change.
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
 TypeScript and Vite shell with its five client routes, Catppuccin Mocha design
-system, permanent Header/Footer, empty-data states and health status. The next
-Dashboard tranche is partitioned below; this cursor does not authorize an
-undifferentiated implementation of every Dashboard concern.
+system, permanent Header/Footer, empty-data states and health status. The
+Dashboard slices below are complete; this does not authorize implementation of
+the remaining route placeholders.
 `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` adds the validated 12-column desktop grid,
 explicit edit mode, drag/resize, keyboard alternative and derived responsive
 projections without persisting layout state.
@@ -74,7 +75,7 @@ WEB_DASHBOARD_CHARACTERIZATION_V1
         -> WEB_TUI_READ_MODEL_ADOPTION_V1 [PASS/FROZEN]
         -> WEB_CLI_HTTP_INFRASTRUCTURE_V1 [PASS/FROZEN]
         -> WEB_FRONTEND_SHELL_V1 [PASS/FROZEN]
-        -> WEB_DASHBOARD_V1
+        -> WEB_DASHBOARD_V1 [PASS/FROZEN]
 ```
 
 The Web must not start with React. Characterization proves current behavior;
@@ -101,9 +102,10 @@ WEB_DASHBOARD_DATA_CONTRACT_V1 [PASS/FROZEN]
         -> WEB_DASHBOARD_V1_FINAL_REVIEW [PASS/FROZEN]
 ```
 
-The slice order may be refined by the next contract, but it must preserve the
-existing Core ownership, keep visual layout outside business SQLite and frozen
-formats, and specify Activité/Progression before implementing those metrics.
+The completed slice order preserves Core ownership, keeps visual layout outside
+business SQLite and frozen formats, and specifies Activity/Progression before
+rendering those metrics. Later Dashboard evolution must preserve those frozen
+boundaries.
 
 `WEB_NEXT_MODULE_SELECTION_V1` remains a future Web documentary cursor. The current
 roadmap does not yet establish a contract order between Analyse, Programmes,
@@ -117,8 +119,9 @@ it does not authorize silently implementing a page.
 
 The frozen contract orders future bounded lots as environment/test,
 characterization, data/lifecycles, causal deletion, generation/consumption/ack,
-orchestrator/report, Web API, then button/refresh. No implementation lot is
-started. `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
+orchestrator/report, Web API, then button/refresh. The environment/test lot is
+complete; no production synchronization implementation lot is started.
+`WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 
 ### Gym catalog V1
 

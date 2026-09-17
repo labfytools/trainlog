@@ -6,9 +6,11 @@ Trainlog consists of:
 
 - a native Android application for fast workout and body-data capture;
 - a Unix/Linux C17 terminal TUI for durable history, correction, analysis,
-  visualization, and manual synchronization. The current authorized
-  `TUI_NOTCURSES_V1` infrastructure tranche migrates the active rendering/input
-  backend from legacy ncursesw to Notcurses without changing product semantics;
+  visualization, and manual synchronization, using Notcurses as its completed
+  active rendering/input backend;
+- a loopback-only local Web adapter whose Dashboard is implemented on the
+  0.1.2 development branch; its Analyse, Programmes, Sessions, and Exercises
+  routes remain placeholders pending separate contracts;
 - a small user-session PC agent, `trainlog-syncd`, for Android-triggered
   synchronization;
 - versioned JSON synchronization artifacts exchanged over direct MTP.
@@ -215,8 +217,11 @@ trainlog-sync-receipt-v1.json
 Android -> PC data uses:
 
 ```text
-trainlog-mobile-export-v1.json
+trainlog-mobile-export-v3.json
 ```
+
+V3 is the active completed-session snapshot. V1/V2 remain readable legacy
+inputs and `TRAINLOG_FORMAT_V1` remains a separate frozen contract.
 
 PC -> Android catalog data uses:
 
@@ -264,6 +269,19 @@ User-facing code must not intentionally return placeholders such as
 
 ## 10. Documentation
 
+Repository documentation and publication language is:
+
+```text
+README and canonical documentation: English
+CHANGELOG and release notes: English
+New or modified source comments: English
+User interface: preserve its actual localization
+```
+
+Exact UI strings, user data, identifiers, commands, paths, protocol fields,
+version/status markers, citations, and historical evidence are not translated
+merely to satisfy the prose-language rule.
+
 Canonical documents:
 
 - `README.md`;
@@ -288,6 +306,14 @@ historical evidence and must not override those current owners.
 Checkpoint history belongs in Git history and `docs/reviews`; canonical
 documents describe the current state rather than accumulating obsolete
 `NEXT` sections.
+
+Every functional change identifies the affected documentation. When relevant,
+reconcile `docs/current_state.md`, `docs/roadmap.md`, and `CHANGELOG.md`; the
+completion report lists updated documents or explains why none were affected.
+Release publication verifies both GitHub and Forgejo notes, their English
+language, and their correspondence with the exact tag independently of later
+development. A requested status in prose is never sufficient evidence for a
+`PASS` or `FROZEN` marker.
 
 ## 11. Validation
 

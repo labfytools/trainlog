@@ -396,7 +396,7 @@ point for the desktop and Android validation needed by synchronization work:
 ```bash
 python3 tools/validate_sync_isolated.py --suite preflight
 python3 tools/validate_sync_isolated.py --suite smoke
-python3 tools/validate_sync_isolated.py --suite full
+python3 tools/validate_sync_isolated.py --suite full --jdk /usr/lib/jvm/java-17-openjdk
 ```
 
 Use `--jdk /absolute/jdk17/home` when auto-detection is unsuitable and
@@ -440,6 +440,13 @@ JDK, non-secret paths and Android test/pass/fail/skip counts are recorded in
 harness terminates only process groups that it started, waits before forced
 termination, never stops a pre-existing Gradle daemon or Trainlog service, and
 refuses cleanup outside its exact root or across a symlink.
+
+At the 2026-09-17 reference checkpoint, the Android total retained four skips
+because optional historical database fixtures were unavailable: one v9, one
+v12, one v13, and one v14 migration-fixture case. These are explicit fixture
+coverage gaps, not passing migration executions. The isolated harness does not
+run hardware MTP, real Drive, or Android instrumented tests; those remain
+separate validation classes.
 
 Stable-release validation additionally builds the signed release variant and
 checks the packaged product versions and binary linkage:

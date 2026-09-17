@@ -18,8 +18,8 @@ evidence and chronology.
   glanceable summaries, permissions, and Android interaction rules.
 - [Desktop TUI](tui.md) owns Notcurses navigation, correction, detailed
   consultation, analytics, graphs, and long-term follow-up behavior.
-- [Architecture](architecture.md) owns the contract for the planned local Web
-  sibling, including Core/API boundaries, loopback networking, shell,
+- [Architecture](architecture.md) owns the implemented and future boundaries of
+  the local Web sibling, including Core/API boundaries, loopback networking, shell,
   Dashboard, layout, build/runtime separation, and security invariants.
 
 ## Data model
@@ -73,6 +73,8 @@ evidence and chronology.
 - [Review records](reviews/) retain historical audits, incidents, checkpoints,
   and validation evidence. Their status and paths are historical.
 - [Changelog](../CHANGELOG.md) owns chronological change history.
+- [Release notes](releases/) retain reusable, tag-scoped English source text
+  for public GitHub and Forgejo releases.
 
 ## Ownership rule
 

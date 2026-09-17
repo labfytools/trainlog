@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.2
 
+- Reconciled canonical documentation with the implemented 0.1.2 development
+  state, kept v0.1.1 and future synchronization scope explicit, established
+  English as the repository documentation/release-note language, and added a
+  reusable tag-scoped English source for the v0.1.1 public notes. No production
+  behavior, schema, format, service, tag, or release asset changed.
+
 - Completed `TRAINLOG_SYNC_TEST_ENV_V1` without changing production behavior,
   schemas or formats. `tools/validate_sync_isolated.py` now validates JDK 17 and
   the effective Gradle JVMs, creates unique private HOME/XDG/native/JVM tmp,
@@ -21,9 +27,11 @@
   per-artifact rollback; existing Android coverage remains the proof of draft
   exclusion followed by finalized-session export.
 
-- Development opened after the stable `v0.1.1` release. The current
-  implementation cursor remains `WEB_DASHBOARD_CHARACTERIZATION_V1`; no Web
-  implementation has started.
+- Development opened after the stable `v0.1.1` release. The complete Web
+  Dashboard is now `WEB_DASHBOARD_V1=PASS/FROZEN`; Analyse, Programmes,
+  Sessions, and Exercises remain placeholders. The current operational cursor
+  is `TRAINLOG_SYNC_CHARACTERIZATION_V1`; its future protocol work has not
+  started.
 
 ## 0.1.1 — 2026-09-16
 

@@ -264,7 +264,8 @@ directory. The shell implements semantic Header/Body/Footer landmarks,
 keyboard-visible focus, responsive tile scaffolding and reduced-motion rules.
 Absent user/session/zone facts remain visibly unavailable. The bounded grid
 engine uses `react-grid-layout` 2.2.4 behind a Trainlog-owned model, adapter and
-validator; ECharts remains deferred until a real visualization exists.
+validator. The implemented Progression visualization loads modular ECharts
+6.1.0 lazily; the BODY ZONES visualization is an original code-native SVG.
 
 The Dashboard is a canonical 12-column grid containing exactly seven V1 tiles:
 
@@ -278,12 +279,10 @@ The Dashboard is a canonical 12-column grid containing exactly seven V1 tiles:
 
 `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` supports drag and drop, horizontal and
 vertical resizing, tile-specific minimum/maximum sizes, automatic
-reorganization, responsive projection, persistence in the next tranche, and
-restoration of the Trainlog default. Dragging and resizing are enabled only by
+reorganization, responsive projection, versioned private layout persistence,
+and restoration of the Trainlog default. Dragging and resizing are enabled only by
 the explicit `Modifier l'agencement` mode. A larger tile may reveal more
-information, but tile size never changes a metric's business definition. Until
-`WEB_DASHBOARD_LAYOUT_V1`, saving accepts a valid draft only in current React
-memory and reload restores the default.
+information, but tile size never changes a metric's business definition.
 
 The single persisted source layout is the canonical desktop 12-column layout:
 

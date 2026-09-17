@@ -12,9 +12,9 @@ Android is the field companion: it captures training and body data, preserves
 the active draft, receives AI proposals, triggers synchronization, and shows
 quick summaries. The C17/Notcurses TUI is the administration, inspection,
 maintenance, import/export, and technical-tooling surface. The local Web
-sibling now provides its embedded application shell; its future business
-surfaces will own analysis, visualization, and program/session preparation
-through Trainlog Core.
+sibling now provides its embedded application shell and implemented Dashboard;
+its future business surfaces will own broader analysis, program/session
+preparation, and exercise workflows through Trainlog Core.
 
 Trainlog Core owns business truth. The desktop SQLite database remains the
 canonical local source of truth and long-term history; no interface owns a
@@ -157,12 +157,15 @@ the result. The Web aggregate now exposes the distinct factual snapshot through
 `TRAINLOG_WEB_V1` architecture, API independence, local-network boundary,
 browser shell, Dashboard, layout ownership, build/runtime separation, and
 security invariants are canonical. The CLI/local HTTP infrastructure and
-embedded frontend shell are implemented: `-w`/`--web`, optional `--port`, exact
-IPv4 loopback binding, `/api/v1/health`, React navigation and the persistent
+embedded frontend are implemented: `-w`/`--web`, optional `--port`, exact IPv4
+loopback binding, `/api/v1/health`, React navigation, and the persistent
 Header/Body/Footer shell. Production assets are generated from the npm lockfile
-and linked into the binary. The read-only Dashboard business snapshot and
-factual Footer integration exist; no grid engine, business mutation, automatic
-browser launch or layout persistence exists yet.
+and linked into the binary. The read-only Dashboard uses one typed Core
+snapshot, a seven-tile responsive grid, factual size-adaptive tiles, an ECharts
+progression series, an original BODY ZONES SVG, and private versioned layout
+persistence with optimistic conflict and CSRF/Origin protection. It provides no
+business mutation or automatic browser launch. Analyse, Programmes, Sessions,
+and Exercises remain explicit placeholders.
 
 ## Data semantics
 
@@ -182,13 +185,18 @@ browser launch or layout persistence exists yet.
 
 ## Validation status
 
-The durable commands are owned by [tests.md](tests.md). On 2026-09-17 isolated
-validation passed desktop compilation, **75/75 normal Meson tests** and
+The durable commands are owned by [tests.md](tests.md). At commit
+`14b863eb0f159d46891f4ad5cf076b3aa0a11bba` on 2026-09-17, isolated validation
+passed desktop compilation, **75/75 normal Meson tests** and
 **75/75 ASan/UBSan Meson tests**, Android debug assembly and **203 Android
 tests (199 passed, 4 skipped, 0 failed)**, the JSON validator, and the
 import-contract validator. The source-derived TUI
 `TRANSLATABLE_UI=0` check and Android resource parity also passed. Link and
-diff safety checks pass in the final audit evidence.
+diff safety checks passed in that checkpoint evidence. These are historical
+results for that commit, not executions performed by later documentation work.
+The four Android skips were the optional historical v9, v12, v13, and v14
+database-fixture migration cases. Hardware MTP, real Drive, and Android
+instrumented tests were not part of that isolated run.
 
 The Dashboard Core extraction tranche passes **62/62 normal Meson tests** and
 **62/62 ASan/UBSan Meson tests**, including the standalone public-header and

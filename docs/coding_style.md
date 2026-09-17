@@ -53,6 +53,10 @@ Prefer small composable functions over long functions mixing unrelated responsib
 
 ## 5. Comments
 
+New or modified source comments are written in English. Exact external text,
+protocol literals, UI strings, user data, and historical quotations retain
+their required language.
+
 Comments are required for:
 
 - public interfaces;

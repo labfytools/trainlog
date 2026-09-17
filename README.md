@@ -3,8 +3,9 @@
 Trainlog is a local-first workout and body-data system. Trainlog Core owns
 business truth and canonical desktop persistence. Its native Android app is the
 field companion, its C17/Notcurses desktop TUI is the administration and
-technical surface, and its documented future local Web sibling is the analysis,
-visualization, and program/session-preparation surface.
+technical surface, and its local browser Web sibling provides the implemented
+Dashboard while reserving later analysis, program, session, and exercise
+modules for separately contracted work.
 
 Android and desktop each own a local SQLite database. The desktop database is
 the canonical long-term history. Trainlog synchronizes versioned JSON artifacts
@@ -16,11 +17,13 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (planned) | Analyze and visualize canonical data; prepare programs and sessions through typed Trainlog Core services. |
+| Local Web (0.1.2 development) | Display the implemented local Dashboard and persist its private layout through typed Trainlog Core/API boundaries. Analyse, Programmes, Sessions, and Exercises remain placeholders. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
-a sibling adapter, not an extension of the TUI. Its loopback-only CLI/HTTP
-infrastructure is implemented; its frontend and business API are not.
+a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
+CLI/HTTP adapter, embedded frontend, read-only Dashboard API, factual tiles,
+visualizations, and private layout persistence are implemented. This does not
+make the other four Web routes functional or publish version 0.1.2.
 
 ## Releases
 
@@ -127,8 +130,8 @@ updates; generating a replacement key is not a normal release procedure.
 
 ### Linux runtime dependencies
 
-The published x86-64 TUI is dynamically linked. The current build directly
-requires compatible versions of:
+The published v0.1.1 x86-64 TUI is dynamically linked. Its tagged source
+directly requires compatible versions of:
 
 - glibc and the GCC support runtime;
 - SQLite 3;
@@ -137,8 +140,11 @@ requires compatible versions of:
 - libudev;
 - libmtp;
 - Notcurses Core;
-- GNU libmicrohttpd;
 - the standard math library.
+
+The current 0.1.2 development source additionally links GNU libmicrohttpd and
+yyjson for the local Web adapter and Dashboard layout configuration. Those are
+not retroactive requirements of the pre-Web v0.1.1 tagged source.
 
 Distribution packages may pull additional transitive libraries, including
 libusb, ncursesw, unistring, gpm, libgcrypt, libgpg-error, and libdeflate.
@@ -165,8 +171,8 @@ Desktop builds require:
 - a C17 compiler toolchain;
 - `pkg-config`;
 - Notcurses Core development headers;
-- SQLite, libuuid, utf8proc, libudev, libmtp, and GNU libmicrohttpd development
-  headers;
+- SQLite, libuuid, utf8proc, libudev, libmtp, GNU libmicrohttpd, and yyjson
+  development headers for the current development source;
 - Python 3 for generated sources, validators, import/export helpers, and tests.
 
 The embedded Web frontend additionally uses Node and npm at build time only.
@@ -183,18 +189,25 @@ meson setup build -Dweb=enabled
 meson compile -C build
 ```
 
-Meson never runs `npm install` or downloads packages. The default `web=auto`
+Meson never runs `npm install` or downloads packages. Run `npm ci` explicitly
+for the exact lockfile before configuring a Web-enabled build. The default `web=auto`
 embeds the frontend when Node, npm, and the prepared `web/node_modules` are
 available; otherwise it preserves a desktop-only build and `trainlog -w`
 reports that frontend support is absent. Release builds must use
 `-Dweb=enabled`. `-Dweb=disabled` is the explicit desktop-only choice. Node,
 npm, `node_modules`, and `web/dist` are not runtime dependencies.
 
+For an existing build directory, change the option with `meson configure
+build -Dweb=enabled` (or the required value) instead of running `meson setup`
+as though the directory were new.
+
 ### Optional systemd user service for local Web development
 
 The versioned `systemd/trainlog-web.service` unit can keep `trainlog -w`
-available on `127.0.0.1:8080` during an interactive user session. This is a
-development convenience, not a requirement of the final Trainlog distribution.
+available on `127.0.0.1:8080` during an interactive user session. Without
+systemd user lingering, enabling it does not guarantee startup before login.
+This is a development convenience, not a requirement of the final Trainlog
+distribution.
 It intentionally runs the canonical user entry point
 `~/.local/bin/trainlog`; in a source checkout that entry point may be a symlink
 to the current `build/tui/trainlog` binary, but the symlink must resolve to an
@@ -228,6 +241,11 @@ systemctl --user stop trainlog-web
 systemctl --user start trainlog-web
 journalctl --user -u trainlog-web
 ```
+
+An operator may separately configure a local nginx proxy such as
+`http://trainlog.perf`. That hostname and proxy are machine-local conveniences,
+not a public Trainlog domain or a runtime dependency, and Trainlog does not
+configure them automatically.
 
 Uninstalling the integration disables the unit before removing only its user
 configuration symlink:
@@ -287,7 +305,7 @@ not contain cloud credentials and does not run `rclone`.
 
 ## Current status
 
-As of 2026-09-15:
+As of 2026-09-17:
 
 - `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
 - desktop SQLite schema v18 and Android SQLite schema v17;
@@ -301,7 +319,11 @@ As of 2026-09-15:
 - `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
   Android-triggered bidirectional smoke test.
 - `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
-  `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`.
+  `WEB_DASHBOARD_V1=PASS/FROZEN`; the other four Web routes remain placeholders;
+- `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
+- `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN /
+  IMPLEMENTATION_NOT_STARTED` and the next cursor remains
+  `TRAINLOG_SYNC_CHARACTERIZATION_V1`.
 
 The latest executable result belongs in
 [current state](docs/current_state.md), not in multiple README narratives.
