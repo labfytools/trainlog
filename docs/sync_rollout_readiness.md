@@ -54,10 +54,12 @@ This is a non-executed rollout checklist. The development branch implements the
 path; the daily installation still uses V3.
 
 The latest software-only candidate set was rebuilt under the private root
-`/home/fy59/.cache/trainlog/native-build-candidate-v1.VbFjE9` from source commit
-`2c5a8be2827e31fc5be2accb65073bfeb79d6068`. Its desktop inventory records every
+`/home/fy59/.cache/trainlog/sync-rollout-candidate-v1.NEoMDx` from source commit
+`dd8c91a946a9c836965818d8cc35b8f8bce74658`. Its desktop inventory records every
 packaged file digest plus schemas, protocols, entry points and runtime
-dependencies. The current debug APK SHA-256 is
+dependencies; the inventory file SHA-256 is
+`800034b409824a68cef45e5251dd4d94f00bd9e13b3387a1a302b8e2e1136839`. The current
+debug APK SHA-256 is
 `aca2f499ee9ff53ba5913a76a2a0117274e3e5545967ce361f6f126a6af497e1`; the
 non-installed bridge APK SHA-256 is
 `0a28d81cbb0818cdf2fee72d5024a4b706fcfda39f1182c682c12f000a026cb4`; and its
