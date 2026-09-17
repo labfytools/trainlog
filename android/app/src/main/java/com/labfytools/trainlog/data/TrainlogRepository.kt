@@ -1223,6 +1223,7 @@ class TrainlogRepository(
      * Session V2 and frozen TRAINLOG_FORMAT_V1 retain their exact shapes.
      */
     fun buildExerciseBodyZonesJson(): String {
+        check(!hasCausalProtection("body_zone_relation")) { "Causal BODY ZONES protection requires the staged artifact." }
         val exercises = JSONArray()
         listExercises().sortedBy { it.exerciseId }.forEach { exercise ->
             exercises.put(JSONObject()
@@ -1422,6 +1423,8 @@ class TrainlogRepository(
     }
 
     fun applyExerciseBodyZonesJson(json: String): ExerciseBodyZoneImportResult {
+        if (hasCausalProtection("body_zone_relation"))
+            return ExerciseBodyZoneImportResult.Invalid("Causal BODY ZONES protection requires the staged artifact.")
         val root = try { JSONObject(json) } catch (_: Exception) {
             return ExerciseBodyZoneImportResult.Invalid("Relations de zones JSON invalides.")
         }
@@ -2404,6 +2407,8 @@ class TrainlogRepository(
         return try {
             db.beginTransaction()
             insertCompletedSession(db, draft, sessionId, generalCorrection = true)
+            if (!markCausalMutation(db, "session", sessionId))
+                return CorrectCompletedSessionResult.DatabaseError("The session is causally deleted.")
             db.setTransactionSuccessful()
             CorrectCompletedSessionResult.Saved
         } catch (error: Exception) {
@@ -3342,11 +3347,11 @@ class TrainlogRepository(
         .joinToString("") { "%02x".format(it) }
 
     private fun causalSnapshot(db: SQLiteDatabase, kind: String, targetId: String): JSONArray? {
+        if (kind == "session") return causalSessionSnapshot(db, targetId)
         val query = when (kind) {
-            "session" -> Pair("SELECT session_id,started_at,ended_at,session_type,notes FROM sessions WHERE session_id=?", arrayOf(targetId))
-            "execution_draft" -> Pair("SELECT session_id,revision_id,parent_revision_id,payload_json FROM execution_draft_candidates WHERE session_id=? UNION ALL SELECT session_id,revision_id,parent_revision_id,'' FROM active_session_draft WHERE session_id=?", arrayOf(targetId, targetId))
+            "execution_draft" -> Pair("SELECT session_id,revision_id FROM execution_draft_candidates WHERE session_id=? UNION ALL SELECT session_id,revision_id FROM active_session_draft WHERE session_id=?", arrayOf(targetId, targetId))
             "exercise" -> Pair("SELECT exercise_id,name,recording_mode,tracking_mode,data_fields FROM exercises WHERE exercise_id=?", arrayOf(targetId))
-            "body_observation" -> Pair("SELECT observation_id,observed_at,notes FROM body_observations WHERE observation_id=?", arrayOf(targetId))
+            "body_observation" -> Pair("SELECT bo.observation_id,bo.observed_at,bo.body_weight_kg,bo.neck_cm,bo.shoulders_cm,bo.chest_cm,bo.waist_cm,bo.hips_cm,bo.left_arm_cm,bo.right_arm_cm,bo.left_forearm_cm,bo.right_forearm_cm,bo.left_thigh_cm,bo.right_thigh_cm,bo.left_calf_cm,bo.right_calf_cm,bo.notes,s.session_id,(SELECT revision_id FROM sync_note_state WHERE owner_kind='observation' AND owner_id=bo.observation_id) FROM body_observations bo LEFT JOIN sessions s ON s.id=bo.session_row_id WHERE bo.observation_id=?", arrayOf(targetId))
             "custom_equipment" -> Pair("SELECT equipment_id,display_name,label_name,equipment_type,load_semantics FROM equipment WHERE equipment_id=? AND equipment_type='custom_machine'", arrayOf(targetId))
             "feedback" -> Pair("SELECT feedback_id,observed_at,raw_text FROM exercise_feedback WHERE feedback_id=?", arrayOf(targetId))
             "body_zone_relation" -> {
@@ -3355,7 +3360,7 @@ class TrainlogRepository(
             }
             else -> return null
         }
-        return db.rawQuery(query.first, query.second).use { cursor ->
+        val root = db.rawQuery(query.first, query.second).use { cursor ->
             if (!cursor.moveToFirst()) null else JSONArray().also { result ->
                 repeat(cursor.columnCount) { index ->
                     result.put(if (cursor.isNull(index)) JSONObject.NULL else when (cursor.getType(index)) {
@@ -3366,10 +3371,82 @@ class TrainlogRepository(
                 }
             }
         }
+        if (kind == "feedback" && root != null) {
+            val revisions = JSONArray()
+            db.rawQuery("SELECT revision_id,created_at,raw_text FROM exercise_feedback_revisions WHERE feedback_id=? ORDER BY created_at,revision_id", arrayOf(targetId)).use { cursor ->
+                while (cursor.moveToNext()) revisions.put(causalCursorRow(cursor))
+            }
+            root.put(revisions)
+        }
+        return root
+    }
+
+    private fun causalCursorRow(cursor: Cursor): JSONArray = JSONArray().also { row ->
+        repeat(cursor.columnCount) { index -> row.put(if (cursor.isNull(index)) JSONObject.NULL else when (cursor.getType(index)) {
+            Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(index)
+            Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(index)
+            else -> cursor.getString(index)
+        }) }
+    }
+
+    private fun causalSessionSnapshot(db: SQLiteDatabase, sessionId: String): JSONArray? {
+        val header = db.rawQuery("SELECT id,session_id,started_at,ended_at,session_type,notes FROM sessions WHERE session_id=?", arrayOf(sessionId)).use { cursor ->
+            if (!cursor.moveToFirst()) null else Pair(cursor.getLong(0), causalCursorRow(cursor).also { it.remove(0) })
+        } ?: return null
+        val occurrences = JSONArray()
+        db.rawQuery("SELECT se.id,se.entry_id,e.exercise_id,se.position,se.recording_mode,se.tracking_mode,se.data_fields,eq.equipment_id,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg,se.notes FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id LEFT JOIN equipment eq ON eq.id=se.equipment_row_id WHERE se.session_row_id=? ORDER BY se.position,se.entry_id", arrayOf(header.first.toString())).use { cursor ->
+            while (cursor.moveToNext()) {
+                val rowId = cursor.getLong(0); val occurrence = causalCursorRow(cursor).also { it.remove(0) }
+                val sets = JSONArray()
+                db.rawQuery("SELECT position,reps,duration_seconds,weight_kg FROM performed_sets WHERE session_exercise_row_id=? ORDER BY position", arrayOf(rowId.toString())).use { values -> while (values.moveToNext()) sets.put(causalCursorRow(values)) }
+                val continuous = db.rawQuery("SELECT duration_seconds,speed_kmh,distance_km FROM continuous_activity WHERE session_exercise_row_id=?", arrayOf(rowId.toString())).use { if (it.moveToFirst()) causalCursorRow(it) else JSONObject.NULL }
+                val maximum = db.rawQuery("SELECT max_weight_kg FROM max_results WHERE session_exercise_row_id=?", arrayOf(rowId.toString())).use { if (it.moveToFirst()) it.getDouble(0) else JSONObject.NULL }
+                val feedback = JSONArray()
+                db.rawQuery("SELECT feedback_id,observed_at,raw_text FROM exercise_feedback WHERE session_exercise_row_id=? ORDER BY observed_at,feedback_id", arrayOf(rowId.toString())).use { roots -> while (roots.moveToNext()) {
+                    val item = causalCursorRow(roots); val revisions = JSONArray()
+                    db.rawQuery("SELECT revision_id,created_at,raw_text FROM exercise_feedback_revisions WHERE feedback_id=? ORDER BY created_at,revision_id", arrayOf(roots.getString(0))).use { values -> while (values.moveToNext()) revisions.put(causalCursorRow(values)) }
+                    item.put(revisions); feedback.put(item)
+                } }
+                val note = db.rawQuery("SELECT revision_id FROM sync_note_state WHERE owner_kind='occurrence' AND owner_id=?", arrayOf(cursor.getString(1))).use { if (it.moveToFirst()) it.getString(0) else JSONObject.NULL }
+                occurrence.put(sets).put(continuous).put(maximum).put(feedback).put(note); occurrences.put(occurrence)
+            }
+        }
+        val sessionNote = db.rawQuery("SELECT revision_id FROM sync_note_state WHERE owner_kind='session' AND owner_id=?", arrayOf(sessionId)).use { if (it.moveToFirst()) it.getString(0) else JSONObject.NULL }
+        val links = JSONArray()
+        db.rawQuery("SELECT observation_id FROM body_observations WHERE session_row_id=? ORDER BY observation_id", arrayOf(header.first.toString())).use { while (it.moveToNext()) links.put(it.getString(0)) }
+        return header.second.put(occurrences).put(sessionNote).put(links)
     }
 
     private fun causalLiveRevision(db: SQLiteDatabase, kind: String, targetId: String): String? =
         causalSnapshot(db, kind, targetId)?.let { "lv_${causalDigest(it)}" }
+
+    private fun hasCausalProtection(kind: String): Boolean = database.readableDatabase.rawQuery(
+        "SELECT 1 FROM sync_causal_state WHERE target_kind=? AND deleted=1 LIMIT 1", arrayOf(kind),
+    ).use { it.moveToFirst() }
+
+    /* WHY: a supported edit followed by a byte-identical revert is still an
+     * intervening causal mutation. CONTRACT: writers advance this revision in
+     * their business transaction. INVARIANT: deleted state is never revived. */
+    private fun markCausalMutation(db: SQLiteDatabase, kind: String, targetId: String): Boolean {
+        val deleted = db.rawQuery("SELECT deleted FROM sync_causal_state WHERE target_kind=? AND target_id=?", arrayOf(kind, targetId)).use { it.moveToFirst() && it.getInt(0) != 0 }
+        if (deleted) return false
+        db.insertWithOnConflict("sync_causal_state", null, ContentValues().apply {
+            put("target_kind", kind); put("target_id", targetId)
+            put("current_revision_id", "mu_${UUID.randomUUID()}"); put("deleted", 0); putNull("operation_id")
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+        return true
+    }
+
+    private fun causalTargetAuthorized(db: SQLiteDatabase, kind: String, targetId: String): Boolean {
+        if (kind == "exercise") {
+            val canonical = resolveExerciseId(db, targetId)
+            if (trainingKnowledge.getExerciseKnowledge(targetId) != null ||
+                trainingKnowledge.getExerciseKnowledge(canonical) != null) return false
+        }
+        if (kind == "custom_equipment" && trainingKnowledge.getEquipmentKnowledge(targetId) != null)
+            return false
+        return true
+    }
 
     private fun applyCausalEffect(db: SQLiteDatabase, kind: String, targetId: String, operationId: String) {
         when (kind) {
@@ -3400,7 +3477,8 @@ class TrainlogRepository(
     private fun validateCausalOperation(value: JSONObject): Boolean {
         val keys = setOf("operation_id", "target_kind", "target_id", "creator_id",
             "predecessor_revision_id", "created_at", "payload_sha256", "publication_context")
-        if (!value.hasExactKeys(keys) || value.getString("target_kind") !in causalKinds ||
+        if (!value.hasExactKeys(keys) || keys.filter { it != "publication_context" }.any { value.value(it) !is String } ||
+            value.getString("target_kind") !in causalKinds ||
             !value.isNull("publication_context") || TrainlogTimestamp.parse(value.getString("created_at")) == null) return false
         for ((key, maximum) in listOf("operation_id" to 128, "target_id" to 512,
             "creator_id" to 128, "predecessor_revision_id" to 128)) {
@@ -3421,17 +3499,22 @@ class TrainlogRepository(
         val expected = listOf("target_kind", "target_id", "creator_id", "predecessor_revision_id", "created_at", "payload_sha256").map(operation::getString)
         if (known != null) return if (known == expected) CausalDeleteResult.Unchanged(operationId) else CausalDeleteResult.Conflict(operation.getString("target_id"))
         val kind = operation.getString("target_kind"); val target = operation.getString("target_id")
+        if (!causalTargetAuthorized(db, kind, target)) return CausalDeleteResult.Invalid
         val state = db.rawQuery("SELECT current_revision_id,deleted FROM sync_causal_state WHERE target_kind=? AND target_id=?", arrayOf(kind, target)).use {
             if (!it.moveToFirst()) null else Pair(it.getString(0), it.getInt(1) != 0)
         }
         if (state?.second == true) return CausalDeleteResult.Conflict(target)
         val current = state?.first ?: causalLiveRevision(db, kind, target) ?: return CausalDeleteResult.NotFound
         if (current != operation.getString("predecessor_revision_id")) return CausalDeleteResult.Conflict(target)
+        val count = db.rawQuery("SELECT COUNT(*) FROM sync_causal_operations", null).use { it.moveToFirst(); it.getInt(0) }
+        if (count >= MAX_CAUSAL_OPERATIONS) return CausalDeleteResult.Invalid
         db.insertOrThrow("sync_causal_operations", null, ContentValues().apply {
             put("operation_id", operationId); put("target_kind", kind); put("target_id", target)
             put("creator_id", operation.getString("creator_id")); put("predecessor_revision_id", current)
             put("created_at", operation.getString("created_at")); put("payload_sha256", operation.getString("payload_sha256"))
         })
+        if (buildCausalDeletionExportV1Json(db).toByteArray(StandardCharsets.UTF_8).size > MAX_CAUSAL_ARTIFACT_BYTES)
+            return CausalDeleteResult.Invalid
         applyCausalEffect(db, kind, target, operationId)
         db.insertWithOnConflict("sync_causal_state", null, ContentValues().apply {
             put("target_kind", kind); put("target_id", target); put("current_revision_id", operationId)
@@ -3443,12 +3526,15 @@ class TrainlogRepository(
     /** Create one durable local deletion without selecting any transport. */
     fun deleteCausally(kind: String, targetId: String, creatorId: String): CausalDeleteResult {
         if (kind !in causalKinds || targetId.isBlank() || creatorId.isBlank()) return CausalDeleteResult.Invalid
-        if (kind == "exercise" && trainingKnowledge.getExerciseKnowledge(targetId) != null)
-            return CausalDeleteResult.Invalid
         val db = database.writableDatabase
         return try {
             db.beginTransaction()
-            val predecessor = causalLiveRevision(db, kind, targetId)
+            if (!causalTargetAuthorized(db, kind, targetId)) return CausalDeleteResult.Invalid
+            val state = db.rawQuery("SELECT current_revision_id,deleted FROM sync_causal_state WHERE target_kind=? AND target_id=?", arrayOf(kind, targetId)).use {
+                if (it.moveToFirst()) Pair(it.getString(0), it.getInt(1) != 0) else null
+            }
+            if (state?.second == true) return CausalDeleteResult.Unchanged(state.first)
+            val predecessor = if (state != null && !state.second) state.first else causalLiveRevision(db, kind, targetId)
             if (predecessor == null) {
                 val existing = db.rawQuery("SELECT operation_id FROM sync_causal_state WHERE target_kind=? AND target_id=? AND deleted=1", arrayOf(kind, targetId)).use { if (it.moveToFirst()) it.getString(0) else null }
                 if (existing != null) return CausalDeleteResult.Unchanged(existing)
@@ -3467,8 +3553,14 @@ class TrainlogRepository(
         } finally { db.endTransaction() }
     }
 
-    fun buildCausalDeletionExportV1Json(): String {
-        val db = database.readableDatabase
+    fun buildCausalDeletionExportV1Json(): String =
+        buildCausalDeletionExportV1Json(database.readableDatabase).also {
+            check(it.toByteArray(StandardCharsets.UTF_8).size <= MAX_CAUSAL_ARTIFACT_BYTES) {
+                "Causal protection set exceeds artifact byte bound."
+            }
+        }
+
+    private fun buildCausalDeletionExportV1Json(db: SQLiteDatabase): String {
         val operations = JSONArray()
         db.rawQuery("SELECT operation_id,target_kind,target_id,creator_id,predecessor_revision_id,created_at,payload_sha256 FROM sync_causal_operations ORDER BY operation_id", null).use { cursor ->
             while (cursor.moveToNext()) {
@@ -3484,7 +3576,7 @@ class TrainlogRepository(
     }
 
     fun applyCausalDeletionExportV1Json(json: String): CausalDeleteResult {
-        if (json.toByteArray().size > 4 * 1024 * 1024 || !hasStrictJsonShape(json)) return CausalDeleteResult.Invalid
+        if (json.toByteArray().size > MAX_CAUSAL_ARTIFACT_BYTES || !hasStrictJsonShape(json)) return CausalDeleteResult.Invalid
         val root = try { JSONObject(json) } catch (_: Exception) { return CausalDeleteResult.Invalid }
         if (!root.hasExactKeys(setOf("format", "version", "generated_at", "operations")) ||
             root.optString("format") != "trainlog-causal-deletions" || !root.value("version").isJsonInt(1, 1) ||
@@ -3538,11 +3630,17 @@ class TrainlogRepository(
 
     fun linkBodyObservationToSession(observationId: String, sessionId: String?): Boolean {
         val db = database.writableDatabase
-        val parent = if (sessionId == null) null else db.rawQuery("SELECT id FROM sessions WHERE session_id=?",
-            arrayOf(sessionId)).use { if (it.moveToFirst()) it.getLong(0) else return false }
-        return db.update("body_observations", ContentValues().apply {
-            if (parent == null) putNull("session_row_id") else put("session_row_id", parent)
-        }, "observation_id=?", arrayOf(observationId)) == 1
+        return try {
+            db.beginTransaction()
+            val parent = if (sessionId == null) null else db.rawQuery("SELECT id FROM sessions WHERE session_id=?",
+                arrayOf(sessionId)).use { if (it.moveToFirst()) it.getLong(0) else return false }
+            val changed = db.update("body_observations", ContentValues().apply {
+                if (parent == null) putNull("session_row_id") else put("session_row_id", parent)
+            }, "observation_id=?", arrayOf(observationId)) == 1
+            if (!changed || !markCausalMutation(db, "body_observation", observationId)) return false
+            db.setTransactionSuccessful(); true
+        } catch (_: Exception) { false
+        } finally { if (db.inTransaction()) db.endTransaction() }
     }
 
     private fun syncNotePayload(
@@ -4829,6 +4927,7 @@ class TrainlogRepository(
     /** Snapshot only user-created definitions; bundled manifest rows are never
      * exported as mutable data and absence never requests deletion. */
     fun buildEquipmentDefinitionsJson(): String {
+        check(!hasCausalProtection("custom_equipment")) { "Causal equipment protection requires the staged artifact." }
         val supplied = EquipmentCatalog.load(applicationContext).map { it.equipmentId }.toSet()
         val items = JSONArray()
         listEquipment().filter { it.equipmentId !in supplied }.forEach { entry ->
@@ -4859,6 +4958,8 @@ class TrainlogRepository(
     }
 
     fun applyPcEquipmentDefinitionsJson(json: String): EquipmentDefinitionImportResult {
+        if (hasCausalProtection("custom_equipment"))
+            return EquipmentDefinitionImportResult.Invalid("Causal equipment protection requires the staged artifact.")
         val root = try { JSONObject(json) } catch (_: Exception) {
             return EquipmentDefinitionImportResult.Invalid("Définitions équipement JSON invalides.")
         }
@@ -5640,7 +5741,8 @@ class TrainlogRepository(
                 "(SELECT COUNT(*) FROM exercise_feedback_revisions r WHERE r.feedback_id=f.feedback_id) " +
                 "FROM exercise_feedback f JOIN session_exercises se ON se.id=f.session_exercise_row_id " +
                 "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id " +
-                "WHERE s.session_id=?;", arrayOf(sessionId),
+                "WHERE s.session_id=? AND NOT EXISTS(SELECT 1 FROM sync_causal_state cs " +
+                "WHERE cs.target_kind='feedback' AND cs.target_id=f.feedback_id AND cs.deleted=1);", arrayOf(sessionId),
         ).use { c -> while (c.moveToNext()) add(ExerciseFeedback(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getInt(6)>1)) }
     }.sortedWith { a,b -> TrainlogTimestamp.parse(a.observedAt)!!.compareTo(TrainlogTimestamp.parse(b.observedAt)!!)
         .takeIf { it != 0 } ?: TrainlogTimestamp.compareIds(a.feedbackId,b.feedbackId) }
@@ -5659,6 +5761,7 @@ class TrainlogRepository(
 
     /** Direction-neutral V2 companion: roots and every immutable revision. */
     fun buildTrainingFeedbackJson(): String {
+        check(!hasCausalProtection("feedback")) { "Causal feedback protection requires the staged artifact." }
         val root = JSONObject().put("format", "trainlog-training-feedback").put("version", 2)
             .put("generated_at", OffsetDateTime.now().toString())
         val exercise = JSONArray()
@@ -5696,6 +5799,8 @@ class TrainlogRepository(
     }
 
     fun applyTrainingFeedbackJson(json: String): TrainingFeedbackImportResult {
+        if (hasCausalProtection("feedback"))
+            return TrainingFeedbackImportResult.Invalid("Causal feedback protection requires the staged artifact.")
         if (json.toByteArray(Charsets.UTF_8).size > 40 * 1024 * 1024)
             return TrainingFeedbackImportResult.Invalid("Compagnon de ressentis trop volumineux.")
         val root = try { JSONObject(json) } catch (_: Exception) {
@@ -7689,6 +7794,7 @@ private const val MAX_SYNC_NOTE_UTF8_BYTES = 4096
 /* The wire document is bounded to sixteen drafts total, including the singleton active draft. */
 private const val MAX_PENDING_EXECUTION_DRAFTS = 15
 private const val MAX_CAUSAL_OPERATIONS = 4096
+private const val MAX_CAUSAL_ARTIFACT_BYTES = 4 * 1024 * 1024
 private const val MAX_PLAN_SETS = 64
 private const val MAX_PLAN_REPS = 10000
 private const val MAX_PLAN_DURATION_SECONDS = 86400

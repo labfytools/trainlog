@@ -36,6 +36,12 @@ visualizations are implemented; the other four Web routes remain placeholders.
 CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_GENERATION_ACK_V1
 ```
 
+The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
+cursor: complete predecessor state, imported built-in authorization,
+cross-platform draft revision identity and resource-bound admission are closed.
+Generation manifests, publication context assignment and acknowledgement have
+not started.
+
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
 defines the complete-sync target and its bounded dependency order.
 `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` supplies the reproducible isolated

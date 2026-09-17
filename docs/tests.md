@@ -1204,6 +1204,16 @@ pre-existing `-Werror=misleading-indentation` failure in unchanged Web baseline
 sources; it is not reported as green and warning policy is unchanged.
 
 The causal closeout full harness result is 76/76 normal Meson, 76/76
-ASan/UBSan, and 208 Android tests: 204 passed and four optional historical
+ASan/UBSan, and 210 Android tests: 206 passed and four optional historical
 database fixtures skipped. `assembleDebug`, JSON validation, import-contract
 validation, both frontend tests, and the isolated characterization all pass.
+
+Focused closeout assertions are `test_child_mutations_invalidate_session_observation_and_feedback_deletes`,
+`test_imported_builtin_and_alias_retirement_are_refused_without_writes`,
+`test_draft_identity_is_semantic_revision_not_json_serialization`, and
+`test_operation_count_and_input_byte_bounds_precede_effects` in the desktop
+production-service suite. Android adds
+`causalDraftDeletionUsesTheSameRevisionForActivePendingAndDesktopReplicas` and
+`importedCausalOperationsCannotRetireBuiltInIdentities`; the existing session
+round trip now also changes and reverts a confirmed set before proving the
+remote deletion conflicts without losing business or causal state.

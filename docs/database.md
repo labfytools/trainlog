@@ -57,6 +57,12 @@ v19→v20 migration creates empty protection tables and does not fabricate
 ancestry for existing rows. Applying an operation, recording its protection,
 and performing dependent changes share one transaction.
 
+Non-deleted rows in `sync_causal_state` are also the durable revision boundary
+for supported corrections whose content can later return to an earlier value.
+They do not fabricate migration ancestry: they are written only by a real
+post-migration mutation. Session exercise replacement writes this revision in
+the same transaction and refuses to modify a deleted target.
+
 Version 19 additively stores causal note revisions/current state and staged
 execution drafts, their immutable revisions, pending/active state and durable
 finalization ledger. It changes no published V1 format and performs no user

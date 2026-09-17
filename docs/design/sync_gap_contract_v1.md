@@ -1,5 +1,24 @@
 # TRAINLOG_SYNC_GAP_CONTRACT_V1
 
+## Causal deletion closeout implementation note
+
+The staged causal-deletion implementation derives deletion admission from the
+complete affected business projection, not only the parent row. Session
+projection includes ordered occurrences, plans, confirmed facts, MAX,
+occurrence/session note revisions, immutable feedback revisions and linked
+observation identities. Observation projection includes every measurement,
+its session identity and note revision. Feedback projection includes its full
+immutable revision history. Supported corrections also persist a non-deleted
+mutation revision, so a change followed by a content revert does not erase
+evidence of the intervening edit. Unknown or incomparable ancestry conflicts;
+timestamps never arbitrate it.
+
+Execution-draft deletion uses `(session_id, revision_id)` on Android active and
+pending storage and on desktop storage. Serialized JSON order, whitespace,
+local row IDs and unfinished Android form strings are not causal identity.
+Built-in exercise/equipment authorization is identical for local and imported
+operations, including aliases that resolve to a built-in exercise.
+
 Statut : `CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
 
 Ce document définit la cible produit d'une synchronisation complète sans

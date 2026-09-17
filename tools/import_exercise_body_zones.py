@@ -207,6 +207,8 @@ def main():
     try:
         if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
             raise ImportFailure("schema desktop v11-v20 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='body_zone_relation' AND deleted=1 LIMIT 1").fetchone():
+            raise ImportFailure("causal BODY ZONES protection requires the staged artifact")
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("BEGIN IMMEDIATE")
         grouped = {}

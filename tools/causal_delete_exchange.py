@@ -44,17 +44,55 @@ def require_schema(db: sqlite3.Connection) -> None:
 
 def target_snapshot(db: sqlite3.Connection, kind: str, target: str):
     if kind == "session":
-        row = db.execute("SELECT session_id,started_at,ended_at,session_type,notes FROM sessions WHERE session_id=?", (target,)).fetchone()
+        row = db.execute("SELECT id,session_id,started_at,ended_at,session_type,notes FROM sessions WHERE session_id=?", (target,)).fetchone()
+        if row is None:
+            return None
+        session_row = row[0]
+        occurrences = []
+        for occurrence in db.execute(
+            "SELECT se.id,se.entry_id,e.exercise_id,se.position,se.recording_mode,se.tracking_mode,se.data_fields,se.equipment_id,se.load_mode,se.rest_seconds,se.target_sets,se.target_reps,se.target_duration_seconds,se.target_weight_kg,se.notes "
+            "FROM session_exercises se JOIN exercises e ON e.id=se.exercise_row_id WHERE se.session_row_id=? ORDER BY se.position,se.entry_id", (session_row,)
+        ):
+            occurrence_row = occurrence[0]
+            sets = [list(value) for value in db.execute(
+                "SELECT position,reps,duration_seconds,weight_kg FROM performed_sets WHERE session_exercise_row_id=? ORDER BY position", (occurrence_row,))]
+            continuous = db.execute(
+                "SELECT duration_seconds,speed_kmh,distance_km FROM continuous_activity WHERE session_exercise_row_id=?", (occurrence_row,)).fetchone()
+            maximum = db.execute(
+                "SELECT max_weight_kg FROM max_results WHERE session_exercise_row_id=?", (occurrence_row,)).fetchone()
+            feedback = []
+            for root in db.execute(
+                "SELECT feedback_id,observed_at,raw_text FROM exercise_feedback WHERE session_exercise_row_id=? ORDER BY observed_at,feedback_id", (occurrence_row,)):
+                revisions = [list(value) for value in db.execute(
+                    "SELECT revision_id,created_at,raw_text FROM exercise_feedback_revisions WHERE feedback_id=? ORDER BY created_at,revision_id", (root[0],))]
+                feedback.append([*root, revisions])
+            occurrence_note = db.execute(
+                "SELECT revision_id FROM sync_note_state WHERE owner_kind='occurrence' AND owner_id=?", (occurrence[1],)).fetchone()
+            occurrences.append([*occurrence[1:], sets,
+                                None if continuous is None else list(continuous),
+                                None if maximum is None else maximum[0], feedback,
+                                None if occurrence_note is None else occurrence_note[0]])
+        session_note = db.execute(
+            "SELECT revision_id FROM sync_note_state WHERE owner_kind='session' AND owner_id=?", (target,)).fetchone()
+        links = [value[0] for value in db.execute(
+            "SELECT observation_id FROM body_observations WHERE session_row_id=? ORDER BY observation_id", (session_row,))]
+        return [*row[1:], occurrences, None if session_note is None else session_note[0], links]
     elif kind == "execution_draft":
-        row = db.execute("SELECT session_id,revision_id,parent_revision_id,payload_json FROM execution_drafts WHERE session_id=?", (target,)).fetchone()
+        row = db.execute("SELECT session_id,revision_id FROM execution_drafts WHERE session_id=?", (target,)).fetchone()
     elif kind == "exercise":
         row = db.execute("SELECT exercise_id,name,recording_mode,tracking_mode,data_fields FROM exercises WHERE exercise_id=?", (target,)).fetchone()
     elif kind == "body_observation":
-        row = db.execute("SELECT observation_id,observed_at,notes FROM body_observations WHERE observation_id=?", (target,)).fetchone()
+        row = db.execute("SELECT bo.observation_id,bo.observed_at,bo.body_weight_kg,bo.neck_cm,bo.shoulders_cm,bo.chest_cm,bo.waist_cm,bo.hips_cm,bo.left_arm_cm,bo.right_arm_cm,bo.left_forearm_cm,bo.right_forearm_cm,bo.left_thigh_cm,bo.right_thigh_cm,bo.left_calf_cm,bo.right_calf_cm,bo.notes,s.session_id FROM body_observations bo LEFT JOIN sessions s ON s.id=bo.session_row_id WHERE bo.observation_id=?", (target,)).fetchone()
+        if row is not None:
+            note = db.execute("SELECT revision_id FROM sync_note_state WHERE owner_kind='observation' AND owner_id=?", (target,)).fetchone()
+            return [*row, None if note is None else note[0]]
     elif kind == "custom_equipment":
         row = db.execute("SELECT equipment_id,display_name,label_name,equipment_type,load_semantics FROM custom_equipment WHERE equipment_id=?", (target,)).fetchone()
     elif kind == "feedback":
         row = db.execute("SELECT feedback_id,observed_at,raw_text FROM exercise_feedback WHERE feedback_id=?", (target,)).fetchone()
+        if row is not None:
+            revisions = [list(value) for value in db.execute("SELECT revision_id,created_at,raw_text FROM exercise_feedback_revisions WHERE feedback_id=? ORDER BY created_at,revision_id", (target,))]
+            return [*row, revisions]
     else:
         parts = target.split("|")
         if len(parts) != 3:
@@ -110,13 +148,13 @@ def validate_operation(value: object) -> dict:
 def apply_operation(db: sqlite3.Connection, operation: dict) -> str:
     op = validate_operation(operation)
     identity = op["operation_id"]
-    encoded = canonical(op)
     known = db.execute("SELECT target_kind,target_id,creator_id,predecessor_revision_id,created_at,payload_sha256,publication_context FROM sync_causal_operations WHERE operation_id=?", (identity,)).fetchone()
     expected = (op["target_kind"], op["target_id"], op["creator_id"], op["predecessor_revision_id"], op["created_at"], op["payload_sha256"], None)
     if known:
         if tuple(known) != expected:
             raise CausalError("operation identity reused with different content")
         return "unchanged"
+    authorize_target(db, op["target_kind"], op["target_id"])
     state = db.execute("SELECT current_revision_id,deleted FROM sync_causal_state WHERE target_kind=? AND target_id=?", (op["target_kind"], op["target_id"])).fetchone()
     current = state[0] if state else live_revision(db, op["target_kind"], op["target_id"])
     if state and state[1]:
@@ -125,19 +163,42 @@ def apply_operation(db: sqlite3.Connection, operation: dict) -> str:
         raise CausalError("unknown target or ancestry")
     if current != op["predecessor_revision_id"]:
         raise CausalError("causal predecessor conflict")
+    count = db.execute("SELECT COUNT(*) FROM sync_causal_operations").fetchone()[0]
+    if count >= MAX_OPERATIONS:
+        raise CausalError("protection set exceeds operation bound")
     db.execute("INSERT INTO sync_causal_operations VALUES(?,?,?,?,?,?,?,NULL)",
                (identity, op["target_kind"], op["target_id"], op["creator_id"],
                 op["predecessor_revision_id"], op["created_at"], op["payload_sha256"]))
+    if len(canonical(export_document(db)).encode("utf-8")) > MAX_BYTES:
+        raise CausalError("protection set exceeds artifact byte bound")
     apply_effect(db, op["target_kind"], op["target_id"], identity)
     db.execute("INSERT OR REPLACE INTO sync_causal_state VALUES(?,?,?,?,?)",
                (op["target_kind"], op["target_id"], identity, 1, identity))
     return "applied"
 
 
+def authorize_target(db: sqlite3.Connection, kind: str, target: str) -> None:
+    if kind == "exercise":
+        canonical = db.execute("SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?", (target,)).fetchone() if _table_exists(db, "exercise_aliases") else None
+        if target in load_exercise_names() or canonical is not None and canonical[0] in load_exercise_names():
+            raise CausalError("built-in exercise identity cannot be retired")
+    if kind == "custom_equipment" and _table_exists(db, "equipment") and db.execute(
+            "SELECT 1 FROM equipment WHERE equipment_id=? AND equipment_type<>'custom_machine'", (target,)).fetchone():
+        raise CausalError("built-in equipment identity cannot be retired")
+
+
+def _table_exists(db: sqlite3.Connection, table: str) -> bool:
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+
 def local_delete(db: sqlite3.Connection, kind: str, target: str, creator: str) -> tuple[dict, str]:
-    if kind == "exercise" and target in load_exercise_names():
-        raise CausalError("built-in exercise identity cannot be retired")
-    current = live_revision(db, kind, target)
+    authorize_target(db, kind, target)
+    state = db.execute("SELECT current_revision_id,deleted FROM sync_causal_state WHERE target_kind=? AND target_id=?", (kind, target)).fetchone()
+    if state and state[1]:
+        row = db.execute("SELECT operation_id,target_kind,target_id,creator_id,predecessor_revision_id,created_at,payload_sha256,publication_context FROM sync_causal_operations WHERE operation_id=?", (state[0],)).fetchone()
+        keys = ("operation_id", "target_kind", "target_id", "creator_id", "predecessor_revision_id", "created_at", "payload_sha256", "publication_context")
+        return dict(zip(keys, row)), "unchanged"
+    current = state[0] if state and not state[1] else live_revision(db, kind, target)
     if current is None:
         state = db.execute("SELECT operation_id FROM sync_causal_state WHERE target_kind=? AND target_id=? AND deleted=1", (kind, target)).fetchone()
         if state:
@@ -155,7 +216,8 @@ def local_delete(db: sqlite3.Connection, kind: str, target: str, creator: str) -
 
 
 def load(path: Path) -> dict:
-    raw = path.read_bytes()
+    with path.open("rb") as source:
+        raw = source.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
         raise CausalError("artifact exceeds 4 MiB")
     def unique(pairs):
@@ -181,11 +243,14 @@ def load(path: Path) -> dict:
 
 def export_document(db: sqlite3.Connection) -> dict:
     keys = ("operation_id", "target_kind", "target_id", "creator_id", "predecessor_revision_id", "created_at", "payload_sha256", "publication_context")
-    rows = db.execute("SELECT " + ",".join(keys) + " FROM sync_causal_operations ORDER BY operation_id").fetchall()
+    rows = db.execute("SELECT " + ",".join(keys) + " FROM sync_causal_operations ORDER BY operation_id LIMIT ?", (MAX_OPERATIONS + 1,)).fetchall()
     if len(rows) > MAX_OPERATIONS: raise CausalError("protection set exceeds artifact bound")
-    return {"format": FORMAT, "version": VERSION,
+    document = {"format": FORMAT, "version": VERSION,
             "generated_at": dt.datetime.now().astimezone().isoformat(),
             "operations": [dict(zip(keys, row)) for row in rows]}
+    if len(canonical(document).encode("utf-8")) > MAX_BYTES:
+        raise CausalError("protection set exceeds artifact byte bound")
+    return document
 
 
 def main() -> None:

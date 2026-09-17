@@ -9,6 +9,13 @@ rejects protected session, observation, or exercise identities before mutation.
 Deleted execution-draft replay is stale. Tombstone-free V1/V2/V3 behavior is
 unchanged.
 
+Legacy feedback, BODY ZONES and custom-equipment companions are also refused
+when their domain has deleted causal state. Retired exercises and custom
+equipment remain resolvable for history but are excluded from new-work lists;
+withdrawn feedback keeps its immutable revisions while disappearing from the
+current feedback view. Profile and alias state cannot make a retired exercise
+available because availability is independently guarded by causal state.
+
 ## Machine-exercise Phase 1 compatibility
 
 Desktop schema v20 and Android schema v19 retain mobile export V3, readable V1/V2 imports,

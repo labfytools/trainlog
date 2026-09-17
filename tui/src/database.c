@@ -1444,7 +1444,9 @@ TrainlogStatus trainlog_database_list_training_feedback(
     TrainlogStatus status = list_feedback_query(database,
         "SELECT f.feedback_id,se.entry_id,f.observed_at,f.raw_text FROM exercise_feedback f "
         "JOIN session_exercises se ON se.id=f.session_exercise_row_id JOIN sessions s ON s.id=se.session_row_id "
-        "WHERE s.session_id=?1 ORDER BY f.observed_at COLLATE BINARY,f.feedback_id COLLATE BINARY",
+        "WHERE s.session_id=?1 AND NOT EXISTS(SELECT 1 FROM sync_causal_state cs "
+        "WHERE cs.target_kind='feedback' AND cs.target_id=f.feedback_id AND cs.deleted=1) "
+        "ORDER BY f.observed_at COLLATE BINARY,f.feedback_id COLLATE BINARY",
         session_id, exercise_feedback, exercise_capacity, exercise_count, true);
     if (status != TRAINLOG_STATUS_OK) return status;
     qsort(exercise_feedback, *exercise_count, sizeof(*exercise_feedback), compare_feedback_view);
@@ -1965,7 +1967,9 @@ TrainlogStatus trainlog_database_list_custom_equipment(
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     *output_count = 0U;
     rc = sqlite3_prepare_v2(database->connection,
-        "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics FROM custom_equipment ORDER BY display_name COLLATE NOCASE,equipment_id;",
+        "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics FROM custom_equipment ce "
+        "WHERE NOT EXISTS(SELECT 1 FROM sync_causal_state s WHERE s.target_kind='custom_equipment' AND s.target_id=ce.equipment_id AND s.deleted=1) "
+        "ORDER BY display_name COLLATE NOCASE,equipment_id;",
         -1, &statement, NULL);
     if (rc != SQLITE_OK) return TRAINLOG_STATUS_DATABASE_ERROR;
     while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
@@ -2011,7 +2015,7 @@ TrainlogStatus trainlog_database_list_custom_equipment_page(
 {
     static const char *const SQL =
         "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics "
-        "FROM custom_equipment ORDER BY display_name COLLATE NOCASE,equipment_id "
+        "FROM custom_equipment ce WHERE NOT EXISTS(SELECT 1 FROM sync_causal_state s WHERE s.target_kind='custom_equipment' AND s.target_id=ce.equipment_id AND s.deleted=1) ORDER BY display_name COLLATE NOCASE,equipment_id "
         "LIMIT ?1 OFFSET ?2;";
     sqlite3_stmt *statement = NULL;
     size_t count = 0U;
@@ -3154,7 +3158,7 @@ TrainlogStatus trainlog_database_list_exercises_filtered(
 {
     static const char *const SQL =
         "SELECT id,exercise_id,name,tracking_mode,recording_mode,data_fields,normalized_name "
-        "FROM exercises ORDER BY name COLLATE NOCASE,exercise_id;";
+        "FROM exercises e WHERE NOT EXISTS(SELECT 1 FROM sync_causal_state s WHERE s.target_kind='exercise' AND s.target_id=e.exercise_id AND s.deleted=1) ORDER BY name COLLATE NOCASE,exercise_id;";
     sqlite3_stmt *statement = NULL;
     size_t count = 0U;
     size_t prefix_length;
@@ -4350,6 +4354,26 @@ TrainlogStatus trainlog_database_replace_session_exercises(
         ) != SQLITE_OK) {
         (void)trainlog_database_rollback(database);
         return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    /* WHY: content can return to its earlier bytes after a real correction.
+     * CONTRACT: a successful replacement advances a durable non-deleted
+     * causal revision in the same transaction. INVARIANT: a deleted session
+     * cannot be modified or silently reactivated by this writer. */
+    {
+        sqlite3_stmt *causal = NULL;
+        rc = sqlite3_prepare_v2(database->connection,
+            "INSERT INTO sync_causal_state(target_kind,target_id,current_revision_id,deleted,operation_id) "
+            "VALUES('session',?1,'mu_'||lower(hex(randomblob(16))),0,NULL) "
+            "ON CONFLICT(target_kind,target_id) DO UPDATE SET current_revision_id=excluded.current_revision_id "
+            "WHERE sync_causal_state.deleted=0;", -1, &causal, NULL);
+        if (rc == SQLITE_OK) rc = sqlite3_bind_text(causal, 1, session_id, -1, SQLITE_TRANSIENT);
+        if (rc == SQLITE_OK) rc = sqlite3_step(causal);
+        if (causal != NULL && sqlite3_finalize(causal) != SQLITE_OK && rc == SQLITE_DONE) rc = SQLITE_ERROR;
+        if (rc != SQLITE_DONE || sqlite3_changes(database->connection) != 1) {
+            (void)trainlog_database_rollback(database);
+            return rc == SQLITE_DONE ? TRAINLOG_STATUS_CONFLICT : TRAINLOG_STATUS_DATABASE_ERROR;
+        }
     }
 
     status = trainlog_database_commit(database);

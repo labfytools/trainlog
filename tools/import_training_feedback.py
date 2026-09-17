@@ -52,6 +52,7 @@ def main():
     try:
       db.execute("PRAGMA foreign_keys=ON")
       if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18,19,20):fail("schema desktop v15-v20 requis")
+      if db.execute("PRAGMA user_version").fetchone()[0]>=20 and db.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='feedback' AND deleted=1 LIMIT 1").fetchone():fail("causal feedback protection requires the staged artifact")
       db.execute("BEGIN IMMEDIATE");seen=set()
       for index,item in enumerate(root["exercise_feedback"]):
         keys={"feedback_id","session_id","entry_id","exercise_id","observed_at","raw_text"} if root["version"]==1 else {"feedback_id","session_id","entry_id","exercise_id","observed_at","revisions"}

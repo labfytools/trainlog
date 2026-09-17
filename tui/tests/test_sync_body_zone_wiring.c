@@ -1115,7 +1115,8 @@ static bool run_ai_inbound_diagnostic_case(
 
 static bool run_all(void)
 {
-    char temporary[] = "/tmp/trainlog-sync-body-zone-wiring-XXXXXX";
+    char temporary[4096];
+    const char *temporary_root = getenv("TMPDIR");
     char case_a[4096];
     char case_b[4096];
     char case_c[4096];
@@ -1135,7 +1136,14 @@ static bool run_all(void)
     char case_q[4096];
     char case_r[4096];
     char fake_tools[4096];
-    char *root = mkdtemp(temporary);
+    char *root;
+    int temporary_written;
+
+    if (temporary_root == NULL || temporary_root[0] == '\0') temporary_root = "/tmp";
+    temporary_written = snprintf(temporary, sizeof(temporary),
+        "%s/trainlog-sync-body-zone-wiring-XXXXXX", temporary_root);
+    CHECK(temporary_written > 0 && (size_t)temporary_written < sizeof(temporary));
+    root = mkdtemp(temporary);
 
     CHECK(root != NULL);
     CHECK(install_fake_rclone(root));

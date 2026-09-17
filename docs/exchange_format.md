@@ -659,3 +659,13 @@ atomically. Timestamps are evidence, never last-writer-wins authority.
 The artifact is available only through explicit repository/tool entry points.
 It is not selected by V3 transport. Null publication context is the typed
 handoff to the later generation/acknowledgement tranche, not consumption proof.
+
+`predecessor_revision_id` identifies either the canonical complete business
+projection or a durable mutation revision created by a supported correction.
+For execution drafts the projection is exactly the stable session and draft
+revision identities; raw JSON serialization is not identity. Imported
+operations undergo the same built-in/alias authorization as local operations.
+Readers consume at most the 4 MiB limit plus one sentinel byte, exporters
+enumerate at most 4096 operations plus one sentinel row, and a local deletion
+is refused before its effect if the complete protection artifact would exceed
+either bound.

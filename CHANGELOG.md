@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.2
 
+- Closed the causal-deletion correctness review: deletion predecessors now
+  cover affected session children, measurements, links, notes and immutable
+  feedback revisions; supported corrections preserve an intervening mutation
+  marker even after a content revert. Imported operations share built-in
+  authorization with local deletion, execution drafts use their stable
+  cross-platform revision identity, protected legacy companions refuse unsafe
+  replay, and causal artifact reads/exports enforce count and byte bounds
+  before destructive effects.
+
 - Completed `TRAINLOG_SYNC_CAUSAL_DELETE_V1` with desktop schema v20 and
   Android schema v19. Added a strict bounded staged causal-deletion artifact,
   durable operation/state records, domain-specific deletion effects, causal

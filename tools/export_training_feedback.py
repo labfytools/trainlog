@@ -11,6 +11,7 @@ def main():
     db=connect_database(args.database)
     try:
         if db.execute("PRAGMA user_version").fetchone()[0] not in (15, 16, 17, 18, 19, 20): raise ValueError("schema desktop v15-v20 requis")
+        if db.execute("PRAGMA user_version").fetchone()[0] >= 20 and db.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='feedback' AND deleted=1 LIMIT 1").fetchone(): raise ValueError("causal feedback protection requires the staged artifact")
         roots=db.execute("SELECT f.feedback_id,s.session_id,se.entry_id,e.exercise_id,f.observed_at FROM exercise_feedback f JOIN session_exercises se ON se.id=f.session_exercise_row_id JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id").fetchall()
         followups=db.execute("SELECT f.followup_id,s.session_id,f.observed_at FROM session_followups f JOIN sessions s ON s.id=f.session_row_id").fetchall()
         if len(roots)>4096 or len(followups)>4096: raise ValueError("trop d'observations")

@@ -914,3 +914,10 @@ Android schema v19 additively stores the same immutable causal-deletion
 operations and current deleted-target state as desktop v20. Existing data is
 preserved and no migration-time ancestry is invented. Repository entry points
 create, validate, apply, export, and import the staged causal artifact.
+
+Completed-session correction and body-observation relinking advance durable
+non-deleted causal state in their mutation transaction. Session deletion
+admission covers ordered occurrences, targets, confirmed sets/continuous/MAX,
+notes, feedback revisions and linked observations. Draft admission uses the
+stable draft revision for active and pending storage; unfinished form strings
+remain local and never affect cross-platform identity.

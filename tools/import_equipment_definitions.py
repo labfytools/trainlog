@@ -63,6 +63,8 @@ def main():
     try:
         if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
             fail("schema desktop v8 à v16 requis")
+        if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='custom_equipment' AND deleted=1 LIMIT 1").fetchone():
+            fail("causal equipment protection requires the staged artifact")
         imported = skipped = 0
         # Validate every same-ID row before inserting any definition.
         for definition in definitions:

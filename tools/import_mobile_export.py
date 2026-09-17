@@ -9,6 +9,7 @@ import os
 import sqlite3
 import sys
 import unicodedata
+import uuid
 from pathlib import Path
 
 from validate_json import TrainlogSemanticError, parse_timestamp
@@ -1648,6 +1649,15 @@ def import_sessions(
             if connection.execute("PRAGMA user_version;").fetchone()[0] >= 9:
                 connection.execute("DELETE FROM max_results WHERE session_exercise_row_id IN (SELECT id FROM session_exercises WHERE session_row_id=?);", (session_row_id,))
             connection.execute("DELETE FROM session_exercises WHERE session_row_id=?;", (session_row_id,))
+            if connection.execute("PRAGMA user_version;").fetchone()[0] >= 20:
+                existing_causal = connection.execute(
+                    "SELECT deleted FROM sync_causal_state WHERE target_kind='session' AND target_id=?",
+                    (session["session_id"],),).fetchone()
+                if existing_causal is not None and existing_causal[0]:
+                    raise ImportFailure("session protégée causalement: " + session["session_id"])
+                connection.execute(
+                    "INSERT OR REPLACE INTO sync_causal_state(target_kind,target_id,current_revision_id,deleted,operation_id) VALUES('session',?,?,0,NULL)",
+                    (session["session_id"], "mu_" + str(uuid.uuid4())),)
             report["sessions_reconciled"] += 1
         else:
             cursor = connection.execute(

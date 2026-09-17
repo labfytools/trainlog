@@ -297,8 +297,14 @@ refused before resurrection. Active synchronization still selects V3: no
 generation acknowledgement, service activation, deployment, or user-data
 migration occurred.
 
+The focused causal closeout additionally proves child-data delete/update
+conflicts including change-and-revert, imported built-in and alias protection,
+active/pending/desktop draft-revision equivalence, protected companion refusal,
+current-view retirement and bounded pre-effect admission. It changes neither
+the v20/v19 schemas nor active V3 transport selection.
+
 The isolated closeout passed 76/76 normal Meson tests, 76/76 ASan/UBSan
-tests, Android debug assembly, and 208 Android tests (204 passed, four optional
+tests, Android debug assembly, and 210 Android tests (206 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
