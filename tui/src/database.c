@@ -1618,7 +1618,8 @@ static TrainlogStatus initialize_or_validate_schema(
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
                version == 15 || version == 16 || version == 17 || version == 18 ||
-               version == 19 || version == 20 || version == 21 || version == 22) {
+               version == 19 || version == 20 || version == 21 || version == 22 ||
+               version == 23) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {

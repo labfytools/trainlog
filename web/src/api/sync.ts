@@ -40,6 +40,12 @@ export interface SyncStatus {
 }
 
 let csrfToken = ''
+
+export async function mutationCsrfToken(): Promise<string> {
+  if (csrfToken.length !== 64) await fetchSyncStatus()
+  if (csrfToken.length !== 64) throw new Error('jeton CSRF absent')
+  return csrfToken
+}
 const phases = new Set<SyncPhase>([
   'idle',
   'requested',

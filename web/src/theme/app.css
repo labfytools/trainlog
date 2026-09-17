@@ -58,6 +58,46 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .page-intro { max-width: 34rem; margin-bottom: .15rem; color: var(--subtext-0); font-size: clamp(.95rem, 1.4vw, 1.08rem); line-height: 1.65; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
+.sessions-toolbar { margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.session-tabs { display: flex; gap: .4rem; padding: .3rem; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); }
+.session-tabs button, .quiet-action, .primary-action, .editor-actions button { min-height: 2.6rem; padding: .6rem .9rem; border: 1px solid transparent; border-radius: .55rem; color: var(--text); background: transparent; cursor: pointer; }
+.session-tabs button[aria-selected="true"] { color: var(--crust); background: var(--lavender); font-weight: 700; }
+.primary-action, .editor-actions .primary-action { color: var(--crust); background: var(--lavender); font-weight: 700; }
+.quiet-action { border-color: var(--surface-2); }
+.session-search { display: grid; gap: .45rem; max-width: 34rem; margin-bottom: 1.5rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
+.session-search input, .form-grid input, .form-grid select, .form-grid textarea, .catalog-picker input, .occurrence-fields input, .occurrence-fields select { width: 100%; min-height: 2.7rem; padding: .65rem .75rem; border: 1px solid var(--surface-2); border-radius: .5rem; color: var(--text); background: var(--base); font-size: var(--font-size-md); }
+.session-list { display: grid; gap: .6rem; }
+.session-row { width: 100%; padding: 1rem 1.1rem; display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(7rem, 1fr)); gap: 1rem; align-items: center; text-align: left; color: var(--text); border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); cursor: pointer; }
+.session-row:hover { border-color: var(--lavender); background: var(--base); }
+.session-row span:first-child { display: grid; gap: .2rem; }
+.session-row small { color: var(--lavender); font: 700 var(--font-size-xs) var(--font-mono); text-transform: uppercase; }
+.sessions-editor, .session-detail { padding: clamp(1rem, 3vw, 2.25rem); border: 1px solid var(--surface-1); border-radius: var(--radius); background: var(--mantle); }
+.form-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1rem; }
+.form-grid label, .catalog-picker label, .occurrence-fields label { display: grid; gap: .4rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
+.wide-field { grid-column: 1 / -1; }
+.form-grid textarea { min-height: 7rem; resize: vertical; }
+.catalog-picker { margin: 1.5rem 0; }
+.catalog-results { margin-top: .6rem; display: flex; gap: .45rem; flex-wrap: wrap; }
+.catalog-results button, .occurrence-actions button { padding: .45rem .65rem; border: 1px solid var(--surface-2); border-radius: .45rem; color: var(--text); background: var(--base); cursor: pointer; }
+.occurrence-editor-list, .detail-occurrences { padding: 0; display: grid; gap: .75rem; list-style: none; }
+.occurrence-editor-list > li, .detail-occurrences > li { padding: 1rem; border: 1px solid var(--surface-1); border-radius: .7rem; background: var(--base); }
+.occurrence-heading { display: flex; align-items: center; gap: .65rem; }
+.drag-handle { color: var(--overlay-1); }
+.occurrence-actions { margin-left: auto; display: flex; gap: .35rem; }
+.occurrence-fields { margin-top: 1rem; display: grid; grid-template-columns: repeat(5, minmax(7rem, 1fr)); gap: .75rem; }
+.editor-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: .75rem; }
+.editor-actions button { border-color: var(--surface-2); }
+.editor-actions button:disabled { cursor: not-allowed; opacity: .55; }
+.empty-inline, .error-panel, .form-error { padding: 1rem; border-radius: .65rem; background: var(--base); color: var(--subtext-0); }
+.error-panel, .form-error { border: 1px solid var(--red); color: var(--red); }
+.detail-summary, .detail-tile { margin-bottom: 1rem; padding: 1.1rem; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--base); }
+.detail-occurrences li { display: grid; gap: .35rem; }
+.detail-occurrences span, .detail-occurrences small { color: var(--subtext-0); }
+.detail-tile code { overflow-wrap: anywhere; color: var(--lavender); }
+.draft-payload { max-height: 32rem; overflow: auto; color: var(--subtext-0); font: var(--font-size-sm)/1.6 var(--font-mono); white-space: pre-wrap; }
+@media (max-width: 52rem) { .session-row { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr 1fr; } .occurrence-fields { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 30rem) { .session-row, .form-grid, .occurrence-fields { grid-template-columns: 1fr; } .session-tabs { width: 100%; overflow-x: auto; } .session-tabs button { white-space: nowrap; } .editor-actions { align-items: stretch; flex-direction: column; } }
+
 .dashboard-layout { min-width: 0; }
 .layout-toolbar { min-height: 2.7rem; margin: -1rem 0 1rem; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .65rem; }
 .layout-action { min-height: 2.45rem; padding: .58rem .82rem; color: var(--subtext-0); background: var(--surface-0); border: 1px solid rgb(108 112 134 / 48%); border-radius: .55rem; font: 650 var(--font-size-xs) var(--font-mono); cursor: pointer; transition: color 140ms ease, border-color 140ms ease, background 140ms ease; }

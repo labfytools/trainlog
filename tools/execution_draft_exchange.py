@@ -182,8 +182,8 @@ def causal_payload(draft):
 
 def require_schema(connection):
     version = connection.execute("PRAGMA user_version").fetchone()[0]
-    if version not in (19, 20, 21, 22):
-        raise LifecycleError(f"desktop schema v19-v22 required, found v{version}")
+    if version not in (19, 20, 21, 22, 23):
+        raise LifecycleError(f"desktop schema v19-v23 required, found v{version}")
 
 
 def import_document(connection, document, own_transaction=True):

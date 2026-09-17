@@ -154,12 +154,12 @@ static bool test_newer_schema_has_application_diagnostic(void)
     CHECK(fd >= 0);
     CHECK(close(fd) == 0);
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(sqlite3_exec(raw, "PRAGMA user_version=23;", NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw, "PRAGMA user_version=24;", NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic,
         sizeof(diagnostic)) == TRAINLOG_STATUS_SCHEMA_UNSUPPORTED);
     CHECK(database == NULL);
-    CHECK(strstr(diagnostic, "schema version 23 is newer") != NULL);
+    CHECK(strstr(diagnostic, "schema version 24 is newer") != NULL);
     CHECK(strstr(diagnostic, "SQLite") == NULL);
     CHECK(unlink(path) == 0);
     return true;

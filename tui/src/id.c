@@ -22,7 +22,11 @@ static bool prefix_is_supported(const char *prefix)
            strcmp(prefix, "se") == 0 ||
            strcmp(prefix, "bo") == 0 ||
            strcmp(prefix, "sy") == 0 ||
-           strcmp(prefix, "sxe") == 0;
+           strcmp(prefix, "sxe") == 0 ||
+           strcmp(prefix, "sp") == 0 ||
+           strcmp(prefix, "spr") == 0 ||
+           strcmp(prefix, "spe") == 0 ||
+           strcmp(prefix, "spd") == 0;
 }
 
 TrainlogStatus trainlog_id_generate(

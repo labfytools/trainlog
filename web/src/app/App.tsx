@@ -6,6 +6,7 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { DashboardPage } from '../routes/DashboardPage'
 import { PlaceholderPage } from '../routes/PlaceholderPage'
+import { SessionsPage } from '../routes/SessionsPage'
 import type { RouteId } from './routes'
 import { useRoute } from './useRoute'
 
@@ -72,7 +73,7 @@ export function App() {
       preparedItemsPending={preparedItemsPending}
       preparedItemsFailed={preparedItemsFailed}
     />
-  ) :
+  ) : route.id === 'sessions' ? <SessionsPage /> :
     <PlaceholderPage title={placeholderContent[route.id][0]}
       eyebrow={placeholderContent[route.id][1]}
       description={placeholderContent[route.id][2]} />

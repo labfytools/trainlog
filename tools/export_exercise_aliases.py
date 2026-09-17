@@ -16,8 +16,9 @@ def main():
     args = parser.parse_args()
     con = connect_database(args.database)
     try:
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
-            raise ValueError("schema desktop v12-v16 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (
+                12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23):
+            raise ValueError("schema desktop v12-v23 requis")
         rows = con.execute(
             "SELECT source_exercise_id,canonical_exercise_id FROM exercise_aliases "
             "ORDER BY source_exercise_id COLLATE BINARY"

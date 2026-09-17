@@ -194,6 +194,7 @@ trainlog_core_sources = files(
   'src/web_dashboard_json.c',
   'src/web_prepared_items.c',
   'src/web_prepared_items_json.c',
+  'src/web_sessions.c',
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
@@ -345,6 +346,15 @@ test_web_prepared_items = executable(
   c_args: strict_c_args,
 )
 test('web_prepared_items', test_web_prepared_items)
+
+test_web_sessions = executable(
+  'test_web_sessions',
+  'tests/test_web_sessions.c',
+  dependencies: trainlog_core_dep,
+  include_directories: trainlog_private_include,
+  c_args: strict_c_args,
+)
+test('web_sessions', test_web_sessions)
 
 test_dashboard_header = executable(
   'test_dashboard_header',

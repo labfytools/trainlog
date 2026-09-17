@@ -95,7 +95,7 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.2",
-        "desktop_schema": 22,
+        "desktop_schema": 23,
         "android_schema": 21,
         "protocols": [
             "mobile-export-v3",
