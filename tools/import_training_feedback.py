@@ -51,7 +51,7 @@ def main():
     roots_added=roots_skipped=revisions_added=revisions_skipped=0
     try:
       db.execute("PRAGMA foreign_keys=ON")
-      if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18):fail("schema desktop v15-v18 requis")
+      if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18,19):fail("schema desktop v15-v19 requis")
       db.execute("BEGIN IMMEDIATE");seen=set()
       for index,item in enumerate(root["exercise_feedback"]):
         keys={"feedback_id","session_id","entry_id","exercise_id","observed_at","raw_text"} if root["version"]==1 else {"feedback_id","session_id","entry_id","exercise_id","observed_at","revisions"}

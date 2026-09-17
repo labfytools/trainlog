@@ -216,6 +216,8 @@ sealed interface MobileSessionImportResult {
     data object DatabaseError : MobileSessionImportResult
 }
 
+private class SyncLifecycleConflict(val ownerId: String) : RuntimeException()
+
 sealed interface CreateEquipmentResult {
     data class Created(val equipment: EquipmentCatalogEntry) : CreateEquipmentResult
     data object Invalid : CreateEquipmentResult
@@ -299,6 +301,29 @@ sealed interface StartAiSessionDraftResult {
     data object ExistingActiveDraft : StartAiSessionDraftResult
     data object NotPending : StartAiSessionDraftResult
     data class Error(val message: String) : StartAiSessionDraftResult
+}
+
+sealed interface ExecutionDraftImportResult {
+    data class Applied(val active: Int, val pending: Int, val unchanged: Int, val stale: Int) : ExecutionDraftImportResult
+    data class Conflict(val sessionId: String) : ExecutionDraftImportResult
+    data class Invalid(val message: String) : ExecutionDraftImportResult
+    data object CapacityExceeded : ExecutionDraftImportResult
+    data object DatabaseError : ExecutionDraftImportResult
+}
+
+sealed interface SyncNoteEditResult {
+    data class Saved(val revisionId: String) : SyncNoteEditResult
+    data object NotFound : SyncNoteEditResult
+    data object Invalid : SyncNoteEditResult
+    data object DatabaseError : SyncNoteEditResult
+}
+
+sealed interface ActivateExecutionDraftResult {
+    data object Activated : ActivateExecutionDraftResult
+    data object ActiveDraftOccupied : ActivateExecutionDraftResult
+    data object NotFound : ActivateExecutionDraftResult
+    data class Invalid(val message: String) : ActivateExecutionDraftResult
+    data object DatabaseError : ActivateExecutionDraftResult
 }
 
 sealed interface FinalizeActiveDraftResult {
@@ -1982,7 +2007,14 @@ class TrainlogRepository(
         }
     }
 
-    fun finalizeActiveSessionDraft():
+    fun finalizeActiveSessionDraft(): FinalizeActiveDraftResult =
+        finalizeActiveSessionDraftInternal(null)
+
+    /** Finalize exactly one lifecycle identity; retry after commit is idempotent. */
+    fun finalizeExecutionDraft(sessionId: String): FinalizeActiveDraftResult =
+        finalizeActiveSessionDraftInternal(sessionId)
+
+    private fun finalizeActiveSessionDraftInternal(expectedSessionId: String?):
         FinalizeActiveDraftResult {
         var db: SQLiteDatabase? = null
         var transactionOpen = false
@@ -1990,6 +2022,18 @@ class TrainlogRepository(
             db = database.writableDatabase
             db.beginTransaction()
             transactionOpen = true
+            if (expectedSessionId != null) {
+                val finalized = db.rawQuery(
+                    "SELECT 1 FROM execution_draft_finalizations WHERE session_id=?;",
+                    arrayOf(expectedSessionId),
+                ).use { it.moveToFirst() }
+                if (finalized) {
+                    db.setTransactionSuccessful()
+                    db.endTransaction()
+                    transactionOpen = false
+                    return FinalizeActiveDraftResult.Saved(expectedSessionId)
+                }
+            }
             val active =
                 loadActiveSessionDraft(db)
             if (active == null) {
@@ -1998,6 +2042,13 @@ class TrainlogRepository(
                 return FinalizeActiveDraftResult.Invalid(
                     "Aucune séance en cours."
                 )
+            }
+            val lifecycleSessionId = active.draft.sessionId
+                ?: error("Active execution draft has no stable session_id.")
+            if (expectedSessionId != null && expectedSessionId != lifecycleSessionId) {
+                db.endTransaction()
+                transactionOpen = false
+                return FinalizeActiveDraftResult.Invalid("The requested execution draft is not active.")
             }
 
             val completed =
@@ -2026,7 +2077,32 @@ class TrainlogRepository(
                     db,
                     completed,
                     active.draft.sourceSessionId,
+                    forcedSessionId = lifecycleSessionId,
+                    forcedStartedAt = active.draft.startedAt,
                 )
+
+            /* CONTRACT: lifecycle transition changes table ownership, not the
+             * stable note owner. Copy caches while causal state remains keyed
+             * by session_id/entry_id; rollback covers every child. */
+            db.execSQL(
+                "UPDATE sessions SET notes=(SELECT notes FROM active_session_draft WHERE id=1) " +
+                    "WHERE session_id=?;", arrayOf(sessionId),
+            )
+            db.execSQL(
+                "UPDATE session_exercises SET notes=(SELECT de.notes FROM draft_session_exercises de " +
+                    "WHERE de.draft_id=1 AND de.entry_id=session_exercises.entry_id) " +
+                    "WHERE session_row_id=(SELECT id FROM sessions WHERE session_id=?);", arrayOf(sessionId),
+            )
+
+            db.insertOrThrow(
+                "execution_draft_finalizations",
+                null,
+                ContentValues().apply {
+                    put("session_id", lifecycleSessionId)
+                    put("final_revision_id", active.draft.revisionId)
+                    put("finalized_at", OffsetDateTime.now().toString())
+                },
+            )
 
             /*
              * INVARIANT: completion and draft deletion share this transaction.
@@ -3237,8 +3313,143 @@ class TrainlogRepository(
 
     fun buildMobileExportJson(): String = buildMobileExport(1)
 
+    /** Create one direct causal note revision for a stable history owner. */
+    fun updateSyncNote(ownerKind: String, ownerId: String, value: String?): SyncNoteEditResult {
+        if (ownerKind !in setOf("session", "occurrence", "observation") || ownerId.isBlank() ||
+            value != null && value.toByteArray(StandardCharsets.UTF_8).size > MAX_SYNC_NOTE_UTF8_BYTES)
+            return SyncNoteEditResult.Invalid
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            val owner = when (ownerKind) {
+                "session" -> db.rawQuery("SELECT id FROM sessions WHERE session_id=?", arrayOf(ownerId))
+                    .use { if (it.moveToFirst()) Pair("sessions", it.getLong(0)) else null }
+                "occurrence" -> db.rawQuery("SELECT id FROM session_exercises WHERE entry_id=?", arrayOf(ownerId))
+                    .use { completed -> if (completed.moveToFirst()) Pair("session_exercises", completed.getLong(0))
+                    else db.rawQuery("SELECT id FROM draft_session_exercises WHERE entry_id=?", arrayOf(ownerId))
+                        .use { draft -> if (draft.moveToFirst()) Pair("draft_session_exercises", draft.getLong(0)) else null } }
+                else -> db.rawQuery("SELECT id FROM body_observations WHERE observation_id=?", arrayOf(ownerId))
+                    .use { if (it.moveToFirst()) Pair("body_observations", it.getLong(0)) else null }
+            } ?: return SyncNoteEditResult.NotFound
+            val parent = db.rawQuery("SELECT revision_id FROM sync_note_state WHERE owner_kind=? AND owner_id=?",
+                arrayOf(ownerKind, ownerId)).use { if (it.moveToFirst()) it.getString(0) else null }
+            val revision = "nr_${UUID.randomUUID()}"
+            applySyncNote(db, ownerKind, ownerId, JSONObject().put("value", value ?: JSONObject.NULL)
+                .put("revision_id", revision).put("parent_revision_id", parent ?: JSONObject.NULL),
+                owner.first, owner.second)
+            db.setTransactionSuccessful(); SyncNoteEditResult.Saved(revision)
+        } catch (_: Exception) { SyncNoteEditResult.DatabaseError
+        } finally { db.endTransaction() }
+    }
+
+    fun linkBodyObservationToSession(observationId: String, sessionId: String?): Boolean {
+        val db = database.writableDatabase
+        val parent = if (sessionId == null) null else db.rawQuery("SELECT id FROM sessions WHERE session_id=?",
+            arrayOf(sessionId)).use { if (it.moveToFirst()) it.getLong(0) else return false }
+        return db.update("body_observations", ContentValues().apply {
+            if (parent == null) putNull("session_row_id") else put("session_row_id", parent)
+        }, "observation_id=?", arrayOf(observationId)) == 1
+    }
+
+    private fun syncNotePayload(
+        db: SQLiteDatabase,
+        ownerKind: String,
+        ownerId: String,
+        value: String?,
+    ): Any {
+        val state = db.rawQuery(
+            "SELECT r.revision_id,r.parent_revision_id,r.note FROM sync_note_state s " +
+                "JOIN sync_note_revisions r ON r.owner_kind=s.owner_kind AND r.owner_id=s.owner_id " +
+                "AND r.revision_id=s.revision_id WHERE s.owner_kind=? AND s.owner_id=?;",
+            arrayOf(ownerKind, ownerId),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else Triple(
+                cursor.getString(0),
+                if (cursor.isNull(1)) null else cursor.getString(1),
+                if (cursor.isNull(2)) null else cursor.getString(2),
+            )
+        }
+        if (state == null) {
+            check(value == null) { "Legacy note has no causal revision: $ownerKind/$ownerId" }
+            return JSONObject.NULL
+        }
+        check(state.third == value) { "Note cache and causal state disagree: $ownerKind/$ownerId" }
+        return JSONObject()
+            .put("value", state.third ?: JSONObject.NULL)
+            .put("revision_id", state.first)
+            .put("parent_revision_id", state.second ?: JSONObject.NULL)
+    }
+
+    private fun applySyncNote(
+        db: SQLiteDatabase,
+        ownerKind: String,
+        ownerId: String,
+        payload: Any?,
+        table: String,
+        rowId: Long,
+    ) {
+        if (payload === JSONObject.NULL) {
+            val retained = db.rawQuery(
+                "SELECT r.note FROM sync_note_state s JOIN sync_note_revisions r " +
+                    "ON r.owner_kind=s.owner_kind AND r.owner_id=s.owner_id AND r.revision_id=s.revision_id " +
+                    "WHERE s.owner_kind=? AND s.owner_id=?;", arrayOf(ownerKind, ownerId),
+            ).use { cursor -> if (!cursor.moveToFirst()) null else Pair(true,
+                if (cursor.isNull(0)) null else cursor.getString(0)) }
+            if (retained != null) db.update(table, ContentValues().apply {
+                putOptionalString("notes", retained.second)
+            }, "id=?", arrayOf(rowId.toString()))
+            return
+        }
+        val note = payload as JSONObject
+        val revision = note.getString("revision_id")
+        val parent = if (note.isNull("parent_revision_id")) null else note.getString("parent_revision_id")
+        val content = if (note.isNull("value")) null else note.getString("value")
+        val current = db.rawQuery(
+            "SELECT revision_id FROM sync_note_state WHERE owner_kind=? AND owner_id=?;",
+            arrayOf(ownerKind, ownerId),
+        ).use { if (it.moveToFirst()) it.getString(0) else null }
+        val existing = db.rawQuery(
+            "SELECT parent_revision_id,note FROM sync_note_revisions " +
+                "WHERE owner_kind=? AND owner_id=? AND revision_id=?;",
+            arrayOf(ownerKind, ownerId, revision),
+        ).use { cursor -> if (!cursor.moveToFirst()) null else Pair(
+            if (cursor.isNull(0)) null else cursor.getString(0),
+            if (cursor.isNull(1)) null else cursor.getString(1),
+        ) }
+        if (existing != null) {
+            if (existing != Pair(parent, content) || current != revision) throw SyncLifecycleConflict(ownerId)
+            return
+        }
+        if (current != parent) throw SyncLifecycleConflict(ownerId)
+        db.insertOrThrow("sync_note_revisions", null, ContentValues().apply {
+            put("owner_kind", ownerKind); put("owner_id", ownerId); put("revision_id", revision)
+            putOptionalString("parent_revision_id", parent); putOptionalString("note", content)
+        })
+        db.insertWithOnConflict("sync_note_state", null, ContentValues().apply {
+            put("owner_kind", ownerKind); put("owner_id", ownerId); put("revision_id", revision)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+        db.update(table, ContentValues().apply { putOptionalString("notes", content) },
+            "id=?", arrayOf(rowId.toString()))
+    }
+
+    private fun syncNoteIsCurrent(db: SQLiteDatabase, ownerKind: String, ownerId: String, payload: Any?): Boolean {
+        val row = db.rawQuery(
+            "SELECT r.revision_id,r.parent_revision_id,r.note FROM sync_note_state s " +
+                "JOIN sync_note_revisions r ON r.owner_kind=s.owner_kind AND r.owner_id=s.owner_id " +
+                "AND r.revision_id=s.revision_id WHERE s.owner_kind=? AND s.owner_id=?;",
+            arrayOf(ownerKind, ownerId),
+        ).use { cursor -> if (!cursor.moveToFirst()) null else Triple(
+            cursor.getString(0), if (cursor.isNull(1)) null else cursor.getString(1),
+            if (cursor.isNull(2)) null else cursor.getString(2)) }
+        if (payload === JSONObject.NULL) return row == null
+        val note = payload as? JSONObject ?: return false
+        return row == Triple(note.getString("revision_id"),
+            if (note.isNull("parent_revision_id")) null else note.getString("parent_revision_id"),
+            if (note.isNull("value")) null else note.getString("value"))
+    }
+
     private fun buildMobileExport(version: Int): String {
-        require(version in 1..3)
+        require(version in 1..4)
         val root = JSONObject()
         root.put("format", "trainlog-mobile-export")
         root.put("version", version)
@@ -3262,7 +3473,7 @@ class TrainlogRepository(
         /* CONTRACT: only completed `sessions` are part of mobile export v1;
          * active draft tables are intentionally outside the frozen artifact. */
         db.rawQuery(
-            "SELECT id, session_id, started_at, session_type FROM sessions ORDER BY started_at ASC, id ASC;",
+            "SELECT id,session_id,started_at,session_type,ended_at,notes FROM sessions ORDER BY started_at ASC,id ASC;",
             null,
         ).use { sessions ->
             while (sessions.moveToNext()) {
@@ -3270,19 +3481,25 @@ class TrainlogRepository(
                 val startedAt = sessions.getString(2)
                 /* CONTRACT: current V3 publication admits only the exact
                  * Trainlog timestamp language consumed by later analysis. */
-                check(version != 3 || TrainlogTimestamp.parse(startedAt) != null) {
+                check(version < 3 || TrainlogTimestamp.parse(startedAt) != null) {
                     "started_at persistant invalide pour session_id=${sessions.getString(1)}"
                 }
                 val session = JSONObject()
                     .put("session_id", sessions.getString(1))
                     .put("started_at", startedAt)
                     .put("session_type", sessions.getString(3))
+                if (version == 4) {
+                    if (sessions.isNull(4)) session.put("ended_at", JSONObject.NULL)
+                    else session.put("ended_at", sessions.getString(4))
+                    session.put("note", syncNotePayload(db, "session", sessions.getString(1),
+                        if (sessions.isNull(5)) null else sessions.getString(5)))
+                }
                 val sessionExercises = JSONArray()
                 db.rawQuery(
                     "SELECT se.id, e.exercise_id, e.name, se.recording_mode, se.tracking_mode, se.data_fields, " +
                         "se.entry_id,se.position,eq.equipment_id,mr.max_weight_kg," +
                         "se.load_mode,se.rest_seconds,se.target_sets,se.target_reps," +
-                        "se.target_duration_seconds,se.target_weight_kg " +
+                        "se.target_duration_seconds,se.target_weight_kg,se.notes " +
                         "FROM session_exercises AS se JOIN exercises AS e ON e.id = se.exercise_row_id " +
                         "LEFT JOIN equipment AS eq ON eq.id=se.equipment_row_id " +
                         "LEFT JOIN max_results AS mr ON mr.session_exercise_row_id=se.id " +
@@ -3319,15 +3536,15 @@ class TrainlogRepository(
                             .put("recording_mode", recording)
                             .put("tracking_mode", tracking)
                             .put("data_fields", exerciseCursor.getInt(5))
-                            .put("load_mode", if (version == 3) exerciseCursor.getString(10) else "none")
-                            .put("rest_seconds", if (version == 3) exerciseCursor.getInt(11) else 0)
+                            .put("load_mode", if (version >= 3) exerciseCursor.getString(10) else "none")
+                            .put("rest_seconds", if (version >= 3) exerciseCursor.getInt(11) else 0)
                         if (version == 2) {
                             item.put("entry_id", exerciseCursor.getString(6))
                             item.put("position", exerciseCursor.getInt(7))
                             if (exerciseCursor.isNull(8)) item.put("equipment_id", JSONObject.NULL)
                             else item.put("equipment_id", exerciseCursor.getString(8))
                         }
-                        if (version == 3) {
+                        if (version >= 3) {
                             item.put("entry_id", exerciseCursor.getString(6))
                             item.put("position", exerciseCursor.getInt(7))
                             if (exerciseCursor.isNull(8)) item.put("equipment_id", JSONObject.NULL)
@@ -3342,6 +3559,10 @@ class TrainlogRepository(
                                 plan.weightKg?.let { target.put("weight_kg", it) }
                                 item.put("target", target)
                             }
+                        }
+                        if (version == 4) {
+                            item.put("note", syncNotePayload(db, "occurrence", exerciseCursor.getString(6),
+                                if (exerciseCursor.isNull(16)) null else exerciseCursor.getString(16)))
                         }
                         if (!exerciseCursor.isNull(9)) {
                             /* TRAINLOG_FORMAT_V1 is frozen and has no max
@@ -3406,9 +3627,10 @@ class TrainlogRepository(
 
         val bodyArray = JSONArray()
         db.rawQuery(
-            "SELECT observation_id, observed_at, body_weight_kg, neck_cm, shoulders_cm, chest_cm, waist_cm, hips_cm, " +
-                "left_arm_cm, right_arm_cm, left_forearm_cm, right_forearm_cm, left_thigh_cm, right_thigh_cm, left_calf_cm, right_calf_cm " +
-                "FROM body_observations ORDER BY observed_at ASC, id ASC;",
+            "SELECT bo.observation_id,bo.observed_at,bo.body_weight_kg,bo.neck_cm,bo.shoulders_cm,bo.chest_cm,bo.waist_cm,bo.hips_cm," +
+                "bo.left_arm_cm,bo.right_arm_cm,bo.left_forearm_cm,bo.right_forearm_cm,bo.left_thigh_cm,bo.right_thigh_cm,bo.left_calf_cm,bo.right_calf_cm," +
+                "s.session_id,bo.notes FROM body_observations bo LEFT JOIN sessions s ON s.id=bo.session_row_id " +
+                "ORDER BY bo.observed_at ASC,bo.id ASC;",
             null,
         ).use { cursor ->
             val names = arrayOf(
@@ -3418,7 +3640,7 @@ class TrainlogRepository(
             )
             while (cursor.moveToNext()) {
                 val observedAt = cursor.getString(1)
-                check(version != 3 || TrainlogTimestamp.parse(observedAt) != null) {
+                check(version < 3 || TrainlogTimestamp.parse(observedAt) != null) {
                     "observed_at persistant invalide pour observation_id=${cursor.getString(0)}"
                 }
                 val item = JSONObject()
@@ -3429,6 +3651,12 @@ class TrainlogRepository(
                     if (!cursor.isNull(column)) {
                         item.put(names[index], cursor.getDouble(column))
                     }
+                }
+                if (version == 4) {
+                    if (cursor.isNull(16)) item.put("session_id", JSONObject.NULL)
+                    else item.put("session_id", cursor.getString(16))
+                    item.put("note", syncNotePayload(db, "observation", cursor.getString(0),
+                        if (cursor.isNull(17)) null else cursor.getString(17)))
                 }
                 bodyArray.put(item)
             }
@@ -3447,6 +3675,269 @@ class TrainlogRepository(
     /** Current occurrence exchange; planning and actual rows travel atomically. */
     fun buildMobileExportV3Json(): String = buildMobileExport(3)
 
+    /** Explicit staged enriched-history codec; normal synchronization remains V3. */
+    fun buildMobileExportV4Json(): String = buildMobileExport(4)
+
+    /** Deterministic staged lifecycle artifact; raw form/UI columns are excluded. */
+    fun buildExecutionDraftExportV1Json(): String {
+        val db = database.readableDatabase
+        val root = JSONObject().put("format", "trainlog-execution-drafts").put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+        val drafts = JSONArray()
+        db.rawQuery(
+            "SELECT session_id,session_type,source_session_id,started_at,revision_id,parent_revision_id,notes " +
+                "FROM active_session_draft WHERE id=1;", null,
+        ).use { header -> if (header.moveToFirst()) {
+            val sessionId = checkNotNull(if (header.isNull(0)) null else header.getString(0))
+            drafts.put(buildExecutionDraftJson(db, sessionId, header.getString(1),
+                if (header.isNull(2)) null else header.getString(2),
+                if (header.isNull(3)) null else header.getString(3), header.getString(4),
+                if (header.isNull(5)) null else header.getString(5),
+                if (header.isNull(6)) null else header.getString(6), "active"))
+        } }
+        db.rawQuery("SELECT payload_json FROM execution_draft_candidates ORDER BY session_id;", null).use { cursor ->
+            while (cursor.moveToNext()) drafts.put(JSONObject(cursor.getString(0)).put("state", "pending"))
+        }
+        return root.put("drafts", drafts).toString()
+    }
+
+    private fun buildExecutionDraftJson(
+        db: SQLiteDatabase, sessionId: String, type: String, sourceId: String?, startedAt: String?,
+        revision: String, parentRevision: String?, sessionNote: String?, state: String,
+    ): JSONObject {
+        val draft = JSONObject().put("session_id", sessionId).put("session_type", type)
+            .put("source_session_id", sourceId ?: JSONObject.NULL)
+            .put("started_at", startedAt ?: JSONObject.NULL).put("revision_id", revision)
+            .put("parent_revision_id", parentRevision ?: JSONObject.NULL).put("state", state)
+            .put("note", syncNotePayload(db, "session", sessionId, sessionNote))
+        val entries = JSONArray()
+        db.rawQuery(
+            "SELECT de.id,de.entry_id,de.position,e.exercise_id,eq.equipment_id,de.recording_mode,de.tracking_mode," +
+                "de.data_fields,de.load_mode,de.rest_seconds,de.target_sets,de.target_reps,de.target_duration_seconds," +
+                "de.target_weight_kg,de.notes,mr.max_weight_kg FROM draft_session_exercises de " +
+                "JOIN exercises e ON e.id=de.exercise_row_id LEFT JOIN equipment eq ON eq.id=de.equipment_row_id " +
+                "LEFT JOIN draft_max_results mr ON mr.draft_exercise_row_id=de.id WHERE de.draft_id=1 ORDER BY de.position;",
+            null,
+        ).use { cursor -> while (cursor.moveToNext()) {
+            val rowId = cursor.getLong(0); val entryId = cursor.getString(1)
+            val item = JSONObject().put("entry_id", entryId).put("position", cursor.getInt(2))
+                .put("exercise_id", cursor.getString(3)).put("equipment_id", if (cursor.isNull(4)) JSONObject.NULL else cursor.getString(4))
+                .put("recording_mode", cursor.getString(5)).put("tracking_mode", cursor.getString(6))
+                .put("data_fields", cursor.getInt(7)).put("load_mode", cursor.getString(8)).put("rest_seconds", cursor.getInt(9))
+            if (cursor.isNull(10)) item.put("target", JSONObject.NULL) else item.put("target", JSONObject().put("sets", cursor.getInt(10)).also { target ->
+                if (!cursor.isNull(11)) target.put("reps", cursor.getInt(11)); if (!cursor.isNull(12)) target.put("duration_seconds", cursor.getInt(12))
+                if (!cursor.isNull(13)) target.put("weight_kg", cursor.getDouble(13)) })
+            item.put("note", syncNotePayload(db, "occurrence", entryId, if (cursor.isNull(14)) null else cursor.getString(14)))
+            item.put("sets", JSONObject.NULL).put("continuous", JSONObject.NULL).put("max_weight_kg", JSONObject.NULL)
+            if (!cursor.isNull(15)) item.put("max_weight_kg", cursor.getDouble(15))
+            else if (cursor.getString(5) == "continuous") db.rawQuery(
+                "SELECT duration_seconds,speed_kmh,distance_km FROM draft_continuous_activity WHERE draft_exercise_row_id=?",
+                arrayOf(rowId.toString())).use { c -> if (c.moveToFirst()) item.put("continuous", JSONObject()
+                    .put("duration_seconds", c.getInt(0)).also { value -> if (!c.isNull(1)) value.put("speed_kmh", c.getDouble(1)); if (!c.isNull(2)) value.put("distance_km", c.getDouble(2)) }) }
+            else item.put("sets", JSONArray().also { sets -> db.rawQuery(
+                "SELECT reps,duration_seconds,weight_kg FROM draft_performed_sets WHERE draft_exercise_row_id=? ORDER BY position",
+                arrayOf(rowId.toString())).use { values -> while (values.moveToNext()) sets.put(JSONObject().also { set ->
+                    if (!values.isNull(0)) set.put("reps", values.getInt(0)) else set.put("duration_seconds", values.getInt(1)); if (!values.isNull(2)) set.put("weight_kg", values.getDouble(2)) }) } })
+            item.put("feedback", JSONArray().also { feedback -> db.rawQuery(
+                "SELECT feedback_id,observed_at,raw_text FROM draft_exercise_feedback WHERE draft_session_exercise_row_id=? ORDER BY feedback_id",
+                arrayOf(rowId.toString())).use { f -> while (f.moveToNext()) {
+                    val feedbackId = f.getString(0)
+                    feedback.put(JSONObject().put("feedback_id", feedbackId).put("observed_at", f.getString(1))
+                        .put("raw_text", f.getString(2)).put("revisions", JSONArray().also { revisions -> db.rawQuery(
+                            "SELECT revision_id,created_at,raw_text FROM draft_exercise_feedback_revisions WHERE feedback_id=? ORDER BY created_at,revision_id",
+                            arrayOf(feedbackId)).use { r -> while (r.moveToNext()) revisions.put(JSONObject()
+                                .put("revision_id", r.getString(0)).put("created_at", r.getString(1)).put("raw_text", r.getString(2))) } }))
+                } } })
+            entries.put(item)
+        } }
+        return draft.put("entries", entries)
+    }
+
+    /** Validate and persist staged execution drafts without selecting transport. */
+    fun applyExecutionDraftExportV1Json(json: String): ExecutionDraftImportResult {
+        if (json.toByteArray(StandardCharsets.UTF_8).size > 4 * 1024 * 1024 || !hasStrictJsonShape(json))
+            return ExecutionDraftImportResult.Invalid("Execution-draft JSON is invalid or oversized.")
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return ExecutionDraftImportResult.Invalid("Execution-draft JSON is invalid.")
+        }
+        val rootKeys = setOf("format", "version", "generated_at", "drafts")
+        if (!root.hasExactKeys(rootKeys) || root.optString("format") != "trainlog-execution-drafts" ||
+            !root.value("version").isJsonInt(1, 1) || TrainlogTimestamp.parse(root.optString("generated_at")) == null)
+            return ExecutionDraftImportResult.Invalid("Unsupported execution-draft artifact.")
+        val drafts = root.optJSONArray("drafts") ?: return ExecutionDraftImportResult.Invalid("drafts must be an array.")
+        if (drafts.length() > MAX_PENDING_EXECUTION_DRAFTS) return ExecutionDraftImportResult.CapacityExceeded
+        val parsed = mutableListOf<Pair<JSONObject, ActiveSessionDraft>>()
+        val ids = mutableSetOf<String>()
+        try {
+            for (index in 0 until drafts.length()) {
+                val item = drafts.getJSONObject(index)
+                val parsedDraft = parseExecutionDraft(item)
+                val sessionId = checkNotNull(parsedDraft.sessionId)
+                if (!ids.add(sessionId)) return ExecutionDraftImportResult.Invalid("Duplicate draft session_id.")
+                parsed += item to parsedDraft
+            }
+        } catch (error: Exception) {
+            return ExecutionDraftImportResult.Invalid(error.message ?: "Invalid execution draft.")
+        }
+        val db = database.writableDatabase
+        var active = 0; var pending = 0; var unchanged = 0; var stale = 0
+        return try {
+            db.beginTransaction()
+            for ((payload, draft) in parsed) {
+                val sessionId = checkNotNull(draft.sessionId); val encoded = payload.toString()
+                if (db.rawQuery("SELECT 1 FROM execution_draft_finalizations WHERE session_id=?",
+                        arrayOf(sessionId)).use { it.moveToFirst() }) { stale += 1; continue }
+                val current = db.rawQuery(
+                    "SELECT revision_id,'active' FROM active_session_draft WHERE session_id=? UNION ALL " +
+                        "SELECT revision_id,'pending' FROM execution_draft_candidates WHERE session_id=?;",
+                    arrayOf(sessionId, sessionId),
+                ).use { if (it.moveToFirst()) Pair(it.getString(0), it.getString(1)) else null }
+                val known = db.rawQuery(
+                    "SELECT parent_revision_id,payload_json FROM execution_draft_revisions WHERE session_id=? AND revision_id=?;",
+                    arrayOf(sessionId, draft.revisionId),
+                ).use { if (!it.moveToFirst()) null else Pair(if (it.isNull(0)) null else it.getString(0), it.getString(1)) }
+                if (known != null) {
+                    if (known != Pair(draft.parentRevisionId, encoded)) throw SyncLifecycleConflict(sessionId)
+                    if (current?.first == draft.revisionId) unchanged += 1 else stale += 1
+                    continue
+                }
+                if (current != null && current.first != draft.parentRevisionId) throw SyncLifecycleConflict(sessionId)
+                if (current?.second == "active") {
+                    persistImportedExecutionDraft(db, draft, payload); active += 1
+                } else if (current?.second == "pending") {
+                    db.update("execution_draft_candidates", ContentValues().apply {
+                        put("revision_id", draft.revisionId); putOptionalString("parent_revision_id", draft.parentRevisionId)
+                        put("payload_json", encoded)
+                    }, "session_id=?", arrayOf(sessionId)); pending += 1
+                } else {
+                    val occupied = db.rawQuery("SELECT 1 FROM active_session_draft WHERE id=1", null).use { it.moveToFirst() }
+                    if (!occupied) { persistImportedExecutionDraft(db, draft, payload); active += 1 }
+                    else {
+                        val count = db.rawQuery("SELECT COUNT(*) FROM execution_draft_candidates", null).use { it.moveToFirst(); it.getInt(0) }
+                        if (count >= MAX_PENDING_EXECUTION_DRAFTS) return ExecutionDraftImportResult.CapacityExceeded
+                        db.insertOrThrow("execution_draft_candidates", null, ContentValues().apply {
+                            put("session_id", sessionId); put("session_type", draft.sessionType.wireValue)
+                            putOptionalString("source_session_id", draft.sourceSessionId); putOptionalString("started_at", draft.startedAt)
+                            put("revision_id", draft.revisionId); putOptionalString("parent_revision_id", draft.parentRevisionId)
+                            put("payload_json", encoded); put("received_at", OffsetDateTime.now().toString())
+                        }); pending += 1
+                    }
+                }
+                db.insertOrThrow("execution_draft_revisions", null, ContentValues().apply {
+                    put("session_id", sessionId); put("revision_id", draft.revisionId)
+                    putOptionalString("parent_revision_id", draft.parentRevisionId); put("payload_json", encoded)
+                })
+            }
+            db.setTransactionSuccessful()
+            ExecutionDraftImportResult.Applied(active, pending, unchanged, stale)
+        } catch (conflict: SyncLifecycleConflict) { ExecutionDraftImportResult.Conflict(conflict.ownerId)
+        } catch (_: Exception) { ExecutionDraftImportResult.DatabaseError
+        } finally { db.endTransaction() }
+    }
+
+    fun activatePendingExecutionDraft(sessionId: String): ActivateExecutionDraftResult {
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            if (db.rawQuery("SELECT 1 FROM active_session_draft WHERE id=1", null).use { it.moveToFirst() })
+                return ActivateExecutionDraftResult.ActiveDraftOccupied
+            val payload = db.rawQuery("SELECT payload_json FROM execution_draft_candidates WHERE session_id=?",
+                arrayOf(sessionId)).use { if (it.moveToFirst()) JSONObject(it.getString(0)) else null }
+                ?: return ActivateExecutionDraftResult.NotFound
+            val draft = parseExecutionDraft(payload)
+            persistImportedExecutionDraft(db, draft, payload)
+            db.delete("execution_draft_candidates", "session_id=?", arrayOf(sessionId))
+            db.setTransactionSuccessful(); ActivateExecutionDraftResult.Activated
+        } catch (error: IllegalArgumentException) { ActivateExecutionDraftResult.Invalid(error.message ?: "Invalid candidate")
+        } catch (_: Exception) { ActivateExecutionDraftResult.DatabaseError
+        } finally { db.endTransaction() }
+    }
+
+    private fun parseExecutionDraft(item: JSONObject): ActiveSessionDraft {
+        val keys = setOf("session_id", "session_type", "source_session_id", "started_at", "revision_id",
+            "parent_revision_id", "state", "note", "entries")
+        require(item.hasExactKeys(keys)) { "Execution draft has unknown or missing fields." }
+        val sessionId = item.getString("session_id"); require(sessionId.isNotBlank())
+        val revision = item.getString("revision_id"); require(revision.isNotBlank())
+        val parent = if (item.isNull("parent_revision_id")) null else item.getString("parent_revision_id")
+        require(parent != revision && validSyncNote(item.get("note")))
+        val startedAt = if (item.isNull("started_at")) null else item.getString("started_at").also {
+            require(TrainlogTimestamp.parse(it) != null) }
+        val catalog = listExercises().associateBy { it.exerciseId }
+        val entriesJson = item.getJSONArray("entries"); require(entriesJson.length() <= 64)
+        val identities = mutableSetOf<String>(); val positions = mutableSetOf<Int>()
+        val entries = (0 until entriesJson.length()).map { index ->
+            val entry = entriesJson.getJSONObject(index); val entryId = entry.getString("entry_id")
+            require(entry.hasExactKeys(setOf("entry_id", "position", "exercise_id", "equipment_id",
+                "recording_mode", "tracking_mode", "data_fields", "load_mode", "rest_seconds",
+                "target", "sets", "continuous", "max_weight_kg", "note", "feedback")))
+            require(validSyncNote(entry.get("note")))
+            val position = entry.getInt("position"); require(identities.add(entryId) && positions.add(position))
+            val exercise = catalog[resolveExerciseId(database.readableDatabase, entry.getString("exercise_id"))]
+                ?: error("Unknown exercise in execution draft.")
+            val target = entry.optJSONObject("target")
+            val plan = target?.let { SessionExercisePlan(it.getInt("sets"), it.optIntOrNull("reps"),
+                it.optIntOrNull("duration_seconds"), it.optDoubleOrNull("weight_kg"),
+                SessionLoadMode.fromWire(entry.getString("load_mode")), entry.getInt("rest_seconds")) }
+            val sets = if (entry.isNull("sets")) emptyList() else (0 until entry.getJSONArray("sets").length()).map { setIndex ->
+                val set = entry.getJSONArray("sets").getJSONObject(setIndex)
+                SessionSetDraft(set.optInt("reps", 0), set.optInt("duration_seconds", 0), set.optDoubleOrNull("weight_kg")) }
+            val continuous = if (entry.isNull("continuous")) null else entry.getJSONObject("continuous")
+            val feedback = entry.getJSONArray("feedback"); require(feedback.length() <= 256)
+            for (feedbackIndex in 0 until feedback.length()) {
+                val value = feedback.getJSONObject(feedbackIndex)
+                require(value.hasExactKeys(setOf("feedback_id", "observed_at", "raw_text", "revisions")))
+                require(value.getString("feedback_id").isNotBlank() && TrainlogTimestamp.parse(value.getString("observed_at")) != null)
+                require(value.getString("raw_text").toByteArray(StandardCharsets.UTF_8).size <= MAX_FEEDBACK_UTF8_BYTES)
+                val revisions = value.getJSONArray("revisions")
+                for (revisionIndex in 0 until revisions.length()) {
+                    val revisionValue = revisions.getJSONObject(revisionIndex)
+                    require(revisionValue.hasExactKeys(setOf("revision_id", "created_at", "raw_text")) &&
+                        TrainlogTimestamp.parse(revisionValue.getString("created_at")) != null)
+                }
+            }
+            SessionExerciseDraft(entryId = entryId, exercise = exercise,
+                equipmentId = if (entry.isNull("equipment_id")) null else entry.getString("equipment_id"),
+                maxWeightKg = if (entry.isNull("max_weight_kg")) null else entry.getDouble("max_weight_kg"),
+                plan = plan, sets = sets, continuousDurationSeconds = continuous?.getInt("duration_seconds") ?: 0,
+                speedKmh = continuous?.optDoubleOrNull("speed_kmh"),
+                distanceKm = continuous?.optDoubleOrNull("distance_km"))
+        }.sortedBy { entry -> entriesJson.getJSONObject((0 until entriesJson.length()).first { entriesJson.getJSONObject(it).getString("entry_id") == entry.entryId }).getInt("position") }
+        return ActiveSessionDraft(sessionId = sessionId, revisionId = revision,
+            parentRevisionId = parent, startedAt = startedAt, exercises = entries,
+            sessionType = SessionType.fromWire(item.getString("session_type")),
+            sourceSessionId = if (item.isNull("source_session_id")) null else item.getString("source_session_id"))
+    }
+
+    private fun persistImportedExecutionDraft(db: SQLiteDatabase, draft: ActiveSessionDraft, payload: JSONObject) {
+        persistActiveSessionDraft(db, draft)
+        val sessionId = checkNotNull(draft.sessionId)
+        applySyncNote(db, "session", sessionId, payload.get("note"), "active_session_draft", ACTIVE_DRAFT_ID.toLong())
+        val entries = payload.getJSONArray("entries")
+        for (index in 0 until entries.length()) {
+            val item = entries.getJSONObject(index); val entryId = item.getString("entry_id")
+            val rowId = db.rawQuery("SELECT id FROM draft_session_exercises WHERE entry_id=?", arrayOf(entryId)).use {
+                check(it.moveToFirst()); it.getLong(0) }
+            applySyncNote(db, "occurrence", entryId, item.get("note"), "draft_session_exercises", rowId)
+            val feedback = item.getJSONArray("feedback")
+            for (feedbackIndex in 0 until feedback.length()) {
+                val value = feedback.getJSONObject(feedbackIndex)
+                db.insertWithOnConflict("draft_exercise_feedback", null, ContentValues().apply {
+                    put("feedback_id", value.getString("feedback_id")); put("draft_session_exercise_row_id", rowId)
+                    put("observed_at", value.getString("observed_at")); put("raw_text", value.getString("raw_text"))
+                }, SQLiteDatabase.CONFLICT_IGNORE)
+                val revisions = value.getJSONArray("revisions")
+                for (revisionIndex in 0 until revisions.length()) {
+                    val revision = revisions.getJSONObject(revisionIndex)
+                    db.insertWithOnConflict("draft_exercise_feedback_revisions", null, ContentValues().apply {
+                        put("revision_id", revision.getString("revision_id")); put("feedback_id", value.getString("feedback_id"))
+                        put("created_at", revision.getString("created_at")); put("raw_text", revision.getString("raw_text"))
+                    }, SQLiteDatabase.CONFLICT_IGNORE)
+                }
+            }
+        }
+    }
+
     /** Apply the same V2 session artifact emitted by desktop, keyed by entry_id. */
     fun applyPcMobileExportV2Json(json: String): MobileSessionImportResult {
         return applyPcMobileExportJson(json, 2)
@@ -3454,6 +3945,10 @@ class TrainlogRepository(
 
     fun applyPcMobileExportV3Json(json: String): MobileSessionImportResult =
         applyPcMobileExportJson(json, 3)
+
+    /** Explicit staged V4 reader; normal inbox selection remains V3. */
+    fun applyPcMobileExportV4Json(json: String): MobileSessionImportResult =
+        applyPcMobileExportJson(json, 4)
 
     private fun applyPcMobileExportJson(json: String, version: Int): MobileSessionImportResult {
         if (!hasStrictJsonShape(json)) {
@@ -3506,7 +4001,7 @@ class TrainlogRepository(
                     }
                     /* V2 has no complete planning authority; it must never
                      * erase V3 targets while applying a correction. */
-                    if (version != 3 && session.optString("session_type") != "max_test") return MobileSessionImportResult.Invalid(
+                    if (version < 3 && session.optString("session_type") != "max_test") return MobileSessionImportResult.Invalid(
                         "Une correction de séance exige le snapshot V3 complet."
                     )
                     if (!pcCompletedCorrectionIsSafe(db, existingRowId, session)) {
@@ -3528,8 +4023,25 @@ class TrainlogRepository(
                     sessionsUpdated += 1
                 }
                 val rowId = existingRowId ?: run {
-                    val values = ContentValues().apply { put("session_id", sessionId); put("started_at", startedAt); put("session_type", type) }
+                    val values = ContentValues().apply {
+                        put("session_id", sessionId); put("started_at", startedAt); put("session_type", type)
+                        if (version == 4 && !session.isNull("ended_at")) put("ended_at", session.getString("ended_at"))
+                    }
                     db.insertOrThrow("sessions", null, values)
+                }
+                if (version == 4) {
+                    val currentEnd = db.rawQuery("SELECT ended_at FROM sessions WHERE id=?",
+                        arrayOf(rowId.toString())).use { cursor ->
+                        cursor.moveToFirst(); if (cursor.isNull(0)) null else cursor.getString(0)
+                    }
+                    val incomingEnd = if (session.isNull("ended_at")) null else session.getString("ended_at")
+                    if (currentEnd == null && incomingEnd != null) {
+                        db.update("sessions", ContentValues().apply { put("ended_at", incomingEnd) },
+                            "id=?", arrayOf(rowId.toString()))
+                    } else if (currentEnd != null && incomingEnd != null && currentEnd != incomingEnd) {
+                        throw SyncLifecycleConflict(sessionId)
+                    }
+                    applySyncNote(db, "session", sessionId, session.get("note"), "sessions", rowId)
                 }
                 val seen = mutableSetOf<String>()
                 for (index in 0 until entries.length()) {
@@ -3577,6 +4089,10 @@ class TrainlogRepository(
                         if (equipmentRowId == null) putNull("equipment_row_id") else put("equipment_row_id", equipmentRowId)
                     }
                     val occurrence = db.insertOrThrow("session_exercises", null, values)
+                    if (version == 4) {
+                        applySyncNote(db, "occurrence", entryId, entry.get("note"),
+                            "session_exercises", occurrence)
+                    }
                     /* INVARIANT: correction transport follows session_id +
                      * entry_id. Retained observations keep all immutable
                      * revisions; an omitted entry intentionally inherits none. */
@@ -3629,11 +4145,22 @@ class TrainlogRepository(
                 if (id.isBlank() || observedAt.isBlank() || metrics.none { item.has(it) }) {
                     return MobileSessionImportResult.Invalid("Observation corporelle V2 invalide.")
                 }
+                val parentRowId = if (version == 4 && !item.isNull("session_id")) db.rawQuery(
+                    "SELECT id FROM sessions WHERE session_id=?", arrayOf(item.getString("session_id")),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else throw SyncLifecycleConflict(id) }
+                else null
+                var existingRowId: Long? = null
+                var existingParent: Long? = null
                 val existing = db.rawQuery(
-                    "SELECT observed_at,${metrics.joinToString(",")} FROM body_observations WHERE observation_id=?",
+                    "SELECT id,observed_at,${metrics.joinToString(",")},session_row_id FROM body_observations WHERE observation_id=?",
                     arrayOf(id)).use { cursor ->
-                    if (!cursor.moveToFirst()) null else List(1 + metrics.size) { column ->
-                        if (cursor.isNull(column)) null else if (column == 0) cursor.getString(column) else cursor.getDouble(column)
+                    if (!cursor.moveToFirst()) null else {
+                        existingRowId = cursor.getLong(0)
+                        existingParent = if (cursor.isNull(2 + metrics.size)) null else cursor.getLong(2 + metrics.size)
+                        List(1 + metrics.size) { column ->
+                            val actual = column + 1
+                            if (cursor.isNull(actual)) null else if (column == 0) cursor.getString(actual) else cursor.getDouble(actual)
+                        }
                     }
                 }
                 val expected: List<Any?> = listOf(observedAt) + metrics.map { metric ->
@@ -3641,13 +4168,25 @@ class TrainlogRepository(
                 }
                 if (existing != null) {
                     if (existing != expected) return MobileSessionImportResult.Invalid("Conflit observation corporelle : $id")
+                    if (version == 4) {
+                        if (existingParent == null && parentRowId != null) db.update(
+                            "body_observations", ContentValues().apply { put("session_row_id", parentRowId) },
+                            "id=?", arrayOf(existingRowId.toString()))
+                        else if (existingParent != null && parentRowId != null && existingParent != parentRowId)
+                            throw SyncLifecycleConflict(id)
+                        applySyncNote(db, "observation", id, item.get("note"),
+                            "body_observations", checkNotNull(existingRowId))
+                    }
                     bodyObservationsSkipped += 1
                     continue
                 }
-                db.insertOrThrow("body_observations", null, ContentValues().apply {
+                val bodyRowId = db.insertOrThrow("body_observations", null, ContentValues().apply {
                     put("observation_id", id); put("observed_at", observedAt)
+                    if (parentRowId != null) put("session_row_id", parentRowId)
                     metrics.forEach { metric -> if (item.has(metric)) put(metric, item.getDouble(metric)) }
                 })
+                if (version == 4) applySyncNote(db, "observation", id, item.get("note"),
+                    "body_observations", bodyRowId)
                 bodyObservationsAdded += 1
             }
             db.setTransactionSuccessful()
@@ -3658,6 +4197,8 @@ class TrainlogRepository(
                 bodyObservationsSkipped = bodyObservationsSkipped,
                 sessionsUpdated = sessionsUpdated,
             )
+        } catch (conflict: SyncLifecycleConflict) {
+            MobileSessionImportResult.Invalid("Lifecycle conflict: ${conflict.ownerId}")
         } catch (_: Exception) { MobileSessionImportResult.DatabaseError
         } finally { db.endTransaction() }
     }
@@ -3670,7 +4211,7 @@ class TrainlogRepository(
             root.value("body_observations") !is JSONArray) {
             return "Snapshot séances V2 invalide."
         }
-        if (version == 3 && TrainlogTimestamp.parse(root.getString("generated_at")) == null) {
+        if (version >= 3 && TrainlogTimestamp.parse(root.getString("generated_at")) == null) {
             return "Snapshot séances V3 invalide: generated_at invalide."
         }
         return try {
@@ -3686,7 +4227,8 @@ class TrainlogRepository(
                 }
             }
 
-            val sessionKeys = setOf("session_id", "started_at", "session_type", "exercises")
+            val sessionKeys = setOf("session_id", "started_at", "session_type", "exercises") +
+                if (version == 4) setOf("ended_at", "note") else emptySet()
             val entryBaseKeys = setOf("exercise_id", "name", "recording_mode", "tracking_mode", "data_fields",
                 "load_mode", "rest_seconds", "entry_id", "position", "equipment_id")
             val sessionIds = mutableSetOf<String>()
@@ -3700,8 +4242,16 @@ class TrainlogRepository(
                     session.value("session_type") !in setOf("training", "max_test") || entries == null || entries.length() == 0) {
                     return "Session V2 invalide."
                 }
-                if (version == 3 && TrainlogTimestamp.parse(session.getString("started_at")) == null) {
+                if (version >= 3 && TrainlogTimestamp.parse(session.getString("started_at")) == null) {
                     return "Session V3 invalide: sessions[$sessionIndex].started_at invalide."
+                }
+                if (version == 4 && (!validSyncNote(session.value("note")) ||
+                        !(session.value("ended_at") === JSONObject.NULL ||
+                            session.value("ended_at") is String &&
+                            TrainlogTimestamp.parse(session.getString("ended_at")) != null &&
+                            TrainlogTimestamp.parse(session.getString("ended_at"))!! >
+                            TrainlogTimestamp.parse(session.getString("started_at"))!!))) {
+                    return "Session V4 lifecycle invalide."
                 }
                 val entryIds = mutableSetOf<String>()
                 val positions = mutableSetOf<Int>()
@@ -3710,7 +4260,8 @@ class TrainlogRepository(
                     val recording = entry.value("recording_mode")
                     val tracking = entry.value("tracking_mode")
                     val hasMax = entry.has("max_weight_kg")
-                    val expectedKeys = entryBaseKeys + (if (version == 3) setOf("target") else emptySet()) + when {
+                    val expectedKeys = entryBaseKeys + (if (version >= 3) setOf("target") else emptySet()) +
+                        (if (version == 4) setOf("note") else emptySet()) + when {
                         hasMax -> setOf("max_weight_kg")
                         recording == "continuous" -> setOf("continuous")
                         else -> setOf("sets")
@@ -3733,6 +4284,7 @@ class TrainlogRepository(
                     if (!validEntryPlan(entry, version, recording as String, tracking as String, hasMax)) {
                         return "Plan/payload historique V2 incompatible avec son profil."
                     }
+                    if (version == 4 && !validSyncNote(entry.value("note"))) return "Note d'occurrence V4 invalide."
                     if (hasMax &&
                         (session.getString("session_type") != "max_test" ||
                             !entry.value("max_weight_kg").isPositiveJsonNumber())) {
@@ -3780,13 +4332,19 @@ class TrainlogRepository(
                 val item = body.opt(index) as? JSONObject ?: return "Observation corporelle V2 invalide."
                 val id = item.value("observation_id")
                 val presentMetrics = item.keys().asSequence().toSet() intersect metricKeys
-                if (!item.hasOnlyKeys(metricKeys + setOf("observation_id", "observed_at"), setOf("observation_id", "observed_at")) ||
+                val bodyExtra = if (version == 4) setOf("session_id", "note") else emptySet()
+                if (!item.hasOnlyKeys(metricKeys + setOf("observation_id", "observed_at") + bodyExtra,
+                        setOf("observation_id", "observed_at") + bodyExtra) ||
                     !id.isNonemptyJsonString() || !bodyIds.add(id as String) || !item.value("observed_at").isNonemptyJsonString() ||
                     presentMetrics.isEmpty() || presentMetrics.any { !item.value(it).isPositiveJsonNumber() }) {
                     return "Observation corporelle V2 invalide."
                 }
-                if (version == 3 && TrainlogTimestamp.parse(item.getString("observed_at")) == null) {
+                if (version >= 3 && TrainlogTimestamp.parse(item.getString("observed_at")) == null) {
                     return "Observation corporelle V3 invalide: body_observations[$index].observed_at invalide."
+                }
+                if (version == 4 && (!validSyncNote(item.value("note")) ||
+                        !(item.value("session_id") === JSONObject.NULL || item.value("session_id").isNonemptyJsonString()))) {
+                    return "Observation corporelle V4 lifecycle invalide."
                 }
             }
             null
@@ -3804,6 +4362,20 @@ class TrainlogRepository(
             !(recording == "continuous" && tracking != "duration") &&
             dataFields.isJsonInt(0, ExerciseDataFields.KNOWN_MASK) &&
             !(recording == "sets" && (dataFields as Number).toInt() != 0)
+    }
+
+    private fun validSyncNote(value: Any?): Boolean {
+        if (value === JSONObject.NULL) return true
+        val note = value as? JSONObject ?: return false
+        if (!note.hasExactKeys(setOf("value", "revision_id", "parent_revision_id"))) return false
+        val revision = note.value("revision_id") as? String ?: return false
+        if (revision.isEmpty() || revision.toByteArray(StandardCharsets.UTF_8).size > 128) return false
+        val parent = note.value("parent_revision_id")
+        if (!(parent === JSONObject.NULL || parent is String && parent.isNotEmpty() &&
+                parent != revision && parent.toByteArray(StandardCharsets.UTF_8).size <= 128)) return false
+        val content = note.value("value")
+        return content === JSONObject.NULL || content is String &&
+            content.toByteArray(StandardCharsets.UTF_8).size <= MAX_SYNC_NOTE_UTF8_BYTES
     }
 
     private fun hasStrictJsonShape(json: String): Boolean = try {
@@ -3894,10 +4466,13 @@ class TrainlogRepository(
         this is Number && toDouble().isFinite() && toDouble() >= 0.0
 
     private fun pcSessionMatches(db: SQLiteDatabase, rowId: Long, session: JSONObject, version: Int): Boolean {
-        val headerMatches = db.rawQuery("SELECT started_at,session_type FROM sessions WHERE id=?", arrayOf(rowId.toString())).use {
-            it.moveToFirst() && it.getString(0) == session.optString("started_at") && it.getString(1) == session.optString("session_type")
+        val headerMatches = db.rawQuery("SELECT started_at,session_type,ended_at FROM sessions WHERE id=?", arrayOf(rowId.toString())).use {
+            it.moveToFirst() && it.getString(0) == session.optString("started_at") && it.getString(1) == session.optString("session_type") &&
+                (version != 4 || (if (it.isNull(2)) null else it.getString(2)) ==
+                    (if (session.isNull("ended_at")) null else session.getString("ended_at")))
         }
         if (!headerMatches) return false
+        if (version == 4 && !syncNoteIsCurrent(db, "session", session.getString("session_id"), session.get("note"))) return false
         val incoming = session.optJSONArray("exercises") ?: return false
         val rows = mutableListOf<Long>()
         val metadata = mutableListOf<List<Any?>>()
@@ -3912,7 +4487,7 @@ class TrainlogRepository(
                     cursor.getString(5), cursor.getInt(6), if (cursor.isNull(7)) null else cursor.getString(7))
                 if (version == 2 && (cursor.getString(8) != "none" || cursor.getInt(9) != 0 ||
                         (10..13).any { !cursor.isNull(it) })) return false
-                if (version == 3) base.addAll(listOf(cursor.getString(8), cursor.getInt(9),
+                if (version >= 3) base.addAll(listOf(cursor.getString(8), cursor.getInt(9),
                     if (cursor.isNull(10)) null else cursor.getInt(10), if (cursor.isNull(11)) null else cursor.getInt(11),
                     if (cursor.isNull(12)) null else cursor.getInt(12), if (cursor.isNull(13)) null else cursor.getDouble(13)))
                 metadata += base
@@ -3925,13 +4500,14 @@ class TrainlogRepository(
                 resolveExerciseId(db, item.optString("exercise_id")),
                 item.optString("recording_mode"), item.optString("tracking_mode"), item.optInt("data_fields", -1),
                 if (item.isNull("equipment_id")) null else item.optString("equipment_id"))
-            if (version == 3) {
+            if (version >= 3) {
                 val target = item.optJSONObject("target")
                 expected.addAll(listOf(item.getString("load_mode"), item.getInt("rest_seconds"),
                     target?.getInt("sets"), target?.optIntOrNull("reps"),
                     target?.optIntOrNull("duration_seconds"), target?.optDoubleOrNull("weight_kg")))
             }
             if (metadata[index] != expected) return false
+            if (version == 4 && !syncNoteIsCurrent(db, "occurrence", item.getString("entry_id"), item.get("note"))) return false
             if (item.has("max_weight_kg")) {
                 val current = db.rawQuery(
                     "SELECT max_weight_kg FROM max_results WHERE session_exercise_row_id=?",
@@ -5788,7 +6364,11 @@ class TrainlogRepository(
                     e.normalized_name,
                     e.recording_mode,
                     e.tracking_mode,
-                    e.data_fields
+                    e.data_fields,
+                    d.session_id,
+                    d.revision_id,
+                    d.parent_revision_id,
+                    d.started_at
                 FROM active_session_draft AS d
                 LEFT JOIN exercises AS e
                     ON e.id = d.selected_exercise_row_id
@@ -5829,6 +6409,10 @@ class TrainlogRepository(
                             distanceText = cursor.getString(5),
                         ),
                         sourceSessionId = if (cursor.isNull(11)) null else cursor.getString(11),
+                        sessionId = if (cursor.isNull(18)) null else cursor.getString(18),
+                        revisionId = cursor.getString(19),
+                        parentRevisionId = if (cursor.isNull(20)) null else cursor.getString(20),
+                        startedAt = if (cursor.isNull(21)) null else cursor.getString(21),
                         updatedAt =
                             cursor.getString(6),
                         warning =
@@ -6005,6 +6589,10 @@ class TrainlogRepository(
 
         return ActiveDraftRestore(
             draft = ActiveSessionDraft(
+                sessionId = header.sessionId,
+                revisionId = header.revisionId,
+                parentRevisionId = header.parentRevisionId,
+                startedAt = header.startedAt,
                 exercises = exercises,
                 sessionType = header.sessionType,
                 sourceSessionId = header.sourceSessionId,
@@ -6031,6 +6619,10 @@ class TrainlogRepository(
         val values =
             ContentValues().apply {
                 put("session_type", draft.sessionType.wireValue)
+                draft.sessionId?.let { put("session_id", it) }
+                draft.startedAt?.let { put("started_at", it) }
+                put("revision_id", draft.revisionId)
+                putOptionalString("parent_revision_id", draft.parentRevisionId)
                 putOptionalString("source_session_id", draft.sourceSessionId)
                 putOptionalString("selected_equipment_id", draft.form.selectedEquipmentId)
                 put("weight_text", draft.form.weightText)
@@ -6063,6 +6655,8 @@ class TrainlogRepository(
 
         if (updated == 0) {
             values.put("id", ACTIVE_DRAFT_ID)
+            if (draft.sessionId == null) values.put("session_id", "se_${UUID.randomUUID()}")
+            if (draft.startedAt == null) values.put("started_at", now)
             db.insertOrThrow(
                 "active_session_draft",
                 null,
@@ -6232,18 +6826,20 @@ class TrainlogRepository(
         draft: SessionDraft,
         sourceSessionId: String? = null,
         generalCorrection: Boolean = false,
+        forcedSessionId: String? = null,
+        forcedStartedAt: String? = null,
     ): String {
         val sessionId: String
         val sessionRowId: Long
         val retainedCompletedFeedback = mutableMapOf<String, MutableList<Triple<String, String, String>>>()
         val retainedCompletedRevisions = mutableMapOf<String, MutableList<Triple<String, String, String>>>()
         if (sourceSessionId == null) {
-            sessionId = "se_" + UUID.randomUUID().toString()
+            sessionId = forcedSessionId ?: ("se_" + UUID.randomUUID().toString())
             /* Preserve the existing Android meaning: started_at is assigned
              * when a new completed session is saved. */
             val sessionValues = ContentValues().apply {
                 put("session_id", sessionId)
-                put("started_at", OffsetDateTime.now().toString())
+                put("started_at", forcedStartedAt ?: OffsetDateTime.now().toString())
                 /* CONTRACT: this exact explicit finalization instant anchors
                  * H+; old NULL values remain unknown and are never backfilled. */
                 put("ended_at", OffsetDateTime.now().toString())
@@ -6529,6 +7125,10 @@ class TrainlogRepository(
         val sessionType: SessionType,
         val form: SessionDraftForm,
         val sourceSessionId: String?,
+        val sessionId: String?,
+        val revisionId: String,
+        val parentRevisionId: String?,
+        val startedAt: String?,
         val updatedAt: String,
         val warning: String?,
     )
@@ -6869,6 +7469,9 @@ private const val ANDROID_DATABASE_NAME =
     "trainlog-android.db"
 private const val ACTIVE_DRAFT_ID = 1
 private const val MAX_DRAFT_FORM_TEXT_LENGTH = 4096
+private const val MAX_SYNC_NOTE_UTF8_BYTES = 4096
+/* The wire document is bounded to sixteen drafts total, including the singleton active draft. */
+private const val MAX_PENDING_EXECUTION_DRAFTS = 15
 private const val MAX_PLAN_SETS = 64
 private const val MAX_PLAN_REPS = 10000
 private const val MAX_PLAN_DURATION_SECONDS = 86400
@@ -6910,7 +7513,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    17,
+    18,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -6952,6 +7555,7 @@ private class TrainlogDatabaseHelper(
         createTrainingFeedbackRevisionTables(db)
         createExerciseProfileStateTable(db, seedLegacy = false)
         createAiSessionDraftTables(db)
+        createSyncDataLifecycleTables(db)
         seedEquipment(db)
     }
 
@@ -7087,12 +7691,83 @@ private class TrainlogDatabaseHelper(
             version = 17
         }
 
+        if (version < 18 && newVersion >= 18) {
+            /* WHY: an active capture needs one stable cross-device identity,
+             * while incoming candidates must not replace local raw input.
+             * CONTRACT: v18 is additive and assigns a missing active identity
+             * exactly once. INVARIANT: history, occurrence IDs, feedback, raw
+             * form strings, and AI proposals remain unchanged. */
+            createSyncDataLifecycleTables(db)
+            db.execSQL(
+                "UPDATE active_session_draft SET session_id='se_' || lower(hex(randomblob(4))) || '-' || " +
+                    "lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || " +
+                    "substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), " +
+                    "revision_id='dr_legacy_v1' WHERE session_id IS NULL;",
+            )
+            version = 18
+        }
+
         if (version != newVersion) {
             error(
                 "Unsupported Android DB upgrade " +
                     "$oldVersion -> $newVersion"
             )
         }
+    }
+
+    private fun createSyncDataLifecycleTables(db: SQLiteDatabase) {
+        fun addColumn(table: String, name: String, declaration: String) {
+            if (!tableHasColumn(db, table, name)) {
+                db.execSQL("ALTER TABLE $table ADD COLUMN $name $declaration;")
+            }
+        }
+        addColumn("sessions", "notes", "TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4096)")
+        addColumn("session_exercises", "notes", "TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4096)")
+        addColumn("body_observations", "session_row_id", "INTEGER REFERENCES sessions(id) ON DELETE SET NULL")
+        addColumn("body_observations", "notes", "TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4096)")
+        addColumn("active_session_draft", "session_id", "TEXT")
+        addColumn("active_session_draft", "started_at", "TEXT")
+        addColumn("active_session_draft", "revision_id", "TEXT NOT NULL DEFAULT 'dr_legacy_v1'")
+        addColumn("active_session_draft", "parent_revision_id", "TEXT")
+        addColumn("active_session_draft", "notes", "TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4096)")
+        addColumn("draft_session_exercises", "notes", "TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4096)")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS active_session_draft_session_v18 " +
+                "ON active_session_draft(session_id) WHERE session_id IS NOT NULL;",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS body_observation_session_v18 " +
+                "ON body_observations(session_row_id) WHERE session_row_id IS NOT NULL;",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_note_revisions(" +
+                "owner_kind TEXT NOT NULL CHECK(owner_kind IN('session','occurrence','observation'))," +
+                "owner_id TEXT NOT NULL,revision_id TEXT NOT NULL,parent_revision_id TEXT,note TEXT," +
+                "CHECK(note IS NULL OR length(CAST(note AS BLOB))<=4096)," +
+                "PRIMARY KEY(owner_kind,owner_id,revision_id));",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_note_state(" +
+                "owner_kind TEXT NOT NULL,owner_id TEXT NOT NULL,revision_id TEXT NOT NULL," +
+                "PRIMARY KEY(owner_kind,owner_id)," +
+                "FOREIGN KEY(owner_kind,owner_id,revision_id) " +
+                "REFERENCES sync_note_revisions(owner_kind,owner_id,revision_id));",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS execution_draft_candidates(" +
+                "session_id TEXT PRIMARY KEY,session_type TEXT NOT NULL CHECK(session_type IN('training','max_test'))," +
+                "source_session_id TEXT,started_at TEXT,revision_id TEXT NOT NULL,parent_revision_id TEXT," +
+                "payload_json TEXT NOT NULL,received_at TEXT NOT NULL);",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS execution_draft_revisions(" +
+                "session_id TEXT NOT NULL,revision_id TEXT NOT NULL,parent_revision_id TEXT,payload_json TEXT NOT NULL," +
+                "PRIMARY KEY(session_id,revision_id));",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS execution_draft_finalizations(" +
+                "session_id TEXT PRIMARY KEY,final_revision_id TEXT NOT NULL,finalized_at TEXT NOT NULL);",
+        )
     }
 
     private fun createAiSessionDraftTables(db: SQLiteDatabase) {
@@ -7694,6 +8369,7 @@ private class TrainlogDatabaseHelper(
                 session_id TEXT NOT NULL UNIQUE,
                 started_at TEXT NOT NULL,
                 ended_at TEXT,
+                notes TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB)) <= 4096),
                 session_type TEXT NOT NULL
                     CHECK(
                         session_type IN (
@@ -7749,6 +8425,7 @@ private class TrainlogDatabaseHelper(
                 target_duration_seconds INTEGER
                     CHECK(target_duration_seconds BETWEEN 1 AND 86400),
                 target_weight_kg REAL CHECK(target_weight_kg > 0.0),
+                notes TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB)) <= 4096),
                 UNIQUE(
                     session_row_id,
                     position
@@ -7874,6 +8551,9 @@ private class TrainlogDatabaseHelper(
                     CHECK(left_calf_cm > 0.0),
                 right_calf_cm REAL
                     CHECK(right_calf_cm > 0.0),
+                session_row_id INTEGER UNIQUE
+                    REFERENCES sessions(id) ON DELETE SET NULL,
+                notes TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB)) <= 4096),
                 CHECK(
                     body_weight_kg IS NOT NULL OR
                     neck_cm IS NOT NULL OR
@@ -7925,7 +8605,12 @@ private class TrainlogDatabaseHelper(
                 duration_text TEXT NOT NULL,
                 speed_text TEXT NOT NULL,
                 distance_text TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                started_at TEXT,
+                session_id TEXT UNIQUE,
+                revision_id TEXT NOT NULL DEFAULT 'dr_legacy_v1',
+                parent_revision_id TEXT,
+                notes TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB)) <= 4096)
             );
             """.trimIndent()
         )
@@ -7974,6 +8659,7 @@ private class TrainlogDatabaseHelper(
                 target_duration_seconds INTEGER
                     CHECK(target_duration_seconds BETWEEN 1 AND 86400),
                 target_weight_kg REAL CHECK(target_weight_kg > 0.0),
+                notes TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB)) <= 4096),
                 UNIQUE(draft_id, position)
             );
             """.trimIndent()

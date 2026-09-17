@@ -61,7 +61,7 @@ def main():
     definitions = validate(json.loads(args.artifact.read_text(encoding="utf-8")), supplied_ids(args.catalog))
     connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
             fail("schema desktop v8 à v16 requis")
         imported = skipped = 0
         # Validate every same-ID row before inserting any definition.

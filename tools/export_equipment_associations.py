@@ -28,7 +28,7 @@ def main():
     args = parser.parse_args()
     connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
             raise ValueError("schema desktop v8 à v16 requis")
         known_equipment = load_supplied_equipment_ids(args.catalog)
         known_equipment.update(row[0] for row in connection.execute(

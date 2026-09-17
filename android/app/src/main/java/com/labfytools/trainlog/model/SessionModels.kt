@@ -101,6 +101,13 @@ data class SessionDraftForm(
  * mistake unfinished capture for a completed session.
  */
 data class ActiveSessionDraft(
+    /** Stable lifecycle identity, allocated once when first persisted. */
+    val sessionId: String? = null,
+    /** Causal draft revision; local UI-only persistence may retain its tip. */
+    val revisionId: String = "dr_legacy_v1",
+    val parentRevisionId: String? = null,
+    /** Genuine lifecycle start, distinct from local form update time. */
+    val startedAt: String? = null,
     val exercises: List<SessionExerciseDraft> = emptyList(),
     val sessionType: SessionType = SessionType.TRAINING,
     /** Existing max_test session updated atomically on finalization, if any. */

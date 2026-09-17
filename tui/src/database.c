@@ -804,6 +804,34 @@ static const char *const MIGRATE_V17_TO_V18_SQL =
     "BEGIN SELECT RAISE(ABORT,'AI draft import identity is permanent');END;"
     "PRAGMA user_version=18;COMMIT;";
 
+/* WHY: V3 cannot carry lifecycle-owned notes, observation parents, or
+ * resumable execution drafts. CONTRACT: v19 is additive and provides only the
+ * durable state required by the explicitly selected V4/lifecycle codecs.
+ * INVARIANT: completed history, AI proposals, feedback, aliases, and every
+ * existing stable identity remain untouched; NULL legacy notes keep unknown
+ * ancestry and no timestamp or causal parent is fabricated. */
+static const char *const MIGRATE_V18_TO_V19_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE sync_note_revisions("
+    "owner_kind TEXT NOT NULL CHECK(owner_kind IN('session','occurrence','observation')),"
+    "owner_id TEXT NOT NULL,revision_id TEXT NOT NULL,parent_revision_id TEXT,note TEXT,"
+    "CHECK(note IS NULL OR length(CAST(note AS BLOB))<=4096),"
+    "PRIMARY KEY(owner_kind,owner_id,revision_id));"
+    "CREATE TABLE sync_note_state("
+    "owner_kind TEXT NOT NULL,owner_id TEXT NOT NULL,revision_id TEXT NOT NULL,"
+    "PRIMARY KEY(owner_kind,owner_id),"
+    "FOREIGN KEY(owner_kind,owner_id,revision_id) REFERENCES sync_note_revisions(owner_kind,owner_id,revision_id));"
+    "CREATE TABLE execution_drafts("
+    "session_id TEXT PRIMARY KEY,session_type TEXT NOT NULL CHECK(session_type IN('training','max_test')),"
+    "source_session_id TEXT,started_at TEXT,revision_id TEXT NOT NULL,parent_revision_id TEXT,"
+    "state TEXT NOT NULL CHECK(state IN('active','pending')),payload_json TEXT NOT NULL);"
+    "CREATE TABLE execution_draft_revisions("
+    "session_id TEXT NOT NULL,revision_id TEXT NOT NULL,parent_revision_id TEXT,payload_json TEXT NOT NULL,"
+    "PRIMARY KEY(session_id,revision_id));"
+    "CREATE TABLE execution_draft_finalizations("
+    "session_id TEXT PRIMARY KEY,final_revision_id TEXT NOT NULL,finalized_at TEXT NOT NULL);"
+    "PRAGMA user_version=19;COMMIT;";
+
 /* CONTRACT: v18 was already deployed before bounded draft publication was
  * added. Keep its version number and add only the nullable lifecycle cursor;
  * NULL deliberately means retryable/not yet published. */
@@ -1496,7 +1524,8 @@ static TrainlogStatus initialize_or_validate_schema(
     } else if (version == 10) {
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
-               version == 15 || version == 16 || version == 17 || version == 18) {
+               version == 15 || version == 16 || version == 17 || version == 18 ||
+               version == 19) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1660,6 +1689,9 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 18) {
         status = execute_sql(database, MIGRATE_V17_TO_V18_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 19) {
+        status = execute_sql(database, MIGRATE_V18_TO_V19_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -1675,7 +1707,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v18" : "migrate database to schema v18",
+            version == 0 ? "create schema v19" : "migrate database to schema v19",
             database->connection,
             SQLITE_ERROR
         );

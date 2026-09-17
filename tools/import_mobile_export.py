@@ -48,6 +48,7 @@ SESSION_KEYS = {
     "session_type",
     "exercises",
 }
+V4_SESSION_KEYS = SESSION_KEYS | {"ended_at", "note"}
 
 SESSION_EXERCISE_KEYS = {
     "exercise_id",
@@ -65,11 +66,13 @@ V2_SESSION_EXERCISE_KEYS = SESSION_EXERCISE_KEYS | {
     "entry_id", "position", "equipment_id", "max_weight_kg"
 }
 V3_SESSION_EXERCISE_KEYS = V2_SESSION_EXERCISE_KEYS | {"target"}
+V4_SESSION_EXERCISE_KEYS = V3_SESSION_EXERCISE_KEYS | {"note"}
 
 BODY_BASE_KEYS = {
     "observation_id",
     "observed_at",
 }
+V4_BODY_KEYS = BODY_BASE_KEYS | {"session_id", "note"}
 
 BODY_METRIC_KEYS = {
     "body_weight_kg",
@@ -255,14 +258,14 @@ def load_payload(path):
             "format mobile export invalide"
         )
 
-    if payload["version"] not in (1, 2, 3):
+    if payload["version"] not in (1, 2, 3, 4):
         raise ImportFailure(
             "version mobile export non supportée"
         )
 
     # CONTRACT: V1/V2 retain their published nonempty-string admission. V3 is
     # the current analysis-bearing artifact and uses the exact Trainlog parser.
-    if payload["version"] == 3:
+    if payload["version"] >= 3:
         require_v3_timestamp(payload["generated_at"], "generated_at")
     else:
         require_nonempty_string(payload["generated_at"], "generated_at")
@@ -447,6 +450,24 @@ def validate_set_item(
     return ("duration", duration)
 
 
+def validate_note(value, label):
+    if value is None:
+        return
+    require_exact_keys(value, {"value", "revision_id", "parent_revision_id"},
+                       {"value", "revision_id", "parent_revision_id"}, label)
+    revision = require_nonempty_string(value["revision_id"], f"{label}.revision_id")
+    if len(revision.encode("utf-8")) > 128:
+        raise ImportFailure(f"{label}.revision_id: hors bornes")
+    parent = value["parent_revision_id"]
+    if parent is not None:
+        require_nonempty_string(parent, f"{label}.parent_revision_id")
+        if len(parent.encode("utf-8")) > 128 or parent == revision:
+            raise ImportFailure(f"{label}.parent_revision_id: invalide")
+    note = value["value"]
+    if note is not None and (not isinstance(note, str) or len(note.encode("utf-8")) > 4096):
+        raise ImportFailure(f"{label}.value: texte UTF-8 hors bornes")
+
+
 def validate_session_exercise(
     item,
     label,
@@ -455,7 +476,7 @@ def validate_session_exercise(
     version,
 ):
     is_v2 = version >= 2
-    keys = V3_SESSION_EXERCISE_KEYS if version == 3 else (
+    keys = V4_SESSION_EXERCISE_KEYS if version == 4 else V3_SESSION_EXERCISE_KEYS if version == 3 else (
         V2_SESSION_EXERCISE_KEYS if is_v2 else SESSION_EXERCISE_KEYS)
     require_exact_keys(
         item,
@@ -464,6 +485,8 @@ def validate_session_exercise(
         - {"sets", "continuous", "max_weight_kg"},
         label,
     )
+    if version == 4:
+        validate_note(item["note"], f"{label}.note")
 
     if is_v2:
         require_nonempty_string(item["entry_id"], f"{label}.entry_id")
@@ -650,12 +673,8 @@ def validate_sessions(
     ):
         label = f"sessions[{index}]"
 
-        require_exact_keys(
-            session,
-            SESSION_KEYS,
-            SESSION_KEYS,
-            label,
-        )
+        session_keys = V4_SESSION_KEYS if payload["version"] == 4 else SESSION_KEYS
+        require_exact_keys(session, session_keys, session_keys, label)
 
         session_id = require_nonempty_string(
             session["session_id"],
@@ -669,12 +688,20 @@ def validate_sessions(
 
         seen_ids.add(session_id)
 
-        if payload["version"] == 3:
+        if payload["version"] >= 3:
             # INVARIANT: accepted V3 history must remain readable by temporal
             # analysis; validation completes before run_import mutates SQLite.
             require_v3_timestamp(session["started_at"], f"{label}.started_at")
         else:
             require_nonempty_string(session["started_at"], f"{label}.started_at")
+
+        if payload["version"] == 4:
+            validate_note(session["note"], f"{label}.note")
+            if session["ended_at"] is not None:
+                require_v3_timestamp(session["ended_at"], f"{label}.ended_at")
+                if parse_timestamp(session["ended_at"], f"{label}.ended_at") <= parse_timestamp(
+                    session["started_at"], f"{label}.started_at"):
+                    raise ImportFailure(f"{label}.ended_at: doit être postérieur au début")
 
         if session["session_type"] not in (
             "training",
@@ -748,18 +775,16 @@ def validate_sessions(
 def validate_body(payload):
     seen_ids = set()
     allowed = BODY_BASE_KEYS | BODY_METRIC_KEYS
+    if payload["version"] == 4:
+        allowed |= V4_BODY_KEYS
 
     for index, observation in enumerate(
         payload["body_observations"]
     ):
         label = f"body_observations[{index}]"
 
-        require_exact_keys(
-            observation,
-            allowed,
-            BODY_BASE_KEYS,
-            label,
-        )
+        required = BODY_BASE_KEYS | ({"session_id", "note"} if payload["version"] == 4 else set())
+        require_exact_keys(observation, allowed, required, label)
 
         observation_id = require_nonempty_string(
             observation["observation_id"],
@@ -773,10 +798,14 @@ def validate_body(payload):
 
         seen_ids.add(observation_id)
 
-        if payload["version"] == 3:
+        if payload["version"] >= 3:
             require_v3_timestamp(observation["observed_at"], f"{label}.observed_at")
         else:
             require_nonempty_string(observation["observed_at"], f"{label}.observed_at")
+        if payload["version"] == 4:
+            validate_note(observation["note"], f"{label}.note")
+            if observation["session_id"] is not None:
+                require_nonempty_string(observation["session_id"], f"{label}.session_id")
 
         present_metrics = (
             set(observation.keys())
@@ -816,9 +845,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
+    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
         raise ImportFailure(
-            f"base desktop schema v5 à v18 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v19 attendue, version trouvée: {version}"
         )
 
 
@@ -1268,6 +1297,68 @@ def occurrence_plan_values(item):
     )
 
 
+def apply_note(connection, owner_kind, owner_id, payload, table, where, arguments):
+    """Apply one direct causal child without using wall-clock ordering."""
+    if payload is None:
+        retained = connection.execute(
+            "SELECT r.note FROM sync_note_state s JOIN sync_note_revisions r "
+            "USING(owner_kind,owner_id,revision_id) WHERE s.owner_kind=? AND s.owner_id=?",
+            (owner_kind, owner_id)).fetchone()
+        if retained is not None:
+            connection.execute(f"UPDATE {table} SET notes=? WHERE {where}",
+                               (retained[0], *arguments))
+        return "unchanged"
+    current = connection.execute(
+        "SELECT revision_id FROM sync_note_state WHERE owner_kind=? AND owner_id=?",
+        (owner_kind, owner_id)).fetchone()
+    existing = connection.execute(
+        "SELECT parent_revision_id,note FROM sync_note_revisions "
+        "WHERE owner_kind=? AND owner_id=? AND revision_id=?",
+        (owner_kind, owner_id, payload["revision_id"])).fetchone()
+    if existing is not None:
+        if tuple(existing) != (payload["parent_revision_id"], payload["value"]):
+            raise ImportFailure(f"révision de note contradictoire: {owner_kind}/{owner_id}")
+        if current is not None and current[0] == payload["revision_id"]:
+            return "unchanged"
+        raise ImportFailure(f"révision de note obsolète: {owner_kind}/{owner_id}")
+    if current is not None and payload["parent_revision_id"] != current[0]:
+        raise ImportFailure(f"conflit causal de note: {owner_kind}/{owner_id}")
+    if current is None and payload["parent_revision_id"] is not None:
+        raise ImportFailure(f"parent de note inconnu: {owner_kind}/{owner_id}")
+    connection.execute(
+        "INSERT INTO sync_note_revisions(owner_kind,owner_id,revision_id,parent_revision_id,note) "
+        "VALUES(?,?,?,?,?)", (owner_kind, owner_id, payload["revision_id"],
+                              payload["parent_revision_id"], payload["value"]))
+    connection.execute(
+        "INSERT INTO sync_note_state(owner_kind,owner_id,revision_id) VALUES(?,?,?) "
+        "ON CONFLICT(owner_kind,owner_id) DO UPDATE SET revision_id=excluded.revision_id",
+        (owner_kind, owner_id, payload["revision_id"]))
+    connection.execute(f"UPDATE {table} SET notes=? WHERE {where}",
+                       (payload["value"], *arguments))
+    return "applied"
+
+
+def note_matches(connection, owner_kind, owner_id, payload):
+    row = connection.execute(
+        "SELECT r.revision_id,r.parent_revision_id,r.note FROM sync_note_state s "
+        "JOIN sync_note_revisions r USING(owner_kind,owner_id,revision_id) "
+        "WHERE s.owner_kind=? AND s.owner_id=?", (owner_kind, owner_id)).fetchone()
+    if payload is None:
+        return row is None
+    return row is not None and tuple(row) == (
+        payload["revision_id"], payload["parent_revision_id"], payload["value"])
+
+
+def v4_session_metadata_matches(connection, session_row_id, session):
+    header = connection.execute(
+        "SELECT ended_at FROM sessions WHERE id=?", (session_row_id,)).fetchone()
+    if header is None or header[0] != session["ended_at"] or not note_matches(
+            connection, "session", session["session_id"], session["note"]):
+        return False
+    return all(note_matches(connection, "occurrence", item["entry_id"], item["note"])
+               for item in session["exercises"])
+
+
 def import_set_session_exercise(
     connection,
     session_row_id,
@@ -1348,6 +1439,7 @@ def import_set_session_exercise(
                 duration, set_item.get("weight_kg"),
             ),
         )
+    return session_exercise_row_id
 
 def import_continuous_session_exercise(
     connection,
@@ -1413,6 +1505,7 @@ def import_continuous_session_exercise(
             continuous.get("distance_km"),
         ),
     )
+    return cursor.lastrowid
 
 
 def import_max_session_exercise(
@@ -1452,6 +1545,7 @@ def import_max_session_exercise(
         "VALUES(?,?);",
         (cursor.lastrowid, item["max_weight_kg"]),
     )
+    return cursor.lastrowid
 
 
 def import_sessions(
@@ -1491,12 +1585,12 @@ def import_sessions(
             current = [(row[0], row[1]) for row in rows]
             legacy = all(value[0].startswith("sxe_legacy_") or value[0].startswith("sxe_v1_") for value in current)
             header = connection.execute(
-                "SELECT started_at,session_type FROM sessions WHERE id=?;",
+                "SELECT started_at,session_type,ended_at FROM sessions WHERE id=?;",
                 (session_row_id,),
             ).fetchone()
             resumable_max = (
                 header is not None
-                and tuple(header) == (session["started_at"], "max_test")
+                and tuple(header[:2]) == (session["started_at"], "max_test")
                 and session["session_type"] == "max_test"
                 and len(incoming) >= len(current)
                 and all(current[index] == incoming[index]
@@ -1504,9 +1598,9 @@ def import_sessions(
             )
             incoming_by_id = dict(incoming)
             correction = (
-                payload["version"] == 3
+                payload["version"] >= 3
                 and header is not None
-                and tuple(header) == (session["started_at"], session["session_type"])
+                and tuple(header[:2]) == (session["started_at"], session["session_type"])
                 and len(incoming_by_id) == len(incoming)
                 and all(entry_id not in dict(current)
                         or dict(current)[entry_id] == exercise_id
@@ -1524,7 +1618,8 @@ def import_sessions(
                 session_row_id,
                 session,
                 exercise_mapping,
-            ):
+            ) and (payload["version"] != 4 or v4_session_metadata_matches(
+                    connection, session_row_id, session)):
                 report["sessions_skipped"] += 1
                 continue
             if not legacy and not (resumable_max or correction):
@@ -1563,16 +1658,29 @@ def import_sessions(
                     ended_at,
                     session_type,
                     notes
-                ) VALUES(?, ?, NULL, ?, NULL);
+                ) VALUES(?, ?, ?, ?, NULL);
                 """,
                 (
                     session["session_id"],
                     session["started_at"],
+                    session.get("ended_at"),
                     session["session_type"],
                 ),
             )
 
             session_row_id = cursor.lastrowid
+
+        if payload["version"] == 4:
+            current_end = connection.execute(
+                "SELECT ended_at FROM sessions WHERE id=?", (session_row_id,)).fetchone()[0]
+            incoming_end = session["ended_at"]
+            if current_end is None and incoming_end is not None:
+                connection.execute("UPDATE sessions SET ended_at=? WHERE id=?",
+                                   (incoming_end, session_row_id))
+            elif current_end is not None and incoming_end is not None and current_end != incoming_end:
+                raise ImportFailure("conflit ended_at pour " + session["session_id"])
+            apply_note(connection, "session", session["session_id"], session["note"],
+                       "sessions", "id=?", (session_row_id,))
 
         for position, item in enumerate(
             session["exercises"]
@@ -1616,7 +1724,7 @@ def import_sessions(
             )
 
             if "max_weight_kg" in item:
-                import_max_session_exercise(
+                occurrence_row_id = import_max_session_exercise(
                     connection,
                     session_row_id,
                     position,
@@ -1624,7 +1732,7 @@ def import_sessions(
                     row_id,
                 )
             elif item["recording_mode"] == "continuous":
-                import_continuous_session_exercise(
+                occurrence_row_id = import_continuous_session_exercise(
                     connection,
                     session_row_id,
                     position,
@@ -1632,13 +1740,16 @@ def import_sessions(
                     row_id,
                 )
             else:
-                import_set_session_exercise(
+                occurrence_row_id = import_set_session_exercise(
                     connection,
                     session_row_id,
                     position,
                     item,
                     row_id,
                 )
+            if payload["version"] == 4:
+                apply_note(connection, "occurrence", item["entry_id"], item["note"],
+                           "session_exercises", "id=?", (occurrence_row_id,))
 
         retained_ids = {item["entry_id"] for item in session["exercises"]}
         for entry_id, feedback_id, observed_at, raw_text in retained_feedback:
@@ -1784,13 +1895,29 @@ def import_body(
     for observation in payload[
         "body_observations"
     ]:
+        parent_row_id = None
+        if payload["version"] == 4 and observation["session_id"] is not None:
+            parent = connection.execute(
+                "SELECT id FROM sessions WHERE session_id=?", (observation["session_id"],)).fetchone()
+            if parent is None:
+                raise ImportFailure("parent de l'observation introuvable: " + observation["session_id"])
+            parent_row_id = parent[0]
         existing = connection.execute(
-            f"SELECT observed_at,{','.join(metric_order)} FROM body_observations WHERE observation_id=?",
+            f"SELECT id,observed_at,{','.join(metric_order)},session_row_id FROM body_observations WHERE observation_id=?",
             (observation["observation_id"],)).fetchone()
         if existing is not None:
             expected = [observation["observed_at"]] + [observation.get(metric) for metric in metric_order]
-            if list(existing) != expected:
+            if list(existing[1:1 + len(expected)]) != expected:
                 raise ImportFailure("conflit observation corporelle: " + observation["observation_id"])
+            if payload["version"] == 4:
+                current_parent = existing[-1]
+                if current_parent is None and parent_row_id is not None:
+                    connection.execute("UPDATE body_observations SET session_row_id=? WHERE id=?",
+                                       (parent_row_id, existing[0]))
+                elif current_parent is not None and parent_row_id is not None and current_parent != parent_row_id:
+                    raise ImportFailure("conflit parent observation: " + observation["observation_id"])
+                apply_note(connection, "observation", observation["observation_id"], observation["note"],
+                           "body_observations", "id=?", (existing[0],))
             report["body_skipped"] += 1
             continue
 
@@ -1808,6 +1935,16 @@ def import_body(
             sql,
             values,
         )
+
+        if payload["version"] == 4:
+            row_id = connection.execute(
+                "SELECT id FROM body_observations WHERE observation_id=?",
+                (observation["observation_id"],)).fetchone()[0]
+            if parent_row_id is not None:
+                connection.execute("UPDATE body_observations SET session_row_id=? WHERE id=?",
+                                   (parent_row_id, row_id))
+            apply_note(connection, "observation", observation["observation_id"], observation["note"],
+                       "body_observations", "id=?", (row_id,))
 
         report["body_imported"] += 1
 
@@ -1850,6 +1987,8 @@ def run_import(
         )
 
         schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+        if payload["version"] == 4 and schema_version != 19:
+            raise ImportFailure("mobile V4 exige le schéma desktop v19")
         has_explicit_max = any(
             "max_weight_kg" in entry
             for session in payload["sessions"]

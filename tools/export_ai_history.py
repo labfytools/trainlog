@@ -12,7 +12,7 @@ from pathlib import Path
 from trainlog_sqlite import configure_connection
 
 
-SUPPORTED_SCHEMA_VERSIONS = (15, 16, 17, 18)
+SUPPORTED_SCHEMA_VERSIONS = (15, 16, 17, 18, 19)
 MEASUREMENT_FIELDS = (
     "body_weight_kg", "neck_cm", "shoulders_cm", "chest_cm", "waist_cm",
     "hips_cm", "left_arm_cm", "right_arm_cm", "left_forearm_cm",

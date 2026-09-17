@@ -1794,7 +1794,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(17, cursor.getInt(0))
+                assertEquals(18, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -1921,7 +1921,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(17, cursor.getInt(0))
+                assertEquals(18, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -2444,6 +2444,60 @@ class TrainlogRepositoryDraftTest {
             .getJSONObject(0).getJSONArray("exercises").getJSONObject(0)
         assertEquals(9, exported.getJSONObject("target").getInt("reps"))
         assertEquals(3, exported.getJSONArray("sets").length())
+    }
+
+    @Test
+    fun stagedExecutionDraftPersistsPendingAndFinalizationRejectsStaleReplay() {
+        val source = openRepository()
+        val exercise = createExercise(source, "Lifecycle press", RecordingMode.SETS, TrackingMode.REPS)
+        assertEquals(ActiveDraftMutationResult.Saved, source.saveActiveSessionDraft(
+            ActiveSessionDraft(exercises = listOf(SessionExerciseDraft(
+                entryId = "sxe_lifecycle_active", exercise = exercise,
+                plan = SessionExercisePlan(2, reps = 8, weightKg = 40.0,
+                    loadMode = SessionLoadMode.EXTERNAL, restSeconds = 90),
+                sets = listOf(SessionSetDraft(reps = 8, weightKg = 42.5)),
+            )), form = SessionDraftForm(weightText = "42.")),
+        ))
+        val artifact = JSONObject(source.buildExecutionDraftExportV1Json())
+        val active = artifact.getJSONArray("drafts").getJSONObject(0)
+        assertFalse(active.has("weight_text"))
+        assertFalse(active.toString().contains("weightText"))
+        val sessionId = active.getString("session_id")
+        val exerciseCatalog = JSONObject(source.buildMobileExportV4Json()).getJSONArray("exercises")
+        source.close(); repository = null
+        context.deleteDatabase(databaseName)
+
+        val destination = openRepository()
+        val catalog = JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+            .put("exercises", exerciseCatalog)
+        assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+        assertEquals(ExecutionDraftImportResult.Applied(1, 0, 0, 0),
+            destination.applyExecutionDraftExportV1Json(artifact.toString()))
+
+        val pending = JSONObject(active.toString())
+            .put("session_id", "se_00000000-0000-4000-8000-000000000042")
+            .put("revision_id", "dr_00000000-0000-4000-8000-000000000042")
+            .put("state", "pending")
+        pending.getJSONArray("entries").getJSONObject(0)
+            .put("entry_id", "sxe_lifecycle_pending")
+        val pendingArtifact = JSONObject(artifact.toString())
+            .put("drafts", JSONArray().put(pending))
+        assertEquals(ExecutionDraftImportResult.Applied(0, 1, 0, 0),
+            destination.applyExecutionDraftExportV1Json(pendingArtifact.toString()))
+        destination.close(); repository = null
+        val reopened = openRepository()
+        assertEquals(2, JSONObject(reopened.buildExecutionDraftExportV1Json())
+            .getJSONArray("drafts").length())
+        assertEquals(ActivateExecutionDraftResult.ActiveDraftOccupied,
+            reopened.activatePendingExecutionDraft(pending.getString("session_id")))
+        assertEquals(FinalizeActiveDraftResult.Saved(sessionId), reopened.finalizeExecutionDraft(sessionId))
+        assertEquals(FinalizeActiveDraftResult.Saved(sessionId), reopened.finalizeExecutionDraft(sessionId))
+        assertEquals(ExecutionDraftImportResult.Applied(0, 0, 0, 1),
+            reopened.applyExecutionDraftExportV1Json(artifact.toString()))
+        assertEquals(ActivateExecutionDraftResult.Activated,
+            reopened.activatePendingExecutionDraft(pending.getString("session_id")))
+        assertEquals(pending.getString("session_id"),
+            (reopened.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded).draft.sessionId)
     }
 
     @Test

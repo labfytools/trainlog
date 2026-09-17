@@ -84,9 +84,14 @@ static bool run_test(void)
         (void)fprintf(stderr, "open diagnostic: %s\n", diagnostic);
         CHECK(false);
     }
-    CHECK(trainlog_database_schema_version(db, &version) == TRAINLOG_STATUS_OK && version == 18);
+    CHECK(trainlog_database_schema_version(db, &version) == TRAINLOG_STATUS_OK &&
+          version == TRAINLOG_DATABASE_SCHEMA_VERSION);
     trainlog_database_close(db); db = NULL;
     CHECK(sqlite3_open_v2(path, &raw, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK);
+    CHECK(scalar(raw, "SELECT user_version FROM pragma_user_version", TRAINLOG_DATABASE_SCHEMA_VERSION));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN('sync_note_revisions','sync_note_state','execution_drafts','execution_draft_revisions','execution_draft_finalizations')", 5));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM execution_drafts", 0));
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM execution_draft_finalizations", 0));
     CHECK(scalar(raw, "SELECT COUNT(*) FROM exercises e LEFT JOIN exercise_profile_state s ON s.exercise_row_id=e.id WHERE s.revision_id IS NULL OR s.revision_id<>'pr_legacy_v1' OR s.legacy_seed<>1", 0));
     CHECK(scalar(raw, "SELECT COUNT(*) FROM exercises e LEFT JOIN exercise_profile_revisions r ON r.exercise_row_id=e.id AND r.revision_id='pr_legacy_v1' AND r.legacy_seed=1 WHERE r.revision_id IS NULL", 0));
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_table_info('session_exercises') WHERE name='tracking_mode' AND \"notnull\"=1", 1));

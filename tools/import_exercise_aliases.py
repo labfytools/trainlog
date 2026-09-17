@@ -63,7 +63,7 @@ def main():
     con = connect_database(args.database)
     try:
         con.execute("PRAGMA foreign_keys=ON")
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17, 18):
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17, 18, 19):
             fail("schema desktop v12-v16 requis")
         con.execute("BEGIN IMMEDIATE")
         for source, canonical in aliases:
