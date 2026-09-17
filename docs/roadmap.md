@@ -132,7 +132,8 @@ orchestrator/report, Web API, then button/refresh. The environment/test and
 characterization and data/lifecycle lots are complete. Enriched V4 history and
 the separate execution-draft codec are implemented behind explicit entry
 points, while active transport remains V3. Causal deletion is implemented and
-validated through explicit staged entry points; generation/consumption
+validated through explicit staged entry points, including both real producer
+directions for every contracted target kind; generation/consumption
 acknowledgement, orchestration/reporting and Web sync remain unimplemented.
 `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 

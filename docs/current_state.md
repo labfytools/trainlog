@@ -303,8 +303,15 @@ active/pending/desktop draft-revision equivalence, protected companion refusal,
 current-view retirement and bounded pre-effect admission. It changes neither
 the v20/v19 schemas nor active V3 transport selection.
 
+The residual causal evidence also proves legitimate Android and desktop
+producer directions separately for exercise retirement, populated body
+observation deletion, custom-equipment retirement, multi-revision feedback
+withdrawal and BODY ZONE relation removal. Production exchanges establish each
+replica before deletion; stored effects, current readers, stale-companion
+refusal and exact replay are checked after reopening the receiving store.
+
 The isolated closeout passed 76/76 normal Meson tests, 76/76 ASan/UBSan
-tests, Android debug assembly, and 210 Android tests (206 passed, four optional
+tests, Android debug assembly, and 211 Android tests (207 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 

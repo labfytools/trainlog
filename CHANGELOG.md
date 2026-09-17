@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.2
 
+- Completed the residual causal-deletion evidence with real Android and
+  desktop producers for exercise, body-observation, custom-equipment, feedback
+  and BODY ZONE relation targets, including production replica exchange,
+  retained-history/current-reader checks, reopen/replay and stale-companion
+  refusal.
+
 - Closed the causal-deletion correctness review: deletion predecessors now
   cover affected session children, measurements, links, notes and immutable
   feedback revisions; supported corrections preserve an intervening mutation

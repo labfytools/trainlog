@@ -740,6 +740,166 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
+    fun causalFiveDomainDeletionsRoundTripWithAndroidAndDesktopProducers() {
+        val sourceName = "causal-domains-source-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val root = Files.createTempDirectory("trainlog-causal-domains-").toFile()
+        try {
+            val retired = createExercise(source, "Retraite échappée 💪", RecordingMode.SETS, TrackingMode.REPS)
+            val zoned = createExercise(source, "Zones croisées", RecordingMode.SETS, TrackingMode.REPS)
+            val unrelated = createExercise(source, "Témoin inchangé", RecordingMode.SETS, TrackingMode.REPS)
+            val aliasSource = createExercise(source, "Ancien nom causal", RecordingMode.SETS, TrackingMode.REPS)
+            val aliasInput = JSONObject().put("format", "trainlog-exercise-aliases").put("version", 1)
+                .put("aliases", JSONArray().put(JSONObject()
+                    .put("source_exercise_id", aliasSource.exerciseId)
+                    .put("canonical_exercise_id", retired.exerciseId)))
+            assertTrue(source.applyExerciseAliasesJson(aliasInput.toString()) is ExerciseAliasImportResult.Applied)
+            val zoneArtifact = JSONObject(source.buildExerciseBodyZonesJson())
+            fun zoneItem(id: String, primary: String, secondary: String) = JSONObject()
+                .put("exercise_id", id).put("primary_zone_id", primary)
+                .put("secondary_zone_ids", JSONArray().put(secondary))
+            zoneArtifact.put("exercises", JSONArray()
+                .put(zoneItem(retired.exerciseId, "arms", "shoulders"))
+                .put(zoneItem(zoned.exerciseId, "chest", "arms"))
+                .put(zoneItem(unrelated.exerciseId, "thighs", "glutes")))
+            assertTrue(source.applyExerciseBodyZonesJson(zoneArtifact.toString()) is ExerciseBodyZoneImportResult.Applied)
+
+            val targetEquipment = (source.createCustomEquipment("Presse privée ç") as CreateEquipmentResult.Created).equipment
+            val otherEquipment = (source.createCustomEquipment("Rack témoin") as CreateEquipmentResult.Created).equipment
+            val targetEntry = "sxe_62000000-0000-4000-8000-000000000001"
+            val otherEntry = "sxe_62000000-0000-4000-8000-000000000002"
+            val session = source.saveSession(SessionDraft(listOf(
+                SessionExerciseDraft(entryId = targetEntry, exercise = retired,
+                    equipmentId = targetEquipment.equipmentId,
+                    sets = listOf(SessionSetDraft(reps = 8, weightKg = 47.5))),
+                SessionExerciseDraft(entryId = otherEntry, exercise = zoned,
+                    equipmentId = "leg_press", sets = listOf(SessionSetDraft(reps = 11))),
+            ))) as SaveSessionResult.Saved
+            val targetFeedback = (source.saveExerciseFeedback(session.sessionId, targetEntry,
+                "Première impression échappée") as SaveFeedbackResult.Saved).stableId
+            assertTrue(source.reviseExerciseFeedback(targetFeedback,
+                "Révision durable 💪") is SaveFeedbackResult.Saved)
+            val otherFeedback = (source.saveExerciseFeedback(session.sessionId, otherEntry,
+                "Ressenti témoin") as SaveFeedbackResult.Saved).stableId
+            val targetObservation = (source.saveBodyObservation(BodyObservationDraft(
+                bodyWeightKg = 79.4, waistCm = 83.2, leftArmCm = 36.1,
+            )) as SaveBodyObservationResult.Saved).observationId
+            val otherObservation = (source.saveBodyObservation(BodyObservationDraft(
+                bodyWeightKg = 78.9, chestCm = 101.3,
+            )) as SaveBodyObservationResult.Saved).observationId
+
+            val live = File(root, "live-v4.json").apply { writeText(source.buildMobileExportV4Json()) }
+            val equipment = File(root, "equipment.json").apply { writeText(source.buildEquipmentDefinitionsJson()) }
+            val zones = File(root, "zones.json").apply { writeText(source.buildExerciseBodyZonesJson()) }
+            val feedback = File(root, "feedback.json").apply { writeText(source.buildTrainingFeedbackJson()) }
+            val aliases = File(root, "aliases.json").apply { writeText(source.buildExerciseAliasesJson()) }
+            val targets = linkedMapOf(
+                "exercise" to retired.exerciseId,
+                "body_observation" to targetObservation,
+                "custom_equipment" to targetEquipment.equipmentId,
+                "feedback" to targetFeedback,
+                "body_zone_relation" to "${zoned.exerciseId}|arms|secondary",
+            )
+            val manifest = File(root, "manifest.json").apply { writeText(JSONObject()
+                .put("history", live.absolutePath).put("equipment", equipment.absolutePath)
+                .put("zones", zones.absolutePath).put("feedback", feedback.absolutePath)
+                .put("aliases", aliases.absolutePath)
+                .put("targets", JSONObject(targets as Map<*, *>))
+                .put("other_observation_id", otherObservation)
+                .put("other_exercise_id", unrelated.exerciseId)
+                .put("other_equipment_id", otherEquipment.equipmentId)
+                .put("other_feedback_id", otherFeedback)
+                .put("zone_exercise_id", zoned.exerciseId).put("other_zone_id", "chest")
+                .put("session_id", session.sessionId).toString()) }
+
+            val androidReplicaDesktop = File(root, "android-source-desktop.sqlite")
+            val desktopArtifacts = File(root, "desktop-artifacts")
+            runLifecycleBridge("domains", manifest, androidReplicaDesktop, desktopArtifacts)
+
+            targets.forEach { (kind, target) ->
+                assertTrue("Android producer $kind", source.deleteCausally(kind, target,
+                    "peer_android_domains") is CausalDeleteResult.Applied)
+                assertTrue("Android repeated delete $kind", source.deleteCausally(kind, target,
+                    "peer_android_domains") is CausalDeleteResult.Unchanged)
+            }
+            val androidDelete = File(root, "android-domain-delete.json").apply {
+                writeText(source.buildCausalDeletionExportV1Json())
+            }
+            assertEquals(targets.keys, causalOperations(androidDelete).map { it.getString("target_kind") }.toSet())
+            runDesktopCausal("import", androidDelete, androidReplicaDesktop)
+            runDesktopCausal("import", androidDelete, androidReplicaDesktop)
+            assertDesktopDomainEffects(manifest, androidReplicaDesktop, File(root, "android-effects.json"))
+            runLifecycleBridge("refuse-domains", manifest, androidReplicaDesktop,
+                File(root, "desktop-stale-refusals.json"))
+            assertDesktopDomainEffects(manifest, androidReplicaDesktop, File(root, "android-effects-after-stale.json"))
+            val desktopRelay = File(root, "desktop-relay.json")
+            runDesktopCausal("export", desktopRelay, androidReplicaDesktop)
+            assertEquals(semanticCausalProjection(JSONObject(androidDelete.readText())),
+                semanticCausalProjection(JSONObject(desktopRelay.readText())))
+
+            val desktopProducer = File(root, "desktop-producer.sqlite")
+            val desktopProducerArtifacts = File(root, "desktop-producer-artifacts")
+            runLifecycleBridge("domains", manifest, desktopProducer, desktopProducerArtifacts)
+            targets.forEach { (kind, target) ->
+                val first = File(root, "desktop-$kind-first.json")
+                val second = File(root, "desktop-$kind-second.json")
+                runDesktopCausal("delete", first, desktopProducer, kind, target)
+                runDesktopCausal("delete", second, desktopProducer, kind, target)
+                assertEquals(first.readText(), second.readText())
+            }
+            val desktopDelete = File(root, "desktop-domain-delete.json")
+            runDesktopCausal("export", desktopDelete, desktopProducer)
+            assertDesktopDomainEffects(manifest, desktopProducer, File(root, "desktop-effects.json"))
+
+            val reverseName = "causal-domains-reverse-${UUID.randomUUID()}.db"
+            val reverse = TrainlogRepository(context, reverseName)
+            try {
+                assertTrue(reverse.applyPcEquipmentDefinitionsJson(
+                    File(desktopProducerArtifacts, "equipment.json").readText()) is EquipmentDefinitionImportResult.Applied)
+                assertTrue(reverse.applyPcCatalogJson(
+                    File(desktopProducerArtifacts, "catalog.json").readText()) is PcCatalogImportResult.Applied)
+                assertTrue(reverse.applyPcMobileExportV4Json(
+                    File(desktopProducerArtifacts, "history.json").readText()) is MobileSessionImportResult.Applied)
+                assertTrue(reverse.applyExerciseBodyZonesJson(
+                    File(desktopProducerArtifacts, "zones.json").readText()) is ExerciseBodyZoneImportResult.Applied)
+                assertTrue(reverse.applyTrainingFeedbackJson(
+                    File(desktopProducerArtifacts, "feedback.json").readText()) is TrainingFeedbackImportResult.Applied)
+                assertTrue(reverse.applyExerciseAliasesJson(
+                    File(desktopProducerArtifacts, "aliases.json").readText()) is ExerciseAliasImportResult.Applied)
+                assertTrue(reverse.applyCausalDeletionExportV1Json(desktopDelete.readText()) is CausalDeleteResult.Applied)
+                assertTrue(reverse.applyCausalDeletionExportV1Json(desktopDelete.readText()) is CausalDeleteResult.Unchanged)
+                assertAndroidDomainEffects(reverse, reverseName, targets, otherObservation,
+                    unrelated.exerciseId, otherEquipment.equipmentId, otherFeedback, zoned.exerciseId)
+                assertTrue(reverse.applyPcMobileExportV4Json(
+                    File(desktopProducerArtifacts, "history.json").readText()) is MobileSessionImportResult.Invalid)
+                assertTrue(reverse.applyPcEquipmentDefinitionsJson(
+                    File(desktopProducerArtifacts, "equipment.json").readText()) is EquipmentDefinitionImportResult.Invalid)
+                assertTrue(reverse.applyExerciseBodyZonesJson(
+                    File(desktopProducerArtifacts, "zones.json").readText()) is ExerciseBodyZoneImportResult.Invalid)
+                assertTrue(reverse.applyTrainingFeedbackJson(
+                    File(desktopProducerArtifacts, "feedback.json").readText()) is TrainingFeedbackImportResult.Invalid)
+                val androidRelay = File(root, "android-relay.json").apply {
+                    writeText(reverse.buildCausalDeletionExportV1Json())
+                }
+                runDesktopCausal("import", androidRelay, desktopProducer)
+                assertEquals(semanticCausalProjection(JSONObject(desktopDelete.readText())),
+                    semanticCausalProjection(JSONObject(androidRelay.readText())))
+                reverse.close()
+                val reopened = TrainlogRepository(context, reverseName)
+                assertTrue(reopened.applyCausalDeletionExportV1Json(desktopDelete.readText()) is CausalDeleteResult.Unchanged)
+                assertAndroidDomainEffects(reopened, reverseName, targets, otherObservation,
+                    unrelated.exerciseId, otherEquipment.equipmentId, otherFeedback, zoned.exerciseId)
+                reopened.close()
+            } finally {
+                try { reverse.close() } catch (_: Exception) { }
+                context.deleteDatabase(reverseName)
+            }
+        } finally {
+            source.close(); context.deleteDatabase(sourceName); root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun causalDraftDeletionUsesTheSameRevisionForActivePendingAndDesktopReplicas() {
         val sourceName = "causal-draft-source-${UUID.randomUUID()}.db"
         val destinationName = "causal-draft-destination-${UUID.randomUUID()}.db"
@@ -2909,6 +3069,71 @@ class TrainlogRepositoryDraftTest {
             .sortedBy { it.getString("operation_id") }
         copy.put("operations", JSONArray().also { output -> sorted.forEach(output::put) })
         return canonicalJson(copy).toString()
+    }
+
+    private fun causalOperations(file: File): List<JSONObject> {
+        val values = JSONObject(file.readText()).getJSONArray("operations")
+        return (0 until values.length()).map { values.getJSONObject(it) }
+    }
+
+    private fun assertDesktopDomainEffects(manifest: File, database: File, output: File) {
+        runLifecycleBridge("inspect-domains", manifest, database, output)
+        val value = JSONObject(output.readText())
+        assertEquals(5, value.getInt("operation_count"))
+        val states = value.getJSONObject("states")
+        listOf("exercise", "body_observation", "custom_equipment", "feedback",
+            "body_zone_relation").forEach { assertEquals(1, states.getInt(it)) }
+        listOf("target_observation_rows", "target_exercise_available",
+            "target_equipment_available", "feedback_current_rows", "target_zone_rows")
+            .forEach { assertEquals(it, 0, value.getInt(it)) }
+        listOf("other_observation_rows", "target_exercise_history_rows",
+            "other_exercise_available", "target_equipment_history_rows",
+            "other_equipment_available", "builtin_equipment_rows", "other_feedback_current_rows", "other_zone_rows",
+            "session_rows").forEach { assertEquals(it, 1, value.getInt(it)) }
+        assertEquals(2, value.getInt("feedback_revision_rows"))
+    }
+
+    private fun assertAndroidDomainEffects(
+        repo: TrainlogRepository,
+        name: String,
+        targets: Map<String, String>,
+        otherObservation: String,
+        otherExercise: String,
+        otherEquipment: String,
+        otherFeedback: String,
+        zoneExercise: String,
+    ) {
+        assertFalse(repo.listExercises().any { it.exerciseId == targets.getValue("exercise") })
+        assertTrue(repo.listExercises().any { it.exerciseId == otherExercise })
+        assertFalse(repo.listEquipment().any { it.equipmentId == targets.getValue("custom_equipment") })
+        assertTrue(repo.listEquipment().any { it.equipmentId == otherEquipment })
+        assertTrue(repo.listEquipment().any { it.equipmentId == "leg_press" })
+        assertFalse(repo.listBodyObservations().any { it.observationId == targets.getValue("body_observation") })
+        assertTrue(repo.listBodyObservations().any { it.observationId == otherObservation })
+        val sessionId = repo.listSessions().single().sessionId
+        assertFalse(repo.listExerciseFeedback(sessionId).any { it.feedbackId == targets.getValue("feedback") })
+        assertTrue(repo.listExerciseFeedback(sessionId).any { it.feedbackId == otherFeedback })
+        val db = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null,
+            SQLiteDatabase.OPEN_READONLY)
+        db.use {
+            fun count(sql: String, args: Array<String> = emptyArray()): Int =
+                it.rawQuery(sql, args).use { cursor -> cursor.moveToFirst(); cursor.getInt(0) }
+            assertEquals(1, count("SELECT COUNT(*) FROM exercises WHERE exercise_id=?",
+                arrayOf(targets.getValue("exercise"))))
+            assertEquals(1, count("SELECT COUNT(*) FROM equipment WHERE equipment_id=?",
+                arrayOf(targets.getValue("custom_equipment"))))
+            assertEquals(1, count("SELECT COUNT(*) FROM exercise_feedback WHERE feedback_id=?",
+                arrayOf(targets.getValue("feedback"))))
+            assertEquals(2, count("SELECT COUNT(*) FROM exercise_feedback_revisions WHERE feedback_id=?",
+                arrayOf(targets.getValue("feedback"))))
+            assertEquals(0, count("SELECT COUNT(*) FROM exercise_body_zones z JOIN exercises e " +
+                "ON e.id=z.exercise_row_id WHERE e.exercise_id=? AND z.zone_id='arms' AND z.role='secondary'",
+                arrayOf(zoneExercise)))
+            assertEquals(1, count("SELECT COUNT(*) FROM exercise_body_zones z JOIN exercises e " +
+                "ON e.id=z.exercise_row_id WHERE e.exercise_id=? AND z.zone_id='chest' AND z.role='primary'",
+                arrayOf(zoneExercise)))
+            assertEquals(5, count("SELECT COUNT(*) FROM sync_causal_state WHERE deleted=1"))
+        }
     }
 
     private fun runDesktopCausal(

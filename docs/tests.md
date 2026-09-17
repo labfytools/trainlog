@@ -1199,12 +1199,41 @@ safety, exact replay, conflicts, finalization protection, and rollback. Android
 real Android repository and desktop service in both producer directions with
 fresh destinations, reopen/replay, and legacy non-resurrection.
 
+`causalFiveDomainDeletionsRoundTripWithAndroidAndDesktopProducers` closes the
+remaining producer/consumer matrix. The Android repository creates exercises,
+populated observations, custom equipment, multi-revision feedback and BODY
+ZONE relations; production V4 and companion tools establish the desktop
+replica. Android-local deletion is consumed and replayed by the desktop
+service. A second production-provisioned desktop replica creates each deletion
+locally, exports it to Android, and receives Android's exact replay.
+
+| Kind | Producer -> consumer | Stored/read-model assertion | Result |
+|---|---|---|---|
+| `exercise` | Android -> desktop | Historical row/reference retained; new-work predicate excludes it; unrelated exercise and alias protection remain | PASS |
+| `exercise` | desktop -> Android | Repository list excludes it after reopen; history row remains; stale V4/catalog state cannot restore it | PASS |
+| `body_observation` | Android -> desktop | Populated target row is absent; session and unrelated populated observation remain | PASS |
+| `body_observation` | desktop -> Android | Repository list excludes the target after reopen; unrelated observation and session remain | PASS |
+| `custom_equipment` | Android -> desktop | Custom definition/history remains but new-work predicate excludes it; built-in occurrence equipment remains | PASS |
+| `custom_equipment` | desktop -> Android | Historical equipment row/reference remains; repository list excludes it; built-in equipment remains | PASS |
+| `feedback` | Android -> desktop | Root and two immutable revisions remain; current predicate excludes it; unrelated feedback remains | PASS |
+| `feedback` | desktop -> Android | Root/revisions remain after reopen; repository current view excludes it; unrelated feedback remains | PASS |
+| `body_zone_relation` | Android -> desktop | Target secondary relation is absent; primary relation and exercise remain | PASS |
+| `body_zone_relation` | desktop -> Android | Target secondary relation is absent after reopen; primary relation and exercise remain | PASS |
+
+Every row uses a legitimate replica established through production exchange
+entry points. Repeated local deletion returns the original immutable operation;
+the opposite exporter preserves its operation ID, target, predecessor and
+payload; replay after a new database connection is unchanged. Protected V4,
+equipment, feedback and BODY ZONES legacy imports refuse stale restoration and
+leave all accepted rows and causal state unchanged. Generic codec reuse is not
+counted as a domain result.
+
 Strict compilation uses Clang 22.1.8. GCC 16.2.1 retains the compared
 pre-existing `-Werror=misleading-indentation` failure in unchanged Web baseline
 sources; it is not reported as green and warning policy is unchanged.
 
 The causal closeout full harness result is 76/76 normal Meson, 76/76
-ASan/UBSan, and 210 Android tests: 206 passed and four optional historical
+ASan/UBSan, and 211 Android tests: 207 passed and four optional historical
 database fixtures skipped. `assembleDebug`, JSON validation, import-contract
 validation, both frontend tests, and the isolated characterization all pass.
 
