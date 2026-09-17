@@ -145,6 +145,7 @@ static bool test_http_contract(TrainlogDatabase *database)
     pid_t child;
     int status;
     struct sigaction action;
+    (void)unlink("/tmp/trainlog-web-test.db.sync-run.json");
     CHECK(reserve_port(&port, 0) == -2);
     child = fork();
     CHECK(child >= 0);
@@ -155,7 +156,7 @@ static bool test_http_contract(TrainlogDatabase *database)
         (void)sigemptyset(&action.sa_mask);
         (void)sigaction(SIGTERM, &action, NULL);
         child_stop = 0;
-        _exit(trainlog_web_server_run(database, port, &child_stop,
+        _exit(trainlog_web_server_run(database, "/tmp/trainlog-web-test.db", port, &child_stop,
             diagnostic, sizeof(diagnostic)) == 0 ? 0 : 1);
     }
     CHECK(exchange(port,
@@ -169,6 +170,27 @@ static bool test_http_contract(TrainlogDatabase *database)
     CHECK(strstr(response,
         "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
         "\"version\":\"0.1.2\"}") != NULL);
+    {
+        char token[80];
+        CHECK(exchange(port,
+            "GET /api/v1/sync/status HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            response, sizeof(response)) && strstr(response, "HTTP/1.1 200") != NULL);
+        CHECK(strstr(response, "\"phase\":\"idle\"") != NULL);
+        CHECK(response_header(response, "X-Trainlog-CSRF-Token: ", token,
+            sizeof(token)) && strlen(token) == 64U);
+        (void)snprintf(request, sizeof(request),
+            "POST /api/v1/sync HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+            "Origin: http://127.0.0.1:%u\r\nContent-Type: application/json\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\nContent-Length: 72\r\n\r\n"
+            "{\"request_id\":\"sy_11111111-1111-4111-8111-111111111111\",\"trigger\":\"web\"}",
+            (unsigned int)port, token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+            strstr(response, "HTTP/1.1 409") != NULL &&
+            strstr(response, "full_generation_disabled") != NULL);
+        CHECK(exchange(port,
+            "GET /api/v1/sync HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            response, sizeof(response)) && strstr(response, "HTTP/1.1 405") != NULL);
+    }
     CHECK(exchange(port,
         "GET /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
         response, sizeof(response)) && strstr(response, "HTTP/1.1 200") != NULL);
@@ -307,7 +329,7 @@ static bool test_port_in_use(TrainlogDatabase *database)
     uint16_t port;
     int occupied = reserve_port(&port, 1);
     CHECK(occupied >= 0);
-    CHECK(trainlog_web_server_run(database, port, &stop, diagnostic,
+    CHECK(trainlog_web_server_run(database, "/tmp/trainlog-web-test.db", port, &stop, diagnostic,
         sizeof(diagnostic)) != 0);
     CHECK(strstr(diagnostic, "127.0.0.1") != NULL);
     (void)close(occupied);
@@ -339,7 +361,7 @@ static bool test_dashboard_core_error_translation(void)
     if (child == 0) {
         volatile sig_atomic_t stop = 0;
         char diagnostic[256];
-        _exit(trainlog_web_server_run(database, port, &stop, diagnostic,
+        _exit(trainlog_web_server_run(database, path, port, &stop, diagnostic,
             sizeof(diagnostic)) == 0 ? 0 : 1);
     }
     CHECK(exchange(port,
@@ -366,7 +388,7 @@ int main(void)
     if (!trainlog_web_assets_available()) {
         volatile sig_atomic_t stop = 0;
         char diagnostic[256];
-        passed = trainlog_web_server_run(database, 8080U, &stop, diagnostic,
+        passed = trainlog_web_server_run(database, "/tmp/trainlog-web-test.db", 8080U, &stop, diagnostic,
             sizeof(diagnostic)) != 0 && strstr(diagnostic, "frontend") != NULL;
     } else {
         passed = test_http_contract(database) && test_port_in_use(database) &&

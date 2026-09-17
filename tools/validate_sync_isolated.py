@@ -375,7 +375,7 @@ def commands_for_suite(repository: Path, suite: str) -> list[tuple[str, list[str
         return smoke
     if suite == "preflight":
         return []
-    return [
+    commands = [
         ("desktop-compile", ["meson", "compile", "-C", "build"], repository),
         (
             "desktop-tests",
@@ -423,6 +423,11 @@ def commands_for_suite(repository: Path, suite: str) -> list[tuple[str, list[str
             android,
         ),
     ]
+    browser_python = os.environ.get("TRAINLOG_WEB_E2E_PYTHON")
+    if browser_python:
+        commands.append(("web-sync-browser", [browser_python,
+            str(repository / "tests/test_web_sync_browser.py"), "-v"], repository))
+    return commands
 
 
 def write_summary(paths: RunPaths, payload: dict[str, object]) -> None:

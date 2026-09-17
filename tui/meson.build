@@ -47,12 +47,16 @@ if web_assets_enabled
     '../web/src/api/health.ts',
     '../web/src/api/dashboard.ts',
     '../web/src/api/dashboardLayout.ts',
+    '../web/src/api/sync.ts',
+    '../web/src/api/sync.test.ts',
     '../web/src/app/App.tsx',
     '../web/src/app/routes.ts',
     '../web/src/app/useRoute.ts',
     '../web/src/components/EmptyState.tsx',
     '../web/src/components/Footer.tsx',
     '../web/src/components/Header.tsx',
+    '../web/src/components/SyncControl.tsx',
+    '../web/src/components/SyncControl.test.tsx',
     '../web/src/components/Tile.tsx',
     '../web/src/charts/ProgressionChart.tsx',
     '../web/src/charts/trainlogChartTheme.ts',
@@ -729,6 +733,11 @@ test(
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_sync_generation_exchange.py'],
   timeout: 120,
+)
+test(
+  'sync_orchestrator',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_sync_orchestrator.py'],
 )
 test(
   'schema_v21_migration',

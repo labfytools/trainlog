@@ -20,7 +20,8 @@ static void request_web_stop(int signal_number)
     web_stop_requested = 1;
 }
 
-static int run_web(TrainlogDatabase *database, uint16_t port)
+static int run_web(TrainlogDatabase *database, const char *database_path,
+    uint16_t port)
 {
     struct sigaction action;
     struct sigaction previous_interrupt;
@@ -42,7 +43,7 @@ static int run_web(TrainlogDatabase *database, uint16_t port)
             "trainlog: impossible d'installer les gestionnaires de signaux\n");
         return 1;
     }
-    result = trainlog_web_server_run(database, port, &web_stop_requested,
+    result = trainlog_web_server_run(database, database_path, port, &web_stop_requested,
         diagnostic, sizeof(diagnostic));
     (void)sigaction(SIGINT, &previous_interrupt, NULL);
     (void)sigaction(SIGTERM, &previous_terminate, NULL);
@@ -105,7 +106,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     result = options.mode == TRAINLOG_RUN_WEB
-        ? run_web(database, options.port)
+        ? run_web(database, database_path, options.port)
         : trainlog_tui_run(database);
     trainlog_database_close(database);
     return result;
