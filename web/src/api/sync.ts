@@ -6,5 +6,25 @@ const phases=new Set<SyncPhase>(['idle','requested','waiting_android_publication
 function parse(value:unknown):SyncStatus { if(typeof value!=='object'||value===null)throw new Error('statut sync invalide');const status=value as Partial<SyncStatus>;if(typeof status.phase!=='string'||!phases.has(status.phase as SyncPhase)||typeof status.result!=='string')throw new Error('statut sync invalide');if(status.drafts!==undefined&&(!Array.isArray(status.drafts)||status.drafts.length>32))throw new Error('résumé des brouillons invalide');return status as SyncStatus }
 export async function fetchSyncStatus(signal?:AbortSignal):Promise<SyncStatus>{const response=await fetch('/api/v1/sync/status',{headers:{Accept:'application/json'},signal});if(!response.ok)throw new Error(`sync status HTTP ${response.status}`);const token=response.headers.get('X-Trainlog-CSRF-Token')??'';if(!/^[0-9a-f]{64}$/.test(token))throw new Error('jeton CSRF absent');csrfToken=token;return parse(await response.json())}
 export async function startSync(requestId:string):Promise<SyncStatus>{if(!/^sy_[0-9a-f-]{36}$/.test(requestId)||csrfToken.length!==64)throw new Error('requête sync invalide');const response=await fetch('/api/v1/sync',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','X-Trainlog-CSRF-Token':csrfToken},body:JSON.stringify({request_id:requestId,trigger:'web'})});const value=await response.json();if(!response.ok)throw new Error(typeof value?.error==='string'?value.error:`sync HTTP ${response.status}`);return parse(value)}
-export function newRequestId():string{return `sy_${crypto.randomUUID()}`}
+export function newRequestId(): string {
+  /*
+   * WHY: trainlog.perf is loopback-routed HTTP but is not a browser secure
+   * context, so randomUUID() is legitimately unavailable there.
+   * CONTRACT: getRandomValues() supplies the UUID entropy; Trainlog sets the
+   * RFC 4122 version/variant bits and never falls back to Math.random().
+   */
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hexadecimal = Array.from(bytes, (value) => value.toString(16).padStart(2, '0'))
+  const uuid = [
+    hexadecimal.slice(0, 4).join(''),
+    hexadecimal.slice(4, 6).join(''),
+    hexadecimal.slice(6, 8).join(''),
+    hexadecimal.slice(8, 10).join(''),
+    hexadecimal.slice(10, 16).join(''),
+  ].join('-')
+  return `sy_${uuid}`
+}
 export function syncIsActive(phase:SyncPhase):boolean{return !['idle','completed','failed','interrupted','explicitly_degraded'].includes(phase)}
