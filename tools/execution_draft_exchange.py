@@ -167,6 +167,19 @@ def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def causal_payload(draft):
+    """Return immutable revision content without receiver scheduling state.
+
+    CONTRACT: ``revision_id`` identifies the draft content and causal parent;
+    ``active`` versus ``pending`` is selected independently by each receiver.
+    A round trip may therefore rewrite only ``state`` without creating a
+    contradictory revision.
+    """
+    value = dict(draft)
+    value.pop("state", None)
+    return canonical(value)
+
+
 def require_schema(connection):
     version = connection.execute("PRAGMA user_version").fetchone()[0]
     if version not in (19, 20, 21):
@@ -182,6 +195,7 @@ def import_document(connection, document, own_transaction=True):
         for draft in document["drafts"]:
             session_id, revision = draft["session_id"], draft["revision_id"]
             payload = canonical(draft)
+            causal = causal_payload(draft)
             if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='execution_draft' AND target_id=? AND deleted=1", (session_id,)).fetchone():
                 outcomes.append((session_id, "stale")); continue
             if connection.execute("SELECT 1 FROM execution_draft_finalizations WHERE session_id=?", (session_id,)).fetchone():
@@ -192,7 +206,8 @@ def import_document(connection, document, own_transaction=True):
                 "SELECT parent_revision_id,payload_json FROM execution_draft_revisions WHERE session_id=? AND revision_id=?",
                 (session_id, revision)).fetchone()
             if known:
-                if tuple(known) != (draft["parent_revision_id"], payload):
+                if (known[0] != draft["parent_revision_id"] or
+                        causal_payload(json.loads(known[1])) != causal):
                     raise LifecycleError("contradictory revision: " + session_id)
                 outcomes.append((session_id, "unchanged" if current and current[0] == revision else "stale")); continue
             if current and draft["parent_revision_id"] != current[0]:

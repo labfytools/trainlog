@@ -139,7 +139,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             AppRoute.Statistics -> StatisticsDashboard(repository)
             AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exportSnapshot() }, { back() })
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)
-            AppRoute.Sync -> SyncScreen(inbox, exporter, requestOutbox, { exportSnapshot(); catalogRevision++ }, { back() })
+            AppRoute.Sync -> SyncScreen(repository, inbox, exporter, requestOutbox, { exportSnapshot(); catalogRevision++ }, { back() })
             AppRoute.Settings -> SettingsScreen(inbox) { exportSnapshot(); catalogRevision++ }
         }}
     }

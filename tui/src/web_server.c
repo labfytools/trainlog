@@ -244,11 +244,21 @@ static bool write_initial_sync_state(const TrainlogWebContext *context,
 static bool launch_sync_worker(TrainlogWebContext *context, const char *config,
     const char *run_id, const char *request_id)
 {
+    char orchestrator[PATH_MAX];
+    const char *tools = getenv("TRAINLOG_SYNC_TOOLS_DIR");
+    int path_length;
+    if (tools == NULL) tools = TRAINLOG_TOOLS_DIR;
+    /* CONTRACT: deployment may relocate the fixed shipped helper directory,
+     * but an HTTP request can never select this executable or its arguments. */
+    path_length = snprintf(orchestrator, sizeof(orchestrator),
+        "%s/sync_orchestrator.py", tools);
+    if (tools[0] != '/' || path_length < 0 ||
+        (size_t)path_length >= sizeof(orchestrator)) return false;
     pid_t child = fork();
     if (child < 0) return false;
     if (child == 0) {
         (void)setpgid(0, 0);
-        execlp("python3", "python3", TRAINLOG_TOOLS_DIR "/sync_orchestrator.py",
+        execlp("python3", "python3", orchestrator,
             "--database", context->database_path, "--state", context->state_path,
             "--config", config, "--run-id", run_id, "--request-id", request_id,
             (char *)NULL);

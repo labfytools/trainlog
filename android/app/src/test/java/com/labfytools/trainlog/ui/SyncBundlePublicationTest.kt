@@ -100,7 +100,7 @@ class SyncBundlePublicationTest {
         assertTrue(feedback is SaveFeedbackResult.Saved)
 
         val writesBeforeFirstClick = directory.writeCounts.toMap()
-        assertTrue(publishBundleAndRequest(exporter, outbox) is SyncRequestResult.Requested)
+        assertTrue(publishBundleAndRequest(repository, exporter, outbox) is SyncRequestResult.Requested)
         assertEquals(2, directory.enumerationCount)
         val required = listOf(
             "trainlog-mobile-export-v3.json",
@@ -138,7 +138,7 @@ class SyncBundlePublicationTest {
         ShadowLog.clear()
         val bodyCreatesBefore = directory.createCount("trainlog-exercise-body-zones-v1.json")
         val writesBeforeSecondClick = directory.writeCounts.toMap()
-        assertTrue(publishBundleAndRequest(exporter, outbox) is SyncRequestResult.Requested)
+        assertTrue(publishBundleAndRequest(repository, exporter, outbox) is SyncRequestResult.Requested)
         assertEquals(3, directory.enumerationCount)
         val phases = ShadowLog.getLogsForTag(DIRECT_EXCHANGE_LOG_TAG).map { it.msg }
         assertEquals(1, phases.count { it.startsWith("SYNC_BUNDLE coordinator.export.begin") })

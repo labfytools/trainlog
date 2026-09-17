@@ -25,6 +25,10 @@ import com.labfytools.trainlog.data.SyncExportResult
 import com.labfytools.trainlog.data.SyncReceiptResult
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.SyncRequestResult
+import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.data.ForegroundGenerationResult
+import com.labfytools.trainlog.data.SyncGenerationForegroundCoordinator
+import com.labfytools.trainlog.data.canonicalExchangeDirectory
 import com.labfytools.trainlog.data.logDirectExchange
 import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
@@ -37,9 +41,24 @@ import com.labfytools.trainlog.R
 /* Package-visible for orchestration tests: this is the production ordering
  * boundary, not a duplicate test-only implementation. */
 internal suspend fun publishBundleAndRequest(
+    repository: TrainlogRepository,
     exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
 ): SyncRequestResult = withContext(Dispatchers.IO) {
+    val optIn = java.io.File(canonicalExchangeDirectory(), "trainlog-sync-generation-opt-in-v1.json")
+    if (optIn.isFile) {
+        val enabled = try {
+            val value = org.json.JSONObject(optIn.readText())
+            value.keys().asSequence().toSet() == setOf("format", "version", "enabled") &&
+                value.optString("format") == "trainlog-sync-generation-opt-in" &&
+                value.opt("version") is Int && value.getInt("version") == 1 && value.opt("enabled") == true
+        } catch (_: Exception) { false }
+        if (!enabled) return@withContext SyncRequestResult.Error("Invalid generation synchronization opt-in.")
+        return@withContext when (val result = SyncGenerationForegroundCoordinator(repository).run(canonicalExchangeDirectory())) {
+            is ForegroundGenerationResult.Completed -> SyncRequestResult.Requested(result.runId)
+            is ForegroundGenerationResult.Error -> SyncRequestResult.Error(result.message)
+        }
+    }
     logDirectExchange("SYNC_BUNDLE", "coordinator.export.begin")
     when (val opened = exporter.openStorageSnapshot()) {
         is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error ->
@@ -78,6 +97,7 @@ internal fun visibleReceiptStatus(
 
 @Composable
 fun SyncScreen(
+    repository: TrainlogRepository,
     inbox: SyncCatalogInbox,
     exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
@@ -315,7 +335,7 @@ fun SyncScreen(
                     syncRunning = true
                     coroutineScope.launch {
                         try {
-                            when (val result = publishBundleAndRequest(exporter, requestOutbox)) {
+                            when (val result = publishBundleAndRequest(repository, exporter, requestOutbox)) {
                                 is SyncRequestResult.Requested -> {
                                     success = true
                                     pendingRequestId = result.requestId

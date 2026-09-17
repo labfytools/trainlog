@@ -105,6 +105,10 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
         value
     }
 
+    /* CONTRACT: capability advertisements bind to this installation identity;
+     * callers cannot supply or replace it. */
+    internal fun peerId(): String = stablePeerId("android")
+
     fun capture(
         ownedRoot: File,
         consumerPeerId: String,

@@ -13,8 +13,12 @@ import json
 import os
 import subprocess
 import signal
+import selectors
+import re
 import sys
 import tempfile
+import time
+import ctypes
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +28,29 @@ MAX_DIAGNOSTIC = 1024
 PHASES = {"requested", "waiting_android_publication", "running",
           "local_import_committed", "published", "waiting_acknowledgement",
           "peer_consumed", "completed", "failed", "interrupted", "explicitly_degraded"}
+
+
+class OrchestratorInterrupted(RuntimeError):
+    pass
+
+
+_owned_process_group: int | None = None
+
+
+def _forward_termination(signum: int, _frame: object) -> None:
+    """Forward shutdown only to the exactly-owned helper process group."""
+    if _owned_process_group is not None:
+        try: os.killpg(_owned_process_group, signal.SIGTERM)
+        except ProcessLookupError: pass
+    raise OrchestratorInterrupted(f"orchestrator received signal {signum}")
+
+
+def _child_setup() -> None:
+    """Create an owned group and ask Linux to terminate it if this parent dies."""
+    os.setsid()
+    libc = ctypes.CDLL(None)
+    if libc.prctl(1, signal.SIGTERM) != 0:  # PR_SET_PDEATHSIG
+        raise OSError("cannot establish parent-death signal")
 
 
 def canonical(value: object) -> bytes:
@@ -51,9 +78,10 @@ def atomic_write(path: Path, value: dict) -> None:
 
 
 def load_json(path: Path, limit: int) -> dict:
-    raw = path.read_bytes()
+    with path.open("rb") as stream:
+        raw = stream.read(limit + 1)
     if len(raw) > limit: raise RuntimeError(f"{path.name} exceeds its bound")
-    value = json.loads(raw)
+    value = json.loads(raw.decode("utf-8", "strict"))
     if not isinstance(value, dict): raise RuntimeError(f"{path.name} must contain an object")
     return value
 
@@ -78,9 +106,9 @@ def validate_result(value: dict, run_id: str) -> dict:
                              (value["consumer_peer_id"], "peer_"),
                              (value["inbound_generation_id"], "gen_"),
                              (value["outbound_generation_id"], "gen_")):
-        if not isinstance(identity, str) or not identity.startswith(prefix) or len(identity) > 64:
+        if not isinstance(identity, str) or not re.fullmatch(re.escape(prefix)+r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",identity):
             raise RuntimeError("invalid worker identity")
-    if not isinstance(value["sessions_reconciled"], int) or value["sessions_reconciled"] < 0:
+    if type(value["sessions_reconciled"]) is not int or value["sessions_reconciled"] < 0:
         raise RuntimeError("invalid sessions_reconciled")
     if not isinstance(value["domains"], dict) or not all(isinstance(k, str) and isinstance(v, bool) for k, v in value["domains"].items()):
         raise RuntimeError("invalid domain coverage")
@@ -89,26 +117,65 @@ def validate_result(value: dict, run_id: str) -> dict:
     return value
 
 
+def read_worker(child: subprocess.Popen[bytes], state_path: Path, state: dict,
+                run_id: str, timeout: int) -> tuple[dict, bytes]:
+    selector = selectors.DefaultSelector()
+    assert child.stdout is not None and child.stderr is not None
+    selector.register(child.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(child.stderr, selectors.EVENT_READ, "stderr")
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    line_buffer = bytearray(); final: dict | None = None
+    deadline = time.monotonic() + timeout
+    allowed = ["waiting_android_publication","running","local_import_committed",
+               "published","waiting_acknowledgement","peer_consumed"]
+    last_index = -1
+    while selector.get_map():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: raise RuntimeError("peer worker timed out")
+        for key, _ in selector.select(min(remaining, .25)):
+            chunk = os.read(key.fileobj.fileno(), 4096)
+            if not chunk: selector.unregister(key.fileobj); continue
+            target = buffers[key.data]
+            if len(target) + len(chunk) > MAX_REPORT: raise RuntimeError(f"peer worker {key.data} exceeds 64 KiB")
+            target.extend(chunk)
+            if key.data == "stdout":
+                line_buffer.extend(chunk)
+                while b"\n" in line_buffer:
+                    raw, _, rest = line_buffer.partition(b"\n"); line_buffer[:] = rest
+                    if len(raw) > 8192: raise RuntimeError("progress frame exceeds 8 KiB")
+                    value = json.loads(raw.decode("utf-8", "strict"))
+                    if value.get("format") == "trainlog-sync-progress":
+                        if set(value)-{"format","version","run_id","phase","producer_peer_id","consumer_peer_id","inbound_generation_id","outbound_generation_id","manifest_sha256"} or value.get("version") != 1 or value.get("run_id") != run_id or value.get("phase") not in allowed:
+                            raise RuntimeError("invalid progress frame")
+                        index=allowed.index(value["phase"])
+                        if index < last_index: raise RuntimeError("progress phase regressed")
+                        last_index=index;update(state_path,state,value["phase"],**{k:v for k,v in value.items() if k not in {"format","version","run_id","phase"}})
+                    else: final=value
+    child.wait()
+    if line_buffer.strip(): raise RuntimeError("unterminated worker frame")
+    if child.returncode != 0:
+        detail=bytes(buffers["stderr"]).decode("utf-8","replace").strip()[:MAX_DIAGNOSTIC]
+        raise RuntimeError(f"peer worker exited {child.returncode}: {detail}")
+    if final is None: raise RuntimeError("peer worker omitted final report")
+    return validate_result(final,run_id), bytes(buffers["stderr"])
+
+
 def run(args: argparse.Namespace) -> int:
+    global _owned_process_group
     state_path, config_path = Path(args.state), Path(args.config)
     state = load_json(state_path, MAX_REPORT)
     config = load_json(config_path, MAX_CONFIG)
     if state.get("run_id") != args.run_id or state.get("request_id") != args.request_id:
         raise RuntimeError("admission identity mismatch")
-    if set(config) != {"format", "version", "enabled", "mode", "capabilities", "peer_command", "timeout_seconds"}:
+    if set(config) != {"format", "version", "enabled", "mode", "expected_peer_id", "transport_root", "owned_root", "timeout_seconds"}:
         raise RuntimeError("invalid trusted sync configuration")
     if config["format"] != "trainlog-sync-orchestrator-config" or config["version"] != 1 or config["enabled"] is not True:
         raise RuntimeError("full-generation synchronization is disabled")
-    required_caps = {"generation-manifest-v1", "generation-ack-v1", "causal-delete-v1", "mobile-history-v4", "execution-draft-v1"}
-    caps = config["capabilities"]
-    if not isinstance(caps, list) or not required_caps.issubset(set(caps)):
-        update(state_path, state, "explicitly_degraded", result="incompatible",
-               missing_capabilities=sorted(required_caps - set(caps if isinstance(caps, list) else [])),
-               diagnostic="Peer lacks mandatory full-generation capabilities", finished_at=datetime.now(timezone.utc).isoformat())
-        return 3
-    command = config["peer_command"]
-    if not isinstance(command, list) or not command or len(command) > 16 or not all(isinstance(part, str) and 0 < len(part) <= 4096 for part in command):
-        raise RuntimeError("invalid trusted peer command")
+    if config["mode"] not in ("directory","mtp"):
+        raise RuntimeError("invalid transport mode")
+    for key in ("transport_root","owned_root"):
+        if not isinstance(config[key],str) or not Path(config[key]).is_absolute(): raise RuntimeError("trusted paths must be absolute")
+    if not isinstance(config["expected_peer_id"],str) or not re.fullmatch(r"peer_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",config["expected_peer_id"]): raise RuntimeError("invalid expected peer identity")
     timeout = config["timeout_seconds"]
     if not isinstance(timeout, int) or timeout < 1 or timeout > 900:
         raise RuntimeError("invalid worker timeout")
@@ -121,38 +188,27 @@ def run(args: argparse.Namespace) -> int:
         except BlockingIOError:
             update(state_path, state, "failed", result="conflict", diagnostic="Another synchronization owns the common lock", finished_at=datetime.now(timezone.utc).isoformat())
             return 4
-        update(state_path, state, "waiting_android_publication", result="running", diagnostic="")
-        update(state_path, state, "running")
+        update(state_path, state, "running", result="running", diagnostic="")
         environment = os.environ.copy()
         environment.update({"TRAINLOG_SYNC_RUN_ID": args.run_id,
                             "TRAINLOG_SYNC_TRIGGER": state["trigger"],
                             "TRAINLOG_SYNC_DATABASE": args.database})
+        command=[sys.executable,str(Path(__file__).with_name("sync_peer_worker.py")),"--database",args.database,"--transport-root",config["transport_root"],"--owned-root",config["owned_root"],"--run-id",args.run_id,"--expected-peer",config["expected_peer_id"],"--timeout",str(timeout)]
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment,
-            start_new_session=True)
-        try:
-            stdout, stderr = child.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            os.killpg(child.pid, signal.SIGTERM)
-            try: stdout, stderr = child.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL); stdout, stderr = child.communicate()
-            raise RuntimeError("peer worker timed out")
-        if len(stdout) > MAX_REPORT or len(stderr) > MAX_REPORT:
-            raise RuntimeError("peer worker output exceeds 64 KiB")
-        if child.returncode != 0:
-            detail = stderr.decode("utf-8", "replace").strip()[:MAX_DIAGNOSTIC]
-            raise RuntimeError(f"peer worker exited {child.returncode}: {detail}")
-        result = validate_result(json.loads(stdout), args.run_id)
-        update(state_path, state, "local_import_committed",
-               inbound_generation_id=result["inbound_generation_id"],
-               producer_peer_id=result["producer_peer_id"],
-               consumer_peer_id=result["consumer_peer_id"],
-               sessions_reconciled=result["sessions_reconciled"], domains=result["domains"], drafts=result["drafts"])
-        update(state_path, state, "published", outbound_generation_id=result["outbound_generation_id"])
-        update(state_path, state, "waiting_acknowledgement")
-        update(state_path, state, "peer_consumed", manifest_sha256=result["manifest_sha256"])
+            preexec_fn=_child_setup)
+        _owned_process_group = child.pid
+        try: result,_ = read_worker(child,state_path,state,args.run_id,timeout)
+        except Exception:
+            if child.poll() is None:
+                os.killpg(child.pid,signal.SIGTERM)
+                try: child.wait(5)
+                except subprocess.TimeoutExpired: os.killpg(child.pid,signal.SIGKILL);child.wait()
+            raise
+        finally:
+            _owned_process_group = None
         update(state_path, state, "completed", result="completed", diagnostic="",
+               inbound_generation_id=result["inbound_generation_id"],outbound_generation_id=result["outbound_generation_id"],producer_peer_id=result["producer_peer_id"],consumer_peer_id=result["consumer_peer_id"],sessions_reconciled=result["sessions_reconciled"],domains=result["domains"],drafts=result["drafts"],manifest_sha256=result["manifest_sha256"],
                ai_midpoint=result["ai_midpoint"], ai_post_sync=result["ai_post_sync"],
                finished_at=datetime.now(timezone.utc).isoformat())
         return 0
@@ -166,11 +222,14 @@ def main() -> int:
     parser.add_argument("--config", required=True); parser.add_argument("--run-id", required=True)
     parser.add_argument("--request-id", required=True)
     args = parser.parse_args()
+    signal.signal(signal.SIGTERM, _forward_termination)
+    signal.signal(signal.SIGINT, _forward_termination)
     try: return run(args)
     except (OSError, ValueError, json.JSONDecodeError, RuntimeError, subprocess.TimeoutExpired) as error:
         try:
             path = Path(args.state); state = load_json(path, MAX_REPORT)
-            update(path, state, "failed", result="failed", diagnostic=str(error)[:MAX_DIAGNOSTIC],
+            phase = "interrupted" if isinstance(error, OrchestratorInterrupted) else "failed"
+            update(path, state, phase, result=phase, diagnostic=str(error)[:MAX_DIAGNOSTIC],
                    finished_at=datetime.now(timezone.utc).isoformat())
         except Exception: pass
         return 2

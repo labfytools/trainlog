@@ -4127,6 +4127,12 @@ class TrainlogRepository(
         } catch (error: Exception) {
             return ExecutionDraftImportResult.Invalid(error.message ?: "Invalid execution draft.")
         }
+        val localPayloads = JSONObject(buildExecutionDraftExportV1Json()).getJSONArray("drafts").let { values ->
+            buildMap { for (index in 0 until values.length()) {
+                val value = values.getJSONObject(index)
+                put(value.getString("session_id"), value)
+            } }
+        }
         val db = database.writableDatabase
         var active = 0; var pending = 0; var unchanged = 0; var stale = 0
         return try {
@@ -4147,8 +4153,31 @@ class TrainlogRepository(
                     arrayOf(sessionId, draft.revisionId),
                 ).use { if (!it.moveToFirst()) null else Pair(if (it.isNull(0)) null else it.getString(0), it.getString(1)) }
                 if (known != null) {
-                    if (known != Pair(draft.parentRevisionId, encoded)) throw SyncLifecycleConflict(sessionId)
+                    /* CONTRACT: active/pending is receiver-owned scheduling state, not
+                     * revision content. A peer may echo the same immutable revision
+                     * with a different local state without causing a conflict. */
+                    val knownPayload = JSONObject(known.second).apply { remove("state") }
+                    val receivedPayload = JSONObject(encoded).apply { remove("state") }
+                    if (known.first != draft.parentRevisionId ||
+                        canonicalCausal(knownPayload) != canonicalCausal(receivedPayload))
+                        throw SyncLifecycleConflict(sessionId)
                     if (current?.first == draft.revisionId) unchanged += 1 else stale += 1
+                    continue
+                }
+                if (current?.first == draft.revisionId) {
+                    val localPayload = localPayloads[sessionId] ?: throw SyncLifecycleConflict(sessionId)
+                    val localCausal = JSONObject(localPayload.toString()).apply { remove("state") }
+                    val receivedCausal = JSONObject(encoded).apply { remove("state") }
+                    if (canonicalCausal(localCausal) != canonicalCausal(receivedCausal))
+                        throw SyncLifecycleConflict(sessionId)
+                    /* Persist the locally-created revision on first peer echo so
+                     * later replays retain the same contradiction protection. */
+                    db.insertOrThrow("execution_draft_revisions", null, ContentValues().apply {
+                        put("session_id", sessionId); put("revision_id", draft.revisionId)
+                        putOptionalString("parent_revision_id", draft.parentRevisionId)
+                        put("payload_json", encoded)
+                    })
+                    unchanged += 1
                     continue
                 }
                 if (current != null && current.first != draft.parentRevisionId) throw SyncLifecycleConflict(sessionId)
