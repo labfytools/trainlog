@@ -388,6 +388,59 @@ Notable regression coverage:
 
 ## 5. Build
 
+### Isolated synchronization validation environment
+
+`TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` provides one repository-owned entry
+point for the desktop and Android validation needed by synchronization work:
+
+```bash
+python3 tools/validate_sync_isolated.py --suite preflight
+python3 tools/validate_sync_isolated.py --suite smoke
+python3 tools/validate_sync_isolated.py --suite full
+```
+
+Use `--jdk /absolute/jdk17/home` when auto-detection is unsuitable and
+`--run-parent /absolute/private/parent` to select another parent outside the
+problematic system `/tmp`. `--keep-run-dir` retains a successful run for
+diagnosis; failures and interruptions are always retained. Without that flag, a
+successful run removes only its own validated `run-*` directory.
+
+Each invocation creates a mode-0700 unique root under
+`${XDG_CACHE_HOME:-$HOME/.cache}/trainlog/test-runs/`, then gives its children
+private HOME, XDG data/config/cache/runtime, native/JVM tmp, exchange, database
+and report directories. Test-sensitive files and logs are mode 0600. The
+already-provisioned `${GRADLE_USER_HOME:-$original_HOME/.gradle}` dependency
+cache is deliberately shared; no Trainlog application data, rclone credential,
+keystore or production XDG path is shared. This is path/environment isolation,
+not a system sandbox.
+
+The harness verifies Java 17 with `java -version`, then verifies both Gradle's
+launcher and daemon JVM. `JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=<run>/tmp` reaches
+the forked Robolectric JVM; `IsolatedTestEnvironmentTest` checks the effective
+property and every private path from inside that JVM. Android test tasks use
+`--rerun-tasks`, so an up-to-date or cached task cannot masquerade as a new
+execution. No default mode invokes rclone, adb, libmtp synchronization,
+`trainlog-sync-once`, `connectedDebugAndroidTest`, a user service or a
+production lock/database.
+
+The modes are:
+
+- `preflight`: tools, writable parent, JDK 17, Gradle launcher/daemon and paths;
+- `smoke`: preflight, production-path sync-gap characterization and the Android
+  JVM isolation test;
+- `full`: normal and ASan/UBSan desktop suites, explicit characterization,
+  JSON/import validators, targeted draft lifecycle/export test, complete
+  Android unit suite and `assembleDebug`.
+
+Logs are private and capped at 8 MiB per command. Exit codes distinguish `0`
+success, `2` blocked preflight, `3` missing dependency, `4` environment failure,
+`5` business-test/command failure and `130` interruption. Commands, exit codes,
+JDK, non-secret paths and Android test/pass/fail/skip counts are recorded in
+`reports/`; the full environment and credentials are never printed. The
+harness terminates only process groups that it started, waits before forced
+termination, never stops a pre-existing Gradle daemon or Trainlog service, and
+refuses cleanup outside its exact root or across a symlink.
+
 Stable-release validation additionally builds the signed release variant and
 checks the packaged product versions and binary linkage:
 

@@ -709,6 +709,12 @@ test(
 )
 
 test(
+  'sync_isolated_harness',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_validate_sync_isolated.py'],
+)
+
+test(
   'equipment_associations_exchange',
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_equipment_associations_exchange.py'],

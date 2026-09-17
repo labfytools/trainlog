@@ -425,8 +425,13 @@ l'apparition de la séance finalisée dans l'export.
 **[ACTUEL DÉMONTRÉ]** La validation de ce lot a exécuté les 202 tests Android
 (198 réussis, 4 ignorés, 0 échec) et `assembleDebug` avec le JDK 17 documenté.
 Le quota du tmpfs `/tmp` a nécessité un `java.io.tmpdir` ticket-spécifique sous
-le home ; Robolectric est resté actif. Ce contournement d'exécution ne constitue
-pas encore le harness reproductible du futur lot `TRAINLOG_SYNC_TEST_ENV_V1`.
+le home ; Robolectric est resté actif.
+
+**[ACTUEL DÉMONTRÉ]** `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` fournit désormais
+le harness reproductible : JDK 17 contrôlé, JVM Gradle et Robolectric vérifiées,
+HOME/XDG/tmp/exchange/bases privés par run et aucun transport réel par défaut.
+Son test d'environnement porte la suite Android à 203 tests (199 réussis,
+4 ignorés, 0 échec) sans changer les contrats de synchronisation.
 
 ## 16. Sources propriétaires
 

@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.2
 
+- Completed `TRAINLOG_SYNC_TEST_ENV_V1` without changing production behavior,
+  schemas or formats. `tools/validate_sync_isolated.py` now validates JDK 17 and
+  the effective Gradle JVMs, creates unique private HOME/XDG/native/JVM tmp,
+  exchange, database and report paths, runs bounded preflight/smoke/full suites,
+  counts Android XML results, propagates failures and interruptions, and cleans
+  only its owned successful run. Unit and Robolectric coverage proves bounded
+  cleanup, distinct runs, process termination, no default real transport and
+  effective `java.io.tmpdir` propagation.
+
 - Froze `TRAINLOG_SYNC_GAP_CONTRACT_V1` without changing production sync,
   schemas or published formats. The contract distinguishes current evidence
   from future behavior and defines domain ownership, active-draft lifecycle,

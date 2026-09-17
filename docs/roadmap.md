@@ -32,15 +32,17 @@ tile rendering exist. Advanced visualizations remain a future slice.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_TEST_ENV_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_CHARACTERIZATION_V1
 ```
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
-defines the complete-sync target and its bounded dependency order. Its first
-implementation cursor is only `TRAINLOG_SYNC_TEST_ENV_V1`: make the isolated
-desktop/Android validation environment reproducible, including the documented
-JDK and resource gates. It does not authorize a protocol, schema, endpoint or
-button change. [Contract details](design/sync_gap_contract_v1.md).
+defines the complete-sync target and its bounded dependency order.
+`TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` now supplies the reproducible isolated
+desktop/Android validation entry point, JDK 17 gate and private JVM/XDG paths.
+The next cursor is only `TRAINLOG_SYNC_CHARACTERIZATION_V1`; it must reuse the
+existing V3 gap, draft lifecycle and harness coverage rather than duplicate it,
+and it does not authorize a protocol, schema, endpoint or button change.
+[Contract details](design/sync_gap_contract_v1.md).
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
 TypeScript and Vite shell with its five client routes, Catppuccin Mocha design

@@ -1,6 +1,6 @@
 # Current implementation state
 
-Snapshot date: **2026-09-16**.
+Snapshot date: **2026-09-17**.
 
 This document owns the current implemented state. Historical checkpoints and
 closed incidents belong in [reviews](reviews/) and the
@@ -49,6 +49,7 @@ parallel implementation of its rules.
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
+| Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -181,10 +182,10 @@ browser launch or layout persistence exists yet.
 
 ## Validation status
 
-The durable commands are owned by [tests.md](tests.md). On 2026-09-16 final
-validation passed desktop compilation, **74/74 normal Meson tests** and
-**74/74 ASan/UBSan Meson tests**, Android debug assembly and **202 Android
-tests (198 passed, 4 skipped, 0 failed)**, the JSON validator, and the
+The durable commands are owned by [tests.md](tests.md). On 2026-09-17 isolated
+validation passed desktop compilation, **75/75 normal Meson tests** and
+**75/75 ASan/UBSan Meson tests**, Android debug assembly and **203 Android
+tests (199 passed, 4 skipped, 0 failed)**, the JSON validator, and the
 import-contract validator. The source-derived TUI
 `TRANSLATABLE_UI=0` check and Android resource parity also passed. Link and
 diff safety checks pass in the final audit evidence.
