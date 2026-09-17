@@ -308,7 +308,7 @@ not contain cloud credentials and does not run `rclone`.
 As of 2026-09-17:
 
 - `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
-- desktop SQLite schema v20 and Android SQLite schema v19;
+- desktop SQLite schema v21 and Android SQLite schema v20;
 - Notcurses is the only active desktop terminal backend;
 - direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
   all-files access setting;
@@ -322,9 +322,9 @@ As of 2026-09-17:
 - `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
   `WEB_DASHBOARD_V1=PASS/FROZEN`; the other four Web routes remain placeholders;
 - `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
-- `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN /
-  IMPLEMENTATION_NOT_STARTED` and the next cursor remains
-  `TRAINLOG_SYNC_CHARACTERIZATION_V1`.
+- `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` through explicit staged
+  services; automatic synchronization still selects V3. The next cursor is
+  `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1`.
 
 The latest executable result belongs in
 [current state](docs/current_state.md), not in multiple README narratives.

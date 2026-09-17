@@ -713,7 +713,7 @@ passing tests:
 | Inter-process lock | `sync_body_zone_wiring` against the real `sync.lock` acquisition with private `XDG_DATA_HOME` | A pipe-coordinated child holds the lock; the second trigger returns conflict before any MTP probe; every child is joined | Added |
 | Enriched V4 completed history | `TrainlogRepositoryDraftTest.v4HistoryRoundTripsAcrossRealAndroidAndDesktopImplementations` through Android V4 repository methods and the real desktop V4 importer/exporter | Android → desktop → fresh Android and desktop → Android → fresh desktop preserve stable identities, order, heterogeneous sets, plans, equipment, causal null/empty/escaped UTF-8 notes and idempotent replay | Added cross-implementation proof |
 | Execution-draft V1 | `TrainlogRepositoryDraftTest.executionDraftRoundTripsAcrossRealAndroidAndDesktopImplementations` through Android repository methods and `execution_draft_exchange.py` | Both implementation directions preserve stable session/entry identity and confirmed facts; raw unfinished form text remains local; replay is unchanged and pre-finalization replay is stale after reopen/finalization | Added cross-implementation proof |
-| General tombstones, coherent generations, causal deletion, and consumption acknowledgement | Frozen gap contract only | No active production implementation exists | Future criterion, not tested green |
+| General tombstones, coherent generations, causal deletion, and consumption acknowledgement | Causal-deletion suites plus `sync_generation_exchange` and `SyncGenerationServiceTest` | Explicit staged production entry points pass cross-implementation, rollback, replay, bounds and restart assertions; automatic V3 remains unchanged | PASS/FROZEN staged evidence |
 
 The cross-implementation helpers only provision minimal production-compatible
 desktop schemas and launch production Python tools; they do not duplicate
@@ -1190,6 +1190,34 @@ Documents and Download roots while failing on any legacy access.
 Android unit tests and any instrumented tests run on an emulator; the primary
 personal phone is reserved for manual, non-destructive install-and-sync smoke
 validation and must not run `connectedDebugAndroidTest`.
+
+## Generation, transaction, and acknowledgement V1
+
+The normal Meson inventory includes `sync_generation_exchange` and
+`schema_v21_migration`. The service suite exercises deterministic desktop
+snapshot capture against a controlled writer, immutable publication/replay,
+partial and substituted input, strict paths/capabilities/bounds, wrong ACK
+context, durable ACK replay after reopen, late-domain rollback, rejected ACKs,
+and unchanged causal-operation IDs/digests across first emission and
+retransmission for all seven causal target kinds. The v20 fixture migration
+preserves populated business state and creates no historical generation/ACK.
+
+Android `SyncGenerationServiceTest` uses production repository codecs and the
+filesystem object adapter. It proves a transaction-held capture against a
+deterministically blocked writer, v19→v20 preservation, manifest-last immutable
+publication, whole-generation rollback on a late semantic failure, committed
+ACK replay after close/reopen, and causal-operation byte stability. Its real
+cross-implementation test runs both chains: an Android-created session is
+captured and transactionally consumed by the desktop Python service, and a
+separate desktop-created session written through the public C17 database API is
+captured by the desktop service and consumed by Android. Both ACKs return to
+the original producer. The bridge moves bytes and invokes real entry points; it
+does not author expected business JSON or repair artifacts.
+
+After these additions the direct normal suites report 78/78 Meson tests and
+216 Android tests: 212 passed, four historical-fixture skips, zero failures.
+The publication adapter is an isolated directory/object-store double. No
+physical MTP, phone, Drive, active service, or user database participates.
 ## Causal deletion V1
 
 The normal Meson inventory includes `causal_delete_exchange`, which invokes

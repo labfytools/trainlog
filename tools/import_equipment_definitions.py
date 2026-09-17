@@ -51,6 +51,23 @@ def validate(payload, reserved):
     return output
 
 
+def apply_definitions(connection, definitions, complete_causal_envelope=False):
+    """Apply validated definitions without owning the surrounding transaction."""
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21):
+        fail("schema desktop v8 à v21 requis")
+    if not complete_causal_envelope and connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='custom_equipment' AND deleted=1 LIMIT 1").fetchone():
+        fail("causal equipment protection requires the staged artifact")
+    imported = skipped = 0
+    for definition in definitions:
+        row = connection.execute("SELECT equipment_id,display_name,label_name,equipment_type,load_semantics FROM custom_equipment WHERE equipment_id=?", (definition[0],)).fetchone()
+        if row is not None and tuple(row) != definition: fail(f"conflit définition équipement: {definition[0]}")
+    for definition in definitions:
+        cursor = connection.execute("INSERT OR IGNORE INTO custom_equipment(equipment_id,display_name,label_name,equipment_type,load_semantics) VALUES(?,?,?,?,?)", definition)
+        if cursor.rowcount == 1: imported += 1
+        else: skipped += 1
+    return imported, skipped
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("artifact", type=Path)
@@ -61,28 +78,8 @@ def main():
     definitions = validate(json.loads(args.artifact.read_text(encoding="utf-8")), supplied_ids(args.catalog))
     connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
-            fail("schema desktop v8 à v16 requis")
-        if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='custom_equipment' AND deleted=1 LIMIT 1").fetchone():
-            fail("causal equipment protection requires the staged artifact")
-        imported = skipped = 0
-        # Validate every same-ID row before inserting any definition.
-        for definition in definitions:
-            row = connection.execute(
-                "SELECT equipment_id,display_name,label_name,equipment_type,load_semantics "
-                "FROM custom_equipment WHERE equipment_id=?", (definition[0],)).fetchone()
-            if row is not None and tuple(row) != definition:
-                fail(f"conflit définition équipement: {definition[0]}")
         with connection:
-            for definition in definitions:
-                cursor = connection.execute(
-                    "INSERT OR IGNORE INTO custom_equipment"
-                    "(equipment_id,display_name,label_name,equipment_type,load_semantics) VALUES(?,?,?,?,?)",
-                    definition)
-                if cursor.rowcount == 1:
-                    imported += 1
-                else:
-                    skipped += 1
+            imported, skipped = apply_definitions(connection, definitions)
         print("EQUIPMENT_DEFINITIONS_IMPORT=PASS")
         print(f"definitions_imported={imported}")
         print(f"definitions_skipped={skipped}")

@@ -19,7 +19,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v20, Android schema v19, Notcurses, direct
+Desktop schema v21, Android schema v20, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
@@ -33,25 +33,28 @@ visualizations are implemented; the other four Web routes remain placeholders.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_GENERATION_ACK_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
 cursor: complete predecessor state, imported built-in authorization,
 cross-platform draft revision identity and resource-bound admission are closed.
-Generation manifests, publication context assignment and acknowledgement have
-not started.
+`TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN`: both platforms expose explicit
+coherent capture, immutable manifest publication, whole-generation
+transactional consumption, durable correlated ACK and restart/replay entry
+points. Automatic V3 selection remains unchanged. The next cursor is only
+`TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1`; no orchestrator work starts here.
 
-`TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
+`TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.
 `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` supplies the reproducible isolated
 desktop/Android validation entry point, JDK 17 gate and private JVM/XDG paths.
 `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` reuses and completes the
 current-behavior evidence for cross-implementation V3 exchange, identities,
 ordering, replay, partial publication, request/receipt processing and the real
-lock. The next cursor is only `TRAINLOG_SYNC_DATA_LIFECYCLE_V1`; it is not
-started and does not yet authorize a protocol, schema, endpoint or button
-change.
+lock. Data lifecycle, causal deletion, and generation/ACK slices are complete;
+the orchestrator/report slice remains next and does not authorize an endpoint,
+button, deployment, or transport activation here.
 [Contract details](design/sync_gap_contract_v1.md).
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,

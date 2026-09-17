@@ -856,6 +856,20 @@ static const char *const MIGRATE_V19_TO_V20_SQL =
     "CREATE INDEX sync_causal_operations_target ON sync_causal_operations(target_kind,target_id);"
     "PRAGMA user_version=20;COMMIT;";
 
+/* WHY: publication and durable consumption are distinct from immutable domain
+ * operations. CONTRACT: v21 stores peer/generation/manifest/ACK identity and a
+ * separate operation-to-generation ledger. INVARIANT: migration invents no
+ * generation, acknowledgement, consumption, ancestry, or causal operation. */
+static const char *const MIGRATE_V20_TO_V21_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE sync_peer_identity(singleton INTEGER PRIMARY KEY CHECK(singleton=1),peer_id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL CHECK(kind IN('desktop','android')));"
+    "CREATE TABLE sync_generations(generation_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,producer_kind TEXT NOT NULL,generated_at TEXT NOT NULL,parent_generation_id TEXT,manifest_sha256 TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN('captured','published','waiting_acknowledgement','acknowledged','rejected')),manifest_json TEXT NOT NULL,staging_path TEXT NOT NULL,acknowledged_at TEXT);"
+    "CREATE TABLE sync_generation_artifacts(generation_id TEXT NOT NULL REFERENCES sync_generations(generation_id) ON DELETE CASCADE,logical_name TEXT NOT NULL,format TEXT NOT NULL,version INTEGER NOT NULL,filename TEXT NOT NULL,size_bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,required INTEGER NOT NULL CHECK(required IN(0,1)),PRIMARY KEY(generation_id,logical_name),UNIQUE(generation_id,filename));"
+    "CREATE TABLE sync_consumed_generations(generation_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,parent_generation_id TEXT,manifest_sha256 TEXT NOT NULL,consumed_at TEXT NOT NULL,result TEXT NOT NULL CHECK(result IN('consumed','rejected')),durability TEXT NOT NULL,diagnostic TEXT NOT NULL,ack_json TEXT NOT NULL,UNIQUE(producer_peer_id,generation_id));"
+    "CREATE TABLE sync_acknowledgements(ack_id TEXT PRIMARY KEY,generation_id TEXT NOT NULL,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,manifest_sha256 TEXT NOT NULL,result TEXT NOT NULL CHECK(result IN('consumed','rejected')),durability TEXT NOT NULL,created_at TEXT NOT NULL,diagnostic TEXT NOT NULL,payload_sha256 TEXT NOT NULL);"
+    "CREATE TABLE sync_causal_publications(operation_id TEXT NOT NULL REFERENCES sync_causal_operations(operation_id),generation_id TEXT NOT NULL,first_emission INTEGER NOT NULL CHECK(first_emission IN(0,1)),PRIMARY KEY(operation_id,generation_id));"
+    "PRAGMA user_version=21;COMMIT;";
+
 /* CONTRACT: v18 was already deployed before bounded draft publication was
  * added. Keep its version number and add only the nullable lifecycle cursor;
  * NULL deliberately means retryable/not yet published. */
@@ -1551,7 +1565,7 @@ static TrainlogStatus initialize_or_validate_schema(
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
                version == 15 || version == 16 || version == 17 || version == 18 ||
-               version == 19 || version == 20) {
+               version == 19 || version == 20 || version == 21) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1721,6 +1735,9 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 20) {
         status = execute_sql(database, MIGRATE_V19_TO_V20_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 21) {
+        status = execute_sql(database, MIGRATE_V20_TO_V21_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -1736,7 +1753,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v20" : "migrate database to schema v20",
+            version == 0 ? "create schema v21" : "migrate database to schema v21",
             database->connection,
             SQLITE_ERROR
         );

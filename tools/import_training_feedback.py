@@ -46,15 +46,13 @@ def merge_revisions(db,table,parent_column,parent_id,revisions):
         else:fail("HARD CONFLICT "+revision[0])
     current=max(db.execute(f"SELECT revision_id,created_at,raw_text FROM {table} WHERE {parent_column}=?",(parent_id,)).fetchall(),key=lambda r:(instant(r[1]),r[0].encode()))
     return added,skipped,current[2]
-def main():
-    parser=argparse.ArgumentParser();parser.add_argument("artifact",type=Path);parser.add_argument("--database",type=Path,required=True);args=parser.parse_args();root=load(args.artifact);db=connect_database(args.database)
+def apply_feedback(db,root,complete_causal_envelope=False):
     roots_added=roots_skipped=revisions_added=revisions_skipped=0
-    try:
-      db.execute("PRAGMA foreign_keys=ON")
-      if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18,19,20):fail("schema desktop v15-v20 requis")
-      if db.execute("PRAGMA user_version").fetchone()[0]>=20 and db.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='feedback' AND deleted=1 LIMIT 1").fetchone():fail("causal feedback protection requires the staged artifact")
-      db.execute("BEGIN IMMEDIATE");seen=set()
-      for index,item in enumerate(root["exercise_feedback"]):
+    db.execute("PRAGMA foreign_keys=ON")
+    if db.execute("PRAGMA user_version").fetchone()[0] not in (15,16,17,18,19,20,21):fail("schema desktop v15-v21 requis")
+    if not complete_causal_envelope and db.execute("PRAGMA user_version").fetchone()[0]>=20 and db.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='feedback' AND deleted=1 LIMIT 1").fetchone():fail("causal feedback protection requires the staged artifact")
+    seen=set()
+    for index,item in enumerate(root["exercise_feedback"]):
         keys={"feedback_id","session_id","entry_id","exercise_id","observed_at","raw_text"} if root["version"]==1 else {"feedback_id","session_id","entry_id","exercise_id","observed_at","revisions"}
         if not isinstance(item,dict) or set(item)!=keys:fail(f"exercise_feedback[{index}] invalide")
         fid=item["feedback_id"]
@@ -68,8 +66,8 @@ def main():
         elif old==expected:roots_skipped+=1
         else:fail("HARD CONFLICT "+fid)
         added,skipped,current=merge_revisions(db,"exercise_feedback_revisions","feedback_id",fid,revisions);revisions_added+=added;revisions_skipped+=skipped;db.execute("UPDATE exercise_feedback SET raw_text=? WHERE feedback_id=?",(current,fid))
-      seen=set()
-      for index,item in enumerate(root["session_followups"]):
+    seen=set()
+    for index,item in enumerate(root["session_followups"]):
         keys={"followup_id","session_id","observed_at","raw_text"} if root["version"]==1 else {"followup_id","session_id","observed_at","revisions"}
         if not isinstance(item,dict) or set(item)!=keys:fail(f"session_followups[{index}] invalide")
         fid=item["followup_id"]
@@ -81,6 +79,13 @@ def main():
         elif old==expected:roots_skipped+=1
         else:fail("HARD CONFLICT "+fid)
         added,skipped,current=merge_revisions(db,"session_followup_revisions","followup_id",fid,revisions);revisions_added+=added;revisions_skipped+=skipped;db.execute("UPDATE session_followups SET raw_text=? WHERE followup_id=?",(current,fid))
+    return roots_added,roots_skipped,revisions_added,revisions_skipped
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument("artifact",type=Path);parser.add_argument("--database",type=Path,required=True);args=parser.parse_args();root=load(args.artifact);db=connect_database(args.database)
+    try:
+      db.execute("BEGIN IMMEDIATE")
+      roots_added,roots_skipped,revisions_added,revisions_skipped=apply_feedback(db,root)
       db.commit()
     except Exception:db.rollback();raise
     finally:db.close()

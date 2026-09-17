@@ -149,6 +149,57 @@ def replace(connection, row_id, primary, secondary):
     )
 
 
+def apply_body_zones(connection, parsed, mobile_proof, complete_causal_envelope=False):
+    """Apply validated zone rows without owning transaction boundaries."""
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in (11,12,13,14,15,16,17,18,19,20,21): raise ImportFailure("schema desktop v11-v21 requis")
+    if not complete_causal_envelope and connection.execute("PRAGMA user_version").fetchone()[0]>=20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='body_zone_relation' AND deleted=1 LIMIT 1").fetchone(): raise ImportFailure("causal BODY ZONES protection requires the staged artifact")
+    connection.execute("PRAGMA foreign_keys=ON");grouped={}
+    # CONTRACT: resolve complete alias groups before the first write; direct
+    # primary/secondary claims may be equal but are never unioned.
+    for exercise_id,primary,secondary in parsed:
+        row_id=resolve_exercise_row(connection,exercise_id,mobile_proof);incoming=(primary,secondary);group=grouped.get(row_id)
+        if group is None:grouped[row_id]=(exercise_id,incoming)
+        elif group[1]!=incoming:raise ImportFailure(f"données de zones incompatibles après résolution d'alias: {group[0]} / {exercise_id}")
+    planned=[]
+    for row_id,(exercise_id,incoming) in grouped.items():
+        primary,secondary=incoming;local_primary,local_secondary=current(connection,row_id);local_state=state(local_primary,local_secondary);incoming_state=state(primary,secondary)
+        baseline_row=connection.execute("SELECT synced_state FROM exercise_body_zone_sync WHERE exercise_row_id=?",(row_id,)).fetchone();baseline=None if baseline_row is None else baseline_row[0]
+        if local_state==incoming_state:action="skip"
+        elif baseline is not None and local_state==baseline:action="update"
+        elif baseline is not None and incoming_state==baseline:action="keep"
+        elif baseline is None and local_state=="|":action="update"
+        else:raise ImportFailure(f"conflit zones simultané: {exercise_id}")
+        planned.append((action,row_id,primary,secondary,incoming_state))
+    updated=skipped=kept_local=0
+    # WHY: aliases are compatibility identities, not extra exercises. Apply
+    # once per canonical row so input order cannot change the chosen payload.
+    for action,row_id,primary,secondary,incoming_state in planned:
+        if action=="keep":kept_local+=1;continue
+        if action=="update":replace(connection,row_id,primary,secondary);updated+=1
+        else:skipped+=1
+        connection.execute("INSERT OR REPLACE INTO exercise_body_zone_sync VALUES(?,?)",(row_id,incoming_state))
+    return updated,skipped,kept_local
+
+
+def parse_payload(payload):
+    zones=load_catalog();exact(payload,{"format","version","generated_at","exercises"},"racine")
+    if payload["format"]!="trainlog-exercise-body-zones" or payload["version"]!=1 or isinstance(payload["version"],bool) or not isinstance(payload["generated_at"],str) or not payload["generated_at"] or not isinstance(payload["exercises"],list):raise ImportFailure("companion zones v1 invalide")
+    try: generated_at=datetime.fromisoformat(payload["generated_at"].replace("Z","+00:00"))
+    except ValueError as error:raise ImportFailure("generated_at invalide") from error
+    if generated_at.utcoffset() is None:raise ImportFailure("generated_at sans offset")
+    parsed=[];seen=set()
+    for index,item in enumerate(payload["exercises"]):
+        exact(item,{"exercise_id","primary_zone_id","secondary_zone_ids"},f"exercises[{index}]");exercise_id=item["exercise_id"];primary=item["primary_zone_id"];secondary=item["secondary_zone_ids"]
+        if not isinstance(exercise_id,str) or EXERCISE_ID_PATTERN.fullmatch(exercise_id) is None or exercise_id in seen:raise ImportFailure(f"exercises[{index}].exercise_id invalide")
+        if primary is not None and (not isinstance(primary,str) or primary not in zones):raise ImportFailure(f"exercises[{index}].primary_zone_id invalide")
+        if not isinstance(secondary,list) or any(not isinstance(zone,str) or zone not in zones for zone in secondary):raise ImportFailure(f"exercises[{index}].secondary_zone_ids invalide")
+        if len(secondary)!=len(set(secondary)) or primary in secondary:raise ImportFailure(f"exercises[{index}]: zones dupliquées")
+        if primary is None and secondary:raise ImportFailure(f"exercises[{index}]: secondaires sans zone principale")
+        if any(zones[zone]["kind"]=="group" for zone in ([primary] if primary else [])+secondary):raise ImportFailure(f"exercises[{index}]: relation parent dérivable interdite")
+        seen.add(exercise_id);parsed.append((exercise_id,primary,sorted(secondary)))
+    return parsed
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=Path)
@@ -159,42 +210,8 @@ def main():
         help="snapshot V2 importé juste avant, utilisé seulement pour prouver un ID réconcilié",
     )
     args = parser.parse_args()
-    zones = load_catalog()
     payload = json.loads(args.input.read_text(encoding="utf-8"))
-    exact(payload, {"format", "version", "generated_at", "exercises"}, "racine")
-    if payload["format"] != "trainlog-exercise-body-zones" or payload["version"] != 1 or \
-            isinstance(payload["version"], bool) or \
-            not isinstance(payload["generated_at"], str) or not payload["generated_at"] or \
-            not isinstance(payload["exercises"], list):
-        raise ImportFailure("companion zones v1 invalide")
-    try:
-        generated_at = datetime.fromisoformat(payload["generated_at"].replace("Z", "+00:00"))
-    except ValueError as error:
-        raise ImportFailure("generated_at invalide") from error
-    if generated_at.utcoffset() is None:
-        raise ImportFailure("generated_at sans offset")
-    parsed = []
-    seen = set()
-    for index, item in enumerate(payload["exercises"]):
-        exact(item, {"exercise_id", "primary_zone_id", "secondary_zone_ids"}, f"exercises[{index}]")
-        exercise_id = item["exercise_id"]
-        primary = item["primary_zone_id"]
-        secondary = item["secondary_zone_ids"]
-        if not isinstance(exercise_id, str) or EXERCISE_ID_PATTERN.fullmatch(exercise_id) is None or \
-                exercise_id in seen:
-            raise ImportFailure(f"exercises[{index}].exercise_id invalide")
-        if primary is not None and (not isinstance(primary, str) or primary not in zones):
-            raise ImportFailure(f"exercises[{index}].primary_zone_id invalide")
-        if not isinstance(secondary, list) or any(not isinstance(zone, str) or zone not in zones for zone in secondary):
-            raise ImportFailure(f"exercises[{index}].secondary_zone_ids invalide")
-        if len(secondary) != len(set(secondary)) or primary in secondary:
-            raise ImportFailure(f"exercises[{index}]: zones dupliquées")
-        if primary is None and secondary:
-            raise ImportFailure(f"exercises[{index}]: secondaires sans zone principale")
-        if any(zones[zone]["kind"] == "group" for zone in ([primary] if primary else []) + secondary):
-            raise ImportFailure(f"exercises[{index}]: relation parent dérivable interdite")
-        seen.add(exercise_id)
-        parsed.append((exercise_id, primary, sorted(secondary)))
+    parsed = parse_payload(payload)
 
     # A V2 snapshot is reconciliation evidence only when the caller selected
     # and supplied that exact snapshot.  Never discover a sibling implicitly:
@@ -203,70 +220,9 @@ def main():
                     if args.mobile_export is not None else {})
 
     connection = connect_database(args.database)
-    updated = skipped = kept_local = 0
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
-            raise ImportFailure("schema desktop v11-v20 requis")
-        if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='body_zone_relation' AND deleted=1 LIMIT 1").fetchone():
-            raise ImportFailure("causal BODY ZONES protection requires the staged artifact")
-        connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("BEGIN IMMEDIATE")
-        grouped = {}
-        for exercise_id, primary, secondary in parsed:
-            row_id = resolve_exercise_row(connection, exercise_id, mobile_proof)
-            incoming = (primary, secondary)
-            group = grouped.get(row_id)
-            if group is None:
-                grouped[row_id] = (exercise_id, incoming)
-            elif group[1] != incoming:
-                # CONTRACT: secondary zones are direct ordered-set metadata, so
-                # alias coalescing may accept equality but must never union two
-                # companion claims or choose between primary/secondary roles.
-                raise ImportFailure(
-                    f"données de zones incompatibles après résolution d'alias: "
-                    f"{group[0]} / {exercise_id}"
-                )
-
-        # INVARIANT: resolve and compare the complete alias groups before the
-        # first write. This makes one reconciliation decision per canonical
-        # exercise and prevents input order from changing the chosen payload.
-        planned = []
-        for row_id, (exercise_id, incoming) in grouped.items():
-            primary, secondary = incoming
-            local_primary, local_secondary = current(connection, row_id)
-            local_state = state(local_primary, local_secondary)
-            incoming_state = state(primary, secondary)
-            baseline_row = connection.execute(
-                "SELECT synced_state FROM exercise_body_zone_sync WHERE exercise_row_id=?", (row_id,),
-            ).fetchone()
-            baseline = None if baseline_row is None else baseline_row[0]
-            if local_state == incoming_state:
-                planned.append(("skip", row_id, primary, secondary, incoming_state))
-            elif baseline is not None and local_state == baseline:
-                planned.append(("update", row_id, primary, secondary, incoming_state))
-            elif baseline is not None and incoming_state == baseline:
-                planned.append(("keep", row_id, primary, secondary, incoming_state))
-            elif baseline is None and local_state == "|":
-                planned.append(("update", row_id, primary, secondary, incoming_state))
-            else:
-                raise ImportFailure(f"conflit zones simultané: {exercise_id}")
-
-        # WHY: aliases are compatibility identities, not additional exercises.
-        # Applying the plan once per resolved row avoids duplicate mutations and
-        # cannot recreate a retired source ID.
-        for action, row_id, primary, secondary, incoming_state in planned:
-            if action == "keep":
-                kept_local += 1
-                continue
-            if action == "update":
-                replace(connection, row_id, primary, secondary)
-                updated += 1
-            else:
-                skipped += 1
-            connection.execute(
-                "INSERT OR REPLACE INTO exercise_body_zone_sync VALUES(?,?)",
-                (row_id, incoming_state),
-            )
+        updated,skipped,kept_local=apply_body_zones(connection,parsed,mobile_proof)
         connection.commit()
         print("EXERCISE_BODY_ZONES_IMPORT=PASS")
         print(f"zones_updated={updated}")

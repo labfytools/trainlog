@@ -46,22 +46,18 @@ def validate(item):
         revision_ids.add(rid);previous=rid
     if any(history[-1][key]!=item[key] for key in keys): fail("pointe historique incohérente")
 
-def main():
-    p=argparse.ArgumentParser();p.add_argument("artifact",type=Path);p.add_argument("--database",required=True,type=Path);p.add_argument("--allow-pending",action="store_true");p.add_argument("--mobile-export",type=Path,help="sync pre-pass identity proof; permits identities introduced by the following catalog import");a=p.parse_args()
-    try:
-        root=json.loads(a.artifact.read_text(encoding="utf-8"))
+def apply_profile_state(con, root, allow_pending=False):
         if not isinstance(root,dict) or set(root)!={"format","version","generated_at","exercises"} or root["format"]!="trainlog-exercise-profile-state" or type(root["version"]) is not int or root["version"]!=1 or not isinstance(root["exercises"],list): fail("enveloppe profile-state invalide")
-        parse_timestamp(root["generated_at"], "generated_at")
-        con=connect_database(a.database);con.row_factory=sqlite3.Row
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (17,18,19,20): fail("schema desktop v17-v20 requis")
-        applied=equal=ancestor=pending=0;seen=set();con.execute("BEGIN IMMEDIATE")
+        parse_timestamp(root["generated_at"], "generated_at");con.row_factory=sqlite3.Row
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (17,18,19,20,21): fail("schema desktop v17-v21 requis")
+        applied=equal=ancestor=pending=0;seen=set()
         for item in root["exercises"]:
             validate(item);eid=item["exercise_id"]
             if eid in seen: fail("exercise_id profile-state dupliqué")
             seen.add(eid)
             row=con.execute("""SELECT e.id,e.recording_mode,e.tracking_mode,e.data_fields,e.load_semantics,e.machine_variant,e.machine_provenance,e.scientific_profile_id,e.science_state,e.legacy_equipment_id,s.revision_id,s.parent_revision_id,s.legacy_seed FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id WHERE e.exercise_id=?""",(eid,)).fetchone()
             if row is None:
-                if a.allow_pending or a.mobile_export is not None: pending+=1;continue
+                if allow_pending: pending+=1;continue
                 fail(f"identité exercice inconnue: {eid}")
             if any(row[k]!=item[k] for k in ADJ): fail(f"conflit identité/machine immutable: {eid}")
             local_profile=(row["recording_mode"],row["tracking_mode"],row["data_fields"]);incoming=(item["recording_mode"],item["tracking_mode"],item["data_fields"])
@@ -90,6 +86,14 @@ def main():
             con.execute("UPDATE exercise_profile_state SET revision_id=?,parent_revision_id=?,legacy_seed=? WHERE exercise_row_id=?",(item["revision_id"],item["parent_revision_id"],int(item["legacy_seed"]),row["id"]))
             con.execute("UPDATE exercises SET recording_mode=?,tracking_mode=?,data_fields=? WHERE id=?",(*incoming,row["id"]))
             applied+=1
+        return applied,equal,ancestor,pending
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument("artifact",type=Path);p.add_argument("--database",required=True,type=Path);p.add_argument("--allow-pending",action="store_true");p.add_argument("--mobile-export",type=Path,help="sync pre-pass identity proof; permits identities introduced by the following catalog import");a=p.parse_args()
+    try:
+        root=json.loads(a.artifact.read_text(encoding="utf-8"));con=connect_database(a.database)
+        con.execute("BEGIN IMMEDIATE")
+        applied,equal,ancestor,pending=apply_profile_state(con,root,a.allow_pending or a.mobile_export is not None)
         con.commit();print(f"EXERCISE_PROFILE_STATE_IMPORT=PASS applied={applied} equal={equal} ancestor={ancestor} pending={pending}")
     except (OSError,json.JSONDecodeError,sqlite3.Error,ValueError) as e:
         try:

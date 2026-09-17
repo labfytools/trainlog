@@ -262,17 +262,20 @@ aucun écran de résolution ne sont définis dans ce lot.
 
 ## 8. Génération et manifest
 
-**[CONTRAT FUTUR — NON IMPLÉMENTÉ]** Toute publication multi-artifact possède un
-`generation_id` opaque unique (UUIDv4 préfixé `gen_` recommandé), jamais un
-timestamp seul. Le manifest indépendant est conceptuellement :
+**[IMPLEMENTED — PASS/FROZEN]** Every staged multi-artifact publication has a
+unique opaque `generation_id` (a `gen_`-prefixed UUIDv4), never a timestamp.
+The independent manifest is conceptually:
 
 ```json
 {
   "format": "trainlog-sync-manifest",
   "version": 1,
   "generation_id": "gen_<uuid-v4>",
+  "run_id": "sy_<uuid-v4>",
   "producer": {"peer_id": "peer_<uuid-v4>", "kind": "android"},
+  "consumer_peer_id": "peer_<uuid-v4>",
   "generated_at": "offset-date-time",
+  "parent_generation_id": null,
   "artifacts": [{
     "logical_name": "mobile-history",
     "format": "trainlog-mobile-export",
@@ -421,14 +424,14 @@ de fichiers Android anciens.
    toutes plateformes ;
 3. `TRAINLOG_SYNC_DATA_LIFECYCLE_V1`: mobile V4, drafts and previously lost fields — `PASS/FROZEN`;
 4. `TRAINLOG_SYNC_CAUSAL_DELETE_V1` : opérations causales et tombstones ;
-5. `TRAINLOG_SYNC_GENERATION_ACK_V1` : manifest, staging, publication,
-   consommation, reprise et ack ;
+5. `TRAINLOG_SYNC_GENERATION_ACK_V1`: manifest, staging, publication,
+   transactional consumption, restart, and ACK — `PASS/FROZEN`;
 6. `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1` : états et rapport complet ;
 7. `TRAINLOG_WEB_SYNC_API_V1` : façade et endpoints ;
 8. `TRAINLOG_WEB_SYNC_BUTTON_V1` : UX et rafraîchissement.
 
-Chaque lot dépend des précédents et reste borné. Aucun n'est commencé par ce
-contrat.
+Each tranche remains bounded by its predecessors. The next implementation
+cursor is `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1`.
 
 ## 15. Statut des preuves
 

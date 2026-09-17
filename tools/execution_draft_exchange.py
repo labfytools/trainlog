@@ -169,14 +169,15 @@ def canonical(value):
 
 def require_schema(connection):
     version = connection.execute("PRAGMA user_version").fetchone()[0]
-    if version not in (19, 20):
-        raise LifecycleError(f"desktop schema v19/v20 required, found v{version}")
+    if version not in (19, 20, 21):
+        raise LifecycleError(f"desktop schema v19/v20/v21 required, found v{version}")
 
 
-def import_document(connection, document):
+def import_document(connection, document, own_transaction=True):
     require_schema(connection)
     outcomes = []
-    connection.execute("BEGIN IMMEDIATE")
+    if own_transaction:
+        connection.execute("BEGIN IMMEDIATE")
     try:
         for draft in document["drafts"]:
             session_id, revision = draft["session_id"], draft["revision_id"]
@@ -215,9 +216,12 @@ def import_document(connection, document):
             connection.execute("INSERT INTO execution_draft_revisions VALUES(?,?,?,?)",
                                (session_id, revision, draft["parent_revision_id"], payload))
             outcomes.append((session_id, outcome))
-        connection.commit()
+        if own_transaction:
+            connection.commit()
     except Exception:
-        connection.rollback(); raise
+        if own_transaction:
+            connection.rollback()
+        raise
     return outcomes
 
 

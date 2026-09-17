@@ -444,6 +444,52 @@ class TrainlogRepository(
     }
 
     /**
+     * Runs generation work in one SQLite scope. WHY: independently opened
+     * exporter/importer connections cannot prove a coherent generation.
+     * CONTRACT: the caller owns the outer transaction and decides success.
+     * INVARIANT: nested repository transactions cannot commit independently
+     * of this boundary.
+     */
+    internal fun <T> inSyncGenerationTransaction(block: (SQLiteDatabase) -> T): T {
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val result = block(db)
+            db.setTransactionSuccessful()
+            result
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    internal fun syncGenerationJsonHasUniqueKeys(json: String): Boolean =
+        jsonHasUniqueObjectKeys(json)
+
+    /** Captures Android-owned generation artifacts from one read snapshot. */
+    internal fun captureSyncGenerationArtifacts(afterFirstArtifact: (() -> Unit)? = null): Map<String, String> =
+        inSyncGenerationTransaction {
+            val artifacts=linkedMapOf("catalog" to buildPcCatalogJson())
+            afterFirstArtifact?.invoke()
+            artifacts["history"]=buildMobileExport(4, true);artifacts["execution-drafts"]=buildExecutionDraftExportV1Json()
+            artifacts["exercise-aliases"]=buildExerciseAliasesJson();artifacts["exercise-profile-state"]=buildExerciseProfileStateJson()
+            artifacts["equipment-definitions"]=buildEquipmentDefinitionsJson(true);artifacts["equipment-associations"]=buildEquipmentAssociationsJson()
+            artifacts["body-zones"]=buildExerciseBodyZonesJson(true);artifacts["feedback"]=buildTrainingFeedbackJson(true)
+            artifacts["causal-deletions"]=buildCausalDeletionExportV1Json();artifacts
+        }
+
+    /** Direction-neutral stable-identity catalogue used before generation history. */
+    internal fun buildPcCatalogJson(): String {
+        val items=JSONArray()
+        listExercises().sortedWith(compareBy<ExerciseProfile> { it.name.lowercase(Locale.ROOT) }.thenBy { it.exerciseId }).forEach { exercise ->
+            items.put(JSONObject().put("exercise_id",exercise.exerciseId).put("name",exercise.name)
+                .put("recording_mode",exercise.recordingMode.wireValue).put("tracking_mode",exercise.trackingMode.wireValue)
+                .put("data_fields",exercise.dataFields))
+        }
+        return JSONObject().put("format","trainlog-pc-catalog").put("version",1)
+            .put("generated_at",OffsetDateTime.now().toString()).put("exercises",items).toString()
+    }
+
+    /**
      * WHY: dashboard comparisons must remain conservative. CONTRACT: rows are
      * actual observable-history facts only; external working loads are grouped
      * by canonical exercise and equipment, assistance is deliberately omitted
@@ -1222,8 +1268,10 @@ class TrainlogRepository(
      * CONTRACT: this is the sole body-zone exchange source in both directions.
      * Session V2 and frozen TRAINLOG_FORMAT_V1 retain their exact shapes.
      */
-    fun buildExerciseBodyZonesJson(): String {
-        check(!hasCausalProtection("body_zone_relation")) { "Causal BODY ZONES protection requires the staged artifact." }
+    fun buildExerciseBodyZonesJson(): String = buildExerciseBodyZonesJson(false)
+
+    private fun buildExerciseBodyZonesJson(completeCausalEnvelope: Boolean): String {
+        check(completeCausalEnvelope || !hasCausalProtection("body_zone_relation")) { "Causal BODY ZONES protection requires the staged artifact." }
         val exercises = JSONArray()
         listExercises().sortedBy { it.exerciseId }.forEach { exercise ->
             exercises.put(JSONObject()
@@ -1422,8 +1470,11 @@ class TrainlogRepository(
         } catch(_:Exception){ExerciseProfileStateImportResult.DatabaseError} finally {if(db.inTransaction())db.endTransaction()}
     }
 
-    fun applyExerciseBodyZonesJson(json: String): ExerciseBodyZoneImportResult {
-        if (hasCausalProtection("body_zone_relation"))
+    fun applyExerciseBodyZonesJson(json: String): ExerciseBodyZoneImportResult =
+        applyExerciseBodyZonesJson(json, false)
+
+    internal fun applyExerciseBodyZonesJson(json: String, completeCausalEnvelope: Boolean): ExerciseBodyZoneImportResult {
+        if (!completeCausalEnvelope && hasCausalProtection("body_zone_relation"))
             return ExerciseBodyZoneImportResult.Invalid("Causal BODY ZONES protection requires the staged artifact.")
         val root = try { JSONObject(json) } catch (_: Exception) {
             return ExerciseBodyZoneImportResult.Invalid("Relations de zones JSON invalides.")
@@ -3740,9 +3791,9 @@ class TrainlogRepository(
             if (note.isNull("value")) null else note.getString("value"))
     }
 
-    private fun buildMobileExport(version: Int): String {
+    private fun buildMobileExport(version: Int, completeCausalEnvelope: Boolean = false): String {
         require(version in 1..4)
-        if (database.readableDatabase.rawQuery(
+        if (!completeCausalEnvelope && database.readableDatabase.rawQuery(
                 "SELECT 1 FROM sync_causal_state WHERE deleted=1 LIMIT 1", null,
             ).use { it.moveToFirst() }) {
             error("Causal protection refuses a mobile snapshot that omits tombstones.")
@@ -4926,8 +4977,10 @@ class TrainlogRepository(
 
     /** Snapshot only user-created definitions; bundled manifest rows are never
      * exported as mutable data and absence never requests deletion. */
-    fun buildEquipmentDefinitionsJson(): String {
-        check(!hasCausalProtection("custom_equipment")) { "Causal equipment protection requires the staged artifact." }
+    fun buildEquipmentDefinitionsJson(): String = buildEquipmentDefinitionsJson(false)
+
+    private fun buildEquipmentDefinitionsJson(completeCausalEnvelope: Boolean): String {
+        check(completeCausalEnvelope || !hasCausalProtection("custom_equipment")) { "Causal equipment protection requires the staged artifact." }
         val supplied = EquipmentCatalog.load(applicationContext).map { it.equipmentId }.toSet()
         val items = JSONArray()
         listEquipment().filter { it.equipmentId !in supplied }.forEach { entry ->
@@ -4957,8 +5010,11 @@ class TrainlogRepository(
             .put("equipment", items).toString()
     }
 
-    fun applyPcEquipmentDefinitionsJson(json: String): EquipmentDefinitionImportResult {
-        if (hasCausalProtection("custom_equipment"))
+    fun applyPcEquipmentDefinitionsJson(json: String): EquipmentDefinitionImportResult =
+        applyPcEquipmentDefinitionsJson(json, false)
+
+    internal fun applyPcEquipmentDefinitionsJson(json: String, completeCausalEnvelope: Boolean): EquipmentDefinitionImportResult {
+        if (!completeCausalEnvelope && hasCausalProtection("custom_equipment"))
             return EquipmentDefinitionImportResult.Invalid("Causal equipment protection requires the staged artifact.")
         val root = try { JSONObject(json) } catch (_: Exception) {
             return EquipmentDefinitionImportResult.Invalid("Définitions équipement JSON invalides.")
@@ -5760,8 +5816,10 @@ class TrainlogRepository(
         text.toByteArray(Charsets.UTF_8).size <= MAX_FEEDBACK_UTF8_BYTES
 
     /** Direction-neutral V2 companion: roots and every immutable revision. */
-    fun buildTrainingFeedbackJson(): String {
-        check(!hasCausalProtection("feedback")) { "Causal feedback protection requires the staged artifact." }
+    fun buildTrainingFeedbackJson(): String = buildTrainingFeedbackJson(false)
+
+    private fun buildTrainingFeedbackJson(completeCausalEnvelope: Boolean): String {
+        check(completeCausalEnvelope || !hasCausalProtection("feedback")) { "Causal feedback protection requires the staged artifact." }
         val root = JSONObject().put("format", "trainlog-training-feedback").put("version", 2)
             .put("generated_at", OffsetDateTime.now().toString())
         val exercise = JSONArray()
@@ -5798,8 +5856,11 @@ class TrainlogRepository(
         return root.put("exercise_feedback",exercise).put("session_followups",followups).toString()
     }
 
-    fun applyTrainingFeedbackJson(json: String): TrainingFeedbackImportResult {
-        if (hasCausalProtection("feedback"))
+    fun applyTrainingFeedbackJson(json: String): TrainingFeedbackImportResult =
+        applyTrainingFeedbackJson(json, false)
+
+    internal fun applyTrainingFeedbackJson(json: String, completeCausalEnvelope: Boolean): TrainingFeedbackImportResult {
+        if (!completeCausalEnvelope && hasCausalProtection("feedback"))
             return TrainingFeedbackImportResult.Invalid("Causal feedback protection requires the staged artifact.")
         if (json.toByteArray(Charsets.UTF_8).size > 40 * 1024 * 1024)
             return TrainingFeedbackImportResult.Invalid("Compagnon de ressentis trop volumineux.")
@@ -7836,7 +7897,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    19,
+    20,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -7880,6 +7941,7 @@ private class TrainlogDatabaseHelper(
         createAiSessionDraftTables(db)
         createSyncDataLifecycleTables(db)
         createCausalDeleteTables(db)
+        createSyncGenerationTables(db)
         seedEquipment(db)
     }
 
@@ -8039,6 +8101,14 @@ private class TrainlogDatabaseHelper(
             createCausalDeleteTables(db)
             version = 19
         }
+        if (version < 20 && newVersion >= 20) {
+            /* WHY: publication is not peer consumption. CONTRACT: v20 stores
+             * staged generation/manifest/ACK identity separately from frozen
+             * domain artifacts. INVARIANT: migration invents no generation,
+             * acknowledgement, ancestry, or causal operation. */
+            createSyncGenerationTables(db)
+            version = 20
+        }
 
         if (version != newVersion) {
             error(
@@ -8126,6 +8196,15 @@ private class TrainlogDatabaseHelper(
             "CREATE INDEX IF NOT EXISTS sync_causal_operations_target " +
                 "ON sync_causal_operations(target_kind,target_id);",
         )
+    }
+
+    private fun createSyncGenerationTables(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_peer_identity(singleton INTEGER PRIMARY KEY CHECK(singleton=1),peer_id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL CHECK(kind IN('desktop','android')));")
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_generations(generation_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,producer_kind TEXT NOT NULL,generated_at TEXT NOT NULL,parent_generation_id TEXT,manifest_sha256 TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN('captured','published','waiting_acknowledgement','acknowledged','rejected')),manifest_json TEXT NOT NULL,staging_path TEXT NOT NULL,acknowledged_at TEXT);")
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_generation_artifacts(generation_id TEXT NOT NULL REFERENCES sync_generations(generation_id) ON DELETE CASCADE,logical_name TEXT NOT NULL,format TEXT NOT NULL,version INTEGER NOT NULL,filename TEXT NOT NULL,size_bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,required INTEGER NOT NULL CHECK(required IN(0,1)),PRIMARY KEY(generation_id,logical_name),UNIQUE(generation_id,filename));")
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_consumed_generations(generation_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,parent_generation_id TEXT,manifest_sha256 TEXT NOT NULL,consumed_at TEXT NOT NULL,result TEXT NOT NULL CHECK(result IN('consumed','rejected')),durability TEXT NOT NULL,diagnostic TEXT NOT NULL,ack_json TEXT NOT NULL,UNIQUE(producer_peer_id,generation_id));")
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_acknowledgements(ack_id TEXT PRIMARY KEY,generation_id TEXT NOT NULL,run_id TEXT NOT NULL,producer_peer_id TEXT NOT NULL,consumer_peer_id TEXT NOT NULL,manifest_sha256 TEXT NOT NULL,result TEXT NOT NULL CHECK(result IN('consumed','rejected')),durability TEXT NOT NULL,created_at TEXT NOT NULL,diagnostic TEXT NOT NULL,payload_sha256 TEXT NOT NULL);")
+        db.execSQL("CREATE TABLE IF NOT EXISTS sync_causal_publications(operation_id TEXT NOT NULL REFERENCES sync_causal_operations(operation_id),generation_id TEXT NOT NULL,first_emission INTEGER NOT NULL CHECK(first_emission IN(0,1)),PRIMARY KEY(operation_id,generation_id));")
     }
 
     private fun createAiSessionDraftTables(db: SQLiteDatabase) {

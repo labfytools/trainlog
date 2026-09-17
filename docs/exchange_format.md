@@ -658,7 +658,7 @@ atomically. Timestamps are evidence, never last-writer-wins authority.
 
 The artifact is available only through explicit repository/tool entry points.
 It is not selected by V3 transport. Null publication context is the typed
-handoff to the later generation/acknowledgement tranche, not consumption proof.
+handoff to the separate generation association ledger, not consumption proof.
 
 `predecessor_revision_id` identifies either the canonical complete business
 projection or a durable mutation revision created by a supported correction.
@@ -669,3 +669,35 @@ Readers consume at most the 4 MiB limit plus one sentinel byte, exporters
 enumerate at most 4096 operations plus one sentinel row, and a local deletion
 is refused before its effect if the complete protection artifact would exceed
 either bound.
+
+## Staged generation manifest and acknowledgement V1
+
+`trainlog-sync-manifest` V1 is a strict independent envelope. It contains
+`generation_id`, `run_id`, producer `{peer_id, kind}`, `consumer_peer_id`, an
+offset-aware `generated_at`, nullable `parent_generation_id`, and the complete
+artifact descriptor array. A descriptor contains `logical_name`, `format`,
+integer `version`, generation-relative `filename`, exact byte `size`, lowercase
+SHA-256, and boolean `required`. Unknown root/descriptor fields, duplicate JSON
+keys, duplicate names/paths, unknown required capabilities, unsafe paths, wrong
+peer context, and missing required domains are rejected.
+
+The inclusive outer limits are 64 KiB per manifest, 32 descriptors, 64 MiB per
+artifact, 256 MiB per generation, 64 ASCII bytes per logical name, 240 UTF-8
+bytes per relative path, path depth three, JSON depth eight, and 8192 JSON
+nodes. Tighter domain bounds still apply. Artifacts live under
+`generations/<generation_id>/`; the manifest is the final visibility marker.
+SHA-256 proves exact byte integrity under that manifest, not authentication,
+freshness, or snapshot coherence.
+
+`trainlog-sync-ack` V1 contains `ack_id`, run/generation and both peer
+identities, the exact manifest digest, `consumed|rejected`, durability,
+offset-aware completion time, a diagnostic limited to 1024 UTF-8 bytes, and a
+digest of the ACK payload without `payload_sha256`. `consumed` uses
+`sqlite-commit-full`; `rejected` uses `sqlite-commit-rejection`. Exact replay
+returns the stored ACK. A wrong peer, run, generation, manifest digest, ACK
+digest, timestamp, result/durability pair, or conflicting replay is rejected.
+
+Generation membership never changes a causal V1 operation. The immutable
+operation retains null `publication_context`, its original ID and digest;
+`sync_causal_publications` records first emission and retransmission by
+operation/generation identity.

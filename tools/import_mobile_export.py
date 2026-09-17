@@ -846,9 +846,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
+    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21):
         raise ImportFailure(
-            f"base desktop schema v5 à v20 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v21 attendue, version trouvée: {version}"
         )
 
 
@@ -1959,23 +1959,9 @@ def import_body(
         report["body_imported"] += 1
 
 
-def run_import(
-    payload,
-    database_path,
-    dry_run,
-    trace_exercises=False,
-):
-    if not database_path.exists():
-        raise ImportFailure(
-            f"base desktop introuvable: {database_path}"
-        )
-
-    connection = connect_database(
-        database_path
-    )
-
+def apply_payload(connection, payload, trace_exercises=False):
+    """Apply a validated artifact without owning commit or rollback."""
     connection.row_factory = sqlite3.Row
-
     report = {
         "exercises_imported": 0,
         "exercises_reconciled": 0,
@@ -1987,70 +1973,43 @@ def run_import(
         "body_skipped": 0,
     }
 
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    require_supported_schema(connection)
+
+    schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
+    if payload["version"] == 4 and schema_version not in (19, 20, 21):
+        raise ImportFailure("mobile V4 exige le schéma desktop v19, v20 ou v21")
+    if schema_version >= 20:
+        protected = {(row[0], row[1]) for row in connection.execute(
+            "SELECT target_kind,target_id FROM sync_causal_state WHERE deleted=1")}
+        incoming = ({("session", value["session_id"]) for value in payload["sessions"]} |
+                    {("body_observation", value["observation_id"]) for value in payload["body_observations"]} |
+                    {("exercise", value["exercise_id"]) for value in payload["exercises"]})
+        collision = protected & incoming
+        if collision:
+            kind, identity = sorted(collision)[0]
+            raise ImportFailure(f"causal protection refuses legacy/live replay: {kind}/{identity}")
+    has_explicit_max = any("max_weight_kg" in entry for session in payload["sessions"] for entry in session["exercises"])
+    if has_explicit_max and schema_version < 9:
+        raise ImportFailure("max_weight_kg exige le schéma desktop v9")
+    has_explicit_zero_set_weight = any(set_item.get("weight_kg") == 0 for session in payload["sessions"] for entry in session["exercises"] for set_item in entry.get("sets", []) if "weight_kg" in set_item)
+    if has_explicit_zero_set_weight and schema_version < 10:
+        raise ImportFailure("weight_kg=0 exige le schéma desktop v10; import annulé")
+
+    mapping = import_exercises(connection, payload, report, trace_exercises)
+    import_sessions(connection, payload, mapping, report)
+    import_body(connection, payload, report)
+    return report
+
+
+def run_import(payload, database_path, dry_run, trace_exercises=False):
+    if not database_path.exists():
+        raise ImportFailure(f"base desktop introuvable: {database_path}")
+    connection = connect_database(database_path)
     try:
-        connection.execute(
-            "PRAGMA foreign_keys = ON;"
-        )
-
-        require_supported_schema(
-            connection
-        )
-
-        schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
-        if payload["version"] == 4 and schema_version not in (19, 20):
-            raise ImportFailure("mobile V4 exige le schéma desktop v19 ou v20")
-        if schema_version >= 20:
-            protected = {(row[0], row[1]) for row in connection.execute(
-                "SELECT target_kind,target_id FROM sync_causal_state WHERE deleted=1")}
-            incoming = ({("session", value["session_id"]) for value in payload["sessions"]} |
-                        {("body_observation", value["observation_id"]) for value in payload["body_observations"]} |
-                        {("exercise", value["exercise_id"]) for value in payload["exercises"]})
-            collision = protected & incoming
-            if collision:
-                kind, identity = sorted(collision)[0]
-                raise ImportFailure(f"causal protection refuses legacy/live replay: {kind}/{identity}")
-        has_explicit_max = any(
-            "max_weight_kg" in entry
-            for session in payload["sessions"]
-            for entry in session["exercises"]
-        )
-        if has_explicit_max and schema_version < 9:
-            raise ImportFailure("max_weight_kg exige le schéma desktop v9")
-        has_explicit_zero_set_weight = any(
-            set_item.get("weight_kg") == 0
-            for session in payload["sessions"]
-            for entry in session["exercises"]
-            for set_item in entry.get("sets", [])
-            if "weight_kg" in set_item
-        )
-        if has_explicit_zero_set_weight and schema_version < 10:
-            raise ImportFailure(
-                "weight_kg=0 exige le schéma desktop v10; import annulé"
-            )
-
-        connection.execute(
-            "BEGIN IMMEDIATE;"
-        )
-
-        mapping = import_exercises(
-            connection,
-            payload,
-            report,
-            trace_exercises,
-        )
-
-        import_sessions(
-            connection,
-            payload,
-            mapping,
-            report,
-        )
-
-        import_body(
-            connection,
-            payload,
-            report,
-        )
+        connection.execute("BEGIN IMMEDIATE;")
+        report = apply_payload(connection, payload, trace_exercises)
 
         if dry_run:
             connection.rollback()

@@ -32,7 +32,7 @@ def default_database():
     return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "trainlog/trainlog.db"
 
 
-def main():
+def main(complete_causal_envelope=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     parser.add_argument("--database", type=Path, default=default_database())
@@ -41,9 +41,9 @@ def main():
     connection = connect_database(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
+        if connection.execute("PRAGMA user_version").fetchone()[0] not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21):
             raise ValueError("schema desktop v11-v16 requis")
-        if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='body_zone_relation' AND deleted=1 LIMIT 1").fetchone():
+        if not complete_causal_envelope and connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='body_zone_relation' AND deleted=1 LIMIT 1").fetchone():
             raise ValueError("causal BODY ZONES protection requires the staged artifact")
         exercises = []
         for exercise in connection.execute("SELECT id,exercise_id FROM exercises ORDER BY exercise_id"):

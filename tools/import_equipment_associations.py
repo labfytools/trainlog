@@ -85,7 +85,7 @@ def load_mobile_occurrences(path):
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
         payload.get("format") != "trainlog-mobile-export"
-        or payload.get("version") not in (2, 3)
+        or payload.get("version") not in (2, 3, 4)
         or not isinstance(payload.get("sessions"), list)
     ):
         fail("snapshot mobile V2 de preuve invalide")
@@ -115,6 +115,24 @@ def load_mobile_occurrences(path):
                 fail("identité du snapshot mobile V2 de preuve invalide")
             occurrences[key] = exercise_id
     return occurrences
+
+
+def apply_associations(connection, payload, known, mobile_occurrences):
+    if payload.get("format") != FORMAT or payload.get("version") != VERSION or set(payload) != {"format", "version", "generated_at", "associations"}:
+        fail("extension équipement non supportée")
+    known = set(known); known.update(row[0] for row in connection.execute("SELECT equipment_id FROM custom_equipment"))
+    associations = validate_associations(payload["associations"], known)
+    for session_id, entry_id, exercise_id, equipment_id in associations:
+        exists = connection.execute("SELECT e.exercise_id,se.equipment_id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id WHERE s.session_id=? AND se.entry_id=?", (session_id, entry_id)).fetchone()
+        if exists is None: fail(f"entrée séance inconnue: {session_id}/{entry_id}")
+        stored_canonical = canonical_exercise_id(connection, exists[0]); incoming_canonical = canonical_exercise_id(connection, exercise_id)
+        if stored_canonical != incoming_canonical:
+            proof = mobile_occurrences.get((session_id, entry_id))
+            incoming_still_exists = connection.execute("SELECT 1 FROM exercises WHERE exercise_id=?", (exercise_id,)).fetchone() is not None
+            if not (proof == exercise_id and not incoming_still_exists) and not approved_machine_split(session_id, entry_id, incoming_canonical, stored_canonical, mobile_occurrences):
+                fail(f"conflit exercice association: {session_id}/{entry_id}")
+        if exists[1] != equipment_id: fail(f"conflit association équipement: {session_id}/{entry_id}")
+    return len(associations)
 
 
 def approved_machine_split(session_id, entry_id, incoming_id, local_id,
@@ -167,18 +185,10 @@ def main():
     )
     args = parser.parse_args()
     payload = json.loads(args.artifact.read_text(encoding="utf-8"))
-    if payload.get("format") != FORMAT or payload.get("version") != VERSION:
-        fail("extension équipement non supportée")
-    if set(payload) != {"format", "version", "generated_at", "associations"}:
-        fail("clés extension équipement invalides")
     connection = connect_database(args.database)
     try:
-        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
-            fail("schema desktop v8 à v20 requis")
-        known = load_catalog(args.catalog)
-        known.update(row[0] for row in connection.execute(
-            "SELECT equipment_id FROM custom_equipment"))
-        associations = validate_associations(payload["associations"], known)
+        if connection.execute("PRAGMA user_version;").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21):
+            fail("schema desktop v8 à v21 requis")
         proof_path = args.mobile_export
         if proof_path is None:
             candidate = args.artifact.with_name("trainlog-mobile-export-v2.json")
@@ -189,41 +199,9 @@ def main():
             if proof_path is not None
             else {}
         )
-        for session_id, entry_id, exercise_id, equipment_id in associations:
-            exists = connection.execute(
-                "SELECT e.exercise_id,se.equipment_id FROM session_exercises se "
-                "JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id "
-                "WHERE s.session_id=? AND se.entry_id=?",
-                (session_id, entry_id)).fetchone()
-            if exists is None:
-                fail(f"entrée séance inconnue: {session_id}/{entry_id}")
-            # WHY: the association companion can outlive the creator ID used
-            # by its source occurrence. The durable flattened alias is the
-            # synchronization identity evidence and is stronger than raw text.
-            stored_canonical = canonical_exercise_id(connection, exists[0])
-            incoming_canonical = canonical_exercise_id(connection, exercise_id)
-            if stored_canonical != incoming_canonical:
-                proof = mobile_occurrences.get((session_id, entry_id))
-                incoming_still_exists = connection.execute(
-                    "SELECT 1 FROM exercises WHERE exercise_id=?;",
-                    (exercise_id,),
-                ).fetchone() is not None
-                alias_reconciliation = proof == exercise_id and not incoming_still_exists
-                split_reconciliation = approved_machine_split(
-                    session_id, entry_id, incoming_canonical,
-                    stored_canonical, mobile_occurrences)
-                if not alias_reconciliation and not split_reconciliation:
-                    fail(f"conflit exercice association: {session_id}/{entry_id}")
-                # CONTRACT: the first fallback is only for schemas/runs without
-                # a persistent alias. The second is the closed v13 split table
-                # above; no source ID becomes a global one-to-many alias.
-            # INVARIANT: identity reconciliation never changes session_id,
-            # entry_id, equipment_id, or any persisted occurrence. A distinct
-            # live canonical exercise therefore remains a hard conflict.
-            if exists[1] != equipment_id:
-                fail(f"conflit association équipement: {session_id}/{entry_id}")
+        association_count = apply_associations(connection, payload, load_catalog(args.catalog), mobile_occurrences)
         print("EQUIPMENT_ASSOCIATIONS_IMPORT=PASS")
-        print(f"associations={len(associations)}")
+        print(f"associations={association_count}")
     finally:
         connection.close()
 

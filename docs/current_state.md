@@ -25,8 +25,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v20 |
-| Android SQLite | schema v19 |
+| Desktop SQLite | schema v21 |
+| Android SQLite | schema v20 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -52,6 +52,8 @@ parallel implementation of its rules.
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
 | Synchronization data/lifecycle slice | `TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN` |
+| Synchronization causal deletion slice | `TRAINLOG_SYNC_CAUSAL_DELETE_V1=PASS/FROZEN` |
+| Synchronization generation/ACK slice | `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` (explicit staged entry points; active transport remains V3) |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -94,18 +96,22 @@ Android inbox/outbox still select V3 and do not move the draft artifact.
 - The desktop imports Android snapshots, publishes catalog/profile/feedback/AI
   companions, and returns a receipt. Stable IDs, artifact idempotence and the
   few domain-specific explicit states make defined replay paths idempotent.
-  Current snapshots do not provide general tombstones, a common generation or
-  proof that Android durably consumed the desktop publication.
+  Explicit staged generation services now provide coherent V4/companion
+  capture, immutable manifests, whole-generation SQLite consumption and
+  durable peer ACKs. The active automatic path remains V3 and does not select
+  these services.
 - SQLite database files are never synchronized.
 - The desktop AI flow uses external `rclone` for Drive inbox/archive and
   read-only history export. Android owns no Drive credentials.
 
 The frozen [complete synchronization gap contract](design/sync_gap_contract_v1.md)
-documents the future target without implementing it. Mobile V3 still omits
+remains the authority for the later orchestrator. Mobile V3 still omits
 `ended_at`, session/occurrence/body-observation notes, the body-observation to
-session link and the active Android draft. Imports are transactional per
-artifact, not globally across a logical publication. A receipt records desktop
-processing; publication alone does not prove durable peer consumption.
+session link and the active Android draft. Legacy imports remain transactional
+per artifact. Explicit generation consumption instead validates every listed
+artifact, applies all domains and its consumption record in one transaction,
+and emits `consumed` only after commit. A legacy receipt remains distinct from
+the correlated generation ACK.
 Characterization now also freezes the observed preservation of local-only
 session/body values on an identical replay, loss of an occurrence-local note
 when V3 correction reconstructs that occurrence, delete-before-send exposure,
@@ -293,15 +299,16 @@ smoke test are not automated. The latter is why
 desktop producers/consumers for `trainlog-causal-deletions` V1. All contracted
 domains are durably protected; exact replay is idempotent and unprovable or
 concurrent ancestry conflicts before mutation. Protected legacy snapshots are
-refused before resurrection. Active synchronization still selects V3: no
-generation acknowledgement, service activation, deployment, or user-data
-migration occurred.
+refused before resurrection. Staged generation acknowledgement is implemented,
+but active synchronization still selects V3: no staged-service activation,
+deployment, or user-data migration occurred.
 
 The focused causal closeout additionally proves child-data delete/update
 conflicts including change-and-revert, imported built-in and alias protection,
 active/pending/desktop draft-revision equivalence, protected companion refusal,
-current-view retirement and bounded pre-effect admission. It changes neither
-the v20/v19 schemas nor active V3 transport selection.
+current-view retirement and bounded pre-effect admission. The later generation
+slice additively advances schemas to desktop v21/Android v20 without changing
+active V3 transport selection.
 
 The residual causal evidence also proves legitimate Android and desktop
 producer directions separately for exercise retirement, populated body

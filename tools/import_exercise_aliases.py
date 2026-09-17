@@ -54,6 +54,35 @@ def load(path):
     return result
 
 
+def apply_aliases(con, aliases):
+    """Apply parsed aliases inside the caller-owned transaction."""
+    if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17, 18, 19, 20, 21):
+        fail("schema desktop v12-v21 requis")
+    for source, canonical in aliases:
+        target = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (canonical,)).fetchone()
+        if target is None: fail(f"cible canonique absente: {canonical}")
+        current = con.execute("SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?", (source,)).fetchone()
+        if current is not None:
+            if current[0] != canonical: fail(f"conflit alias: {source}")
+            continue
+        retired = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (source,)).fetchone()
+        if retired is not None:
+            if retired[1:] != target[1:]: fail(f"profil incompatible: {source}")
+            primary = lambda row_id: con.execute("SELECT zone_id FROM exercise_body_zones WHERE exercise_row_id=? AND role='primary'", (row_id,)).fetchone()
+            sp, tp = primary(retired[0]), primary(target[0])
+            if sp and tp and sp[0] != tp[0]: fail(f"zone primaire incompatible: {source}")
+            chosen = tp[0] if tp else (sp[0] if sp else None)
+            if chosen:
+                con.execute("DELETE FROM exercise_body_zones WHERE exercise_row_id=? AND zone_id=?", (target[0], chosen))
+                con.execute("INSERT INTO exercise_body_zones VALUES(?,?,'primary')", (target[0], chosen))
+            con.execute("INSERT OR IGNORE INTO exercise_body_zones SELECT ?,zone_id,'secondary' FROM exercise_body_zones WHERE exercise_row_id=? AND role='secondary' AND zone_id<>COALESCE(?, '')", (target[0], retired[0], chosen))
+            con.execute("UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?", (target[0], retired[0]))
+            con.execute("DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?)", (retired[0], target[0]))
+            con.execute("UPDATE exercise_aliases SET canonical_exercise_id=? WHERE canonical_exercise_id=?", (canonical, source))
+            con.execute("DELETE FROM exercises WHERE id=?", (retired[0],))
+        con.execute("INSERT INTO exercise_aliases VALUES(?,?)", (source, canonical))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("artifact", type=Path)
@@ -63,35 +92,8 @@ def main():
     con = connect_database(args.database)
     try:
         con.execute("PRAGMA foreign_keys=ON")
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17, 18, 19, 20):
-            fail("schema desktop v12-v16 requis")
         con.execute("BEGIN IMMEDIATE")
-        for source, canonical in aliases:
-            target = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (canonical,)).fetchone()
-            if target is None:
-                fail(f"cible canonique absente: {canonical}")
-            current = con.execute("SELECT canonical_exercise_id FROM exercise_aliases WHERE source_exercise_id=?", (source,)).fetchone()
-            if current is not None:
-                if current[0] != canonical: fail(f"conflit alias: {source}")
-                continue
-            retired = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (source,)).fetchone()
-            if retired is not None:
-                if retired[1:] != target[1:]: fail(f"profil incompatible: {source}")
-                primary = lambda row_id: con.execute("SELECT zone_id FROM exercise_body_zones WHERE exercise_row_id=? AND role='primary'", (row_id,)).fetchone()
-                sp, tp = primary(retired[0]), primary(target[0])
-                if sp and tp and sp[0] != tp[0]: fail(f"zone primaire incompatible: {source}")
-                chosen = tp[0] if tp else (sp[0] if sp else None)
-                if chosen:
-                    con.execute("DELETE FROM exercise_body_zones WHERE exercise_row_id=? AND zone_id=?", (target[0], chosen))
-                    con.execute("INSERT INTO exercise_body_zones VALUES(?,?,'primary')", (target[0], chosen))
-                con.execute("INSERT OR IGNORE INTO exercise_body_zones SELECT ?,zone_id,'secondary' FROM exercise_body_zones WHERE exercise_row_id=? AND role='secondary' AND zone_id<>COALESCE(?, '')", (target[0], retired[0], chosen))
-                con.execute("UPDATE session_exercises SET exercise_row_id=? WHERE exercise_row_id=?", (target[0], retired[0]))
-                con.execute("DELETE FROM exercise_body_zone_sync WHERE exercise_row_id IN(?,?)", (retired[0], target[0]))
-                # INVARIANT: earlier sources stay one hop from a live target;
-                # deleting an intermediate canonical can never create a chain.
-                con.execute("UPDATE exercise_aliases SET canonical_exercise_id=? WHERE canonical_exercise_id=?", (canonical, source))
-                con.execute("DELETE FROM exercises WHERE id=?", (retired[0],))
-            con.execute("INSERT INTO exercise_aliases VALUES(?,?)", (source, canonical))
+        apply_aliases(con, aliases)
         con.commit()
     except Exception:
         con.rollback(); raise

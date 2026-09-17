@@ -18,7 +18,7 @@ available because availability is independently guarded by causal state.
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v20 and Android schema v19 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v21 and Android schema v20 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -742,12 +742,44 @@ equal to the first pass, and both peers retained the same 32 relations for 20
 of 23 stable exercise IDs. The final companion states were semantically equal
 between passes and the three explicit unclassified states remained intact.
 
-## 18. Audited protocol limitations
+## 18. Staged coherent generations and durable acknowledgement
 
-The future complete-sync semantics are frozen separately in
-[`TRAINLOG_SYNC_GAP_CONTRACT_V1`](design/sync_gap_contract_v1.md). That document
-is a non-implemented specification and does not extend any format described
-here.
+`tools/sync_generation_exchange.py` and Android `SyncGenerationService` are
+the production staged owners for manifest V1 and ACK V1. Neither is wired into
+the automatic V3 MTP selection. Both allocate stable installation peer IDs and
+opaque UUIDv4 generation/run IDs only in the explicitly opened staged store.
+
+Desktop capture uses one private SQLite backup and runs every established
+exporter against that immutable snapshot. Android holds one repository read
+transaction while calling the existing domain exporters. Both validate domain
+and outer limits before recording a captured generation. Publication copies
+verified immutable bytes into `generations/<generation_id>/`, resumes only
+byte-identical partial publication, and writes `manifest.json` last. Capacity
+admits at most eight retained outgoing generations per consumer; exhaustion is
+recoverable and never evicts an unacknowledged generation or causal proof.
+
+The required artifact order is causal deletions, catalog/profile identity,
+custom-equipment definitions, V4 history, aliases and occurrence equipment,
+BODY ZONES, feedback, execution drafts, then optional desktop AI proposals.
+All files are validated and frozen before mutation. Transaction-neutral desktop
+helpers and the Android repository's outer transaction apply every business
+row, causal state and the consumption/ACK record together. A late semantic
+failure rolls back earlier writes and commits a separate bounded `rejected`
+ACK; missing/incomplete transport input remains retryable and produces no ACK.
+
+Lineage is scoped to the producer/consumer pair. Exact replay returns the
+stored result; an accepted successor must name the last consumed generation as
+parent. UUIDs, clocks, mtimes, and directory scans never choose a successor.
+An ACK timeout leaves `waiting_acknowledgement`; a late exact ACK resolves it
+idempotently. Causal V1 operation bytes remain unchanged across first emission
+and retransmission because generation membership lives only in
+`sync_causal_publications`.
+
+## 19. Legacy active-protocol limitations
+
+The complete-sync semantics remain frozen separately in
+[`TRAINLOG_SYNC_GAP_CONTRACT_V1`](design/sync_gap_contract_v1.md). The staged
+generation slice implements its batch boundary but does not activate it.
 
 Each mutating importer validates strictly and owns a SQLite transaction. The
 V2 association companion only corroborates equipment already imported in the
@@ -756,9 +788,9 @@ definitions/mobile/body-zones/associations batch nevertheless has no common gene
 or cross-file transaction. Independent “newest artifact” selection can
 therefore observe a partially published generation; validation stops on a
 mismatch, but an earlier artifact may already have committed. Replay is
-idempotent and no conflicting local value is overwritten. A future atomic-batch
-design requires a new versioned manifest rather than a semantic change to any
-published format.
+idempotent and no conflicting local value is overwritten. That active legacy
+design remains non-atomic. Explicit manifest V1 generation consumption
+provides the separate atomic path without changing any published companion.
 
 Snapshots carry no exercise, session, body-observation, body-zone-relation, or equipment-definition
 tombstones. Omission therefore never deletes one of those objects. The only

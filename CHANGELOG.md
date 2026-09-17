@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.2
 
+- Completed `TRAINLOG_SYNC_GENERATION_ACK_V1` with desktop schema v21 and
+  Android schema v20. Added coherent per-platform capture, strict bounded
+  manifest V1, immutable manifest-last publication, whole-generation SQLite
+  consumption, pair-scoped lineage, durable consumed/rejected ACK V1 replay,
+  and a separate causal-operation publication ledger. Real isolated Android →
+  desktop and desktop → Android chains use production entry points and retain
+  operation identity across generations. Automatic V3/MTP selection and all
+  operational services remain unchanged.
+
 - Completed the residual causal-deletion evidence with real Android and
   desktop producers for exercise, body-observation, custom-equipment, feedback
   and BODY ZONE relation targets, including production replica exchange,

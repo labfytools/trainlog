@@ -73,7 +73,7 @@ def note_payload(connection, owner_kind, owner_id, value):
     return {"value": row[2], "revision_id": row[0], "parent_revision_id": row[1]}
 
 
-def main():
+def main(complete_causal_envelope=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     parser.add_argument("--database", type=Path, default=default_database())
@@ -83,11 +83,11 @@ def main():
     con.row_factory = sqlite3.Row
     try:
         schema_version = con.execute("PRAGMA user_version").fetchone()[0]
-        if args.version == 4 and schema_version not in (19, 20):
+        if args.version == 4 and schema_version not in (19, 20, 21):
             raise ValueError("mobile V4 exige le schéma desktop v19 ou v20")
-        if schema_version not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20) and not (args.version == 2 and schema_version == 10):
+        if schema_version not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21) and not (args.version == 2 and schema_version == 10):
             raise ValueError("schema desktop v11-v16 requis (v10 accepté pour export V2 explicite)")
-        if schema_version >= 20 and con.execute(
+        if not complete_causal_envelope and schema_version >= 20 and con.execute(
                 "SELECT 1 FROM sync_causal_state WHERE deleted=1 LIMIT 1").fetchone():
             raise ValueError("causal protection refuses a mobile snapshot that omits tombstones")
         known_equipment = supplied_equipment_ids()

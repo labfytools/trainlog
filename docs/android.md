@@ -921,3 +921,18 @@ admission covers ordered occurrences, targets, confirmed sets/continuous/MAX,
 notes, feedback revisions and linked observations. Draft admission uses the
 stable draft revision for active and pending storage; unfinished form strings
 remain local and never affect cross-platform identity.
+
+Android schema v20 additively stores installation peer identity, outgoing
+generation/artifact state, consumed-generation state, durable ACKs, and the
+separate causal-operation publication ledger. Migration from v19 preserves
+business, draft, finalization, revision, and causal rows and creates none of
+those new records retroactively.
+
+`SyncGenerationService` is an explicit staged entry point. It captures catalog,
+V4 history, drafts, aliases, profiles, custom equipment, associations, BODY
+ZONES, feedback, and causal deletions in one repository transaction; writes an
+immutable private generation; publishes its manifest last; consumes all listed
+domains plus the durable generation record in one outer transaction; and
+replays the stored logical ACK after restart. The complete-envelope context is
+internal and typed: standalone artifact methods retain their causal guards.
+This service is not selected by the automatic V3 storage/request path.

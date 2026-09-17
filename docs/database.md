@@ -16,8 +16,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=20
-DATABASE_SCHEMA_V20=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=21
+DATABASE_SCHEMA_V21=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -36,7 +36,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-20
+21
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -62,6 +62,15 @@ for supported corrections whose content can later return to an earlier value.
 They do not fabricate migration ancestry: they are written only by a real
 post-migration mutation. Session exercise replacement writes this revision in
 the same transaction and refuses to modify a deleted target.
+
+Schema v21 additively introduces stable installation peer identity, outgoing
+generation/artifact state, consumed-generation state, durable ACK records, and
+the separate immutable-operation publication ledger. The v20→v21 migration is
+one SQLite transaction, preserves all business and causal rows, and creates no
+historical generation, ancestry, consumption, or ACK. A complete generation
+consumer owns one outer transaction covering every domain mutation, its
+consumption record, and the data required to replay the same ACK after restart.
+Transport publication and ACK-file writes remain outside that transaction.
 
 Version 19 additively stores causal note revisions/current state and staged
 execution drafts, their immutable revisions, pending/active state and durable

@@ -468,7 +468,7 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v19 is canonical long-term history. Its additive v18 ->
+Desktop SQLite schema v21 is canonical long-term history. Its additive v18 ->
 v19 migration stores causal notes and execution-draft lifecycle state without
 activating a new transport. Its v15 -> v16
 transactional rebuild adds the occurrence-owned `tracking_mode` snapshot; the
@@ -816,15 +816,20 @@ schema change.
 
 ## 13. Audited evolution constraints
 
-Each mutating importer has strict validation and a SQLite transaction. The V2
+Each standalone mutating importer has strict validation and a SQLite
+transaction. The V2
 association companion is a strict corroboration of the equipment already
 carried by the mobile snapshot and does not rewrite divergent state. However,
 one definitions/mobile/body-zones/associations publication has no common generation
-manifest and is not one cross-artifact database transaction. A late association
+manifest in the active V3 path and is not one cross-artifact database
+transaction. A late association
 conflict can therefore follow a successfully committed definitions or mobile
 import; replay remains idempotent and existing conflicting content is not
-overwritten. A future batch protocol must be separately versioned rather than
-retrofitted into frozen formats.
+overwritten. The explicit staged generation service now supplies that
+separately versioned batch boundary: one source snapshot, immutable artifacts,
+manifest-last publication, complete validation, and one destination
+transaction including consumption/ACK state. It is intentionally not selected
+by the active V3 engine.
 
 Body-zone concurrency uses an internal canonical-state baseline. Equal states
 are idempotent; the sole changed side wins; if both local and incoming states

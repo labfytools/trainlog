@@ -38,8 +38,8 @@ def digest(value) -> str:
 
 def require_schema(db: sqlite3.Connection) -> None:
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version != 20:
-        raise CausalError(f"desktop schema v20 required, found v{version}")
+    if version not in (20, 21):
+        raise CausalError(f"desktop schema v20/v21 required, found v{version}")
 
 
 def target_snapshot(db: sqlite3.Connection, kind: str, target: str):

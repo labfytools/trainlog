@@ -236,6 +236,12 @@ trainlog_core_dep = declare_dependency(
   ],
 )
 
+executable(
+  'sync-generation-fixture',
+  'tests/sync_generation_fixture.c',
+  dependencies: trainlog_core_dep,
+)
+
 trainlog_tui_sources = files(
   'src/cli.c',
   'src/main.c',
@@ -717,6 +723,16 @@ test(
   'causal_delete_exchange',
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_causal_delete_exchange.py'],
+)
+test(
+  'sync_generation_exchange',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_sync_generation_exchange.py'],
+  timeout: 120,
+)
+test(
+  'schema_v21_migration',
+  executable('test_schema_v21_migration', 'tests/test_schema_v21_migration.c', dependencies: trainlog_core_dep),
 )
 
 test(
