@@ -79,7 +79,7 @@ def main():
             ":app:testDebugUnitTest",
             "--tests",
             "com.labfytools.trainlog.data.BackupBridgeServiceTest",
-            ":app:assembleDebug",
+            ":app:assembleRelease",
         ],
         cwd=android,
         env=env,
@@ -105,7 +105,7 @@ def main():
     print(
         f"BRIDGE_RECIPE={subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()}"
     )
-    print(f"BRIDGE_APK={android/'app/build/outputs/apk/debug/app-debug.apk'}")
+    print(f"BRIDGE_APK={android/'app/build/outputs/apk/release/app-release.apk'}")
 
 
 if __name__ == "__main__":

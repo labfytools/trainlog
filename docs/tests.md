@@ -523,6 +523,11 @@ canonical stable Android artifact. Release assets must come from the exact
 tagged source state, and the tag, Android `versionName`, Meson project version,
 TUI product version, asset names, and release title must agree.
 
+Private update rollout may set `TRAINLOG_ANDROID_VERSION_CODE` to a positive
+integer while keeping `versionName=0.1.2`. This build-only override is used only
+to maintain a strictly increasing installed → backup bridge → current APK
+chain; it does not change any schema or exchange-format version.
+
 ```bash
 meson setup --reconfigure build
 meson compile -C build

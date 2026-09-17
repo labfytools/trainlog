@@ -28,7 +28,10 @@ the separately authorized rollout are complete.
    must not combine a packaged binary with helpers from a live checkout.
 2. `assembleDebug` is development evidence only. Rollout requires the existing
    release signing identity, verification of its public certificate and a valid
-   increasing `versionCode`; this mission reads no signing secret.
+   increasing `versionCode`. A bounded `TRAINLOG_ANDROID_VERSION_CODE` build
+   override may establish an update-only private rollout chain without changing
+   the product version, schema or protocol. The bridge recipe also produces a
+   signed release variant for installation; debug APKs remain test evidence.
 3. Quiesce old writers only during an authorized rollout. Desktop backup uses
    `backup_trainlog_sqlite.py` and SQLite's backup API, then integrity and
    foreign-key checks.

@@ -35,6 +35,16 @@ val releaseSigningComplete = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
+/* CONTRACT: a private rollout may need an update-only version code above the
+ * repository default while preserving versionName, schemas and protocols.
+ * INVARIANT: the override remains a positive Android package version code and
+ * never changes the source default used by ordinary builds. */
+val trainlogVersionCode =
+    providers.environmentVariable("TRAINLOG_ANDROID_VERSION_CODE").orNull?.let { raw ->
+        raw.toIntOrNull()?.takeIf { it in 1..Int.MAX_VALUE }
+            ?: throw GradleException("TRAINLOG_ANDROID_VERSION_CODE must be a positive integer")
+    } ?: 3
+
 android {
     namespace = "com.labfytools.trainlog"
     compileSdk = 37
@@ -44,7 +54,7 @@ android {
         minSdk = 26
         targetSdk = 36
 
-        versionCode = 3
+        versionCode = trainlogVersionCode
         versionName = "0.1.2"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
