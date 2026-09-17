@@ -55,7 +55,7 @@ internal suspend fun publishBundleAndRequest(
         } catch (_: Exception) { false }
         if (!enabled) return@withContext SyncRequestResult.Error("Invalid generation synchronization opt-in.")
         return@withContext when (val result = SyncGenerationForegroundCoordinator(repository).run(canonicalExchangeDirectory())) {
-            is ForegroundGenerationResult.Completed -> SyncRequestResult.Requested(result.runId)
+            is ForegroundGenerationResult.Completed -> SyncRequestResult.Completed(result.runId)
             is ForegroundGenerationResult.Error -> SyncRequestResult.Error(result.message)
         }
     }
@@ -336,6 +336,14 @@ fun SyncScreen(
                     coroutineScope.launch {
                         try {
                             when (val result = publishBundleAndRequest(repository, exporter, requestOutbox)) {
+                                is SyncRequestResult.Completed -> {
+                                    // The generation coordinator has already consumed the
+                                    // desktop return and published its durable ACK. Waiting
+                                    // for the legacy receipt here would leave a false spinner.
+                                    success = true
+                                    pendingRequestId = null
+                                    status = strings.getString(R.string.sync_generation_complete)
+                                }
                                 is SyncRequestResult.Requested -> {
                                     success = true
                                     pendingRequestId = result.requestId

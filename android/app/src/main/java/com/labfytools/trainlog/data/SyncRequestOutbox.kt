@@ -14,6 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 sealed interface SyncRequestResult {
+    /** The full-generation coordinator completed both durable peer ACKs. */
+    data class Completed(
+        val runId: String,
+    ) : SyncRequestResult
+
     data class Requested(
         val requestId: String,
     ) : SyncRequestResult

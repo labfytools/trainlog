@@ -75,6 +75,7 @@
     <string name="sync_flow_description">Android → PC then PC → Android, in one operation.</string>
     <string name="sync_authorize_first">File access is required. Authorize Documents/Trainlog first.</string>
     <string name="sync_request_sent">Request sent · waiting for the PC…</string>
+    <string name="sync_generation_complete">Synchronization completed on Android and PC.</string>
     <string name="sync_android_unsupported">Android is not supported.</string>
     <string name="sync_folder_section">EXCHANGE FOLDER</string>
     <string name="sync_authorize_folder">Authorize access to the Trainlog folder</string>
