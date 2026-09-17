@@ -38,6 +38,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.nio.file.Files
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
@@ -503,6 +505,146 @@ class TrainlogRepositoryDraftTest {
             destination.close()
             context.deleteDatabase(sourceName)
             context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun v4HistoryRoundTripsAcrossRealAndroidAndDesktopImplementations() {
+        val sourceName = "v4-source-${UUID.randomUUID()}.db"
+        val destinationName = "v4-destination-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        val root = Files.createTempDirectory("trainlog-v4-roundtrip-").toFile()
+        try {
+            val exercise = createExercise(source, "V4 échange", RecordingMode.SETS, TrackingMode.REPS)
+            val entryId = "sxe_40000000-0000-4000-8000-000000000001"
+            assertTrue(source.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+                entryId = entryId, exercise = exercise, equipmentId = "leg_press",
+                plan = SessionExercisePlan(2, reps = 8, weightKg = 42.5,
+                    loadMode = SessionLoadMode.EXTERNAL, restSeconds = 90),
+                sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0),
+                    SessionSetDraft(reps = 6, weightKg = 42.5)),
+            )))) is SaveSessionResult.Saved)
+            val sourceArtifact = JSONObject(source.buildMobileExportV4Json())
+            val session = sourceArtifact.getJSONArray("sessions").getJSONObject(0)
+            val sessionId = session.getString("session_id")
+            assertTrue(source.updateSyncNote("session", sessionId,
+                "quoted \"note\" \\ newline\né") is SyncNoteEditResult.Saved)
+            assertTrue(source.updateSyncNote("occurrence", entryId, "x".repeat(4096))
+                is SyncNoteEditResult.Saved)
+            assertEquals(SyncNoteEditResult.Invalid,
+                source.updateSyncNote("occurrence", entryId, "x".repeat(4097)))
+            val observation = source.saveBodyObservation(
+                BodyObservationDraft(bodyWeightKg = 81.25, waistCm = 84.0),
+            ) as SaveBodyObservationResult.Saved
+            assertTrue(source.linkBodyObservationToSession(observation.observationId, sessionId))
+            assertTrue(source.updateSyncNote("observation", observation.observationId, "")
+                is SyncNoteEditResult.Saved)
+            val androidExport = File(root, "android-v4.json")
+            val completed = JSONObject(source.buildMobileExportV4Json())
+            val completedSession = completed.getJSONArray("sessions").getJSONObject(0)
+            val started = OffsetDateTime.parse(completedSession.getString("started_at"))
+            completedSession.put("ended_at", started.plusMinutes(1).toString())
+            androidExport.writeText(completed.toString())
+            val desktopDatabase = File(root, "desktop.sqlite")
+            val desktopExport = File(root, "desktop-v4.json")
+            runLifecycleBridge("history", androidExport, desktopDatabase, desktopExport)
+
+            val returned = JSONObject(desktopExport.readText())
+            val catalog = JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+                .put("exercises", JSONArray(returned.getJSONArray("exercises").toString()))
+            assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+            val equalEnd = JSONObject(returned.toString())
+            equalEnd.getJSONArray("sessions").getJSONObject(0)
+                .put("ended_at", started.toString())
+            assertTrue(destination.applyPcMobileExportV4Json(equalEnd.toString())
+                is MobileSessionImportResult.Invalid)
+            val equivalentOffset = JSONObject(returned.toString())
+            equivalentOffset.getJSONArray("sessions").getJSONObject(0)
+                .put("ended_at", started.withOffsetSameInstant(ZoneOffset.UTC).toString())
+            assertTrue(destination.applyPcMobileExportV4Json(equivalentOffset.toString())
+                is MobileSessionImportResult.Invalid)
+            assertEquals(MobileSessionImportResult.Applied(1, 0, 1, 0),
+                destination.applyPcMobileExportV4Json(returned.toString()))
+            assertEquals(MobileSessionImportResult.Applied(0, 1, 0, 1),
+                destination.applyPcMobileExportV4Json(returned.toString()))
+            val detail = destination.getSessionDetail(sessionId)!!.exercises.single()
+            assertEquals(entryId, detail.entryId)
+            assertEquals(90, detail.plan!!.restSeconds)
+            assertEquals(listOf(8, 6), detail.sets.map { it.reps })
+            assertEquals(listOf(40.0, 42.5), detail.sets.map { it.weightKg })
+            assertEquals(sessionId, JSONObject(destination.buildMobileExportV4Json())
+                .getJSONArray("body_observations").getJSONObject(0).getString("session_id"))
+            assertEquals(semanticV4Projection(JSONObject(androidExport.readText())),
+                semanticV4Projection(JSONObject(destination.buildMobileExportV4Json())))
+
+            val secondDesktop = File(root, "desktop-fresh.sqlite")
+            val finalDesktopExport = File(root, "desktop-final-v4.json")
+            val destinationExport = File(root, "destination-v4.json")
+            destinationExport.writeText(destination.buildMobileExportV4Json())
+            runLifecycleBridge("history", destinationExport, secondDesktop, finalDesktopExport)
+            assertEquals(semanticV4Projection(JSONObject(destinationExport.readText())),
+                semanticV4Projection(JSONObject(finalDesktopExport.readText())))
+        } finally {
+            source.close(); destination.close()
+            context.deleteDatabase(sourceName); context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun executionDraftRoundTripsAcrossRealAndroidAndDesktopImplementations() {
+        val sourceName = "draft-source-${UUID.randomUUID()}.db"
+        val destinationName = "draft-destination-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        val root = Files.createTempDirectory("trainlog-draft-roundtrip-").toFile()
+        try {
+            val exercise = createExercise(source, "Draft bridge", RecordingMode.SETS, TrackingMode.REPS)
+            val entryId = "sxe_50000000-0000-4000-8000-000000000001"
+            assertEquals(ActiveDraftMutationResult.Saved, source.saveActiveSessionDraft(
+                ActiveSessionDraft(exercises = listOf(SessionExerciseDraft(
+                    entryId = entryId, exercise = exercise,
+                    plan = SessionExercisePlan(3, reps = 7, restSeconds = 75),
+                    sets = listOf(SessionSetDraft(reps = 7)),
+                )), form = SessionDraftForm(weightText = "unfinished 42.")),
+            ))
+            val initial = JSONObject(source.buildExecutionDraftExportV1Json())
+            assertFalse(initial.toString().contains("unfinished 42."))
+            val draft = initial.getJSONArray("drafts").getJSONObject(0)
+            val sessionId = draft.getString("session_id")
+            val androidExport = File(root, "android-draft.json").apply { writeText(initial.toString()) }
+            val desktopDatabase = File(root, "desktop.sqlite")
+            val desktopExport = File(root, "desktop-draft.json")
+            runLifecycleBridge("draft", androidExport, desktopDatabase, desktopExport)
+
+            val catalog = JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+                .put("exercises", JSONObject(source.buildMobileExportV4Json()).getJSONArray("exercises"))
+            assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+            assertEquals(ExecutionDraftImportResult.Applied(1, 0, 0, 0),
+                destination.applyExecutionDraftExportV1Json(desktopExport.readText()))
+            assertEquals(ExecutionDraftImportResult.Applied(0, 0, 1, 0),
+                destination.applyExecutionDraftExportV1Json(desktopExport.readText()))
+            val destinationArtifact = File(root, "destination-draft.json").apply {
+                writeText(destination.buildExecutionDraftExportV1Json())
+            }
+            val freshDesktop = File(root, "desktop-fresh.sqlite")
+            val finalArtifact = File(root, "desktop-final-draft.json")
+            runLifecycleBridge("draft", destinationArtifact, freshDesktop, finalArtifact)
+            assertEquals(semanticDraftProjection(JSONObject(androidExport.readText())),
+                semanticDraftProjection(JSONObject(finalArtifact.readText())))
+            assertEquals(FinalizeActiveDraftResult.Saved(sessionId),
+                destination.finalizeExecutionDraft(sessionId))
+            destination.close()
+            val reopened = TrainlogRepository(context, destinationName)
+            assertEquals(ExecutionDraftImportResult.Applied(0, 0, 0, 1),
+                reopened.applyExecutionDraftExportV1Json(desktopExport.readText()))
+            reopened.close()
+        } finally {
+            source.close()
+            try { destination.close() } catch (_: Exception) { }
+            context.deleteDatabase(sourceName); context.deleteDatabase(destinationName)
             root.deleteRecursively()
         }
     }
@@ -2581,6 +2723,34 @@ class TrainlogRepositoryDraftTest {
             copy.put(arrayName, JSONArray().also { output -> sorted.forEach(output::put) })
         }
         return canonicalJson(copy).toString()
+    }
+
+    private fun semanticV4Projection(value: JSONObject): String =
+        semanticV3Projection(value)
+
+    private fun semanticDraftProjection(value: JSONObject): String {
+        val copy = JSONObject(value.toString())
+        copy.remove("generated_at")
+        val source = copy.getJSONArray("drafts")
+        val sorted = (0 until source.length()).map { source.getJSONObject(it) }
+            .sortedBy { it.getString("session_id") }
+        copy.put("drafts", JSONArray().also { output -> sorted.forEach(output::put) })
+        return canonicalJson(copy).toString()
+    }
+
+    private fun runLifecycleBridge(
+        kind: String,
+        input: File,
+        database: File,
+        output: File,
+    ) {
+        val bridge = findRepositoryFile("tests/support/roundtrip_desktop_lifecycle.py")
+        val process = ProcessBuilder(
+            "python3", bridge.absolutePath, kind, input.absolutePath,
+            database.absolutePath, output.absolutePath,
+        ).redirectErrorStream(true).start()
+        val text = process.inputStream.bufferedReader().readText()
+        assertEquals("desktop lifecycle bridge failed: $text", 0, process.waitFor())
     }
 
     private fun canonicalJson(value: Any?): Any = when (value) {

@@ -223,6 +223,17 @@ four skips remain the documented optional historical v9, v12, v13, and v14
 database fixtures. No hardware MTP, real Drive, adb, instrumented device test,
 user database, exchange directory, or user service participated.
 
+For the `TRAINLOG_SYNC_DATA_LIFECYCLE_V1` closeout on 2026-09-17, real staged
+V4 history and execution-draft entry points completed both Android/desktop
+producer directions through fresh destination databases. The closeout fixed
+one Android V4 import defect that validated but failed to persist occurrence
+plan fields. Isolated validation passed **75/75 normal Meson tests**,
+**75/75 ASan/UBSan Meson tests**, Android debug assembly, and **207 Android
+tests (203 passed, 4 skipped, 0 failed/error)**. The four skips remain the
+optional real historical v9, v12, v13, and v14 database fixtures. The active
+transport remains V3; no phone, MTP, Drive, service, user database, deployment,
+or instrumented device test participated.
+
 The Dashboard Core extraction tranche passes **62/62 normal Meson tests** and
 **62/62 ASan/UBSan Meson tests**, including the standalone public-header and
 Core characterization targets, plus both canonical JSON validators.

@@ -4072,7 +4072,7 @@ class TrainlogRepository(
                         put("entry_id", entryId); put("session_row_id", rowId); put("exercise_row_id", exerciseRow.rowId)
                         put("position", position); put("recording_mode", recording); put("tracking_mode", tracking)
                         put("data_fields", entry.optInt("data_fields", 0))
-                        if (version == 3) {
+                        if (version >= 3) {
                             val target = entry.optJSONObject("target")
                             put("load_mode", entry.getString("load_mode"))
                             put("rest_seconds", entry.getInt("rest_seconds"))

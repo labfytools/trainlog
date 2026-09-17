@@ -10,6 +10,14 @@
   remains V3; no service, user database, phone, tag or release artifact was
   changed or deployed.
 
+- Closed the lifecycle validation evidence with real Android/desktop V4
+  history and execution-draft round trips in both producer directions. Fixed
+  Android V4 import so validated target, load, and rest fields are persisted,
+  reconciled the 73/75 native count to the two `web=auto` frontend tests, and
+  documented identical pre-existing GCC 16 `-Wmisleading-indentation`
+  failures on baseline and branch while retaining Clang 22 strict green
+  builds. V4 remains staged and inactive.
+
 - Completed `TRAINLOG_SYNC_CHARACTERIZATION_V1` without changing production
   synchronization, schemas, or formats. Added a real Android V3 exporter →
   desktop importer/exporter → fresh Android importer round trip, and completed

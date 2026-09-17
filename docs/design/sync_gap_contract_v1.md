@@ -443,6 +443,14 @@ on the real private-XDG lock. The assertion-level matrix is owned by
 tombstones, coherent generations, causal merge, or a peer-consumption
 acknowledgement.
 
+**[CURRENT EVIDENCE]** `TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN` now has
+real cross-implementation round trips for enriched mobile V4 history and the
+separate execution-draft V1 artifact in both producer directions. The exact
+entry points, assertions, commands, compiler comparison, test inventory, and
+remaining transport boundary are recorded in `docs/tests.md`. This evidence
+does not select V4 transport and does not implement causal deletion,
+generation manifests, peer-consumption acknowledgement, or orchestration.
+
 ## 16. Sources propriétaires
 
 - état/roadmap : `docs/current_state.md`, `docs/roadmap.md` ;

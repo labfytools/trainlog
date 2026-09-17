@@ -402,11 +402,27 @@ python3 tools/validate_sync_isolated.py --suite full --jdk /usr/lib/jvm/java-17-
 `TRAINLOG_SYNC_DATA_LIFECYCLE_V1` adds schema v19/v18 migration assertions and
 Android lifecycle coverage for confirmed-only serialization, persistent
 pending state, occupied-singleton refusal, explicit activation, identity-
-preserving idempotent finalization and stale replay. The full isolated run at
-closure passed 73/73 normal native tests, 73/73 ASan/UBSan native tests and 205
-Android tests (201 passed, four unchanged historical-fixture skips), plus both
-Python validators and `assembleDebug`. These are artifact/repository proofs;
-they do not claim transport activation or global synchronization atomicity.
+preserving idempotent finalization and stale replay. The closeout adds
+`v4HistoryRoundTripsAcrossRealAndroidAndDesktopImplementations` and
+`executionDraftRoundTripsAcrossRealAndroidAndDesktopImplementations`. Their
+bridge provisions only synthetic schema and invokes the real Android and
+desktop staged entry points; it does not reconstruct wire data. The final
+isolated run passed 75/75 normal native tests, 75/75 ASan/UBSan native tests
+and 207 Android tests (203 passed, four unchanged historical-fixture skips),
+plus both Python validators and `assembleDebug`. These are artifact/repository
+proofs; they do not claim transport activation or global synchronization
+atomicity.
+
+The 75-versus-73 inventory contains no removed, renamed, merged, or disabled
+native tests. With `web=auto` and no `web/node_modules`, Meson selects 73 tests
+and omits exactly `web_frontend_typecheck` and `web_frontend`. After `npm ci`
+from the locked package file and Meson reconfiguration, both the normal and
+ASan/UBSan selections contain and pass all 75. Clang 22.1.8 is the compiler
+used for those green builds. GCC 16.2.1 fails both baseline `77c1517` and the
+lifecycle branch under the unchanged strict `-Werror` policy on
+`-Wmisleading-indentation` in unchanged `json_writer.c`,
+`web_dashboard_json.c`, and `web_dashboard.c`; this is a pre-existing
+compiler-version limitation, not lifecycle evidence and not a relaxed gate.
 
 Use `--jdk /absolute/jdk17/home` when auto-detection is unsuitable and
 `--run-parent /absolute/private/parent` to select another parent outside the
@@ -695,14 +711,16 @@ passing tests:
 | Request, receipt, and processed marker | `sync_body_zone_wiring` through `trainlog_sync_run()` | Receipt and report carry the exact `request_id`; identical request replay is refused; receipt-send failure leaves the prior processed marker unchanged | Added |
 | Android post-receipt consumption | Desktop request/receipt proof plus Android typed receipt/inbox component tests | Desktop processing success and Android artifact-import success are separate component results; V1 has no durable peer-consumption acknowledgement | Component-scoped only |
 | Inter-process lock | `sync_body_zone_wiring` against the real `sync.lock` acquisition with private `XDG_DATA_HOME` | A pipe-coordinated child holds the lock; the second trigger returns conflict before any MTP probe; every child is joined | Added |
-| V4 drafts, general tombstones, coherent generations, causal merge, and consumption acknowledgement | Frozen gap contract only | No active production implementation exists | Future criterion, not tested green |
+| Enriched V4 completed history | `TrainlogRepositoryDraftTest.v4HistoryRoundTripsAcrossRealAndroidAndDesktopImplementations` through Android V4 repository methods and the real desktop V4 importer/exporter | Android → desktop → fresh Android and desktop → Android → fresh desktop preserve stable identities, order, heterogeneous sets, plans, equipment, causal null/empty/escaped UTF-8 notes and idempotent replay | Added cross-implementation proof |
+| Execution-draft V1 | `TrainlogRepositoryDraftTest.executionDraftRoundTripsAcrossRealAndroidAndDesktopImplementations` through Android repository methods and `execution_draft_exchange.py` | Both implementation directions preserve stable session/entry identity and confirmed facts; raw unfinished form text remains local; replay is unchanged and pre-finalization replay is stale after reopen/finalization | Added cross-implementation proof |
+| General tombstones, coherent generations, causal deletion, and consumption acknowledgement | Frozen gap contract only | No active production implementation exists | Future criterion, not tested green |
 
-The cross-implementation helper only provisions the established minimal desktop
-test schema and launches the production Python tools; it does not duplicate
-their business rules. The Kotlin test uses the real Android V3 exporter and
-importer on two distinct databases. Its comparison removes only the volatile
-`generated_at`, canonicalizes object-key and unordered top-level collection
-order, and retains occurrence/set array order as business data.
+The cross-implementation helpers only provision minimal production-compatible
+desktop schemas and launch production Python tools; they do not duplicate
+their business rules. Kotlin tests use real Android exporters and importers on
+distinct databases. Comparisons remove only volatile `generated_at`,
+canonicalize object-key and unordered top-level collection order, and retain
+occurrence/set array order as business data.
 
 Request/receipt evidence remains deliberately bounded: the native test proves
 desktop correlation, publication, replay handling, and marking order, while
