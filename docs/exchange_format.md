@@ -645,3 +645,17 @@ Canonical validation requires both:
 python tools/validate_json.py
 python tools/validate_import_contract.py
 ```
+## Staged causal deletion V1
+
+`trainlog-causal-deletions` V1 is independent of every published snapshot.
+Its root contains `format`, integer `version`, `generated_at`, and at most 4096
+`operations`; the complete UTF-8 artifact is limited to 4 MiB. Each operation
+contains `operation_id`, `target_kind`, `target_id`, `creator_id`,
+`predecessor_revision_id`, `created_at`, `payload_sha256`, and a null
+`publication_context`. Unknown fields, duplicate keys/IDs, invalid timestamps,
+invalid hashes, unknown ancestry, and concurrent ancestry are rejected
+atomically. Timestamps are evidence, never last-writer-wins authority.
+
+The artifact is available only through explicit repository/tool entry points.
+It is not selected by V3 transport. Null publication context is the typed
+handoff to the later generation/acknowledgement tranche, not consumption proof.

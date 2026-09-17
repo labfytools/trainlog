@@ -713,6 +713,11 @@ test(
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_validate_sync_isolated.py'],
 )
+test(
+  'causal_delete_exchange',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_causal_delete_exchange.py'],
+)
 
 test(
   'equipment_associations_exchange',

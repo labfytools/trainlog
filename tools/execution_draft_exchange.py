@@ -169,8 +169,8 @@ def canonical(value):
 
 def require_schema(connection):
     version = connection.execute("PRAGMA user_version").fetchone()[0]
-    if version != 19:
-        raise LifecycleError(f"desktop schema v19 required, found v{version}")
+    if version not in (19, 20):
+        raise LifecycleError(f"desktop schema v19/v20 required, found v{version}")
 
 
 def import_document(connection, document):
@@ -181,6 +181,8 @@ def import_document(connection, document):
         for draft in document["drafts"]:
             session_id, revision = draft["session_id"], draft["revision_id"]
             payload = canonical(draft)
+            if connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='execution_draft' AND target_id=? AND deleted=1", (session_id,)).fetchone():
+                outcomes.append((session_id, "stale")); continue
             if connection.execute("SELECT 1 FROM execution_draft_finalizations WHERE session_id=?", (session_id,)).fetchone():
                 outcomes.append((session_id, "stale")); continue
             current = connection.execute(

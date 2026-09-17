@@ -24,7 +24,9 @@ CREATE TABLE sync_note_state(owner_kind TEXT NOT NULL,owner_id TEXT NOT NULL,rev
 CREATE TABLE execution_drafts(session_id TEXT PRIMARY KEY,session_type TEXT NOT NULL,source_session_id TEXT,started_at TEXT,revision_id TEXT NOT NULL,parent_revision_id TEXT,state TEXT NOT NULL,payload_json TEXT NOT NULL);
 CREATE TABLE execution_draft_revisions(session_id TEXT NOT NULL,revision_id TEXT NOT NULL,parent_revision_id TEXT,payload_json TEXT NOT NULL,PRIMARY KEY(session_id,revision_id));
 CREATE TABLE execution_draft_finalizations(session_id TEXT PRIMARY KEY,final_revision_id TEXT NOT NULL,finalized_at TEXT NOT NULL);
-PRAGMA user_version=19;
+CREATE TABLE sync_causal_operations(operation_id TEXT PRIMARY KEY,target_kind TEXT NOT NULL,target_id TEXT NOT NULL,creator_id TEXT NOT NULL,predecessor_revision_id TEXT NOT NULL,created_at TEXT NOT NULL,payload_sha256 TEXT NOT NULL,publication_context TEXT);
+CREATE TABLE sync_causal_state(target_kind TEXT NOT NULL,target_id TEXT NOT NULL,current_revision_id TEXT NOT NULL,deleted INTEGER NOT NULL,operation_id TEXT,PRIMARY KEY(target_kind,target_id));
+PRAGMA user_version=20;
 """
 
 

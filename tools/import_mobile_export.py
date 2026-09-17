@@ -845,9 +845,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
+    if version not in (5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
         raise ImportFailure(
-            f"base desktop schema v5 à v19 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v20 attendue, version trouvée: {version}"
         )
 
 
@@ -1987,8 +1987,18 @@ def run_import(
         )
 
         schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
-        if payload["version"] == 4 and schema_version != 19:
-            raise ImportFailure("mobile V4 exige le schéma desktop v19")
+        if payload["version"] == 4 and schema_version not in (19, 20):
+            raise ImportFailure("mobile V4 exige le schéma desktop v19 ou v20")
+        if schema_version >= 20:
+            protected = {(row[0], row[1]) for row in connection.execute(
+                "SELECT target_kind,target_id FROM sync_causal_state WHERE deleted=1")}
+            incoming = ({("session", value["session_id"]) for value in payload["sessions"]} |
+                        {("body_observation", value["observation_id"]) for value in payload["body_observations"]} |
+                        {("exercise", value["exercise_id"]) for value in payload["exercises"]})
+            collision = protected & incoming
+            if collision:
+                kind, identity = sorted(collision)[0]
+                raise ImportFailure(f"causal protection refuses legacy/live replay: {kind}/{identity}")
         has_explicit_max = any(
             "max_weight_kg" in entry
             for session in payload["sessions"]

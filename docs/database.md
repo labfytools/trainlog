@@ -16,8 +16,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=19
-DATABASE_SCHEMA_V19=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=20
+DATABASE_SCHEMA_V20=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -36,7 +36,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-19
+20
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -48,6 +48,14 @@ widen actual `weight_kg` from finite `> 0` to finite `>= 0`.
 Supported historical databases are migrated explicitly through the implemented
 migration chain. A database newer than the running binary understands is
 rejected.
+
+Schema v20 additively introduces `sync_causal_operations` and
+`sync_causal_state`. Operations are immutable and identify their target,
+creator, causal predecessor, timestamp, payload digest, and an unassigned
+publication context. Target state records the durable deleted revision. The
+v19→v20 migration creates empty protection tables and does not fabricate
+ancestry for existing rows. Applying an operation, recording its protection,
+and performing dependent changes share one transaction.
 
 Version 19 additively stores causal note revisions/current state and staged
 execution drafts, their immutable revisions, pending/active state and durable

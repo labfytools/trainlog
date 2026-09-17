@@ -83,10 +83,13 @@ def main():
     con.row_factory = sqlite3.Row
     try:
         schema_version = con.execute("PRAGMA user_version").fetchone()[0]
-        if args.version == 4 and schema_version != 19:
-            raise ValueError("mobile V4 exige le schéma desktop v19")
-        if schema_version not in (11, 12, 13, 14, 15, 16, 17, 18, 19) and not (args.version == 2 and schema_version == 10):
+        if args.version == 4 and schema_version not in (19, 20):
+            raise ValueError("mobile V4 exige le schéma desktop v19 ou v20")
+        if schema_version not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20) and not (args.version == 2 and schema_version == 10):
             raise ValueError("schema desktop v11-v16 requis (v10 accepté pour export V2 explicite)")
+        if schema_version >= 20 and con.execute(
+                "SELECT 1 FROM sync_causal_state WHERE deleted=1 LIMIT 1").fetchone():
+            raise ValueError("causal protection refuses a mobile snapshot that omits tombstones")
         known_equipment = supplied_equipment_ids()
         canonical_names = load_exercise_names()
         known_equipment.update(row[0] for row in con.execute(

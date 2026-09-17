@@ -910,3 +910,7 @@ Cancel and Back are safe, outside taps cannot confirm, and the destructive
 button is explicit. Draft occurrence warnings name nonzero performed-set,
 continuous, MAX and feedback children; series deletion and whole-draft abandon
 use the same gate.
+Android schema v19 additively stores the same immutable causal-deletion
+operations and current deleted-target state as desktop v20. Existing data is
+preserved and no migration-time ancestry is invented. Repository entry points
+create, validate, apply, export, and import the staged causal artifact.

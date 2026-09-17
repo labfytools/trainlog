@@ -650,6 +650,81 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
+    fun causalSessionDeletionRoundTripsWithBothRealProducersAndBlocksReplay() {
+        val sourceName = "delete-source-${UUID.randomUUID()}.db"
+        val destinationName = "delete-destination-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        val root = Files.createTempDirectory("trainlog-causal-delete-").toFile()
+        try {
+            val exercise = createExercise(source, "Delete bridge", RecordingMode.SETS, TrackingMode.REPS)
+            assertTrue(source.saveSession(SessionDraft(listOf(SessionExerciseDraft(
+                entryId = "sxe_60000000-0000-4000-8000-000000000001",
+                exercise = exercise, sets = listOf(SessionSetDraft(reps = 9)),
+            )))) is SaveSessionResult.Saved)
+            val live = File(root, "live-v4.json").apply { writeText(source.buildMobileExportV4Json()) }
+            val sessionId = JSONObject(live.readText()).getJSONArray("sessions")
+                .getJSONObject(0).getString("session_id")
+
+            val androidDelete = source.deleteCausally("session", sessionId, "peer_android_test")
+            assertTrue(androidDelete is CausalDeleteResult.Applied)
+            val androidCausal = File(root, "android-causal.json").apply {
+                writeText(source.buildCausalDeletionExportV1Json())
+            }
+            try { source.buildMobileExportV4Json(); fail("protected legacy export must fail")
+            } catch (_: IllegalStateException) { }
+
+            val desktop = File(root, "desktop.sqlite")
+            runLifecycleBridge("history", live, desktop, File(root, "desktop-live-v4.json"))
+            runDesktopCausal("import", androidCausal, desktop)
+            val desktopCausal = File(root, "desktop-causal.json")
+            runDesktopCausal("export", desktopCausal, desktop)
+
+            val catalog = JSONObject().put("format", "trainlog-pc-catalog").put("version", 1)
+                .put("exercises", JSONObject(live.readText()).getJSONArray("exercises"))
+            assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+            assertTrue(destination.applyPcMobileExportV4Json(live.readText()) is MobileSessionImportResult.Applied)
+            assertTrue(destination.applyCausalDeletionExportV1Json(desktopCausal.readText()) is CausalDeleteResult.Applied)
+            assertTrue(destination.listSessions().isEmpty())
+            assertTrue(destination.applyCausalDeletionExportV1Json(desktopCausal.readText()) is CausalDeleteResult.Unchanged)
+            assertTrue(destination.applyPcMobileExportV4Json(live.readText()) is MobileSessionImportResult.Invalid)
+            destination.close()
+            val reopened = TrainlogRepository(context, destinationName)
+            assertTrue(reopened.applyCausalDeletionExportV1Json(desktopCausal.readText()) is CausalDeleteResult.Unchanged)
+            assertTrue(reopened.listSessions().isEmpty())
+            reopened.close()
+
+            val desktopProducer = File(root, "desktop-producer.sqlite")
+            runLifecycleBridge("history", live, desktopProducer, File(root, "desktop-producer-live.json"))
+            val localOperation = File(root, "desktop-local-operation.json")
+            runDesktopCausal("delete", localOperation, desktopProducer, "session", sessionId)
+            val desktopProduced = File(root, "desktop-produced.json")
+            runDesktopCausal("export", desktopProduced, desktopProducer)
+            val reverseName = "delete-reverse-${UUID.randomUUID()}.db"
+            val reverse = TrainlogRepository(context, reverseName)
+            assertTrue(reverse.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+            assertTrue(reverse.applyPcMobileExportV4Json(live.readText()) is MobileSessionImportResult.Applied)
+            assertTrue(reverse.applyCausalDeletionExportV1Json(desktopProduced.readText()) is CausalDeleteResult.Applied)
+            val returned = File(root, "android-returned-causal.json").apply {
+                writeText(reverse.buildCausalDeletionExportV1Json())
+            }
+            val freshDesktop = File(root, "desktop-fresh.sqlite")
+            runLifecycleBridge("history", live, freshDesktop, File(root, "desktop-fresh-live.json"))
+            runDesktopCausal("import", returned, freshDesktop)
+            val finalArtifact = File(root, "desktop-final-causal.json")
+            runDesktopCausal("export", finalArtifact, freshDesktop)
+            assertEquals(semanticCausalProjection(JSONObject(desktopProduced.readText())),
+                semanticCausalProjection(JSONObject(finalArtifact.readText())))
+            reverse.close(); context.deleteDatabase(reverseName)
+        } finally {
+            try { source.close() } catch (_: Exception) { }
+            try { destination.close() } catch (_: Exception) { }
+            context.deleteDatabase(sourceName); context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun repeatedContinuousExercisePersistsDistinctOccurrencesAcrossReopenAndFinalize() {
         val repo = openRepository()
         val marche = createExercise(repo, "Marche", RecordingMode.CONTINUOUS, TrackingMode.DURATION)
@@ -1936,7 +2011,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(18, cursor.getInt(0))
+                assertEquals(19, cursor.getInt(0))
             }
             db.rawQuery(
                 "SELECT eq.equipment_id, ps.reps, ps.weight_kg FROM session_exercises se " +
@@ -2063,7 +2138,7 @@ class TrainlogRepositoryDraftTest {
         ).use { db ->
             db.rawQuery("PRAGMA user_version;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(18, cursor.getInt(0))
+                assertEquals(19, cursor.getInt(0))
             }
             db.rawQuery("SELECT weight_kg FROM performed_sets WHERE id = 1;", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -2736,6 +2811,32 @@ class TrainlogRepositoryDraftTest {
             .sortedBy { it.getString("session_id") }
         copy.put("drafts", JSONArray().also { output -> sorted.forEach(output::put) })
         return canonicalJson(copy).toString()
+    }
+
+    private fun semanticCausalProjection(value: JSONObject): String {
+        val copy = JSONObject(value.toString()); copy.remove("generated_at")
+        val source = copy.getJSONArray("operations")
+        val sorted = (0 until source.length()).map { source.getJSONObject(it) }
+            .sortedBy { it.getString("operation_id") }
+        copy.put("operations", JSONArray().also { output -> sorted.forEach(output::put) })
+        return canonicalJson(copy).toString()
+    }
+
+    private fun runDesktopCausal(
+        mode: String,
+        artifact: File,
+        database: File,
+        kind: String? = null,
+        targetId: String? = null,
+    ) {
+        val tool = findRepositoryFile("tools/causal_delete_exchange.py")
+        val arguments = mutableListOf("python3", tool.absolutePath, mode, artifact.absolutePath,
+            "--database", database.absolutePath)
+        if (kind != null && targetId != null) arguments += listOf(
+            "--kind", kind, "--target-id", targetId, "--creator-id", "peer_desktop_test")
+        val process = ProcessBuilder(arguments).redirectErrorStream(true).start()
+        val text = process.inputStream.bufferedReader().readText()
+        assertEquals("desktop causal tool failed: $text", 0, process.waitFor())
     }
 
     private fun runLifecycleBridge(

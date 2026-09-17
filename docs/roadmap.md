@@ -19,7 +19,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v19, Android schema v18, Notcurses, direct
+Desktop schema v20, Android schema v19, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
@@ -33,7 +33,7 @@ visualizations are implemented; the other four Web routes remain placeholders.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_CAUSAL_DELETE_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_GENERATION_ACK_V1
 ```
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
@@ -125,9 +125,9 @@ characterization, data/lifecycles, causal deletion, generation/consumption/ack,
 orchestrator/report, Web API, then button/refresh. The environment/test and
 characterization and data/lifecycle lots are complete. Enriched V4 history and
 the separate execution-draft codec are implemented behind explicit entry
-points, while active transport remains V3. Causal deletion,
-generation/consumption acknowledgement, orchestration/reporting and Web sync
-remain unimplemented.
+points, while active transport remains V3. Causal deletion is implemented and
+validated through explicit staged entry points; generation/consumption
+acknowledgement, orchestration/reporting and Web sync remain unimplemented.
 `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 
 ### Gym catalog V1

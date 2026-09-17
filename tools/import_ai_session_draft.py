@@ -193,8 +193,8 @@ def import_payload(connection, payload, imported_at=None):
     INVARIANT: validation and every child insert share one IMMEDIATE transaction;
     any failure leaves no draft, child, or import-identity row behind.
     """
-    if connection.execute("PRAGMA user_version").fetchone()[0] not in (18, 19):
-        raise ImportFailure("schema desktop v18 requis")
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in (18, 19, 20):
+        raise ImportFailure("schema desktop v18-v20 requis")
     draft, entries = validate(payload, connection)
     digest = canonical_digest(payload)
     imported_at = imported_at or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")

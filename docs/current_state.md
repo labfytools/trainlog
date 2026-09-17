@@ -25,8 +25,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v19 |
-| Android SQLite | schema v18 |
+| Desktop SQLite | schema v20 |
+| Android SQLite | schema v19 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -288,6 +288,19 @@ smoke test are not automated. The latter is why
 `TRAINLOG_AI_SESSION_DRAFT_V1` remains `VALIDATION_PENDING`.
 
 ## Active limitations
+
+`TRAINLOG_SYNC_CAUSAL_DELETE_V1=PASS/FROZEN` provides isolated Android and
+desktop producers/consumers for `trainlog-causal-deletions` V1. All contracted
+domains are durably protected; exact replay is idempotent and unprovable or
+concurrent ancestry conflicts before mutation. Protected legacy snapshots are
+refused before resurrection. Active synchronization still selects V3: no
+generation acknowledgement, service activation, deployment, or user-data
+migration occurred.
+
+The isolated closeout passed 76/76 normal Meson tests, 76/76 ASan/UBSan
+tests, Android debug assembly, and 208 Android tests (204 passed, four optional
+historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
+pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
 - `WEB_NEXT_MODULE_SELECTION_V1`: Analyse, Programmes, Séances and Exercices
   remain shell placeholders until their Core/API ownership and implementation

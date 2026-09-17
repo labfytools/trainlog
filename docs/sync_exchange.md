@@ -1,8 +1,17 @@
 # Synchronization exchange
 
+## Causal deletion safety gate
+
+Android and desktop expose staged producers and consumers for the independent
+`trainlog-causal-deletions` V1 artifact; it is not in the active MTP bundle. A
+protected store refuses legacy mobile snapshot export, and legacy mobile import
+rejects protected session, observation, or exercise identities before mutation.
+Deleted execution-draft replay is stale. Tombstone-free V1/V2/V3 behavior is
+unchanged.
+
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v19 and Android schema v18 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v20 and Android schema v19 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names

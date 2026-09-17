@@ -832,6 +832,30 @@ static const char *const MIGRATE_V18_TO_V19_SQL =
     "session_id TEXT PRIMARY KEY,final_revision_id TEXT NOT NULL,finalized_at TEXT NOT NULL);"
     "PRAGMA user_version=19;COMMIT;";
 
+/* WHY: offline peers can replay live snapshots after an intentional deletion.
+ * CONTRACT: v20 records immutable causal deletion operations separately from
+ * future publication generations. INVARIANT: no legacy row is marked deleted
+ * and no ancestry, peer acknowledgement, or emission context is fabricated. */
+static const char *const MIGRATE_V19_TO_V20_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE sync_causal_operations("
+    "operation_id TEXT PRIMARY KEY,target_kind TEXT NOT NULL,target_id TEXT NOT NULL,"
+    "creator_id TEXT NOT NULL,predecessor_revision_id TEXT NOT NULL,"
+    "created_at TEXT NOT NULL,payload_sha256 TEXT NOT NULL,publication_context TEXT,"
+    "CHECK(length(operation_id) BETWEEN 1 AND 128),"
+    "CHECK(length(target_id) BETWEEN 1 AND 512),"
+    "CHECK(length(creator_id) BETWEEN 1 AND 128),"
+    "CHECK(length(predecessor_revision_id) BETWEEN 1 AND 128),"
+    "CHECK(length(payload_sha256)=64),"
+    "UNIQUE(target_kind,target_id,operation_id));"
+    "CREATE TABLE sync_causal_state("
+    "target_kind TEXT NOT NULL,target_id TEXT NOT NULL,current_revision_id TEXT NOT NULL,"
+    "deleted INTEGER NOT NULL CHECK(deleted IN(0,1)),operation_id TEXT,"
+    "PRIMARY KEY(target_kind,target_id),"
+    "FOREIGN KEY(operation_id) REFERENCES sync_causal_operations(operation_id));"
+    "CREATE INDEX sync_causal_operations_target ON sync_causal_operations(target_kind,target_id);"
+    "PRAGMA user_version=20;COMMIT;";
+
 /* CONTRACT: v18 was already deployed before bounded draft publication was
  * added. Keep its version number and add only the nullable lifecycle cursor;
  * NULL deliberately means retryable/not yet published. */
@@ -1525,7 +1549,7 @@ static TrainlogStatus initialize_or_validate_schema(
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
                version == 15 || version == 16 || version == 17 || version == 18 ||
-               version == 19) {
+               version == 19 || version == 20) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1692,6 +1716,9 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 19) {
         status = execute_sql(database, MIGRATE_V18_TO_V19_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 20) {
+        status = execute_sql(database, MIGRATE_V19_TO_V20_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -1707,7 +1734,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v19" : "migrate database to schema v19",
+            version == 0 ? "create schema v20" : "migrate database to schema v20",
             database->connection,
             SQLITE_ERROR
         );

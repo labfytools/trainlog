@@ -1190,3 +1190,20 @@ Documents and Download roots while failing on any legacy access.
 Android unit tests and any instrumented tests run on an emulator; the primary
 personal phone is reserved for manual, non-destructive install-and-sync smoke
 validation and must not run `connectedDebugAndroidTest`.
+## Causal deletion V1
+
+The normal Meson inventory includes `causal_delete_exchange`, which invokes
+the production desktop service and proves all target kinds, relationship
+safety, exact replay, conflicts, finalization protection, and rollback. Android
+`causalSessionDeletionRoundTripsWithBothRealProducersAndBlocksReplay` uses the
+real Android repository and desktop service in both producer directions with
+fresh destinations, reopen/replay, and legacy non-resurrection.
+
+Strict compilation uses Clang 22.1.8. GCC 16.2.1 retains the compared
+pre-existing `-Werror=misleading-indentation` failure in unchanged Web baseline
+sources; it is not reported as green and warning policy is unchanged.
+
+The causal closeout full harness result is 76/76 normal Meson, 76/76
+ASan/UBSan, and 208 Android tests: 204 passed and four optional historical
+database fixtures skipped. `assembleDebug`, JSON validation, import-contract
+validation, both frontend tests, and the isolated characterization all pass.
