@@ -28,6 +28,9 @@ the separately authorized rollout are complete.
    must not combine a packaged binary with helpers from a live checkout.
    Stable user-bin symlinks are supported: each launcher resolves the link to
    its physical bundle before locating `libexec` and `tools`.
+   Packaging validation imports the production orchestrator and peer worker
+   from the staged `tools` directory so their complete local module closure is
+   present before installation.
 2. `assembleDebug` is development evidence only. Rollout requires the existing
    release signing identity, verification of its public certificate and a valid
    increasing `versionCode`. A bounded `TRAINLOG_ANDROID_VERSION_CODE` build

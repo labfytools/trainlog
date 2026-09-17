@@ -76,6 +76,17 @@ class DeploymentToolsTest(unittest.TestCase):
             )
             self.assertEqual(linked.returncode, 0, linked.stderr)
             self.assertIn("trainlog 0.1.2", linked.stdout)
+            imported = subprocess.run(
+                [
+                    "python3",
+                    "-c",
+                    "import sync_peer_worker; import sync_orchestrator",
+                ],
+                cwd=output / "tools",
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(imported.returncode, 0, imported.stderr)
             self.assertTrue(
                 any(
                     row["path"] == "tools/trainlog_syncd.py"

@@ -17,6 +17,8 @@ RUNTIME_TOOLS = [
     "sync_generation_exchange.py",
     "trainlog_sqlite.py",
     "validate_json.py",
+    "validate_training_knowledge.py",
+    "exercise_names.py",
     "import_mobile_export.py",
     "import_exercise_aliases.py",
     "import_equipment_definitions.py",

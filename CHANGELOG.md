@@ -20,6 +20,9 @@
 - Made the Web sync button generate cryptographic UUIDv4 request IDs on the
   loopback HTTP hostname where `crypto.randomUUID()` is unavailable.
 
+- Included the exercise-name and training-knowledge modules required by the
+  packaged generation worker, with an isolated runtime-import regression.
+
 - Closed the native candidate warning gate with checked path and HTTP response
   bounds, strict GCC and Clang builds, full Clang ASan/UBSan validation, and a
   stable concurrent object-I/O MTP double. Rebuilt the desktop, current Android
