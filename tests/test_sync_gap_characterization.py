@@ -97,6 +97,70 @@ def main():
                 "WHERE observation_id='bo_v3'"
             ).fetchone() == (None, None)
 
+            session_row = connection.execute(
+                "SELECT id FROM sessions WHERE session_id='se_v3'"
+            ).fetchone()[0]
+            connection.execute(
+                "UPDATE sessions SET ended_at=?, notes=? WHERE id=?",
+                ("2026-09-09T12:59:00+02:00", "destination session note", session_row),
+            )
+            connection.execute(
+                "UPDATE session_exercises SET notes='destination occurrence note' "
+                "WHERE entry_id='sxe_reps'"
+            )
+            connection.execute(
+                "UPDATE body_observations SET session_row_id=?, notes=? "
+                "WHERE observation_id='bo_v3'",
+                (session_row, "destination body note"),
+            )
+
+        identical = run(
+            [sys.executable, str(IMPORTER), str(exported), "--database", str(destination)]
+        )
+        assert "sessions_imported=0" in identical.stdout
+        assert "sessions_reconciled=0" in identical.stdout
+        assert "sessions_skipped=2" in identical.stdout
+        with sqlite3.connect(destination) as connection:
+            assert connection.execute(
+                "SELECT ended_at,notes FROM sessions WHERE session_id='se_v3'"
+            ).fetchone() == ("2026-09-09T12:59:00+02:00", "destination session note")
+            assert connection.execute(
+                "SELECT notes FROM session_exercises WHERE entry_id='sxe_reps'"
+            ).fetchone()[0] == "destination occurrence note"
+            assert connection.execute(
+                "SELECT session_row_id IS NOT NULL,notes FROM body_observations "
+                "WHERE observation_id='bo_v3'"
+            ).fetchone() == (1, "destination body note")
+
+        corrected = copy.deepcopy(wire)
+        corrected_session = next(
+            item for item in corrected["sessions"] if item["session_id"] == "se_v3"
+        )
+        corrected_occurrence = next(
+            item for item in corrected_session["exercises"]
+            if item["entry_id"] == "sxe_reps"
+        )
+        corrected_occurrence["sets"][0]["reps"] += 1
+        correction = import_document(
+            root, destination, corrected, "corrected-v3.json"
+        )
+        assert "sessions_reconciled=1" in correction.stdout
+        assert "sessions_skipped=1" in correction.stdout
+        with sqlite3.connect(destination) as connection:
+            connection.execute("PRAGMA foreign_keys=ON")
+            # CONTRACT: the header/body rows are not replaced by V3, but the
+            # occurrence is reconstructed and its wire-absent local note is lost.
+            assert connection.execute(
+                "SELECT ended_at,notes FROM sessions WHERE session_id='se_v3'"
+            ).fetchone() == ("2026-09-09T12:59:00+02:00", "destination session note")
+            assert connection.execute(
+                "SELECT notes FROM session_exercises WHERE entry_id='sxe_reps'"
+            ).fetchone()[0] is None
+            assert connection.execute(
+                "SELECT session_row_id IS NOT NULL,notes FROM body_observations "
+                "WHERE observation_id='bo_v3'"
+            ).fetchone() == (1, "destination body note")
+
             # CONTRACT: current snapshots have no session tombstone. Local
             # deletion followed by replay therefore resurrects the identity.
             connection.execute("DELETE FROM sessions WHERE session_id='se_v3'")

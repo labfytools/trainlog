@@ -4,11 +4,15 @@
  * Exercises production contracts without owning runtime behavior or persistent formats.
  */
 #include <stdbool.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <sqlite3.h>
 
@@ -35,7 +39,19 @@ static unsigned int remote_mobile_version = 2U;
 static const char *remote_tracking_mode = "reps";
 static bool remote_profile_available = true;
 static bool remote_alias_available = false;
+static bool remote_request_available = false;
+static bool remote_pc_catalog_available = false;
+static const char *failed_send_name = NULL;
+static size_t remote_delete_count = 0U;
 static char rclone_log[4096];
+static size_t mtp_probe_count = 0U;
+
+static bool write_artifacts(const char *mobile_id, const char *zone_id,
+                            bool historical_alias_data);
+static bool prepare_database(const char *case_root, bool persistent_alias,
+                             bool initial_zone, char *database_path,
+                             size_t database_path_size);
+static bool file_contains(const char *name, const char *needle, bool expected);
 
 static bool install_fake_rclone(const char *root)
 {
@@ -144,6 +160,7 @@ TrainlogStatus trainlog_usb_list_mtp_devices(
     size_t *output_count
 )
 {
+    mtp_probe_count += 1U;
     if (output_count == NULL || output == NULL || capacity < 1U) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
@@ -153,6 +170,59 @@ TrainlogStatus trainlog_usb_list_mtp_devices(
     output->mtp = true;
     *output_count = 1U;
     return TRAINLOG_STATUS_OK;
+}
+
+static bool run_lock_contention_case(const char *case_root)
+{
+    TrainlogSyncReport report;
+    char trainlog_root[4096];
+    char lock_path[4096];
+    int ready[2];
+    int release[2];
+    pid_t child;
+    char signal_byte;
+    int status;
+    size_t probes_before = mtp_probe_count;
+
+    CHECK(mkdir(case_root, 0700) == 0);
+    CHECK(setenv("XDG_DATA_HOME", case_root, 1) == 0);
+    CHECK(snprintf(trainlog_root, sizeof(trainlog_root), "%s/trainlog",
+                   case_root) > 0);
+    CHECK(mkdir(trainlog_root, 0700) == 0);
+    CHECK(snprintf(lock_path, sizeof(lock_path), "%s/sync.lock",
+                   trainlog_root) > 0);
+    CHECK(pipe(ready) == 0);
+    CHECK(pipe(release) == 0);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        int descriptor;
+        (void)close(ready[0]);
+        (void)close(release[1]);
+        descriptor = open(lock_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+        if (descriptor < 0 || flock(descriptor, LOCK_EX) != 0 ||
+            write(ready[1], "L", 1U) != 1 ||
+            read(release[0], &signal_byte, 1U) != 1) {
+            _exit(EXIT_FAILURE);
+        }
+        (void)flock(descriptor, LOCK_UN);
+        (void)close(descriptor);
+        _exit(EXIT_SUCCESS);
+    }
+    (void)close(ready[1]);
+    (void)close(release[0]);
+    CHECK(read(ready[0], &signal_byte, 1U) == 1);
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_ANDROID, true,
+        TRAINLOG_SYNC_BIDIRECTIONAL, &report) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(!report.success);
+    CHECK(strstr(report.error, "déjà en cours") != NULL);
+    CHECK(mtp_probe_count == probes_before);
+    CHECK(write(release[1], "R", 1U) == 1);
+    CHECK(close(ready[0]) == 0);
+    CHECK(close(release[1]) == 0);
+    CHECK(waitpid(child, &status, 0) == child);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS);
+    return true;
 }
 
 TrainlogStatus trainlog_mtp_list_storages(
@@ -232,7 +302,9 @@ TrainlogStatus trainlog_mtp_list_folder(
     }
     if (parent_folder_id == 2U) {
         size_t count = 3U + (remote_profile_available ? 1U : 0U) +
-            (remote_alias_available ? 1U : 0U);
+            (remote_alias_available ? 1U : 0U) +
+            (remote_request_available ? 1U : 0U) +
+            (remote_pc_catalog_available ? 1U : 0U);
         size_t next = 3U;
         if (capacity < count) {
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
@@ -250,6 +322,16 @@ TrainlogStatus trainlog_mtp_list_folder(
         if (remote_alias_available) {
             set_entry(&output[next], 14U, 2U,
                       "trainlog-exercise-aliases-v1.json", false);
+            next += 1U;
+        }
+        if (remote_request_available) {
+            set_entry(&output[next], 15U, 2U,
+                      "trainlog-sync-request-v1.json", false);
+            next += 1U;
+        }
+        if (remote_pc_catalog_available) {
+            set_entry(&output[next], 16U, 2U,
+                      "trainlog-pc-catalog-v1.json", false);
         }
         *output_count = count;
         return TRAINLOG_STATUS_OK;
@@ -275,7 +357,8 @@ TrainlogStatus trainlog_mtp_receive_file(
         item_id == 11U ? "trainlog-exercise-body-zones-v1.json" :
         item_id == 12U ? "trainlog-equipment-associations-v2.json" :
         item_id == 13U ? "trainlog-exercise-profile-state-v1.json" :
-        item_id == 14U ? "trainlog-exercise-aliases-v1.json" : NULL;
+        item_id == 14U ? "trainlog-exercise-aliases-v1.json" :
+        item_id == 15U ? "trainlog-sync-request-v1.json" : NULL;
     if (name == NULL || local_path == NULL) {
         return TRAINLOG_STATUS_NOT_FOUND;
     }
@@ -301,6 +384,10 @@ TrainlogStatus trainlog_mtp_send_text_file(
     (void)device_number;
     (void)storage_id;
     (void)parent_folder_id;
+    if (failed_send_name != NULL && remote_filename != NULL &&
+        strcmp(failed_send_name, remote_filename) == 0) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
     {
         char target[4096];
         int written = snprintf(target, sizeof(target), "%s/%s", remote_root,
@@ -316,16 +403,128 @@ TrainlogStatus trainlog_mtp_send_text_file(
     return TRAINLOG_STATUS_OK;
 }
 
+static bool write_request(const char *request_id)
+{
+    char path[4096];
+    FILE *file;
+    CHECK(snprintf(path, sizeof(path), "%s/trainlog-sync-request-v1.json",
+                   remote_root) > 0);
+    file = fopen(path, "wb");
+    CHECK(file != NULL);
+    CHECK(fprintf(file,
+        "{\"format\":\"trainlog-sync-request\",\"version\":1,"
+        "\"request_id\":\"%s\","
+        "\"requested_at\":\"2032-01-01T00:00:00+00:00\"}", request_id) > 0);
+    CHECK(fclose(file) == 0);
+    return true;
+}
+
+static bool run_request_receipt_case(const char *case_root)
+{
+    static const char *const first_request =
+        "sr_10000000-0000-4000-8000-000000000001";
+    static const char *const second_request =
+        "sr_10000000-0000-4000-8000-000000000002";
+    TrainlogSyncReport report;
+    char database_path[4096];
+    char last_request_path[4096];
+    char last_request[128];
+    FILE *file;
+    size_t count;
+
+    CHECK(prepare_database(case_root, false, false,
+                           database_path, sizeof(database_path)));
+    CHECK(write_artifacts(SOURCE_ID, SOURCE_ID, false));
+    CHECK(write_request(first_request));
+    remote_request_available = true;
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_ANDROID, true,
+        TRAINLOG_SYNC_BIDIRECTIONAL, &report) == TRAINLOG_STATUS_OK);
+    CHECK(report.success && report.request_present);
+    CHECK(strcmp(report.request_id, first_request) == 0);
+    CHECK(file_contains("trainlog-sync-receipt-v1.json", first_request, true));
+    CHECK(snprintf(last_request_path, sizeof(last_request_path),
+        "%s/trainlog/sync_last_request.txt", case_root) > 0);
+    file = fopen(last_request_path, "rb");
+    CHECK(file != NULL);
+    count = fread(last_request, 1U, sizeof(last_request) - 1U, file);
+    CHECK(ferror(file) == 0);
+    CHECK(fclose(file) == 0);
+    last_request[count] = '\0';
+    CHECK(strstr(last_request, first_request) != NULL);
+
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_ANDROID, true,
+        TRAINLOG_SYNC_BIDIRECTIONAL, &report) == TRAINLOG_STATUS_NOT_FOUND);
+    CHECK(report.request_present);
+    CHECK(strcmp(report.request_id, first_request) == 0);
+
+    CHECK(write_request(second_request));
+    failed_send_name = "trainlog-sync-receipt-v1.json";
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_ANDROID, true,
+        TRAINLOG_SYNC_BIDIRECTIONAL, &report) == TRAINLOG_STATUS_SYSTEM_ERROR);
+    CHECK(!report.success && report.request_present);
+    CHECK(strcmp(report.request_id, second_request) == 0);
+    failed_send_name = NULL;
+    file = fopen(last_request_path, "rb");
+    CHECK(file != NULL);
+    count = fread(last_request, 1U, sizeof(last_request) - 1U, file);
+    CHECK(ferror(file) == 0);
+    CHECK(fclose(file) == 0);
+    last_request[count] = '\0';
+    CHECK(strstr(last_request, first_request) != NULL);
+    CHECK(strstr(last_request, second_request) == NULL);
+    remote_request_available = false;
+    return true;
+}
+
 TrainlogStatus trainlog_mtp_delete_object(
     unsigned int bus_number,
     unsigned int device_number,
     uint32_t item_id
 )
 {
+    char path[4096];
+    int written;
     (void)bus_number;
     (void)device_number;
-    (void)item_id;
+    if (item_id == 16U) {
+        written = snprintf(path, sizeof(path), "%s/trainlog-pc-catalog-v1.json",
+                           remote_root);
+        if (written < 0 || (size_t)written >= sizeof(path) || remove(path) != 0) {
+            return TRAINLOG_STATUS_SYSTEM_ERROR;
+        }
+        remote_pc_catalog_available = false;
+        remote_delete_count += 1U;
+    }
     return TRAINLOG_STATUS_OK;
+}
+
+static bool run_publish_delete_failure_case(const char *case_root)
+{
+    TrainlogSyncReport report;
+    char database_path[4096];
+    char catalog_path[4096];
+    FILE *file;
+    size_t deletes_before = remote_delete_count;
+
+    CHECK(prepare_database(case_root, false, false,
+                           database_path, sizeof(database_path)));
+    CHECK(snprintf(catalog_path, sizeof(catalog_path),
+                   "%s/trainlog-pc-catalog-v1.json", remote_root) > 0);
+    file = fopen(catalog_path, "wb");
+    CHECK(file != NULL);
+    CHECK(fputs("old remote catalog", file) >= 0);
+    CHECK(fclose(file) == 0);
+    remote_pc_catalog_available = true;
+    failed_send_name = "trainlog-pc-catalog-v1.json";
+    CHECK(trainlog_sync_run(TRAINLOG_SYNC_TRIGGER_TUI, false,
+        TRAINLOG_SYNC_PC_TO_ANDROID, &report) == TRAINLOG_STATUS_SYSTEM_ERROR);
+    CHECK(!report.success);
+    CHECK(strstr(report.error, "publication MTP du catalogue échouée") != NULL);
+    CHECK(remote_delete_count == deletes_before + 1U);
+    CHECK(access(catalog_path, F_OK) != 0);
+    failed_send_name = NULL;
+    remote_pc_catalog_available = false;
+    return true;
 }
 
 static bool write_artifacts(
@@ -932,6 +1131,9 @@ static bool run_all(void)
     char case_m[4096];
     char case_n[4096];
     char case_o[4096];
+    char case_p[4096];
+    char case_q[4096];
+    char case_r[4096];
     char fake_tools[4096];
     char *root = mkdtemp(temporary);
 
@@ -954,6 +1156,9 @@ static bool run_all(void)
     CHECK(snprintf(case_m, sizeof(case_m), "%s/case-m", root) > 0);
     CHECK(snprintf(case_n, sizeof(case_n), "%s/case-n", root) > 0);
     CHECK(snprintf(case_o, sizeof(case_o), "%s/case-o", root) > 0);
+    CHECK(snprintf(case_p, sizeof(case_p), "%s/case-p", root) > 0);
+    CHECK(snprintf(case_q, sizeof(case_q), "%s/case-q", root) > 0);
+    CHECK(snprintf(case_r, sizeof(case_r), "%s/case-r", root) > 0);
     CHECK(snprintf(fake_tools, sizeof(fake_tools), "%s/fake-tools", root) > 0);
     CHECK(mkdir(fake_tools, 0700) == 0);
 
@@ -989,6 +1194,9 @@ static bool run_all(void)
     /* INVARIANT: none of the three failed synchronization paths may start a
      * post-sync Drive upload, even when an older export remains on disk. */
     CHECK(rclone_upload_count() == 14U);
+    CHECK(run_lock_contention_case(case_p));
+    CHECK(run_request_receipt_case(case_q));
+    CHECK(run_publish_delete_failure_case(case_r));
     (void)puts("PASS production sync body-zone V2 proof wiring");
     return true;
 }

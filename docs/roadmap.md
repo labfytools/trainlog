@@ -33,16 +33,19 @@ visualizations are implemented; the other four Web routes remain placeholders.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_CHARACTERIZATION_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_DATA_LIFECYCLE_V1
 ```
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED`
 defines the complete-sync target and its bounded dependency order.
-`TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` now supplies the reproducible isolated
+`TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` supplies the reproducible isolated
 desktop/Android validation entry point, JDK 17 gate and private JVM/XDG paths.
-The next cursor is only `TRAINLOG_SYNC_CHARACTERIZATION_V1`; it must reuse the
-existing V3 gap, draft lifecycle and harness coverage rather than duplicate it,
-and it does not authorize a protocol, schema, endpoint or button change.
+`TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` reuses and completes the
+current-behavior evidence for cross-implementation V3 exchange, identities,
+ordering, replay, partial publication, request/receipt processing and the real
+lock. The next cursor is only `TRAINLOG_SYNC_DATA_LIFECYCLE_V1`; it is not
+started and does not yet authorize a protocol, schema, endpoint or button
+change.
 [Contract details](design/sync_gap_contract_v1.md).
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
@@ -119,8 +122,9 @@ it does not authorize silently implementing a page.
 
 The frozen contract orders future bounded lots as environment/test,
 characterization, data/lifecycles, causal deletion, generation/consumption/ack,
-orchestrator/report, Web API, then button/refresh. The environment/test lot is
-complete; no production synchronization implementation lot is started.
+orchestrator/report, Web API, then button/refresh. The environment/test and
+characterization lots are complete; no production synchronization
+implementation lot is started.
 `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 
 ### Gym catalog V1

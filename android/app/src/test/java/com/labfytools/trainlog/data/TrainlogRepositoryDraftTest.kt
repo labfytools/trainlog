@@ -24,6 +24,7 @@ import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
 import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -384,6 +385,126 @@ class TrainlogRepositoryDraftTest {
                 FinalizeActiveDraftResult.Invalid
         )
         assertEquals(1, repo.listSessions().size)
+    }
+
+    @Test
+    fun androidV3RoundTripUsesRealDesktopImporterExporterAndFreshAndroidDatabase() {
+        val sourceName = "roundtrip-source-${UUID.randomUUID()}.db"
+        val destinationName = "roundtrip-destination-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        val root = Files.createTempDirectory("trainlog-v3-roundtrip-").toFile()
+        try {
+            val repetitions = createExercise(
+                source, "Round-trip repetitions", RecordingMode.SETS, TrackingMode.REPS,
+            )
+            val continuous = createExercise(
+                source, "Round-trip continuous", RecordingMode.CONTINUOUS,
+                TrackingMode.DURATION,
+                ExerciseDataFields.SPEED_KMH or ExerciseDataFields.DISTANCE_KM,
+            )
+            val maxExercise = createExercise(
+                source, "Round-trip maximum", RecordingMode.SETS, TrackingMode.REPS,
+            )
+            val repeatedA = SessionExerciseDraft(
+                entryId = "sxe_10000000-0000-4000-8000-000000000001",
+                exercise = repetitions,
+                equipmentId = "leg_press",
+                plan = SessionExercisePlan(
+                    sets = 2, reps = 8, weightKg = 42.5,
+                    loadMode = SessionLoadMode.EXTERNAL, restSeconds = 90,
+                ),
+                sets = listOf(
+                    SessionSetDraft(reps = 8, weightKg = 40.0),
+                    SessionSetDraft(reps = 6, weightKg = 42.5),
+                ),
+            )
+            val repeatedB = SessionExerciseDraft(
+                entryId = "sxe_10000000-0000-4000-8000-000000000002",
+                exercise = repetitions,
+                equipmentId = "leg_press",
+                plan = SessionExercisePlan(sets = 1, reps = 5, restSeconds = 120),
+                sets = listOf(SessionSetDraft(reps = 5, weightKg = 45.0)),
+            )
+            val continuousEntry = SessionExerciseDraft(
+                entryId = "sxe_10000000-0000-4000-8000-000000000003",
+                exercise = continuous,
+                equipmentId = "treadmill",
+                continuousDurationSeconds = 780,
+                speedKmh = 8.5,
+                distanceKm = 1.8,
+            )
+            assertTrue(source.saveSession(SessionDraft(
+                listOf(repeatedB, continuousEntry, repeatedA),
+            )) is SaveSessionResult.Saved)
+            assertTrue(source.saveSession(SessionDraft(
+                listOf(SessionExerciseDraft(
+                    entryId = "sxe_10000000-0000-4000-8000-000000000004",
+                    exercise = maxExercise,
+                    equipmentId = "rear_delt_pec_fly",
+                    maxWeightKg = 87.5,
+                )),
+                sessionType = SessionType.MAX_TEST,
+            )) is SaveSessionResult.Saved)
+
+            val androidExport = File(root, "android-v3.json")
+            val desktopDatabase = File(root, "desktop.sqlite")
+            val desktopExport = File(root, "desktop-v3.json")
+            androidExport.writeText(source.buildMobileExportV3Json())
+            val bridge = findRepositoryFile("tests/support/roundtrip_desktop_v3.py")
+            val process = ProcessBuilder(
+                "python3", bridge.absolutePath, androidExport.absolutePath,
+                desktopDatabase.absolutePath, desktopExport.absolutePath,
+            ).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals("desktop bridge failed: $output", 0, process.waitFor())
+
+            val returned = JSONObject(desktopExport.readText())
+            val catalog = JSONObject()
+                .put("format", "trainlog-pc-catalog")
+                .put("version", 1)
+                .put("exercises", JSONArray(returned.getJSONArray("exercises").toString()))
+            assertTrue(destination.applyPcCatalogJson(catalog.toString()) is PcCatalogImportResult.Applied)
+            assertEquals(
+                MobileSessionImportResult.Applied(2, 0, 0, 0),
+                destination.applyPcMobileExportV3Json(returned.toString()),
+            )
+            assertEquals(
+                MobileSessionImportResult.Applied(0, 2, 0, 0),
+                destination.applyPcMobileExportV3Json(returned.toString()),
+            )
+
+            val sourceProjection = semanticV3Projection(JSONObject(androidExport.readText()))
+            val desktopProjection = semanticV3Projection(returned)
+            val destinationProjection = semanticV3Projection(
+                JSONObject(destination.buildMobileExportV3Json()),
+            )
+            assertEquals(sourceProjection, desktopProjection)
+            assertEquals(sourceProjection, destinationProjection)
+
+            val training = destination.listSessions()
+                .mapNotNull { destination.getSessionDetail(it.sessionId) }
+                .single { it.summary.sessionType == SessionType.TRAINING }
+            assertEquals(
+                listOf(repeatedB.entryId, continuousEntry.entryId, repeatedA.entryId),
+                training.exercises.map { it.entryId },
+            )
+            assertEquals(2, training.exercises.count { it.exerciseId == repetitions.exerciseId })
+            assertEquals(listOf(5), training.exercises[0].sets.map { it.reps })
+            assertEquals(listOf(8, 6), training.exercises[2].sets.map { it.reps })
+            assertEquals(780, training.exercises[1].continuousDurationSeconds)
+            assertEquals("treadmill", training.exercises[1].equipmentId)
+            val maximum = destination.listSessions()
+                .mapNotNull { destination.getSessionDetail(it.sessionId) }
+                .single { it.summary.sessionType == SessionType.MAX_TEST }
+            assertEquals(87.5, maximum.exercises.single().maxWeightKg!!, 0.0)
+        } finally {
+            source.close()
+            destination.close()
+            context.deleteDatabase(sourceName)
+            context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
     }
 
     @Test
@@ -2393,6 +2514,31 @@ class TrainlogRepositoryDraftTest {
         }
         fail("Repository file not found: $relativePath")
         throw AssertionError("unreachable")
+    }
+
+    private fun semanticV3Projection(value: JSONObject): String {
+        val copy = JSONObject(value.toString())
+        copy.remove("generated_at")
+        listOf("exercises" to "exercise_id", "sessions" to "session_id",
+            "body_observations" to "observation_id").forEach { (arrayName, idName) ->
+            val source = copy.getJSONArray(arrayName)
+            val sorted = (0 until source.length()).map { source.getJSONObject(it) }
+                .sortedBy { it.getString(idName) }
+            copy.put(arrayName, JSONArray().also { output -> sorted.forEach(output::put) })
+        }
+        return canonicalJson(copy).toString()
+    }
+
+    private fun canonicalJson(value: Any?): Any = when (value) {
+        is JSONObject -> JSONObject().also { normalized ->
+            value.keys().asSequence().toList().sorted().forEach { key ->
+                normalized.put(key, canonicalJson(value.get(key)))
+            }
+        }
+        is JSONArray -> JSONArray().also { normalized ->
+            repeat(value.length()) { index -> normalized.put(canonicalJson(value.get(index))) }
+        }
+        else -> value ?: JSONObject.NULL
     }
 
     /** Exact raw snapshots make idempotence cover every persisted business

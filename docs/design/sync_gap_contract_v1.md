@@ -433,6 +433,16 @@ HOME/XDG/tmp/exchange/bases privés par run et aucun transport réel par défaut
 Son test d'environnement porte la suite Android à 203 tests (199 réussis,
 4 ignorés, 0 échec) sans changer les contrats de synchronisation.
 
+**[CURRENT EVIDENCE]** `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` adds a
+real Android-exporter → desktop-importer/exporter → fresh-Android-importer V3
+round trip, plus exact current-behavior assertions for identity and ordering,
+identical replay versus correction, cross-artifact partial failure,
+delete-before-send publication failure, request/receipt marking, and contention
+on the real private-XDG lock. The assertion-level matrix is owned by
+`docs/tests.md`. This evidence does not implement V4, draft transport, general
+tombstones, coherent generations, causal merge, or a peer-consumption
+acknowledgement.
+
 ## 16. Sources propriétaires
 
 - état/roadmap : `docs/current_state.md`, `docs/roadmap.md` ;
@@ -443,4 +453,6 @@ Son test d'environnement porte la suite Android à 203 tests (199 réussis,
   `android/.../TrainlogRepository.kt` ;
 - feedback : `docs/training_feedback.md` ;
 - tests : `docs/tests.md`, `tests/test_session_exchange_v3.py`,
-  `tests/test_sync_gap_characterization.py`, tests Android du repository.
+  `tests/test_sync_gap_characterization.py`,
+  `tests/support/roundtrip_desktop_v3.py`, Android repository tests and
+  `tui/tests/test_sync_body_zone_wiring.c`.

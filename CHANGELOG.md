@@ -2,6 +2,16 @@
 
 ## Unreleased — 0.1.2
 
+- Completed `TRAINLOG_SYNC_CHARACTERIZATION_V1` without changing production
+  synchronization, schemas, or formats. Added a real Android V3 exporter →
+  desktop importer/exporter → fresh Android importer round trip, and completed
+  current-behavior evidence for stable identities, occurrence/set ordering,
+  exact replay versus correction, local-only field handling, inter-artifact and
+  delete-before-send partial failure, request/receipt replay and marking, and
+  contention on the real private-XDG synchronization lock. V4, draft transport,
+  general tombstones, coherent generations, causal merge, and durable peer
+  consumption acknowledgement remain future work.
+
 - Reconciled canonical documentation with the implemented 0.1.2 development
   state, kept v0.1.1 and future synchronization scope explicit, established
   English as the repository documentation/release-note language, and added a

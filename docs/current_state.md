@@ -50,6 +50,7 @@ parallel implementation of its rules.
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_NOT_STARTED` |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
+| Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -97,6 +98,11 @@ documents the future target without implementing it. Mobile V3 still omits
 session link and the active Android draft. Imports are transactional per
 artifact, not globally across a logical publication. A receipt records desktop
 processing; publication alone does not prove durable peer consumption.
+Characterization now also freezes the observed preservation of local-only
+session/body values on an identical replay, loss of an occurrence-local note
+when V3 correction reconstructs that occurrence, delete-before-send exposure,
+request replay/receipt marking, and real inter-process lock contention. These
+are current-behavior proofs, not lifecycle repairs.
 
 ## Android
 
@@ -197,6 +203,17 @@ results for that commit, not executions performed by later documentation work.
 The four Android skips were the optional historical v9, v12, v13, and v14
 database-fixture migration cases. Hardware MTP, real Drive, and Android
 instrumented tests were not part of that isolated run.
+
+For `TRAINLOG_SYNC_CHARACTERIZATION_V1` on 2026-09-17, the isolated JDK 17
+preflight, smoke, and full modes passed. The final full run passed desktop
+compilation, **75/75 normal Meson tests**, **75/75 ASan/UBSan Meson tests**, the
+explicit production-path sync-gap characterization, both JSON/import contract
+validators, the targeted Android draft lifecycle test, Android debug assembly,
+and **204 Android tests (200 passed, 4 skipped, 0 failed/error)**. The added
+Android↔desktop↔fresh-Android V3 round trip runs inside that Android total. The
+four skips remain the documented optional historical v9, v12, v13, and v14
+database fixtures. No hardware MTP, real Drive, adb, instrumented device test,
+user database, exchange directory, or user service participated.
 
 The Dashboard Core extraction tranche passes **62/62 normal Meson tests** and
 **62/62 ASan/UBSan Meson tests**, including the standalone public-header and

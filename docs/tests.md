@@ -668,6 +668,47 @@ artifact remains independently committed. The existing Android test
 proves that the active draft is absent before finalization and the completed
 session appears afterward. These tests do not implement the future contract.
 
+`TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` completes the missing current-
+behavior evidence without changing production code, schemas, or formats. The
+coverage matrix is assertion-based; “future” rows remain criteria rather than
+passing tests:
+
+| Current behavior | Test and production boundary | Significant assertions | Coverage |
+|---|---|---|---|
+| V3 omissions, new-row loss, replay resurrection, and per-artifact rollback | `tests/test_sync_gap_characterization.py` through the real desktop V3 importer/exporter | Wire fields are absent; newly imported columns are `NULL`; an identical replay preserves local-only values; a V3 correction rebuilds its occurrence and loses its local-only occurrence note; replay after deletion resurrects the session; malformed input rolls back only its artifact | Existing proof extended |
+| Active draft lifecycle | `TrainlogRepositoryDraftTest.finalizeIsAtomicAndDraftNeverExportsBeforeCompletion` through the real Android repository/exporter | No draft rows export; atomic finalization removes the draft and makes the completed session exportable | Existing proof reused |
+| Cross-implementation V3 round trip | `TrainlogRepositoryDraftTest.androidV3RoundTripUsesRealDesktopImporterExporterAndFreshAndroidDatabase`, with `tests/support/roundtrip_desktop_v3.py` invoking the real desktop tools | A fresh Android database reconstructs stable session/entry/exercise/equipment identities, repeated occurrences, occurrence and set order, heterogeneous sets, targets, continuous values, and explicit MAX; exact replay adds nothing | Added |
+| V3 correction and forbidden rebinding | Existing desktop `session_exchange_v3` and Android repository cases | Accepted same-identity correction is reported separately from insertion; conflicting `entry_id` rebinding is rejected | Existing proof reused |
+| Companion identity and revision chains | Existing aliases, equipment, BODY ZONES, causal profile-state, and feedback suites | Stable foreign references, immediate-feedback roots, immutable revisions, session follow-ups, and replay behavior remain exact | Existing proof reused |
+| Inter-artifact partial failure | Existing Android inbox ordering tests and `sync_gap_characterization` | Earlier valid catalogue/components remain committed when a later session/companion is invalid; intra-artifact invalid content rolls back | Existing proof reused |
+| Desktop delete-before-send publication | `sync_body_zone_wiring` through `trainlog_sync_run()` and the MTP double | The old remote catalogue is deleted, the injected send fails, the run returns an error, and no replacement exists | Added |
+| Selected-invalid V3 priority | `TrainlogRepositoryDraftTest.inboxPresentMalformedV3DoesNotFallBackToValidV2` through the Android inbox importer | A present malformed V3 fails and is not masked by a valid V2 | Existing proof reused |
+| Request, receipt, and processed marker | `sync_body_zone_wiring` through `trainlog_sync_run()` | Receipt and report carry the exact `request_id`; identical request replay is refused; receipt-send failure leaves the prior processed marker unchanged | Added |
+| Android post-receipt consumption | Desktop request/receipt proof plus Android typed receipt/inbox component tests | Desktop processing success and Android artifact-import success are separate component results; V1 has no durable peer-consumption acknowledgement | Component-scoped only |
+| Inter-process lock | `sync_body_zone_wiring` against the real `sync.lock` acquisition with private `XDG_DATA_HOME` | A pipe-coordinated child holds the lock; the second trigger returns conflict before any MTP probe; every child is joined | Added |
+| V4 drafts, general tombstones, coherent generations, causal merge, and consumption acknowledgement | Frozen gap contract only | No active production implementation exists | Future criterion, not tested green |
+
+The cross-implementation helper only provisions the established minimal desktop
+test schema and launches the production Python tools; it does not duplicate
+their business rules. The Kotlin test uses the real Android V3 exporter and
+importer on two distinct databases. Its comparison removes only the volatile
+`generated_at`, canonicalizes object-key and unordered top-level collection
+order, and retains occurrence/set array order as business data.
+
+Request/receipt evidence remains deliberately bounded: the native test proves
+desktop correlation, publication, replay handling, and marking order, while
+Android tests prove local receipt presentation and inbox failure behavior. A
+receipt still proves desktop processing only, not durable Android consumption.
+README, `architecture.md`, and `sync_exchange.md` were reviewed for this lot and
+need no correction; their current ownership and V1 limitations remain accurate.
+
+The 2026-09-17 closing run used all three documented harness modes with the
+explicit JDK 17 path. The final `full` mode passed 75/75 normal Meson tests,
+75/75 ASan/UBSan Meson tests, both validators, the targeted draft lifecycle
+test, Android debug assembly, and 204 Android tests (200 passed, 4 historical
+fixture skips, 0 failed/error). No hardware, Drive, adb, instrumented test, or
+user service was exercised.
+
 Validated workflow:
 
 ```text
