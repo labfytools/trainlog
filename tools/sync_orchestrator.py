@@ -5,6 +5,7 @@ The HTTP adapter starts this executable with fixed arguments.  Peer transport is
 selected only by a trusted local configuration file; request JSON can never
 choose commands, paths, databases, capabilities, or causal policy.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,9 +26,19 @@ from pathlib import Path
 MAX_CONFIG = 16 * 1024
 MAX_REPORT = 64 * 1024
 MAX_DIAGNOSTIC = 1024
-PHASES = {"requested", "waiting_android_publication", "running",
-          "local_import_committed", "published", "waiting_acknowledgement",
-          "peer_consumed", "completed", "failed", "interrupted", "explicitly_degraded"}
+PHASES = {
+    "requested",
+    "waiting_android_publication",
+    "running",
+    "local_import_committed",
+    "published",
+    "waiting_acknowledgement",
+    "peer_consumed",
+    "completed",
+    "failed",
+    "interrupted",
+    "explicitly_degraded",
+}
 
 
 class OrchestratorInterrupted(RuntimeError):
@@ -40,8 +51,10 @@ _owned_process_group: int | None = None
 def _forward_termination(signum: int, _frame: object) -> None:
     """Forward shutdown only to the exactly-owned helper process group."""
     if _owned_process_group is not None:
-        try: os.killpg(_owned_process_group, signal.SIGTERM)
-        except ProcessLookupError: pass
+        try:
+            os.killpg(_owned_process_group, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
     raise OrchestratorInterrupted(f"orchestrator received signal {signum}")
 
 
@@ -54,8 +67,9 @@ def _child_setup() -> None:
 
 
 def canonical(value: object) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True,
-                       separators=(",", ":")) + "\n").encode()
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
 
 
 def atomic_write(path: Path, value: dict) -> None:
@@ -67,97 +81,176 @@ def atomic_write(path: Path, value: dict) -> None:
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "wb") as stream:
-            stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
         directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-        try: os.fsync(directory)
-        finally: os.close(directory)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
-        try: os.unlink(temporary)
-        except FileNotFoundError: pass
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def load_json(path: Path, limit: int) -> dict:
     with path.open("rb") as stream:
         raw = stream.read(limit + 1)
-    if len(raw) > limit: raise RuntimeError(f"{path.name} exceeds its bound")
+    if len(raw) > limit:
+        raise RuntimeError(f"{path.name} exceeds its bound")
     value = json.loads(raw.decode("utf-8", "strict"))
-    if not isinstance(value, dict): raise RuntimeError(f"{path.name} must contain an object")
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{path.name} must contain an object")
     return value
 
 
 def update(state_path: Path, state: dict, phase: str, **fields: object) -> None:
-    if phase not in PHASES: raise RuntimeError("invalid run phase")
-    state.update(fields); state["phase"] = phase
+    if phase not in PHASES:
+        raise RuntimeError("invalid run phase")
+    state.update(fields)
+    state["phase"] = phase
     state["progress_revision"] = int(state.get("progress_revision", 0)) + 1
     state["updated_at"] = datetime.now(timezone.utc).isoformat()
     atomic_write(state_path, state)
 
 
 def validate_result(value: dict, run_id: str) -> dict:
-    required = {"format", "version", "run_id", "producer_peer_id", "consumer_peer_id",
-                "inbound_generation_id", "outbound_generation_id", "manifest_sha256",
-                "result", "sessions_reconciled", "domains", "drafts", "ai_midpoint", "ai_post_sync"}
-    if set(value) != required or value.get("format") != "trainlog-sync-worker-report" or value.get("version") != 1:
+    required = {
+        "format",
+        "version",
+        "run_id",
+        "producer_peer_id",
+        "consumer_peer_id",
+        "inbound_generation_id",
+        "outbound_generation_id",
+        "manifest_sha256",
+        "result",
+        "sessions_reconciled",
+        "domains",
+        "drafts",
+        "ai_midpoint",
+        "ai_post_sync",
+    }
+    if (
+        set(value) != required
+        or value.get("format") != "trainlog-sync-worker-report"
+        or value.get("version") != 1
+    ):
         raise RuntimeError("malformed peer worker report")
     if value.get("run_id") != run_id or value.get("result") != "completed":
         raise RuntimeError("peer worker did not complete the correlated run")
-    for identity, prefix in ((value["producer_peer_id"], "peer_"),
-                             (value["consumer_peer_id"], "peer_"),
-                             (value["inbound_generation_id"], "gen_"),
-                             (value["outbound_generation_id"], "gen_")):
-        if not isinstance(identity, str) or not re.fullmatch(re.escape(prefix)+r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",identity):
+    for identity, prefix in (
+        (value["producer_peer_id"], "peer_"),
+        (value["consumer_peer_id"], "peer_"),
+        (value["inbound_generation_id"], "gen_"),
+        (value["outbound_generation_id"], "gen_"),
+    ):
+        if not isinstance(identity, str) or not re.fullmatch(
+            re.escape(prefix)
+            + r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            identity,
+        ):
             raise RuntimeError("invalid worker identity")
     if type(value["sessions_reconciled"]) is not int or value["sessions_reconciled"] < 0:
         raise RuntimeError("invalid sessions_reconciled")
-    if not isinstance(value["domains"], dict) or not all(isinstance(k, str) and isinstance(v, bool) for k, v in value["domains"].items()):
+    if not isinstance(value["domains"], dict) or not all(
+        isinstance(k, str) and isinstance(v, bool) for k, v in value["domains"].items()
+    ):
         raise RuntimeError("invalid domain coverage")
     if not isinstance(value["drafts"], list) or len(value["drafts"]) > 32:
         raise RuntimeError("invalid draft summary")
     return value
 
 
-def read_worker(child: subprocess.Popen[bytes], state_path: Path, state: dict,
-                run_id: str, timeout: int) -> tuple[dict, bytes]:
+def read_worker(
+    child: subprocess.Popen[bytes], state_path: Path, state: dict, run_id: str, timeout: int
+) -> tuple[dict, bytes]:
     selector = selectors.DefaultSelector()
     assert child.stdout is not None and child.stderr is not None
     selector.register(child.stdout, selectors.EVENT_READ, "stdout")
     selector.register(child.stderr, selectors.EVENT_READ, "stderr")
     buffers = {"stdout": bytearray(), "stderr": bytearray()}
-    line_buffer = bytearray(); final: dict | None = None
+    line_buffer = bytearray()
+    final: dict | None = None
     deadline = time.monotonic() + timeout
-    allowed = ["waiting_android_publication","running","local_import_committed",
-               "published","waiting_acknowledgement","peer_consumed"]
+    allowed = [
+        "waiting_android_publication",
+        "running",
+        "local_import_committed",
+        "published",
+        "waiting_acknowledgement",
+        "peer_consumed",
+    ]
     last_index = -1
     while selector.get_map():
         remaining = deadline - time.monotonic()
-        if remaining <= 0: raise RuntimeError("peer worker timed out")
-        for key, _ in selector.select(min(remaining, .25)):
+        if remaining <= 0:
+            raise RuntimeError("peer worker timed out")
+        for key, _ in selector.select(min(remaining, 0.25)):
             chunk = os.read(key.fileobj.fileno(), 4096)
-            if not chunk: selector.unregister(key.fileobj); continue
+            if not chunk:
+                selector.unregister(key.fileobj)
+                continue
             target = buffers[key.data]
-            if len(target) + len(chunk) > MAX_REPORT: raise RuntimeError(f"peer worker {key.data} exceeds 64 KiB")
+            if len(target) + len(chunk) > MAX_REPORT:
+                raise RuntimeError(f"peer worker {key.data} exceeds 64 KiB")
             target.extend(chunk)
             if key.data == "stdout":
                 line_buffer.extend(chunk)
                 while b"\n" in line_buffer:
-                    raw, _, rest = line_buffer.partition(b"\n"); line_buffer[:] = rest
-                    if len(raw) > 8192: raise RuntimeError("progress frame exceeds 8 KiB")
+                    raw, _, rest = line_buffer.partition(b"\n")
+                    line_buffer[:] = rest
+                    if len(raw) > 8192:
+                        raise RuntimeError("progress frame exceeds 8 KiB")
                     value = json.loads(raw.decode("utf-8", "strict"))
                     if value.get("format") == "trainlog-sync-progress":
-                        if set(value)-{"format","version","run_id","phase","producer_peer_id","consumer_peer_id","inbound_generation_id","outbound_generation_id","manifest_sha256"} or value.get("version") != 1 or value.get("run_id") != run_id or value.get("phase") not in allowed:
+                        if (
+                            set(value)
+                            - {
+                                "format",
+                                "version",
+                                "run_id",
+                                "phase",
+                                "producer_peer_id",
+                                "consumer_peer_id",
+                                "inbound_generation_id",
+                                "outbound_generation_id",
+                                "manifest_sha256",
+                            }
+                            or value.get("version") != 1
+                            or value.get("run_id") != run_id
+                            or value.get("phase") not in allowed
+                        ):
                             raise RuntimeError("invalid progress frame")
-                        index=allowed.index(value["phase"])
-                        if index < last_index: raise RuntimeError("progress phase regressed")
-                        last_index=index;update(state_path,state,value["phase"],**{k:v for k,v in value.items() if k not in {"format","version","run_id","phase"}})
-                    else: final=value
+                        index = allowed.index(value["phase"])
+                        if index < last_index:
+                            raise RuntimeError("progress phase regressed")
+                        last_index = index
+                        update(
+                            state_path,
+                            state,
+                            value["phase"],
+                            **{
+                                k: v
+                                for k, v in value.items()
+                                if k not in {"format", "version", "run_id", "phase"}
+                            },
+                        )
+                    else:
+                        final = value
     child.wait()
-    if line_buffer.strip(): raise RuntimeError("unterminated worker frame")
+    if line_buffer.strip():
+        raise RuntimeError("unterminated worker frame")
     if child.returncode != 0:
-        detail=bytes(buffers["stderr"]).decode("utf-8","replace").strip()[:MAX_DIAGNOSTIC]
+        detail = bytes(buffers["stderr"]).decode("utf-8", "replace").strip()[:MAX_DIAGNOSTIC]
         raise RuntimeError(f"peer worker exited {child.returncode}: {detail}")
-    if final is None: raise RuntimeError("peer worker omitted final report")
-    return validate_result(final,run_id), bytes(buffers["stderr"])
+    if final is None:
+        raise RuntimeError("peer worker omitted final report")
+    return validate_result(final, run_id), bytes(buffers["stderr"])
 
 
 def run(args: argparse.Namespace) -> int:
@@ -167,15 +260,33 @@ def run(args: argparse.Namespace) -> int:
     config = load_json(config_path, MAX_CONFIG)
     if state.get("run_id") != args.run_id or state.get("request_id") != args.request_id:
         raise RuntimeError("admission identity mismatch")
-    if set(config) != {"format", "version", "enabled", "mode", "expected_peer_id", "transport_root", "owned_root", "timeout_seconds"}:
+    if set(config) != {
+        "format",
+        "version",
+        "enabled",
+        "mode",
+        "expected_peer_id",
+        "transport_root",
+        "owned_root",
+        "timeout_seconds",
+    }:
         raise RuntimeError("invalid trusted sync configuration")
-    if config["format"] != "trainlog-sync-orchestrator-config" or config["version"] != 1 or config["enabled"] is not True:
+    if (
+        config["format"] != "trainlog-sync-orchestrator-config"
+        or config["version"] != 1
+        or config["enabled"] is not True
+    ):
         raise RuntimeError("full-generation synchronization is disabled")
     if config["mode"] not in ("directory", "mtp"):
         raise RuntimeError("invalid transport mode")
-    for key in ("transport_root","owned_root"):
-        if not isinstance(config[key],str) or not Path(config[key]).is_absolute(): raise RuntimeError("trusted paths must be absolute")
-    if not isinstance(config["expected_peer_id"],str) or not re.fullmatch(r"peer_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",config["expected_peer_id"]): raise RuntimeError("invalid expected peer identity")
+    for key in ("transport_root", "owned_root"):
+        if not isinstance(config[key], str) or not Path(config[key]).is_absolute():
+            raise RuntimeError("trusted paths must be absolute")
+    if not isinstance(config["expected_peer_id"], str) or not re.fullmatch(
+        r"peer_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+        config["expected_peer_id"],
+    ):
+        raise RuntimeError("invalid expected peer identity")
     timeout = config["timeout_seconds"]
     if not isinstance(timeout, int) or timeout < 1 or timeout > 900:
         raise RuntimeError("invalid worker timeout")
@@ -184,39 +295,96 @@ def run(args: argparse.Namespace) -> int:
     lock_path = Path(args.database).parent / "sync.lock"
     lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        try: fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            update(state_path, state, "failed", result="conflict", diagnostic="Another synchronization owns the common lock", finished_at=datetime.now(timezone.utc).isoformat())
+            update(
+                state_path,
+                state,
+                "failed",
+                result="conflict",
+                diagnostic="Another synchronization owns the common lock",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
             return 4
         update(state_path, state, "running", result="running", diagnostic="")
         environment = os.environ.copy()
-        environment.update({"TRAINLOG_SYNC_RUN_ID": args.run_id,
-                            "TRAINLOG_SYNC_TRIGGER": state["trigger"],
-                            "TRAINLOG_SYNC_DATABASE": args.database})
-        command=[sys.executable,str(Path(__file__).with_name("sync_peer_worker.py")),"--database",args.database,"--transport-root",config["transport_root"],"--owned-root",config["owned_root"],"--run-id",args.run_id,"--expected-peer",config["expected_peer_id"],"--timeout",str(timeout),"--mode",config["mode"]]
+        environment.update(
+            {
+                "TRAINLOG_SYNC_RUN_ID": args.run_id,
+                "TRAINLOG_SYNC_TRIGGER": state["trigger"],
+                "TRAINLOG_SYNC_DATABASE": args.database,
+            }
+        )
+        command = [
+            sys.executable,
+            str(Path(__file__).with_name("sync_peer_worker.py")),
+            "--database",
+            args.database,
+            "--transport-root",
+            config["transport_root"],
+            "--owned-root",
+            config["owned_root"],
+            "--run-id",
+            args.run_id,
+            "--expected-peer",
+            config["expected_peer_id"],
+            "--timeout",
+            str(timeout),
+            "--mode",
+            config["mode"],
+        ]
         if config["mode"] == "mtp":
-            adapter = os.environ.get("TRAINLOG_SYNC_MTP_ADAPTER",
-                str(Path(__file__).resolve().parents[1] / "build/tui/trainlog-generation-mtp-adapter"))
+            adapter = os.environ.get(
+                "TRAINLOG_SYNC_MTP_ADAPTER",
+                str(
+                    Path(__file__).resolve().parents[1]
+                    / "build/tui/trainlog-generation-mtp-adapter"
+                ),
+            )
             if not Path(adapter).is_absolute() or not os.access(adapter, os.X_OK):
                 raise RuntimeError("fixed MTP adapter executable is unavailable")
             command.extend(["--mtp-adapter", adapter])
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment,
-            preexec_fn=_child_setup)
+        child = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            preexec_fn=_child_setup,
+        )
         _owned_process_group = child.pid
-        try: result,_ = read_worker(child,state_path,state,args.run_id,timeout)
+        try:
+            result, _ = read_worker(child, state_path, state, args.run_id, timeout)
         except Exception:
             if child.poll() is None:
-                os.killpg(child.pid,signal.SIGTERM)
-                try: child.wait(5)
-                except subprocess.TimeoutExpired: os.killpg(child.pid,signal.SIGKILL);child.wait()
+                os.killpg(child.pid, signal.SIGTERM)
+                try:
+                    child.wait(5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
             raise
         finally:
             _owned_process_group = None
-        update(state_path, state, "completed", result="completed", diagnostic="",
-               inbound_generation_id=result["inbound_generation_id"],outbound_generation_id=result["outbound_generation_id"],producer_peer_id=result["producer_peer_id"],consumer_peer_id=result["consumer_peer_id"],sessions_reconciled=result["sessions_reconciled"],domains=result["domains"],drafts=result["drafts"],manifest_sha256=result["manifest_sha256"],
-               ai_midpoint=result["ai_midpoint"], ai_post_sync=result["ai_post_sync"],
-               finished_at=datetime.now(timezone.utc).isoformat())
+        update(
+            state_path,
+            state,
+            "completed",
+            result="completed",
+            diagnostic="",
+            inbound_generation_id=result["inbound_generation_id"],
+            outbound_generation_id=result["outbound_generation_id"],
+            producer_peer_id=result["producer_peer_id"],
+            consumer_peer_id=result["consumer_peer_id"],
+            sessions_reconciled=result["sessions_reconciled"],
+            domains=result["domains"],
+            drafts=result["drafts"],
+            manifest_sha256=result["manifest_sha256"],
+            ai_midpoint=result["ai_midpoint"],
+            ai_post_sync=result["ai_post_sync"],
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
         return 0
     finally:
         os.close(lock_fd)
@@ -224,21 +392,39 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--database", required=True); parser.add_argument("--state", required=True)
-    parser.add_argument("--config", required=True); parser.add_argument("--run-id", required=True)
+    parser.add_argument("--database", required=True)
+    parser.add_argument("--state", required=True)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--run-id", required=True)
     parser.add_argument("--request-id", required=True)
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, _forward_termination)
     signal.signal(signal.SIGINT, _forward_termination)
-    try: return run(args)
-    except (OSError, ValueError, json.JSONDecodeError, RuntimeError, subprocess.TimeoutExpired) as error:
+    try:
+        return run(args)
+    except (
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+        RuntimeError,
+        subprocess.TimeoutExpired,
+    ) as error:
         try:
-            path = Path(args.state); state = load_json(path, MAX_REPORT)
+            path = Path(args.state)
+            state = load_json(path, MAX_REPORT)
             phase = "interrupted" if isinstance(error, OrchestratorInterrupted) else "failed"
-            update(path, state, phase, result=phase, diagnostic=str(error)[:MAX_DIAGNOSTIC],
-                   finished_at=datetime.now(timezone.utc).isoformat())
-        except Exception: pass
+            update(
+                path,
+                state,
+                phase,
+                result=phase,
+                diagnostic=str(error)[:MAX_DIAGNOSTIC],
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception:
+            pass
         return 2
 
 
-if __name__ == "__main__": raise SystemExit(main())
+if __name__ == "__main__":
+    raise SystemExit(main())
