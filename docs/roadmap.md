@@ -143,7 +143,11 @@ the separate execution-draft codec are implemented behind explicit entry
 points, while active transport remains V3. Causal deletion is implemented and
 validated through explicit staged entry points, including both real producer
 directions for every contracted target kind; generation/consumption
-acknowledgement, orchestration/reporting and Web sync remain unimplemented.
+acknowledgement, orchestration/reporting, Web sync, the production generation
+MTP adapter and complete Android backup/restore are implemented on the
+development branch. Remaining gates are physical-device validation, signed
+bridge/current APK procedures, real user backups and an explicitly authorized
+rollout.
 `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 
 ### Gym catalog V1

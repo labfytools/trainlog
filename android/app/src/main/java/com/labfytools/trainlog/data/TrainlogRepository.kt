@@ -40,6 +40,7 @@ import com.labfytools.trainlog.model.TrackingMode
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
+import java.io.File
 import java.io.StringReader
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
@@ -441,6 +442,13 @@ class TrainlogRepository(
 
     fun close() {
         database.close()
+    }
+
+    /** Create a transactionally consistent SQLite snapshot without exposing WAL files. */
+    internal fun backupDatabaseTo(destination: File) {
+        require(!destination.exists()) { "Backup snapshot destination already exists." }
+        val escaped = destination.absolutePath.replace("'", "''")
+        database.writableDatabase.execSQL("VACUUM INTO '$escaped'")
     }
 
     /**

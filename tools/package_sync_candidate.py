@@ -38,19 +38,23 @@ def main() -> int:
     if args.output.exists():
         raise RuntimeError("candidate output already exists")
     binary = args.build / "tui/trainlog"
+    mtp_adapter = args.build / "tui/trainlog-generation-mtp-adapter"
     if not binary.is_file():
         raise RuntimeError("compiled trainlog executable is missing")
+    if not mtp_adapter.is_file():
+        raise RuntimeError("compiled generation MTP adapter is missing")
     (args.output / "bin").mkdir(parents=True)
     (args.output / "libexec").mkdir(parents=True)
     (args.output / "tools").mkdir(parents=True)
     (args.output / "catalog").mkdir(parents=True)
     shutil.copy2(binary, args.output / "libexec/trainlog")
+    shutil.copy2(mtp_adapter, args.output / "libexec/trainlog-generation-mtp-adapter")
     for name in RUNTIME_TOOLS:
         shutil.copy2(ROOT / "tools" / name, args.output / "tools" / name)
     for source in sorted((ROOT / "catalog").glob("*.json")):
         shutil.copy2(source, args.output / "catalog" / source.name)
     launcher = args.output / "bin/trainlog"
-    launcher.write_text("#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname -- \"$0\")/..\" && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR=\"$root/tools\"\nexec \"$root/libexec/trainlog\" \"$@\"\n")
+    launcher.write_text("#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname -- \"$0\")/..\" && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR=\"$root/tools\"\nexport TRAINLOG_SYNC_MTP_ADAPTER=\"$root/libexec/trainlog-generation-mtp-adapter\"\nexec \"$root/libexec/trainlog\" \"$@\"\n")
     files = sorted(path for path in args.output.rglob("*") if path.is_file())
     inventory = {
         "format": "trainlog-sync-candidate-inventory", "version": 1,
@@ -58,13 +62,15 @@ def main() -> int:
         "product_version": "0.1.2", "desktop_schema": 21, "android_schema": 20,
         "protocols": ["mobile-export-v3", "mobile-history-v4", "causal-delete-v1",
                       "execution-draft-v1", "generation-manifest-v1", "generation-ack-v1"],
-        "entry_points": ["bin/trainlog", "tools/sync_orchestrator.py"],
+        "entry_points": ["bin/trainlog", "libexec/trainlog-generation-mtp-adapter",
+                         "tools/sync_orchestrator.py"],
         "runtime_dependencies": ["python>=3.11", "sqlite3", "utf8proc", "libuuid", "libudev", "libmtp", "notcurses"],
         "files": [{"path": str(path.relative_to(args.output)), "sha256": digest(path), "size": path.stat().st_size} for path in files],
     }
     (args.output / "candidate-inventory.json").write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n")
     os.chmod(args.output / "bin/trainlog", 0o755)
     os.chmod(args.output / "libexec/trainlog", 0o755)
+    os.chmod(args.output / "libexec/trainlog-generation-mtp-adapter", 0o755)
     return 0
 
 

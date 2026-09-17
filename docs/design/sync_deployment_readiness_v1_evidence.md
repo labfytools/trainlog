@@ -1,6 +1,7 @@
 # Sync deployment readiness V1 evidence
 
-Status: **SOFTWARE BLOCKED — physical production MTP adapter not completed**.
+Status: **SUPERSEDED SOFTWARE BLOCKER — adapter and backup completed by the
+MTP/Android-backup follow-up; physical and rollout gates remain**.
 
 This corrective tranche replaces the earlier configurable peer fixture with a
 fixed desktop worker and a production Android foreground coordinator. The real

@@ -396,4 +396,13 @@
     <string name="exercise_order_saved">Ordre de la séance enregistré.</string>
     <string name="exercise_reorder_failed">Réorganisation non enregistrée : %1$s</string>
     <string name="invalid_decimal_value">Saisissez une valeur décimale valide avec « , » ou « . ».</string>
+    <string name="settings_backup_section">Sauvegarde locale complète</string>
+    <string name="settings_backup_plaintext">Le fichier contient vos données de santé en clair. Conservez-le dans un emplacement privé.</string>
+    <string name="settings_backup_create">Créer une sauvegarde</string>
+    <string name="settings_backup_create_description">Exporter la base complète, le brouillon actif et les préférences.</string>
+    <string name="settings_backup_restore">Restaurer une sauvegarde</string>
+    <string name="settings_backup_restore_description">Vérifier puis restaurer cette installation. La synchronisation doit rester arrêtée.</string>
+    <string name="settings_backup_complete">Sauvegarde complète exportée.</string>
+    <string name="settings_backup_failed">Échec de la sauvegarde ; toute copie privée créée est conservée.</string>
+    <string name="settings_restore_failed">Sauvegarde invalide ou restauration impossible.</string>
 </resources>

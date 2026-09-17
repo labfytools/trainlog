@@ -1289,3 +1289,21 @@ production-service suite. Android adds
 `importedCausalOperationsCannotRetireBuiltInIdentities`; the existing session
 round trip now also changes and reverts a confirmed set before proving the
 remote deletion conflicts without losing business or causal state.
+
+## Generation MTP and Android backup
+
+`generation_mtp` drives the production transport algorithm through typed fake
+libudev/libmtp callbacks. It covers exact peer selection, bounded download,
+manifest-last publication, ambiguity and truncated-object rejection. The
+Firefox end-to-end scenario also runs in `mtp` mode: only the callback table is
+replaced by a filesystem object store while the C transport, Python worker,
+Android generation service, desktop consumers and durable ACK path remain real.
+
+`AndroidBackupServiceTest` creates and restores a populated current-schema
+backup including an active draft, raw partial input, stable peer identity and
+preferences, and rejects corrupt and traversal entries. The bridge build runs
+the analogous test on the exact schema-v17 source and feeds its archive to
+`BridgeBackupMigrationTest`, which verifies normal migration to schema v20.
+These are software proofs. They do not claim physical USB/MTP behavior,
+installation over the signed release, a real user backup, or a real-device
+restore.

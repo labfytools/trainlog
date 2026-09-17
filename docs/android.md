@@ -936,3 +936,23 @@ domains plus the durable generation record in one outer transaction; and
 replays the stored logical ACK after restart. The complete-envelope context is
 internal and typed: standalone artifact methods retain their causal guards.
 This service is not selected by the automatic V3 storage/request path.
+
+## Complete local backup and restore
+
+Settings exposes an explicit plaintext `.tlbackup` export and restore flow for
+the same application identity. The versioned ZIP contains a SQLite-consistent
+`VACUUM INTO` snapshot, active drafts and raw partial form input, synchronization
+peer/generation/causal state, and the owned presentation/sync preferences. A
+manifest written last records schema, package, sizes and SHA-256 digests.
+Verification stages only the three exact bounded entries, validates integrity,
+foreign keys, package, supported schema and digests before closing the live
+repository. Restore retains the previous database and preferences until the
+replacement validates; failure restores both. This is not an interchange
+format and is intentionally unencrypted, so the UI warns the user to protect
+the exported file.
+
+The installed schema-v17 release has no backup UI. The reproducible
+`tools/build_android_backup_bridge.py` recipe materializes that exact source,
+adds only the backup surface, assigns a higher candidate version code and
+builds/tests an APK without installing it. Its synthetic v17 archive is also
+restored by current code and migrated through the normal v17-to-v20 path.

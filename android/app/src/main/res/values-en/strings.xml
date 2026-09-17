@@ -396,4 +396,13 @@
     <string name="exercise_order_saved">Session order saved.</string>
     <string name="exercise_reorder_failed">Reorder was not saved: %1$s</string>
     <string name="invalid_decimal_value">Enter a valid decimal value using “,” or “.”.</string>
+    <string name="settings_backup_section">Complete local backup</string>
+    <string name="settings_backup_plaintext">The file contains plaintext health data. Keep it in a private location.</string>
+    <string name="settings_backup_create">Create backup</string>
+    <string name="settings_backup_create_description">Export the complete database, active draft, and preferences.</string>
+    <string name="settings_backup_restore">Restore backup</string>
+    <string name="settings_backup_restore_description">Verify and restore this installation. Synchronization must remain stopped.</string>
+    <string name="settings_backup_complete">Complete backup exported.</string>
+    <string name="settings_backup_failed">Backup failed; any private staged copy was retained.</string>
+    <string name="settings_restore_failed">The backup is invalid or could not be restored.</string>
 </resources>

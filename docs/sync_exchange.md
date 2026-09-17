@@ -745,8 +745,9 @@ between passes and the three explicit unclassified states remained intact.
 ## 18. Staged coherent generations and durable acknowledgement
 
 `tools/sync_generation_exchange.py` and Android `SyncGenerationService` are
-the production staged owners for manifest V1 and ACK V1. Neither is wired into
-the automatic V3 MTP selection. Both allocate stable installation peer IDs and
+the production staged owners for manifest V1 and ACK V1. The trusted opt-in
+orchestrator can carry their object tree through the production direct-MTP
+adapter; automatic V3 selection remains unchanged. Both allocate stable installation peer IDs and
 opaque UUIDv4 generation/run IDs only in the explicitly opened staged store.
 
 Desktop capture uses one private SQLite backup and runs every established
@@ -774,6 +775,15 @@ An ACK timeout leaves `waiting_acknowledgement`; a late exact ACK resolves it
 idempotently. Causal V1 operation bytes remain unchanged across first emission
 and retransmission because generation membership lives only in
 `sync_causal_publications`.
+
+The generation MTP adapter resolves `Documents/Trainlog` through libudev and
+libmtp, selects one exact advertised peer/capability set across bounded devices
+and storages, and mirrors only bounded regular object names. It downloads to
+private temporary files before replacement, verifies reported and received
+sizes, rejects ambiguous peers, traversal, excess depth/count/bytes and
+truncation, and publishes generation manifests last. Production behavior is
+tested by replacing only the typed libmtp/udev I/O callbacks with a filesystem
+object double; the same compiled transport algorithm remains under test.
 
 ## 19. Legacy active-protocol limitations
 

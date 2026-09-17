@@ -430,6 +430,15 @@ transport only from a trusted local configuration. The HTTP event loop only
 admits work and reads a bounded durable report. V3 remains the default when the
 trusted generation configuration is absent.
 
+In `mtp` mode the worker invokes one fixed packaged helper. Its production
+callbacks are the existing libudev/libmtp object operations; tests replace only
+that typed I/O table. Candidate selection requires one exact stable peer
+advertisement and required capabilities. Downloads are bounded and size
+checked. Upload retries accept byte-identical objects, and each generation
+manifest is published after its member objects. The helper runs inside the
+orchestrator-owned process group and cannot be selected or parameterized by an
+HTTP request.
+
 It polls for a new Android request and invokes the same shared C synchronization
 engine used by the TUI.
 

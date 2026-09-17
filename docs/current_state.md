@@ -1,9 +1,12 @@
 # Current implementation state
 
 The development branch has opt-in full-generation coordination with durable Web
-progress and a foreground Android conversation. The cross-implementation
-directory-I/O-double proof is integrated. Physical MTP, release signing, user
-backups, main integration and deployment are not complete.
+progress and a foreground Android conversation. Its production generation MTP
+adapter is integrated and tested through an object-I/O boundary double. Android
+also has a complete same-installation backup/verify/restore container, and a
+non-installed schema-v17 bridge candidate is reproducibly built and tested.
+Physical-device MTP, release signing, real user backup/restore, main integration
+and deployment are not complete.
 
 Snapshot date: **2026-09-17**.
 
@@ -63,6 +66,7 @@ parallel implementation of its rules.
 | Synchronization data/lifecycle slice | `TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN` |
 | Synchronization causal deletion slice | `TRAINLOG_SYNC_CAUSAL_DELETE_V1=PASS/FROZEN` |
 | Synchronization generation/ACK slice | `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` (explicit staged entry points; active transport remains V3) |
+| Generation MTP and Android backup | `TRAINLOG_SYNC_MTP_AND_ANDROID_BACKUP_V1=SOFTWARE_COMPLETE` (physical-device and user-operation gates remain) |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -107,8 +111,9 @@ Android inbox/outbox still select V3 and do not move the draft artifact.
   few domain-specific explicit states make defined replay paths idempotent.
   Explicit staged generation services now provide coherent V4/companion
   capture, immutable manifests, whole-generation SQLite consumption and
-  durable peer ACKs. The active automatic path remains V3 and does not select
-  these services.
+  durable peer ACKs. A trusted opt-in configuration may select the bounded
+  production generation MTP adapter; absent configuration leaves V3 as the
+  default.
 - SQLite database files are never synchronized.
 - The desktop AI flow uses external `rclone` for Drive inbox/archive and
   read-only history export. Android owns no Drive credentials.

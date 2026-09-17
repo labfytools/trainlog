@@ -198,6 +198,7 @@ trainlog_core_sources = files(
   'src/training_context.c',
   'src/usb.c',
   'src/mtp.c',
+  'src/generation_mtp.c',
   'src/reps.c',
   'src/session_generation.c',
   'src/statistics.c',
@@ -223,6 +224,7 @@ trainlog_core = static_library(
     m_dep,
     udev_dep,
     mtp_dep,
+    yyjson_dep,
   ],
   c_args: strict_c_args,
 )
@@ -237,6 +239,7 @@ trainlog_core_dep = declare_dependency(
     m_dep,
     udev_dep,
     mtp_dep,
+    yyjson_dep,
   ],
 )
 
@@ -552,6 +555,13 @@ trainlog_mtp_probe = executable(
   c_args: strict_c_args,
 )
 
+trainlog_generation_mtp_adapter = executable(
+  'trainlog-generation-mtp-adapter',
+  'tools/generation_mtp_adapter.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
 test_mtp = executable(
   'test_mtp',
   'tests/test_mtp.c',
@@ -562,6 +572,21 @@ test_mtp = executable(
 test(
   'mtp',
   test_mtp,
+)
+
+test_generation_mtp = executable(
+  'test_generation_mtp',
+  'tests/test_generation_mtp.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('generation_mtp', test_generation_mtp)
+
+generation_mtp_adapter_double = executable(
+  'generation-mtp-adapter-double',
+  'tests/generation_mtp_adapter_double.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
 )
 
 trainlog_mtp_exchange_probe = executable(

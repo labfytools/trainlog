@@ -10,9 +10,12 @@ bounded typed progress and its descendant process group. The foreground Android
 coordinator advertises its real peer identity, publishes manifest-last bytes,
 consumes the return generation and emits a durable correlated ACK.
 
-The integrated proof uses a directory object-I/O double. It is not evidence for
-physical libmtp behavior. The shipped physical generation adapter is not yet
-complete, so generation mode must not be enabled on services.
+The integrated proof uses the production generation adapter with only its
+typed libudev/libmtp I/O callbacks replaced by an object-store double. This is
+software evidence for selection, bounds, publication ordering and the complete
+conversation, but not evidence for a particular phone's physical libmtp
+behavior. Generation mode must remain disabled until that hardware gate and
+the separately authorized rollout are complete.
 
 ### Candidate, backup and recovery
 
@@ -25,10 +28,12 @@ complete, so generation mode must not be enabled on services.
 3. Quiesce old writers only during an authorized rollout. Desktop backup uses
    `backup_trainlog_sqlite.py` and SQLite's backup API, then integrity and
    foreign-key checks.
-4. V3 is not an Android backup and omits active-draft and causal state. No safe
-   backup path for the installed release was demonstrated without device access.
-   This is a hard gate: an authorized procedure must capture the app database,
-   WAL-consistent state and active draft before update.
+4. V3 is not an Android backup. Current Android has a complete verified backup
+   container. For the installed schema-v17 release, build the pinned bridge
+   candidate, verify signing/version continuity separately, install only with
+   explicit approval, create and verify the user backup, and retain it before
+   installing current Android. None of those device/user operations occurred in
+   this software mission.
 5. Replacing a binary does not roll back a schema. Before any exchange, a
    mutually compatible captured pair may be restored. After causal writes or
    ACKs, never restore only one peer: stop synchronization, preserve both stores

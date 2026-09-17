@@ -613,6 +613,58 @@ TrainlogStatus trainlog_mtp_send_text_file(
     return TRAINLOG_STATUS_OK;
 }
 
+TrainlogStatus trainlog_mtp_ensure_folder(
+    unsigned int bus_number,
+    unsigned int device_number,
+    uint32_t storage_id,
+    uint32_t parent_folder_id,
+    const char *folder_name,
+    uint32_t *output_folder_id,
+    bool *output_created
+)
+{
+    TrainlogMtpEntry entries[256];
+    size_t count = 0U;
+    size_t index;
+    size_t matches = 0U;
+    LIBMTP_mtpdevice_t *device = NULL;
+    TrainlogStatus status;
+    uint32_t created;
+    char mutable_name[TRAINLOG_MTP_ENTRY_NAME_MAX + 1U];
+
+    if (folder_name == NULL || folder_name[0] == '\0' ||
+        strlen(folder_name) > TRAINLOG_MTP_ENTRY_NAME_MAX ||
+        output_folder_id == NULL || output_created == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    *output_folder_id = 0U;
+    *output_created = false;
+    status = trainlog_mtp_list_folder(bus_number, device_number, storage_id,
+        parent_folder_id, entries, 256U, &count);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    for (index = 0U; index < count; ++index) {
+        if (entries[index].folder && strcmp(entries[index].name, folder_name) == 0) {
+            *output_folder_id = entries[index].item_id;
+            ++matches;
+        }
+    }
+    if (matches > 1U) return TRAINLOG_STATUS_CONFLICT;
+    if (matches == 1U) return TRAINLOG_STATUS_OK;
+    status = mtp_open_exact_device(bus_number, device_number, &device);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    (void)snprintf(mutable_name, sizeof(mutable_name), "%s", folder_name);
+    created = LIBMTP_Create_Folder(device, mutable_name, parent_folder_id, storage_id);
+    if (created == 0U) {
+        LIBMTP_Clear_Errorstack(device);
+        LIBMTP_Release_Device(device);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    LIBMTP_Release_Device(device);
+    *output_folder_id = created;
+    *output_created = true;
+    return TRAINLOG_STATUS_OK;
+}
+
 TrainlogStatus trainlog_mtp_list_folder(
     unsigned int bus_number,
     unsigned int device_number,
@@ -828,5 +880,37 @@ TrainlogStatus trainlog_mtp_delete_object(
 
     LIBMTP_Release_Device(device);
 
+    return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_mtp_rename_object(
+    unsigned int bus_number,
+    unsigned int device_number,
+    uint32_t item_id,
+    const char *new_name
+)
+{
+    LIBMTP_mtpdevice_t *device = NULL;
+    LIBMTP_file_t *metadata;
+    TrainlogStatus status;
+    int rc;
+    if (item_id == 0U || new_name == NULL || new_name[0] == '\0' ||
+        strlen(new_name) > TRAINLOG_MTP_ENTRY_NAME_MAX) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    status = mtp_open_exact_device(bus_number, device_number, &device);
+    if (status != TRAINLOG_STATUS_OK) return status;
+    metadata = LIBMTP_Get_Filemetadata(device, item_id);
+    if (metadata == NULL) {
+        LIBMTP_Clear_Errorstack(device); LIBMTP_Release_Device(device);
+        return TRAINLOG_STATUS_NOT_FOUND;
+    }
+    rc = LIBMTP_Set_File_Name(device, metadata, new_name);
+    LIBMTP_destroy_file_t(metadata);
+    if (rc != 0) {
+        LIBMTP_Clear_Errorstack(device); LIBMTP_Release_Device(device);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    LIBMTP_Release_Device(device);
     return TRAINLOG_STATUS_OK;
 }

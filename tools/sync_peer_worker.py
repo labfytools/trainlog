@@ -32,9 +32,30 @@ def publish_json(path:Path,value:dict)->None:
         stream.write(generation.canonical(value));stream.flush();os.fsync(stream.fileno())
     os.chmod(temporary,0o600);os.replace(temporary,path)
 
-def wait_file(path:Path,deadline:float)->None:
+def run_adapter(adapter:Path,operation:str,peer:str,root:Path,deadline:float,allow_missing_peer:bool=False)->bool:
+    remaining=max(1,int(deadline-time.monotonic()))
+    result=__import__("subprocess").run([str(adapter),operation,peer,str(root)],stdin=__import__("subprocess").DEVNULL,
+        capture_output=True,timeout=min(remaining,30),check=False)
+    if result.returncode!=0:
+        diagnostic=(result.stderr.decode("utf-8","replace")[:1024] or "MTP adapter failed").strip()
+        if allow_missing_peer and "expected peer was not found" in diagnostic: return False
+        raise RuntimeError(diagnostic)
+    return True
+
+def wait_file(path:Path,deadline:float,pump=None)->None:
     while not path.is_file():
         if time.monotonic()>=deadline: raise RuntimeError(f"timeout waiting for {path.name}")
+        if pump is not None: pump()
+        time.sleep(.05)
+
+def wait_json(path:Path,deadline:float,predicate,pump=None)->dict:
+    while True:
+        wait_file(path,deadline,pump)
+        try: value=json.loads(bounded(path))
+        except (OSError,json.JSONDecodeError): value=None
+        if isinstance(value,dict) and predicate(value): return value
+        if time.monotonic()>=deadline: raise RuntimeError(f"timeout waiting for correlated {path.name}")
+        if pump is not None: pump()
         time.sleep(.05)
 
 def load_peer(root:Path,expected:str)->dict:
@@ -44,18 +65,29 @@ def load_peer(root:Path,expected:str)->dict:
     return value
 
 def main()->int:
-    parser=argparse.ArgumentParser();parser.add_argument("--database",required=True,type=Path);parser.add_argument("--transport-root",required=True,type=Path);parser.add_argument("--owned-root",required=True,type=Path);parser.add_argument("--run-id",required=True);parser.add_argument("--expected-peer",required=True);parser.add_argument("--timeout",required=True,type=int)
+    parser=argparse.ArgumentParser();parser.add_argument("--database",required=True,type=Path);parser.add_argument("--transport-root",required=True,type=Path);parser.add_argument("--owned-root",required=True,type=Path);parser.add_argument("--run-id",required=True);parser.add_argument("--expected-peer",required=True);parser.add_argument("--timeout",required=True,type=int);parser.add_argument("--mode",choices=("directory","mtp"),default="directory");parser.add_argument("--mtp-adapter",type=Path)
     args=parser.parse_args();deadline=time.monotonic()+args.timeout
+    pump=None
+    if args.mode=="mtp":
+        if args.mtp_adapter is None: raise RuntimeError("MTP adapter is required")
+        pump=lambda:run_adapter(args.mtp_adapter,"pull",args.expected_peer,args.transport_root,deadline,True)
+        # Android publishes its durable identity only while participating.  A
+        # missing expected advertisement is therefore a bounded wait state;
+        # device, transport, ambiguity and malformed-object failures remain
+        # immediate and distinct adapter errors.
+        wait_file(args.transport_root/"android-peer-v1.json",deadline,pump)
     peer=load_peer(args.transport_root,args.expected_peer)
     with closing(generation.connect_database(args.database)) as db:
         generation.require_schema(db);desktop_peer=generation.peer_identity(db,"desktop");db.commit()
     request={"format":"trainlog-sync-generation-request","version":1,"run_id":args.run_id,"desktop_peer_id":desktop_peer,"android_peer_id":peer["peer_id"],"capabilities":sorted(CAPS)}
     request_path=args.transport_root/"request-v1.json";publish_json(request_path,request)
+    if args.mode=="mtp": run_adapter(args.mtp_adapter,"push",args.expected_peer,args.transport_root,deadline)
     emit(args.run_id,"waiting_android_publication",producer_peer_id=peer["peer_id"],consumer_peer_id=desktop_peer)
-    inbound_ref=args.transport_root/"android-generation-v1.json";wait_file(inbound_ref,deadline)
-    inbound=json.loads(bounded(inbound_ref));inbound_dir=args.transport_root/inbound["relative_path"]
+    inbound_ref=args.transport_root/"android-generation-v1.json"
+    inbound=wait_json(inbound_ref,deadline,lambda value:value.get("run_id")==args.run_id,pump);inbound_dir=args.transport_root/inbound["relative_path"]
     ack=generation.consume_desktop(args.database,inbound_dir)
     ack_path=args.transport_root/"desktop-consumption-ack-v1.json";publish_json(ack_path,ack)
+    if args.mode=="mtp": run_adapter(args.mtp_adapter,"push",args.expected_peer,args.transport_root,deadline)
     if ack["result"]!="consumed": raise RuntimeError("desktop rejected Android generation")
     emit(args.run_id,"local_import_committed",inbound_generation_id=ack["generation_id"],manifest_sha256=ack["manifest_sha256"])
     outgoing_id="gen_"+str(uuid.uuid4())
@@ -68,10 +100,11 @@ def main()->int:
     published=generation.publish(args.database,outgoing_id,args.transport_root/"desktop-objects")
     ref={"format":"trainlog-sync-generation-reference","version":1,"run_id":args.run_id,"generation_id":outgoing_id,"manifest_sha256":digest,"relative_path":str(published.relative_to(args.transport_root))}
     publish_json(args.transport_root/"desktop-generation-v1.json",ref)
+    if args.mode=="mtp": run_adapter(args.mtp_adapter,"push",args.expected_peer,args.transport_root,deadline)
     emit(args.run_id,"published",outbound_generation_id=outgoing_id,manifest_sha256=digest)
     emit(args.run_id,"waiting_acknowledgement",outbound_generation_id=outgoing_id)
-    android_ack=args.transport_root/"android-consumption-ack-v1.json";wait_file(android_ack,deadline)
-    android_ack_value=json.loads(bounded(android_ack))
+    android_ack=args.transport_root/"android-consumption-ack-v1.json"
+    android_ack_value=wait_json(android_ack,deadline,lambda value:value.get("run_id")==args.run_id and value.get("generation_id")==outgoing_id,pump)
     result=generation.accept_ack(args.database,android_ack)
     if result not in ("acknowledged","unchanged"): raise RuntimeError(f"Android did not durably consume desktop generation: {result}: {android_ack_value.get('diagnostic','')}")
     with closing(generation.connect_database(args.database)) as db:

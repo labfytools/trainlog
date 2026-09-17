@@ -171,8 +171,8 @@ def run(args: argparse.Namespace) -> int:
         raise RuntimeError("invalid trusted sync configuration")
     if config["format"] != "trainlog-sync-orchestrator-config" or config["version"] != 1 or config["enabled"] is not True:
         raise RuntimeError("full-generation synchronization is disabled")
-    if config["mode"] != "directory":
-        raise RuntimeError("physical MTP generation transport is not implemented")
+    if config["mode"] not in ("directory", "mtp"):
+        raise RuntimeError("invalid transport mode")
     for key in ("transport_root","owned_root"):
         if not isinstance(config[key],str) or not Path(config[key]).is_absolute(): raise RuntimeError("trusted paths must be absolute")
     if not isinstance(config["expected_peer_id"],str) or not re.fullmatch(r"peer_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",config["expected_peer_id"]): raise RuntimeError("invalid expected peer identity")
@@ -193,7 +193,13 @@ def run(args: argparse.Namespace) -> int:
         environment.update({"TRAINLOG_SYNC_RUN_ID": args.run_id,
                             "TRAINLOG_SYNC_TRIGGER": state["trigger"],
                             "TRAINLOG_SYNC_DATABASE": args.database})
-        command=[sys.executable,str(Path(__file__).with_name("sync_peer_worker.py")),"--database",args.database,"--transport-root",config["transport_root"],"--owned-root",config["owned_root"],"--run-id",args.run_id,"--expected-peer",config["expected_peer_id"],"--timeout",str(timeout)]
+        command=[sys.executable,str(Path(__file__).with_name("sync_peer_worker.py")),"--database",args.database,"--transport-root",config["transport_root"],"--owned-root",config["owned_root"],"--run-id",args.run_id,"--expected-peer",config["expected_peer_id"],"--timeout",str(timeout),"--mode",config["mode"]]
+        if config["mode"] == "mtp":
+            adapter = os.environ.get("TRAINLOG_SYNC_MTP_ADAPTER",
+                str(Path(__file__).resolve().parents[1] / "build/tui/trainlog-generation-mtp-adapter"))
+            if not Path(adapter).is_absolute() or not os.access(adapter, os.X_OK):
+                raise RuntimeError("fixed MTP adapter executable is unavailable")
+            command.extend(["--mtp-adapter", adapter])
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment,
             preexec_fn=_child_setup)

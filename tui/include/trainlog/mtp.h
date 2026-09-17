@@ -60,6 +60,23 @@ TrainlogStatus trainlog_mtp_ensure_root_folder(
 );
 
 /**
+ * @brief Find or create one exact folder below an explicit parent.
+ *
+ * Duplicate names are rejected as a conflict.  The returned object identifier
+ * is valid only for the current connection epoch and must be resolved again
+ * after reconnecting.
+ */
+TrainlogStatus trainlog_mtp_ensure_folder(
+    unsigned int bus_number,
+    unsigned int device_number,
+    uint32_t storage_id,
+    uint32_t parent_folder_id,
+    const char *folder_name,
+    uint32_t *output_folder_id,
+    bool *output_created
+);
+
+/**
  * @brief Upload one local text file into an exact MTP folder.
  */
 TrainlogStatus trainlog_mtp_send_text_file(
@@ -114,6 +131,13 @@ TrainlogStatus trainlog_mtp_delete_object(
     unsigned int bus_number,
     unsigned int device_number,
     uint32_t item_id
+);
+
+TrainlogStatus trainlog_mtp_rename_object(
+    unsigned int bus_number,
+    unsigned int device_number,
+    uint32_t item_id,
+    const char *new_name
 );
 
 #endif

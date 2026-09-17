@@ -31,6 +31,8 @@ import com.labfytools.trainlog.data.KnowledgeConfidence
 import com.labfytools.trainlog.data.SyncCatalogInbox
 import com.labfytools.trainlog.data.StartAiSessionDraftResult
 import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.data.AndroidBackupService
+import com.labfytools.trainlog.data.AndroidBackupResult
 import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
@@ -275,7 +277,7 @@ private fun catalogCountsText(context: android.content.Context, imported: Int, r
     ).joinToString(", ")
 
 @Composable
-fun SettingsScreen(inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
+fun SettingsScreen(repository: TrainlogRepository, inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
     val colors = LocalTrainlogColors.current
     val context = LocalContext.current
     val language = LocalLanguagePresentation.current
@@ -296,6 +298,25 @@ fun SettingsScreen(inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
                     CatalogInboxResult.FolderNotAuthorized -> message = strings.getString(R.string.settings_folder_revoked)
                     is CatalogInboxResult.Error -> message = localizedRepositoryMessage(strings, result.message)
                 }
+        }
+    }
+    val backupService = remember { AndroidBackupService(context) }
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            val result = runCatching { context.contentResolver.openOutputStream(uri, "w")!!.use { backupService.create(repository, it) } }.getOrElse { AndroidBackupResult.Error(it.message ?: "Backup export failed.") }
+            message = strings.getString(if (result is AndroidBackupResult.Success) R.string.settings_backup_complete else R.string.settings_backup_failed)
+        }
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val verified = runCatching { context.contentResolver.openInputStream(uri)!!.use { backupService.verify(it).getOrThrow() } }
+            val result = verified.fold({ backupService.restore(repository, it) }, { AndroidBackupResult.Error(it.message ?: "Backup verification failed.") })
+            if (result is AndroidBackupResult.Error) {
+                android.widget.Toast.makeText(context, strings.getString(R.string.settings_restore_failed), android.widget.Toast.LENGTH_LONG).show()
+            }
+            // Restore closes the repository before replacement. Recreate even
+            // after a rolled-back failure so no UI owner retains that handle.
+            (context as? android.app.Activity)?.recreate()
         }
     }
     TrainlogScreen(strings.getString(R.string.settings_screen)) {
@@ -330,6 +351,13 @@ fun SettingsScreen(inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
                 }
             })
             message?.let { TrainlogInfo(it, if (authorized) colors.success else colors.error) }
+        }
+        TrainlogFrame(strings.getString(R.string.settings_backup_section)) {
+            TrainlogInfo(strings.getString(R.string.settings_backup_plaintext))
+            TrainlogAction(strings.getString(R.string.settings_backup_create), strings.getString(R.string.settings_backup_create_description),
+                { backupLauncher.launch("trainlog-backup.tlbackup") })
+            TrainlogAction(strings.getString(R.string.settings_backup_restore), strings.getString(R.string.settings_backup_restore_description),
+                { restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) })
         }
     }
 }

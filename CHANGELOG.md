@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.2
 
+- Added the production libudev/libmtp generation adapter with bounded peer
+  selection, object transfer and manifest-last publication; wired the trusted
+  orchestrator mode and proved the full Firefox/Android/desktop conversation
+  with an I/O-boundary object double. Added complete versioned Android
+  backup/verify/restore and a reproducible, non-installed schema-v17 bridge
+  candidate with v17 round-trip and v17-to-v20 migration tests. Physical MTP,
+  signing, device installation, user-data operations and rollout remain
+  pending.
+
 - Added opt-in foreground generation coordination, peer-evidenced capabilities,
   truthful bounded Web progress, descendant cleanup, an integrated Android ↔
   desktop Firefox proof, and synthetic candidate/SQLite recovery tooling on the
