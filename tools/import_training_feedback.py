@@ -42,7 +42,10 @@ def merge_revisions(db,table,parent_column,parent_id,revisions):
     for revision in revisions:
         old=db.execute(f"SELECT {parent_column},created_at,raw_text FROM {table} WHERE revision_id=?",(revision[0],)).fetchone(); expected=(parent_id,revision[1],revision[2])
         if old is None:db.execute(f"INSERT INTO {table}(revision_id,{parent_column},created_at,raw_text) VALUES(?,?,?,?)",(revision[0],*expected));added+=1
-        elif old==expected:skipped+=1
+        # INVARIANT: generation workers reuse the history importer connection,
+        # which installs sqlite3.Row.  Idempotence compares persisted values,
+        # never the process-local row representation selected by a prior step.
+        elif tuple(old)==expected:skipped+=1
         else:fail("HARD CONFLICT "+revision[0])
     current=max(db.execute(f"SELECT revision_id,created_at,raw_text FROM {table} WHERE {parent_column}=?",(parent_id,)).fetchall(),key=lambda r:(instant(r[1]),r[0].encode()))
     return added,skipped,current[2]
@@ -63,7 +66,7 @@ def apply_feedback(db,root,complete_causal_envelope=False):
         if not canonical or canonical[0]!=occurrence[1]:fail("exercise_id incompatible avec l'occurrence")
         old=db.execute("SELECT session_exercise_row_id,observed_at FROM exercise_feedback WHERE feedback_id=?",(fid,)).fetchone();expected=(occurrence[0],item["observed_at"]);revisions=revision_list(item,fid,root["version"])
         if old is None:db.execute("INSERT INTO exercise_feedback(feedback_id,session_exercise_row_id,observed_at,raw_text) VALUES(?,?,?,?)",(fid,*expected,revisions[0][2]));roots_added+=1
-        elif old==expected:roots_skipped+=1
+        elif tuple(old)==expected:roots_skipped+=1
         else:fail("HARD CONFLICT "+fid)
         added,skipped,current=merge_revisions(db,"exercise_feedback_revisions","feedback_id",fid,revisions);revisions_added+=added;revisions_skipped+=skipped;db.execute("UPDATE exercise_feedback SET raw_text=? WHERE feedback_id=?",(current,fid))
     seen=set()
@@ -76,7 +79,7 @@ def apply_feedback(db,root,complete_causal_envelope=False):
         if not session:fail("session introuvable")
         old=db.execute("SELECT session_row_id,observed_at FROM session_followups WHERE followup_id=?",(fid,)).fetchone();expected=(session[0],item["observed_at"]);revisions=revision_list(item,fid,root["version"])
         if old is None:db.execute("INSERT INTO session_followups(followup_id,session_row_id,observed_at,raw_text) VALUES(?,?,?,?)",(fid,*expected,revisions[0][2]));roots_added+=1
-        elif old==expected:roots_skipped+=1
+        elif tuple(old)==expected:roots_skipped+=1
         else:fail("HARD CONFLICT "+fid)
         added,skipped,current=merge_revisions(db,"session_followup_revisions","followup_id",fid,revisions);revisions_added+=added;revisions_skipped+=skipped;db.execute("UPDATE session_followups SET raw_text=? WHERE followup_id=?",(current,fid))
     return roots_added,roots_skipped,revisions_added,revisions_skipped

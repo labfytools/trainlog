@@ -27,6 +27,13 @@ def main():
   out=d/"out.json";run("python",ROOT/"tools/export_training_feedback.py",out,"--database",db);x=json.loads(out.read_text());assert x["version"]==2 and len(x["exercise_feedback"])==1 and len(x["session_followups"])==2
   revision={"revision_id":"fr_55555555-5555-4555-8555-555555555555","created_at":"2026-09-03T10:00:00+02:00","raw_text":"ressenti corrigé"};x["exercise_feedback"][0]["revisions"].append(revision);artifact.write_text(json.dumps(x),encoding="utf8")
   run("python",ROOT/"tools/import_training_feedback.py",artifact,"--database",db);again=run("python",ROOT/"tools/import_training_feedback.py",artifact,"--database",db).stdout;assert "revisions_added=0" in again
+  # The generation worker imports history first, leaving sqlite3.Row enabled
+  # on the shared connection. Identical feedback must remain idempotent there.
+  import sys
+  sys.path.insert(0,str(ROOT/"tools"))
+  from import_training_feedback import apply_feedback,load
+  con=sqlite3.connect(db);con.row_factory=sqlite3.Row
+  con.execute("BEGIN IMMEDIATE");assert apply_feedback(con,load(artifact))==(0,3,0,4);con.rollback();con.close()
   con=sqlite3.connect(db);assert con.execute("select count(*) from exercise_feedback_revisions").fetchone()[0]==2;assert con.execute("select raw_text from exercise_feedback").fetchone()[0]=="ressenti corrigé";con.close()
   x["exercise_feedback"][0]["revisions"][-1]["raw_text"]="conflit";artifact.write_text(json.dumps(x),encoding="utf8");bad=subprocess.run(["python",str(ROOT/"tools/import_training_feedback.py"),str(artifact),"--database",str(db)],capture_output=True);assert bad.returncode!=0
  print("TRAINING_FEEDBACK_SYNC_TEST=PASS")
