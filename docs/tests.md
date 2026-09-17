@@ -1340,6 +1340,21 @@ Focused archive tests cover interrupted-copy resume, invalid archives,
 simulated insufficient space, missing and late ACKs, and idempotent ACK replay
 after archival.
 
+The controlled Samsung SM-G990B rollout migrated the authentic Android backup
+from schema v20 to v21 and an authentic desktop copy from v21 to v22 before
+installation. The installed release retained its existing certificate and
+advanced from versionCode 6 through 7 to 8 without uninstalling or clearing
+data. Real MTP validation preserved the failed-run evidence that exposed an
+Android external-storage directory-fsync incompatibility and an early desktop
+generation reference. After their bounded repairs, run
+`sy_06200dd7-0d51-4f33-b80d-9976822ba87d` completed, the two Trainlog services
+were restarted, and run `sy_783014b0-f3f0-4f1e-8f4f-723acfc02dbc` completed.
+Both exchanged distinct generations and durable ACKs with zero session
+reconciliation. The final Android backup passed integrity and foreign-key
+checks at schema v21 with 13 generations, five verified archives, 13 ACKs,
+five consumed generations, and six active generations. The expected AI
+proposal remained `pending` with its original identity and six entries.
+
 ## Readability validation
 
 The normalized C scope is checked non-mutatively with the explicit

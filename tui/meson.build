@@ -787,6 +787,11 @@ test(
   args: [meson.project_source_root() / 'tests/test_sync_deployment_tools.py'],
 )
 test(
+  'sync_error_classification',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_sync_error_classification.py'],
+)
+test(
   'schema_v21_migration',
   executable('test_schema_v21_migration', 'tests/test_schema_v21_migration.c', dependencies: trainlog_core_dep),
 )

@@ -341,9 +341,11 @@ Android resource-parity, language-owner, typed sync-presentation, and
 stable-data presentation tests. A real-device/manual visual language-switch
 smoke remains a manual validation; it does not change the validated status.
 
-Hardware-dependent MTP and the final real Drive plus Android-triggered AI-draft
-smoke test are not automated. The latter is why
-`TRAINLOG_AI_SESSION_DRAFT_V1` remains `VALIDATION_PENDING`.
+Hardware-dependent MTP is not automated. The controlled real-device rollout
+validated two consecutive full-generation exchanges around a Trainlog-service
+restart. The expected AI proposal was verified in the persistent Android store
+and the read-only Web proposal projection with its original identity and
+content; no proposal-to-execution-draft conversion was performed.
 
 ## Active limitations
 
@@ -351,16 +353,18 @@ smoke test are not automated. The latter is why
 desktop producers/consumers for `trainlog-causal-deletions` V1. All contracted
 domains are durably protected; exact replay is idempotent and unprovable or
 concurrent ancestry conflicts before mutation. Protected legacy snapshots are
-refused before resurrection. Staged generation acknowledgement is implemented,
-but active synchronization still selects V3: no staged-service activation,
-deployment, or user-data migration occurred.
+refused before resurrection. The default automatic daemon path remains V3,
+while the trusted local Web opt-in now runs the deployed full-generation path.
+Its acknowledged generations can leave the active admission window only
+through the verified schema-v22/schema-v21 archive ledger; pending, rejected
+and ambiguous generations remain protected.
 
 The focused causal closeout additionally proves child-data delete/update
 conflicts including change-and-revert, imported built-in and alias protection,
 active/pending/desktop draft-revision equivalence, protected companion refusal,
 current-view retirement and bounded pre-effect admission. The later generation
 slice additively advances schemas to desktop v22/Android v21 without changing
-active V3 transport selection.
+default automatic V3 selection.
 
 The residual causal evidence also proves legitimate Android and desktop
 producer directions separately for exercise retirement, populated body
@@ -378,8 +382,6 @@ pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
   remain shell placeholders until their Core/API ownership and implementation
   order are explicitly contracted.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
-- AI proposal exchange still awaits one real Drive plus Android-triggered
-  bidirectional smoke test.
 - Session Generator V1 is hidden while V2 planning semantics are developed.
 - Hardware MTP validation requires a connected unlocked Android device.
 - Scientific knowledge is bounded to reviewed catalog entries; unknown custom

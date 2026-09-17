@@ -824,8 +824,10 @@ object double; the same compiled transport algorithm remains under test.
 
 Each worker push is additionally scoped by a private disposable outbox. The
 first push contains only the correlated request; the post-import push adds the
-desktop consumption ACK; the publication push adds the current desktop
-generation reference and exactly its referenced generation directory. The
+desktop consumption ACK. Publication uses two causally ordered bounded pushes:
+the immutable current desktop generation directory is committed first, with
+its manifest last, and only then is its run-correlated reference made visible.
+Android therefore cannot consume a reference to an in-progress MTP directory. The
 durable transport root remains the owner of retained generations, staging,
 legacy compatibility artifacts, and evidence, but those unrelated objects are
 not recursively sent on every phase. Constructing an outbox does not delete or

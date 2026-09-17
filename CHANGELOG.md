@@ -13,6 +13,15 @@
   and the prepared-items tile can inspect every proposal rather than only its
   first compact summary.
 
+- Completed the controlled schema-v22/schema-v21 rollout without uninstalling
+  or clearing Android data. The production Android archive uses a supported
+  post-rename file durability barrier on emulated external storage, and the
+  desktop publishes each complete MTP generation before its correlated
+  reference. Two real post-migration bidirectional exchanges, separated by a
+  Trainlog-service restart, completed with durable ACKs and no session
+  duplication. The expected AI proposal retained its identity, six entries,
+  and `pending` state on Android and remained independently visible in Web.
+
 - Fixed a production full-generation timeout caused by recursively uploading
   retained staging and unrelated transport history on every MTP push. Each
   phase now publishes a private bounded outbox containing only its request,
