@@ -323,8 +323,9 @@ As of 2026-09-17:
   `WEB_DASHBOARD_V1=PASS/FROZEN`; the other four Web routes remain placeholders;
 - `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
 - `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` through explicit staged
-  services; automatic synchronization still selects V3. The next cursor is
-  `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1`.
+  services; automatic synchronization still selects V3. The opt-in grouped Web
+  path is validated in isolation; the next boundary is
+  `TRAINLOG_SYNC_DEPLOYMENT_READINESS_V1`, not an authorized deployment.
 
 The latest executable result belongs in
 [current state](docs/current_state.md), not in multiple README narratives.

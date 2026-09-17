@@ -33,7 +33,7 @@ visualizations are implemented; the other four Web routes remain placeholders.
 ## Current cursor
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_SYNC_DEPLOYMENT_READINESS_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
@@ -42,8 +42,9 @@ cross-platform draft revision identity and resource-bound admission are closed.
 `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN`: both platforms expose explicit
 coherent capture, immutable manifest publication, whole-generation
 transactional consumption, durable correlated ACK and restart/replay entry
-points. Automatic V3 selection remains unchanged. The next cursor is only
-`TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1`; no orchestrator work starts here.
+points. The orchestrator, Web API and Web control are now complete behind an
+explicit trusted opt-in. Automatic V3 selection remains unchanged. The next
+boundary is deployment readiness; no rollout starts here.
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.

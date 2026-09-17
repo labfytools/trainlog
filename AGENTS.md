@@ -17,6 +17,10 @@ Trainlog consists of:
 
 The desktop SQLite database is the canonical long-term history.
 
+The full-generation orchestrator and Web sync surface are implemented behind a
+trusted local opt-in. Default deployed automatic exchange remains V3 until the
+separate controlled-rollout decision.
+
 Android has an independent local SQLite store for offline capture. SQLite
 database files are never synchronized directly.
 

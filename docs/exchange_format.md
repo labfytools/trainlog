@@ -701,3 +701,13 @@ Generation membership never changes a causal V1 operation. The immutable
 operation retains null `publication_context`, its original ID and digest;
 `sync_causal_publications` records first emission and retransmission by
 operation/generation identity.
+## Operational full-generation run report
+
+The Web/application boundary uses a separate bounded operational report; it
+does not extend any frozen business artifact. It carries the stable run and
+request IDs, trigger, requested/effective mode, peer and generation IDs,
+canonical phase, monotonic progress revision, real or unavailable counters,
+per-domain coverage, bounded draft summaries, diagnostics and separate AI
+results. `completed` is accepted only after the worker supplies the correlated
+manifest/ACK evidence. The report is at most 64 KiB and is replaced atomically
+with private permissions.

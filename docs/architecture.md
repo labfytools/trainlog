@@ -414,6 +414,15 @@ carrier.
 
 `trainlog-syncd` is a small user-session agent.
 
+### Full-generation application orchestrator
+
+The opt-in full-generation path is owned by `sync_orchestrator.py`, launched as
+an owned process by the C Web adapter. It uses the same XDG `sync.lock` as the
+legacy engine, never borrows the Web process's SQLite handle, and accepts peer
+transport only from a trusted local configuration. The HTTP event loop only
+admits work and reads a bounded durable report. V3 remains the default when the
+trusted generation configuration is absent.
+
 It polls for a new Android request and invokes the same shared C synchronization
 engine used by the TUI.
 

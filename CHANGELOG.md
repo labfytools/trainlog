@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.2
 
+- Completed the grouped `TRAINLOG_SYNC_WEB_END_TO_END_V1` mission: the opt-in
+  full-generation orchestrator, protected asynchronous Web API, global sync
+  control, durable reconnect reporting, Dashboard refresh and read-only draft
+  summary pass isolated C, Python, Android, frontend and Firefox validation.
+  Default V3, physical MTP, Drive and deployment remain unchanged.
+
 - Completed `TRAINLOG_SYNC_GENERATION_ACK_V1` with desktop schema v21 and
   Android schema v20. Added coherent per-platform capture, strict bounded
   manifest V1, immutable manifest-last publication, whole-generation SQLite

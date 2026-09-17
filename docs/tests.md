@@ -1216,6 +1216,14 @@ does not author expected business JSON or repair artifacts.
 
 After these additions the direct normal suites report 78/78 Meson tests and
 216 Android tests: 212 passed, four historical-fixture skips, zero failures.
+
+The grouped Web end-to-end tranche raises the direct normal and sanitizer
+inventories to 79/79 and adds `sync_orchestrator`, protected sync API
+coverage, frontend sync assertions and a real headless Firefox scenario in
+`tests/test_web_sync_browser.py`. Its detailed matrix is
+[`sync_web_end_to_end_v1_evidence.md`](design/sync_web_end_to_end_v1_evidence.md).
+The browser uses the production C server and worker with an isolated directory
+transport fixture; physical MTP and Drive are not claimed.
 The publication adapter is an isolated directory/object-store double. No
 physical MTP, phone, Drive, active service, or user database participates.
 ## Causal deletion V1

@@ -777,6 +777,18 @@ and retransmission because generation membership lives only in
 
 ## 19. Legacy active-protocol limitations
 
+The Web end-to-end tranche adds an explicit opt-in application orchestrator.
+`POST /api/v1/sync` admits one correlated run and `GET /api/v1/sync/status` is
+passive. The worker owns blocking peer/transport work, shares `sync.lock` with
+the TUI and daemon, and publishes bounded durable phases. Android foreground
+participation is required for a fresh run-correlated publication. No filesystem
+mtime or old generation can satisfy that freshness boundary.
+
+The opt-in is `TRAINLOG_SYNC_GENERATION_CONFIG`, an absolute trusted local
+configuration path. It is launcher-owned and cannot be supplied through HTTP.
+Without it, the staged path reports disabled and the deployed V3 path remains
+unchanged.
+
 The complete-sync semantics remain frozen separately in
 [`TRAINLOG_SYNC_GAP_CONTRACT_V1`](design/sync_gap_contract_v1.md). The staged
 generation slice implements its batch boundary but does not activate it.
