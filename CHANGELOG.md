@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.2
 
+- Normalized the recent synchronization, generation-MTP, Android backup,
+  Web Dashboard serialization, tests, I/O doubles and packaging code for human
+  readability. Added scoped C formatting rules and review guidance without
+  changing synchronization protocols, assertions, deployment state or runtime
+  behavior.
+
 - Added the production libudev/libmtp generation adapter with bounded peer
   selection, object transfer and manifest-last publication; wired the trusted
   orchestrator mode and proved the full Firefox/Android/desktop conversation

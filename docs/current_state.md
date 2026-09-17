@@ -10,6 +10,12 @@ and deployment are not complete.
 
 Snapshot date: **2026-09-17**.
 
+`TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,
+generation/ACK, Android-backup, Web Dashboard serialization, tests, doubles and
+packaging workflows without changing their contracts. The scoped C formatter
+check is canonical for those files only; it does not claim that the historical
+repository has been globally reformatted.
+
 This document owns the current implemented state. Historical checkpoints and
 closed incidents belong in [reviews](reviews/) and the
 [changelog](../CHANGELOG.md).

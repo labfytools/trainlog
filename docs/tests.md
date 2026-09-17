@@ -1307,3 +1307,19 @@ the analogous test on the exact schema-v17 source and feeds its archive to
 These are software proofs. They do not claim physical USB/MTP behavior,
 installation over the signed release, a real user backup, or a real-device
 restore.
+
+## Readability validation
+
+The normalized C scope is checked non-mutatively with the explicit
+`clang-format --dry-run --Werror` command in `docs/coding_style.md`. Clang C17,
+the normal Meson inventory and the ASan/UBSan inventory preserve the existing
+behavioral assertions. Python syntax/orchestrator tests, Android generation and
+backup tests, the I/O-boundary MTP browser proof, JSON/import validators and
+the isolated harness cover the other normalized sources.
+
+GCC 16.2.1 now compiles beyond the former `misleading-indentation` failures in
+`json_writer.c`, `web_dashboard_json.c`, `web_dashboard.c`,
+`dashboard_layout.c`, and `generation_mtp.c`. The separate strict build remains
+blocked by distinct pre-existing `format-truncation` diagnostics in the Web
+accepted-response buffer and bounded test path buffers. Warning policy remains
+unchanged; GCC is not reported as green.

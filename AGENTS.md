@@ -287,6 +287,12 @@ Exact UI strings, user data, identifiers, commands, paths, protocol fields,
 version/status markers, citations, and historical evidence are not translated
 merely to satisfy the prose-language rule.
 
+Production code, tests, fixtures expressed as source, and repository tooling
+must remain readable by a human reviewer. Do not compress functions, control
+flow, declarations, assertions, or cleanup onto one line to reduce line or
+token count. Grouped missions may and should use small comprehensible commits.
+Perform an explicit readability review before the final commit.
+
 Canonical documents:
 
 - `README.md`;
