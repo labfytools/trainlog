@@ -10,6 +10,10 @@
   backup bridge produce a signed release APK, allowing a strictly increasing
   private update chain without changing Trainlog schemas or protocols.
 
+- Generalized bridge restore/migration validation to preserve every historical
+  SQLite value whether a real backup contains an active draft or legitimately
+  contains none.
+
 - Closed the native candidate warning gate with checked path and HTTP response
   bounds, strict GCC and Clang builds, full Clang ASan/UBSan validation, and a
   stable concurrent object-I/O MTP double. Rebuilt the desktop, current Android

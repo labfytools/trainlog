@@ -1354,3 +1354,10 @@ and the version-thirteen and version-twelve methods in
 bridge backup input, a real v9 fixture, a real v14 fixture/output directory,
 and real v13/v12 fixtures with explicit output directories. Synthetic bridge
 and current-schema migration proofs run separately; no user database is read.
+
+The bridge migration test accepts both legitimate backup states: an active
+draft may be present or absent. It snapshots every original table, column,
+SQLite value type and value before restore, migrates through the production
+repository owner, and compares that complete historical shape afterward. The
+draft assertion follows the archived state instead of requiring the synthetic
+fixture's sample draft.
