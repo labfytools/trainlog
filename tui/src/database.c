@@ -884,6 +884,45 @@ static const char *const MIGRATE_V21_TO_V22_SQL =
     "audit_json TEXT NOT NULL);"
     "PRAGMA user_version=22;COMMIT;";
 
+/* WHY: a Web-authored preparation is neither an imported AI proposal nor an
+ * execution draft. CONTRACT: v23 stores immutable preparation revisions,
+ * stable ordered occurrences, durable request replay, and delivery identity
+ * without changing completed history or frozen exchange formats. INVARIANT:
+ * migration invents no preparation, execution, delivery, or acknowledgement. */
+static const char *const MIGRATE_V22_TO_V23_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE session_preparations("
+    "preparation_id TEXT PRIMARY KEY,current_revision_id TEXT NOT NULL,created_at TEXT NOT NULL,"
+    "updated_at TEXT NOT NULL,editing_state TEXT NOT NULL CHECK(editing_state IN('draft','ready')),"
+    "delivery_state TEXT NOT NULL DEFAULT 'local' CHECK(delivery_state IN('local','pending','acknowledged','remote_unknown','cancelled')),"
+    "source_proposal_id TEXT,source_payload_sha256 TEXT);"
+    "CREATE TABLE session_preparation_revisions("
+    "revision_id TEXT PRIMARY KEY,preparation_id TEXT NOT NULL REFERENCES session_preparations(preparation_id) ON DELETE RESTRICT,"
+    "parent_revision_id TEXT,title TEXT NOT NULL,session_type TEXT NOT NULL CHECK(session_type IN('training','max_test')),"
+    "planned_for TEXT,notes TEXT,created_at TEXT NOT NULL,"
+    "CHECK(length(CAST(title AS BLOB))<=200),CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4000),"
+    "UNIQUE(preparation_id,revision_id));"
+    "CREATE TABLE session_preparation_entries("
+    "revision_id TEXT NOT NULL REFERENCES session_preparation_revisions(revision_id) ON DELETE RESTRICT,"
+    "entry_id TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),exercise_id TEXT NOT NULL,"
+    "equipment_id TEXT,recording_mode TEXT NOT NULL CHECK(recording_mode IN('sets','continuous')),"
+    "tracking_mode TEXT NOT NULL CHECK(tracking_mode IN('reps','duration')),data_fields INTEGER NOT NULL,"
+    "load_mode TEXT NOT NULL CHECK(load_mode IN('none','external','assistance')),rest_seconds INTEGER NOT NULL CHECK(rest_seconds BETWEEN 0 AND 86400),"
+    "target_sets INTEGER,target_reps INTEGER,target_duration_seconds INTEGER,target_weight_kg REAL,notes TEXT,"
+    "PRIMARY KEY(revision_id,entry_id),UNIQUE(revision_id,position),"
+    "CHECK(notes IS NULL OR length(CAST(notes AS BLOB))<=4000));"
+    "CREATE INDEX session_preparation_entries_exercise ON session_preparation_entries(exercise_id);"
+    "CREATE TABLE session_preparation_requests("
+    "request_id TEXT PRIMARY KEY,command TEXT NOT NULL,preparation_id TEXT NOT NULL,revision_id TEXT NOT NULL,"
+    "response_json TEXT NOT NULL,created_at TEXT NOT NULL);"
+    "CREATE TABLE session_preparation_deliveries("
+    "delivery_id TEXT PRIMARY KEY,preparation_id TEXT NOT NULL REFERENCES session_preparations(preparation_id),"
+    "revision_id TEXT NOT NULL REFERENCES session_preparation_revisions(revision_id),execution_session_id TEXT NOT NULL UNIQUE,"
+    "state TEXT NOT NULL CHECK(state IN('pending','acknowledged','remote_unknown','cancelled')),"
+    "created_at TEXT NOT NULL,generation_id TEXT,acknowledged_at TEXT,"
+    "UNIQUE(preparation_id,revision_id,delivery_id));"
+    "PRAGMA user_version=23;COMMIT;";
+
 /* CONTRACT: v18 was already deployed before bounded draft publication was
  * added. Keep its version number and add only the nullable lifecycle cursor;
  * NULL deliberately means retryable/not yet published. */
@@ -1755,6 +1794,9 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 22) {
         status = execute_sql(database, MIGRATE_V21_TO_V22_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 23) {
+        status = execute_sql(database, MIGRATE_V22_TO_V23_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -1770,7 +1812,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v22" : "migrate database to schema v22",
+            version == 0 ? "create schema v23" : "migrate database to schema v23",
             database->connection,
             SQLITE_ERROR
         );

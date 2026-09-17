@@ -134,8 +134,8 @@ static bool test_v7_migration_sqlite_failure_has_diagnostic(void)
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic,
         sizeof(diagnostic)) == TRAINLOG_STATUS_DATABASE_ERROR);
     CHECK(database == NULL);
-    CHECK(strncmp(diagnostic, "migrate database to schema v22: SQLite rc=",
-        strlen("migrate database to schema v22: SQLite rc=")) == 0);
+    CHECK(strncmp(diagnostic, "migrate database to schema v23: SQLite rc=",
+        strlen("migrate database to schema v23: SQLite rc=")) == 0);
     CHECK(strstr(diagnostic, "extended_rc=") != NULL);
     CHECK(strstr(diagnostic, "custom_equipment") != NULL);
     CHECK(strstr(diagnostic, "already exists") != NULL);
