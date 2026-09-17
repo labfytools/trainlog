@@ -5,6 +5,7 @@ import json, os, signal, socket, sqlite3, subprocess, tempfile, time, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD = ROOT / os.environ.get("TRAINLOG_WEB_E2E_BUILD", "build") / "tui"
 GECKO = Path(
     os.environ.get("TRAINLOG_GECKODRIVER", "/home/fy59/.cache/trainlog/web-e2e-tools/geckodriver")
 )
@@ -114,13 +115,13 @@ class BrowserSyncTest(unittest.TestCase):
                 env.update(
                     {
                         "TRAINLOG_SYNC_MTP_ADAPTER": str(
-                            ROOT / "build/tui/generation-mtp-adapter-double"
+                            BUILD / "generation-mtp-adapter-double"
                         ),
                         "TRAINLOG_MTP_DOUBLE_ROOT": str(root / "device"),
                     }
                 )
             server = subprocess.Popen(
-                [str(ROOT / "build/tui/trainlog"), "--web", "--port", str(port)],
+                [str(BUILD / "trainlog"), "--web", "--port", str(port)],
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

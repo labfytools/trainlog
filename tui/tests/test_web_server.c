@@ -149,6 +149,31 @@ static bool response_header(const char *response, const char *name, char *output
     return true;
 }
 
+static bool test_sync_accepted_serialization(void) {
+    static const char REQUEST_ID[] = "sy_11111111-1111-4111-8111-111111111111";
+    static const char RUN_ID[] = "sy_22222222-2222-4222-8222-222222222222";
+    char output[256];
+    char exact[256];
+    char too_small[256];
+    size_t output_size;
+
+    CHECK(trainlog_web_sync_accepted_serialize(
+        REQUEST_ID, RUN_ID, output, sizeof(output), &output_size));
+    CHECK(output_size == strlen(output));
+    CHECK(strstr(output, "\"request_id\":\"sy_11111111-1111-4111-8111-111111111111\"") != NULL);
+    CHECK(strstr(output, "\"run_id\":\"sy_22222222-2222-4222-8222-222222222222\"") != NULL);
+    CHECK(strstr(output, "\"result\":\"running\"") != NULL);
+    CHECK(trainlog_web_sync_accepted_serialize(
+        REQUEST_ID, RUN_ID, exact, output_size + 1U, &output_size));
+    CHECK(strcmp(exact, output) == 0);
+    CHECK(!trainlog_web_sync_accepted_serialize(
+        REQUEST_ID, RUN_ID, too_small, output_size, &output_size));
+    CHECK(too_small[0] == '\0');
+    CHECK(!trainlog_web_sync_accepted_serialize(
+        "sy_invalid", RUN_ID, output, sizeof(output), &output_size));
+    return true;
+}
+
 static bool test_http_contract(TrainlogDatabase *database) {
     char response[32768];
     char large_request[12000];
@@ -476,8 +501,8 @@ int main(void) {
                                          sizeof(diagnostic)) != 0 &&
                  strstr(diagnostic, "frontend") != NULL;
     } else {
-        passed = test_http_contract(database) && test_port_in_use(database) &&
-                 test_dashboard_core_error_translation();
+        passed = test_sync_accepted_serialization() && test_http_contract(database) &&
+                 test_port_in_use(database) && test_dashboard_core_error_translation();
     }
     trainlog_database_close(database);
     return passed ? 0 : 1;

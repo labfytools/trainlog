@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "trainlog/generation_mtp.h"
+#include "bounded_path.h"
 
 #define CHECK(x)                                                                                   \
     do {                                                                                           \
@@ -239,21 +240,22 @@ static int test_pull_and_manifest_last(void) {
     CHECK(trainlog_generation_mtp_pull(
               &io, "peer_11111111-1111-4111-8111-111111111111", root, diag, sizeof(diag)) ==
           TRAINLOG_STATUS_OK);
-    snprintf(path,
-             sizeof(path),
-             "%s/android-objects/generations/gen_11111111-1111-4111-8111-111111111111/payload.json",
-             root);
+    CHECK(trainlog_test_join_path(
+        path,
+        sizeof(path),
+        root,
+        "android-objects/generations/gen_11111111-1111-4111-8111-111111111111/payload.json"));
     CHECK(access(path, R_OK) == 0);
-    snprintf(path, sizeof(path), "%s/out", root);
+    CHECK(trainlog_test_join_path(path, sizeof(path), root, "out"));
     CHECK(mkdir(path, 0700) == 0);
     char gen[512];
-    snprintf(gen, sizeof(gen), "%s/generation", path);
+    CHECK(trainlog_test_join_path(gen, sizeof(gen), path, "generation"));
     CHECK(mkdir(gen, 0700) == 0);
     char artifact[512];
-    snprintf(artifact, sizeof(artifact), "%s/artifact.json", gen);
+    CHECK(trainlog_test_join_path(artifact, sizeof(artifact), gen, "artifact.json"));
     CHECK(write_file(artifact, "a") == 0);
     char marker[512];
-    snprintf(marker, sizeof(marker), "%s/manifest.json", gen);
+    CHECK(trainlog_test_join_path(marker, sizeof(marker), gen, "manifest.json"));
     CHECK(write_file(marker, "m") == 0);
     CHECK(trainlog_generation_mtp_push(
               &io, "peer_11111111-1111-4111-8111-111111111111", root, diag, sizeof(diag)) ==
@@ -290,11 +292,36 @@ static int test_ambiguity_and_truncation(void) {
     status = trainlog_generation_mtp_pull(
         &io, "peer_11111111-1111-4111-8111-111111111111", root, diag, sizeof(diag));
     CHECK(status != TRAINLOG_STATUS_OK);
-    snprintf(path, sizeof(path), "%s/bad.bin", root);
+    CHECK(trainlog_test_join_path(path, sizeof(path), root, "bad.bin"));
     CHECK(access(path, F_OK) != 0);
     return 0;
 }
+static int test_bounded_path_join(void) {
+    char exact[8];
+    char too_small[7] = "guard";
+    char multibyte[16];
+    char private_root[] = "/tmp/trainlog-path-bound-XXXXXX";
+    char sentinel[128];
+    char refused[8] = "guard";
+
+    CHECK(trainlog_test_join_path(exact, sizeof(exact), "abc", "def"));
+    CHECK(strcmp(exact, "abc/def") == 0);
+    CHECK(!trainlog_test_join_path(too_small, sizeof(too_small), "abc", "def"));
+    CHECK(too_small[0] == '\0');
+    CHECK(trainlog_test_join_path(multibyte, sizeof(multibyte), "rép", "é"));
+    CHECK(strcmp(multibyte, "rép/é") == 0);
+    CHECK(mkdtemp(private_root) != NULL);
+    CHECK(trainlog_test_join_path(sentinel, sizeof(sentinel), private_root, "sentinel"));
+    CHECK(write_file(sentinel, "outside") == 0);
+    CHECK(!trainlog_test_join_path(refused, sizeof(refused), private_root, "overflow"));
+    CHECK(refused[0] == '\0');
+    CHECK(access(sentinel, R_OK) == 0);
+    CHECK(unlink(sentinel) == 0);
+    CHECK(rmdir(private_root) == 0);
+    return 0;
+}
 int main(void) {
+    CHECK(test_bounded_path_join() == 0);
     CHECK(test_pull_and_manifest_last() == 0);
     CHECK(test_ambiguity_and_truncation() == 0);
     return 0;

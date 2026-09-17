@@ -67,7 +67,7 @@ static bool run_test(void)
     char path[] = "/tmp/trainlog-v16-XXXXXX";
     int fd = mkstemp(path); sqlite3 *raw = NULL; TrainlogDatabase *db = NULL;
     bool ok = false;
-    TrainlogPersistedExerciseDetail old[1] = {{0}};
+    TrainlogPersistedExerciseDetail old[1];
     TrainlogSessionSummary summary;
     size_t count = 0U; int version = 0;
     TrainlogExercise changed;
@@ -75,6 +75,7 @@ static bool run_test(void)
     TrainlogSessionExerciseInput input = {0};
     TrainlogSessionInput session = {0};
     char diagnostic[512] = {0};
+    (void)memset(old, 0, sizeof(old));
     CHECK(fd >= 0); CHECK(close(fd) == 0); fd = -1;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(sqlite3_exec(raw, FIXTURE, NULL, NULL, NULL) == SQLITE_OK);

@@ -32,6 +32,7 @@
 #define TRAINLOG_HTTP_TIMEOUT_SECONDS 10U
 #define TRAINLOG_HTTP_BACKLOG 32U
 #define TRAINLOG_HTTP_POLL_MAX_MS 250ULL
+#define TRAINLOG_SYNC_ACCEPTED_JSON_CAPACITY 256U
 
 typedef struct TrainlogWebContext {
     uint16_t port;
@@ -49,65 +50,137 @@ typedef struct TrainlogHttpRequestState {
     char body[TRAINLOG_HTTP_BODY_LIMIT + 1U];
 } TrainlogHttpRequestState;
 
-static void web_diagnostic(char *output, size_t capacity, const char *message)
-{
-    if (output != NULL && capacity > 0U)
+static bool valid_sync_id(const char *value) {
+    return value != NULL && strlen(value) == 39U && strncmp(value, "sy_", 3U) == 0 &&
+           uuid_parse(value + 3U, (unsigned char[16]){0}) == 0;
+}
+
+bool trainlog_web_sync_accepted_serialize(const char *request_id,
+                                          const char *run_id,
+                                          char *output,
+                                          size_t capacity,
+                                          size_t *output_size) {
+    int written;
+
+    if (output == NULL || capacity == 0U || output_size == NULL) {
+        return false;
+    }
+    output[0] = '\0';
+    *output_size = 0U;
+    if (!valid_sync_id(request_id) || !valid_sync_id(run_id)) {
+        return false;
+    }
+    written = snprintf(output,
+                       capacity,
+                       "{\"api_version\":1,\"phase\":\"requested\",\"result\":\"running\","
+                       "\"progress_revision\":1,\"request_id\":\"%s\",\"run_id\":\"%s\","
+                       "\"status_url\":\"/api/v1/sync/status\"}\n",
+                       request_id,
+                       run_id);
+    if (written < 0 || (size_t)written >= capacity) {
+        output[0] = '\0';
+        return false;
+    }
+    *output_size = (size_t)written;
+    return true;
+}
+
+static void web_diagnostic(char *output, size_t capacity, const char *message) {
+    if (output != NULL && capacity > 0U) {
         (void)snprintf(output, capacity, "%s", message);
+    }
 }
 
 static enum MHD_Result queue_layout_json(struct MHD_Connection *connection,
-    unsigned int status, const char *body, uint64_t revision,
-    const char *csrf_token)
-{
+                                         unsigned int status,
+                                         const char *body,
+                                         uint64_t revision,
+                                         const char *csrf_token) {
     struct MHD_Response *response;
     enum MHD_Result result;
     char etag[32];
-    response = MHD_create_response_from_buffer(strlen(body), (void *)body,
-        MHD_RESPMEM_MUST_COPY);
-    if (response == NULL) return MHD_NO;
-    (void)snprintf(etag, sizeof(etag), "\"%llu\"",
-        (unsigned long long)revision);
-    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
-            "application/json; charset=utf-8") != MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL,
-            "no-store") != MHD_YES ||
+    response = MHD_create_response_from_buffer(strlen(body), (void *)body, MHD_RESPMEM_MUST_COPY);
+    if (response == NULL) {
+        return MHD_NO;
+    }
+    (void)snprintf(etag, sizeof(etag), "\"%llu\"", (unsigned long long)revision);
+    if (MHD_add_response_header(
+            response, MHD_HTTP_HEADER_CONTENT_TYPE, "application/json; charset=utf-8") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL, "no-store") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") !=
+            MHD_YES ||
         MHD_add_response_header(response,
-            MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") != MHD_YES ||
-        MHD_add_response_header(response, "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") != MHD_YES ||
+                                "Content-Security-Policy",
+                                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") !=
+            MHD_YES ||
         MHD_add_response_header(response, MHD_HTTP_HEADER_ETAG, etag) != MHD_YES ||
         MHD_add_response_header(response, "X-Trainlog-CSRF-Token", csrf_token) != MHD_YES ||
         MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION, "close") != MHD_YES) {
-        MHD_destroy_response(response); return MHD_NO;
-    }
-    result = MHD_queue_response(connection, status, response);
-    MHD_destroy_response(response); return result;
-}
-
-static enum MHD_Result queue_json(struct MHD_Connection *connection,
-    unsigned int status, const char *body, const char *allow)
-{
-    struct MHD_Response *response;
-    enum MHD_Result result;
-    response = MHD_create_response_from_buffer(strlen(body), (void *)body,
-        MHD_RESPMEM_MUST_COPY);
-    if (response == NULL) return MHD_NO;
-    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
-            "application/json; charset=utf-8") != MHD_YES ||
-        MHD_add_response_header(response,
-            MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") != MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL,
-            "no-store") != MHD_YES ||
-        MHD_add_response_header(response, "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") !=
-            MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION,
-            "close") != MHD_YES) {
         MHD_destroy_response(response);
         return MHD_NO;
     }
-    if (allow != NULL && MHD_add_response_header(response,
-            MHD_HTTP_HEADER_ALLOW, allow) != MHD_YES) {
+    result = MHD_queue_response(connection, status, response);
+    MHD_destroy_response(response);
+    return result;
+}
+
+static enum MHD_Result queue_json(struct MHD_Connection *connection,
+                                  unsigned int status,
+                                  const char *body,
+                                  const char *allow) {
+    struct MHD_Response *response;
+    enum MHD_Result result;
+    response = MHD_create_response_from_buffer(strlen(body), (void *)body, MHD_RESPMEM_MUST_COPY);
+    if (response == NULL) {
+        return MHD_NO;
+    }
+    if (MHD_add_response_header(
+            response, MHD_HTTP_HEADER_CONTENT_TYPE, "application/json; charset=utf-8") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") !=
+            MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL, "no-store") != MHD_YES ||
+        MHD_add_response_header(response,
+                                "Content-Security-Policy",
+                                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") !=
+            MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION, "close") != MHD_YES) {
+        MHD_destroy_response(response);
+        return MHD_NO;
+    }
+    if (allow != NULL &&
+        MHD_add_response_header(response, MHD_HTTP_HEADER_ALLOW, allow) != MHD_YES) {
+        MHD_destroy_response(response);
+        return MHD_NO;
+    }
+    result = MHD_queue_response(connection, status, response);
+    MHD_destroy_response(response);
+    return result;
+}
+
+static enum MHD_Result queue_sync_json_sized(struct MHD_Connection *connection,
+                                             unsigned int status,
+                                             const char *body,
+                                             size_t body_size,
+                                             const char *csrf_token,
+                                             const char *location) {
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(body_size, (void *)body, MHD_RESPMEM_MUST_COPY);
+    enum MHD_Result result;
+    if (response == NULL) {
+        return MHD_NO;
+    }
+    if (MHD_add_response_header(
+            response, MHD_HTTP_HEADER_CONTENT_TYPE, "application/json; charset=utf-8") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL, "no-store") != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") !=
+            MHD_YES ||
+        MHD_add_response_header(response,
+                                "Content-Security-Policy",
+                                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") !=
+            MHD_YES ||
+        MHD_add_response_header(response, "X-Trainlog-CSRF-Token", csrf_token) != MHD_YES ||
+        (location != NULL &&
+         MHD_add_response_header(response, MHD_HTTP_HEADER_LOCATION, location) != MHD_YES)) {
         MHD_destroy_response(response);
         return MHD_NO;
     }
@@ -117,180 +190,226 @@ static enum MHD_Result queue_json(struct MHD_Connection *connection,
 }
 
 static enum MHD_Result queue_sync_json(struct MHD_Connection *connection,
-    unsigned int status, const char *body, const char *csrf_token,
-    const char *location)
-{
-    struct MHD_Response *response = MHD_create_response_from_buffer(strlen(body),
-        (void *)body, MHD_RESPMEM_MUST_COPY);
-    enum MHD_Result result;
-    if (response == NULL) return MHD_NO;
-    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
-            "application/json; charset=utf-8") != MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL,
-            "no-store") != MHD_YES ||
-        MHD_add_response_header(response,
-            MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") != MHD_YES ||
-        MHD_add_response_header(response, "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'") != MHD_YES ||
-        MHD_add_response_header(response, "X-Trainlog-CSRF-Token", csrf_token) != MHD_YES ||
-        (location != NULL && MHD_add_response_header(response,
-            MHD_HTTP_HEADER_LOCATION, location) != MHD_YES)) {
-        MHD_destroy_response(response); return MHD_NO;
-    }
-    result = MHD_queue_response(connection, status, response);
-    MHD_destroy_response(response); return result;
+                                       unsigned int status,
+                                       const char *body,
+                                       const char *csrf_token,
+                                       const char *location) {
+    return queue_sync_json_sized(connection, status, body, strlen(body), csrf_token, location);
 }
 
-static bool read_bounded_file(const char *path, char *output, size_t capacity)
-{
-    int descriptor; struct stat info; size_t used = 0U;
-    if (path == NULL || output == NULL || capacity < 2U) return false;
+static bool read_bounded_file(const char *path, char *output, size_t capacity) {
+    int descriptor;
+    struct stat info;
+    size_t used = 0U;
+    if (path == NULL || output == NULL || capacity < 2U) {
+        return false;
+    }
     descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
-    if (descriptor < 0) return false;
-    if (fstat(descriptor, &info) != 0 || !S_ISREG(info.st_mode) ||
-        info.st_size < 0 || (uintmax_t)info.st_size >= (uintmax_t)capacity) {
-        (void)close(descriptor); return false;
+    if (descriptor < 0) {
+        return false;
+    }
+    if (fstat(descriptor, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+        (uintmax_t)info.st_size >= (uintmax_t)capacity) {
+        (void)close(descriptor);
+        return false;
     }
     while (used < (size_t)info.st_size) {
         ssize_t count = read(descriptor, output + used, (size_t)info.st_size - used);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0) { (void)close(descriptor); return false; }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            (void)close(descriptor);
+            return false;
+        }
         used += (size_t)count;
     }
-    output[used] = '\0'; (void)close(descriptor); return true;
+    output[used] = '\0';
+    (void)close(descriptor);
+    return true;
 }
 
-static bool sync_state_active(const char *json, char request_id[64])
-{
+static bool sync_state_active(const char *json, char request_id[64]) {
     yyjson_doc *document = yyjson_read(json, strlen(json), 0U);
-    yyjson_val *root; yyjson_val *phase; yyjson_val *request;
+    yyjson_val *root;
+    yyjson_val *phase;
+    yyjson_val *request;
     const char *text;
     bool active = false;
-    if (document == NULL) return false;
-    root = yyjson_doc_get_root(document); phase = yyjson_obj_get(root, "phase");
+    if (document == NULL) {
+        return false;
+    }
+    root = yyjson_doc_get_root(document);
+    phase = yyjson_obj_get(root, "phase");
     request = yyjson_obj_get(root, "request_id");
-    if (yyjson_is_str(request) && strlen(yyjson_get_str(request)) < 64U)
+    if (yyjson_is_str(request) && strlen(yyjson_get_str(request)) < 64U) {
         (void)snprintf(request_id, 64U, "%s", yyjson_get_str(request));
+    }
     if (yyjson_is_str(phase)) {
         text = yyjson_get_str(phase);
         active = strcmp(text, "requested") == 0 ||
-            strcmp(text, "waiting_android_publication") == 0 ||
-            strcmp(text, "running") == 0 ||
-            strcmp(text, "local_import_committed") == 0 ||
-            strcmp(text, "published") == 0 ||
-            strcmp(text, "waiting_acknowledgement") == 0 ||
-            strcmp(text, "peer_consumed") == 0;
+                 strcmp(text, "waiting_android_publication") == 0 || strcmp(text, "running") == 0 ||
+                 strcmp(text, "local_import_committed") == 0 || strcmp(text, "published") == 0 ||
+                 strcmp(text, "waiting_acknowledgement") == 0 || strcmp(text, "peer_consumed") == 0;
     }
-    yyjson_doc_free(document); return active;
+    yyjson_doc_free(document);
+    return active;
 }
 
-static bool valid_sync_request(const char *body, size_t size, char request_id[64])
-{
+static bool valid_sync_request(const char *body, size_t size, char request_id[64]) {
     yyjson_doc *document = yyjson_read(body, size, 0U);
-    yyjson_val *root; yyjson_val *request; yyjson_val *trigger;
+    yyjson_val *root;
+    yyjson_val *request;
+    yyjson_val *trigger;
     const char *id;
-    if (document == NULL) return false;
+    if (document == NULL) {
+        return false;
+    }
     root = yyjson_doc_get_root(document);
     if (!yyjson_is_obj(root) || yyjson_obj_size(root) != 2U) {
-        yyjson_doc_free(document); return false;
+        yyjson_doc_free(document);
+        return false;
     }
-    request = yyjson_obj_get(root, "request_id"); trigger = yyjson_obj_get(root, "trigger");
+    request = yyjson_obj_get(root, "request_id");
+    trigger = yyjson_obj_get(root, "trigger");
     if (!yyjson_is_str(request) || !yyjson_is_str(trigger) ||
         strcmp(yyjson_get_str(trigger), "web") != 0) {
-        yyjson_doc_free(document); return false;
+        yyjson_doc_free(document);
+        return false;
     }
     id = yyjson_get_str(request);
     if (strlen(id) != 39U || strncmp(id, "sy_", 3U) != 0 ||
         uuid_parse(id + 3U, (unsigned char[16]){0}) != 0) {
-        yyjson_doc_free(document); return false;
+        yyjson_doc_free(document);
+        return false;
     }
     (void)snprintf(request_id, 64U, "%s", id);
-    yyjson_doc_free(document); return true;
+    yyjson_doc_free(document);
+    return true;
+}
+
+static void generate_sync_run_id(char run_id[64]) {
+    uuid_t identifier;
+    char uuid[37];
+    uuid_generate_random(identifier);
+    uuid_unparse_lower(identifier, uuid);
+    (void)snprintf(run_id, 64U, "sy_%s", uuid);
 }
 
 static bool write_initial_sync_state(const TrainlogWebContext *context,
-    const char *request_id, char run_id[64], char output[2048])
-{
-    uuid_t identifier; char uuid[37]; char temporary[PATH_MAX + 64U];
-    char timestamp[40]; time_t now = time(NULL); struct tm broken_down;
-    int descriptor; int written; ssize_t count;
-    uuid_generate_random(identifier); uuid_unparse_lower(identifier, uuid);
-    (void)snprintf(run_id, 64U, "sy_%s", uuid);
+                                     const char *request_id,
+                                     const char *run_id,
+                                     char output[2048]) {
+    char temporary[PATH_MAX + 64U];
+    char timestamp[40];
+    time_t now = time(NULL);
+    struct tm broken_down;
+    int descriptor;
+    int written;
+    ssize_t count;
     if (now == (time_t)-1 || gmtime_r(&now, &broken_down) == NULL ||
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &broken_down) == 0U)
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &broken_down) == 0U) {
         return false;
-    written = snprintf(output, 2048U,
-        "{\"ai_midpoint\":{\"result\":\"not_configured\"},\"ai_post_sync\":{\"result\":\"not_configured\"},"
-        "\"diagnostic\":\"\",\"domains\":{},\"drafts\":[],\"effective_mode\":\"full_generation_v1\","
+    }
+    written = snprintf(
+        output,
+        2048U,
+        "{\"ai_midpoint\":{\"result\":\"not_configured\"},\"ai_post_sync\":{\"result\":\"not_"
+        "configured\"},"
+        "\"diagnostic\":\"\",\"domains\":{},\"drafts\":[],\"effective_mode\":\"full_generation_"
+        "v1\","
         "\"finished_at\":null,\"inbound_generation_id\":null,\"missing_capabilities\":[],"
         "\"outbound_generation_id\":null,\"phase\":\"requested\",\"producer_peer_id\":null,"
         "\"consumer_peer_id\":null,\"progress_revision\":1,\"request_id\":\"%s\","
         "\"requested_mode\":\"full_generation_v1\",\"result\":\"running\",\"run_id\":\"%s\","
-        "\"sessions_reconciled\":null,\"started_at\":\"%s\",\"trigger\":\"web\",\"updated_at\":\"%s\"}\n",
-        request_id, run_id, timestamp, timestamp);
-    if (written < 0 || written >= 2048) return false;
-    if (snprintf(temporary, sizeof(temporary), "%s.new.%ld", context->state_path,
-            (long)getpid()) < 0) return false;
+        "\"sessions_reconciled\":null,\"started_at\":\"%s\",\"trigger\":\"web\",\"updated_at\":\"%"
+        "s\"}\n",
+        request_id,
+        run_id,
+        timestamp,
+        timestamp);
+    if (written < 0 || written >= 2048) {
+        return false;
+    }
+    if (snprintf(temporary, sizeof(temporary), "%s.new.%ld", context->state_path, (long)getpid()) <
+        0) {
+        return false;
+    }
     descriptor = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
-    if (descriptor < 0) return false;
+    if (descriptor < 0) {
+        return false;
+    }
     count = write(descriptor, output, (size_t)written);
     if (count != written || fsync(descriptor) != 0 || close(descriptor) != 0 ||
         rename(temporary, context->state_path) != 0) {
-        (void)close(descriptor); (void)unlink(temporary); return false;
+        (void)close(descriptor);
+        (void)unlink(temporary);
+        return false;
     }
     return true;
 }
 
-static bool launch_sync_worker(TrainlogWebContext *context, const char *config,
-    const char *run_id, const char *request_id)
-{
+static bool launch_sync_worker(TrainlogWebContext *context,
+                               const char *config,
+                               const char *run_id,
+                               const char *request_id) {
     char orchestrator[PATH_MAX];
     const char *tools = getenv("TRAINLOG_SYNC_TOOLS_DIR");
     int path_length;
-    if (tools == NULL) tools = TRAINLOG_TOOLS_DIR;
+    if (tools == NULL) {
+        tools = TRAINLOG_TOOLS_DIR;
+    }
     /* CONTRACT: deployment may relocate the fixed shipped helper directory,
      * but an HTTP request can never select this executable or its arguments. */
-    path_length = snprintf(orchestrator, sizeof(orchestrator),
-        "%s/sync_orchestrator.py", tools);
-    if (tools[0] != '/' || path_length < 0 ||
-        (size_t)path_length >= sizeof(orchestrator)) return false;
+    path_length = snprintf(orchestrator, sizeof(orchestrator), "%s/sync_orchestrator.py", tools);
+    if (tools[0] != '/' || path_length < 0 || (size_t)path_length >= sizeof(orchestrator)) {
+        return false;
+    }
     pid_t child = fork();
-    if (child < 0) return false;
+    if (child < 0) {
+        return false;
+    }
     if (child == 0) {
         (void)setpgid(0, 0);
-        execlp("python3", "python3", orchestrator,
-            "--database", context->database_path, "--state", context->state_path,
-            "--config", config, "--run-id", run_id, "--request-id", request_id,
-            (char *)NULL);
+        execlp("python3",
+               "python3",
+               orchestrator,
+               "--database",
+               context->database_path,
+               "--state",
+               context->state_path,
+               "--config",
+               config,
+               "--run-id",
+               run_id,
+               "--request-id",
+               request_id,
+               (char *)NULL);
         _exit(127);
     }
-    context->worker_pid = child; return true;
+    context->worker_pid = child;
+    return true;
 }
 
 static enum MHD_Result queue_asset(struct MHD_Connection *connection,
-    const TrainlogWebAsset *asset)
-{
+                                   const TrainlogWebAsset *asset) {
     static const char CSP[] = "default-src 'self'; script-src 'self'; "
-        "style-src 'self'; connect-src 'self'; img-src 'self'; "
-        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
-    const char *cache = asset->immutable
-        ? "public, max-age=31536000, immutable" : "no-cache";
-    struct MHD_Response *response = MHD_create_response_from_buffer(asset->size,
-        (void *)asset->bytes, MHD_RESPMEM_PERSISTENT);
+                              "style-src 'self'; connect-src 'self'; img-src 'self'; "
+                              "object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+    const char *cache = asset->immutable ? "public, max-age=31536000, immutable" : "no-cache";
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(asset->size, (void *)asset->bytes, MHD_RESPMEM_PERSISTENT);
     enum MHD_Result result;
-    if (response == NULL) return MHD_NO;
-    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE,
-            asset->mime) != MHD_YES ||
-        MHD_add_response_header(response,
-            MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") != MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL,
-            cache) != MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_ETAG,
-            asset->etag) != MHD_YES ||
-        MHD_add_response_header(response, "Content-Security-Policy", CSP) !=
+    if (response == NULL) {
+        return MHD_NO;
+    }
+    if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE, asset->mime) != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_X_CONTENT_TYPE_OPTIONS, "nosniff") !=
             MHD_YES ||
-        MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION,
-            "close") != MHD_YES) {
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CACHE_CONTROL, cache) != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_ETAG, asset->etag) != MHD_YES ||
+        MHD_add_response_header(response, "Content-Security-Policy", CSP) != MHD_YES ||
+        MHD_add_response_header(response, MHD_HTTP_HEADER_CONNECTION, "close") != MHD_YES) {
         MHD_destroy_response(response);
         return MHD_NO;
     }
@@ -299,94 +418,110 @@ static enum MHD_Result queue_asset(struct MHD_Connection *connection,
     return result;
 }
 
-static bool is_ui_route(const char *url)
-{
-    static const char *const routes[] = {
-        "/", "/analyse", "/programmes", "/seances", "/exercices"
-    };
+static bool is_ui_route(const char *url) {
+    static const char *const routes[] = {"/", "/analyse", "/programmes", "/seances", "/exercices"};
     size_t index;
-    for (index = 0U; index < sizeof(routes) / sizeof(routes[0]); ++index)
-        if (strcmp(url, routes[index]) == 0) return true;
+    for (index = 0U; index < sizeof(routes) / sizeof(routes[0]); ++index) {
+        if (strcmp(url, routes[index]) == 0) {
+            return true;
+        }
+    }
     return false;
 }
 
-static bool valid_host(const TrainlogWebContext *context, const char *host)
-{
+static bool valid_host(const TrainlogWebContext *context, const char *host) {
     char expected[32];
     int written;
-    if (host == NULL) return false;
-    if (strcmp(host, "127.0.0.1") == 0) return true;
-    written = snprintf(expected, sizeof(expected), "127.0.0.1:%u",
-        (unsigned int)context->port);
-    return written > 0 && (size_t)written < sizeof(expected) &&
-        strcmp(host, expected) == 0;
+    if (host == NULL) {
+        return false;
+    }
+    if (strcmp(host, "127.0.0.1") == 0) {
+        return true;
+    }
+    written = snprintf(expected, sizeof(expected), "127.0.0.1:%u", (unsigned int)context->port);
+    return written > 0 && (size_t)written < sizeof(expected) && strcmp(host, expected) == 0;
 }
 
-static bool declared_body_too_large(struct MHD_Connection *connection)
-{
-    const char *value = MHD_lookup_connection_value(connection,
-        MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_LENGTH);
+static bool declared_body_too_large(struct MHD_Connection *connection) {
+    const char *value =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_LENGTH);
     char *end = NULL;
     unsigned long long size;
-    if (value == NULL) return false;
+    if (value == NULL) {
+        return false;
+    }
     errno = 0;
     size = strtoull(value, &end, 10);
-    return errno != 0 || end == value || *end != '\0' ||
-        size > TRAINLOG_HTTP_BODY_LIMIT;
+    return errno != 0 || end == value || *end != '\0' || size > TRAINLOG_HTTP_BODY_LIMIT;
 }
 
-static bool valid_origin(const TrainlogWebContext *context, const char *origin)
-{
+static bool valid_origin(const TrainlogWebContext *context, const char *origin) {
     char direct[48];
-    if (origin == NULL) return false;
-    (void)snprintf(direct, sizeof(direct), "http://127.0.0.1:%u",
-        (unsigned int)context->port);
+    if (origin == NULL) {
+        return false;
+    }
+    (void)snprintf(direct, sizeof(direct), "http://127.0.0.1:%u", (unsigned int)context->port);
     return strcmp(origin, direct) == 0 || strcmp(origin, "http://trainlog.perf") == 0;
 }
 
-static bool valid_csrf(const TrainlogWebContext *context, const char *provided)
-{
-    size_t index; unsigned char difference = 0U;
-    if (provided == NULL || strlen(provided) != 64U) return false;
-    for (index = 0U; index < 64U; ++index)
+static bool valid_csrf(const TrainlogWebContext *context, const char *provided) {
+    size_t index;
+    unsigned char difference = 0U;
+    if (provided == NULL || strlen(provided) != 64U) {
+        return false;
+    }
+    for (index = 0U; index < 64U; ++index) {
         difference |= (unsigned char)(provided[index] ^ context->csrf_token[index]);
+    }
     return difference == 0U;
 }
 
-static bool generate_csrf_token(char output[65])
-{
+static bool generate_csrf_token(char output[65]) {
     unsigned char random_bytes[32];
     size_t used = 0U;
     size_t index;
     while (used < sizeof(random_bytes)) {
         ssize_t count = getrandom(random_bytes + used, sizeof(random_bytes) - used, 0);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0) return false;
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            return false;
+        }
         used += (size_t)count;
     }
-    for (index = 0U; index < sizeof(random_bytes); ++index)
+    for (index = 0U; index < sizeof(random_bytes); ++index) {
         (void)snprintf(output + index * 2U, 3U, "%02x", random_bytes[index]);
+    }
     return true;
 }
 
-static bool parse_if_match(const char *value, uint64_t *revision)
-{
-    char *end = NULL; unsigned long long parsed;
-    if (value == NULL || value[0] != '"') return false;
-    errno = 0; parsed = strtoull(value + 1, &end, 10);
+static bool parse_if_match(const char *value, uint64_t *revision) {
+    char *end = NULL;
+    unsigned long long parsed;
+    if (value == NULL || value[0] != '"') {
+        return false;
+    }
+    errno = 0;
+    parsed = strtoull(value + 1, &end, 10);
     if (errno != 0 || end == value + 1 || end[0] != '"' || end[1] != '\0' ||
-        parsed > TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION) return false;
-    *revision = (uint64_t)parsed; return true;
+        parsed > TRAINLOG_DASHBOARD_LAYOUT_MAX_REVISION) {
+        return false;
+    }
+    *revision = (uint64_t)parsed;
+    return true;
 }
 
 static enum MHD_Result handle_request(void *closure,
-    struct MHD_Connection *connection, const char *url, const char *method,
-    const char *version, const char *upload_data, size_t *upload_data_size,
-    void **request_closure)
-{
-    static const char HEALTH[] =
-        "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
-        "\"version\":\"" TRAINLOG_VERSION "\"}\n";
+                                      struct MHD_Connection *connection,
+                                      const char *url,
+                                      const char *method,
+                                      const char *version,
+                                      const char *upload_data,
+                                      size_t *upload_data_size,
+                                      void **request_closure) {
+    static const char HEALTH[] = "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
+                                 "\"version\":\"" TRAINLOG_VERSION "\"}\n";
     TrainlogWebContext *context = closure;
     TrainlogHttpRequestState *state = *request_closure;
     const union MHD_ConnectionInfo *header_info;
@@ -397,17 +532,20 @@ static enum MHD_Result handle_request(void *closure,
     (void)version;
     if (state == NULL) {
         state = calloc(1U, sizeof(*state));
-        if (state == NULL) return MHD_NO;
+        if (state == NULL) {
+            return MHD_NO;
+        }
         state->body_too_large = declared_body_too_large(connection);
         *request_closure = state;
         return MHD_YES;
     }
     if (*upload_data_size > 0U) {
-        if (*upload_data_size > TRAINLOG_HTTP_BODY_LIMIT -
-                (state->body_size > TRAINLOG_HTTP_BODY_LIMIT
-                    ? TRAINLOG_HTTP_BODY_LIMIT : state->body_size))
+        if (*upload_data_size >
+            TRAINLOG_HTTP_BODY_LIMIT - (state->body_size > TRAINLOG_HTTP_BODY_LIMIT
+                                            ? TRAINLOG_HTTP_BODY_LIMIT
+                                            : state->body_size)) {
             state->body_too_large = true;
-        else {
+        } else {
             (void)memcpy(state->body + state->body_size, upload_data, *upload_data_size);
             state->body_size += *upload_data_size;
             state->body[state->body_size] = '\0';
@@ -415,93 +553,127 @@ static enum MHD_Result handle_request(void *closure,
         *upload_data_size = 0U;
         return MHD_YES;
     }
-    header_info = MHD_get_connection_info(connection,
-        MHD_CONNECTION_INFO_REQUEST_HEADER_SIZE);
-    if (header_info == NULL || header_info->header_size >
-            TRAINLOG_HTTP_HEADER_LIMIT)
-        return queue_json(connection, MHD_HTTP_REQUEST_HEADER_FIELDS_TOO_LARGE,
-            "{\"error\":\"headers_too_large\"}\n", NULL);
-    if (state->body_too_large)
-        return queue_json(connection, MHD_HTTP_CONTENT_TOO_LARGE,
-            "{\"error\":\"body_too_large\"}\n", NULL);
-    host = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
-        MHD_HTTP_HEADER_HOST);
-    if (!valid_host(context, host))
-        return queue_json(connection, MHD_HTTP_BAD_REQUEST,
-            "{\"error\":\"invalid_host\"}\n", NULL);
+    header_info = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_REQUEST_HEADER_SIZE);
+    if (header_info == NULL || header_info->header_size > TRAINLOG_HTTP_HEADER_LIMIT) {
+        return queue_json(connection,
+                          MHD_HTTP_REQUEST_HEADER_FIELDS_TOO_LARGE,
+                          "{\"error\":\"headers_too_large\"}\n",
+                          NULL);
+    }
+    if (state->body_too_large) {
+        return queue_json(
+            connection, MHD_HTTP_CONTENT_TOO_LARGE, "{\"error\":\"body_too_large\"}\n", NULL);
+    }
+    host = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_HOST);
+    if (!valid_host(context, host)) {
+        return queue_json(connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_host\"}\n", NULL);
+    }
     is_get = strcmp(method, MHD_HTTP_METHOD_GET) == 0;
     is_head = strcmp(method, MHD_HTTP_METHOD_HEAD) == 0;
     if (strcmp(url, "/api/v1/health") == 0) {
-        if (!is_get)
-            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-                "{\"error\":\"method_not_allowed\"}\n", "GET");
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
         return queue_json(connection, MHD_HTTP_OK, HEALTH, NULL);
     }
     if (strcmp(url, "/api/v1/sync/status") == 0) {
         static const char IDLE_DISABLED[] =
             "{\"api_version\":1,\"enabled\":false,\"phase\":\"idle\","
             "\"result\":\"disabled\",\"last_success\":null}\n";
-        static const char IDLE_ENABLED[] =
-            "{\"api_version\":1,\"enabled\":true,\"phase\":\"idle\","
-            "\"result\":\"idle\",\"last_success\":null}\n";
+        static const char IDLE_ENABLED[] = "{\"api_version\":1,\"enabled\":true,\"phase\":\"idle\","
+                                           "\"result\":\"idle\",\"last_success\":null}\n";
         char status_json[65537];
-        if (!is_get)
-            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-                "{\"error\":\"method_not_allowed\"}\n", "GET");
-        if (!read_bounded_file(context->state_path, status_json,
-                sizeof(status_json)))
-            return queue_sync_json(connection, MHD_HTTP_OK,
-                getenv("TRAINLOG_SYNC_GENERATION_CONFIG") == NULL
-                    ? IDLE_DISABLED : IDLE_ENABLED,
-                context->csrf_token, NULL);
-        return queue_sync_json(connection, MHD_HTTP_OK, status_json,
-            context->csrf_token, NULL);
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
+        if (!read_bounded_file(context->state_path, status_json, sizeof(status_json))) {
+            return queue_sync_json(connection,
+                                   MHD_HTTP_OK,
+                                   getenv("TRAINLOG_SYNC_GENERATION_CONFIG") == NULL ? IDLE_DISABLED
+                                                                                     : IDLE_ENABLED,
+                                   context->csrf_token,
+                                   NULL);
+        }
+        return queue_sync_json(connection, MHD_HTTP_OK, status_json, context->csrf_token, NULL);
     }
     if (strcmp(url, "/api/v1/sync") == 0) {
-        const char *origin; const char *csrf; const char *content_type;
+        const char *origin;
+        const char *csrf;
+        const char *content_type;
         const char *config = getenv("TRAINLOG_SYNC_GENERATION_CONFIG");
-        char request_id[64] = ""; char existing_id[64] = "";
-        char existing[65537]; char initial[2048]; char run_id[64];
-        char accepted[256];
-        if (strcmp(method, MHD_HTTP_METHOD_POST) != 0)
-            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-                "{\"error\":\"method_not_allowed\"}\n", "POST");
+        char request_id[64] = "";
+        char existing_id[64] = "";
+        char existing[65537];
+        char initial[2048];
+        char run_id[64];
+        char accepted[TRAINLOG_SYNC_ACCEPTED_JSON_CAPACITY];
+        size_t accepted_size;
+        if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "POST");
+        }
         origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
-        csrf = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
-            "X-Trainlog-CSRF-Token");
-        if (!valid_origin(context, origin) || !valid_csrf(context, csrf))
-            return queue_json(connection, MHD_HTTP_FORBIDDEN,
-                "{\"error\":\"mutation_forbidden\"}\n", NULL);
-        content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
-            MHD_HTTP_HEADER_CONTENT_TYPE);
-        if (content_type == NULL || strcmp(content_type, "application/json") != 0)
-            return queue_json(connection, MHD_HTTP_UNSUPPORTED_MEDIA_TYPE,
-                "{\"error\":\"unsupported_media_type\"}\n", NULL);
-        if (!valid_sync_request(state->body, state->body_size, request_id))
-            return queue_json(connection, MHD_HTTP_BAD_REQUEST,
-                "{\"error\":\"invalid_sync_request\"}\n", NULL);
-        if (config == NULL || config[0] != '/' || strlen(config) >= PATH_MAX)
-            return queue_json(connection, MHD_HTTP_CONFLICT,
-                "{\"error\":\"full_generation_disabled\"}\n", NULL);
+        csrf = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-CSRF-Token");
+        if (!valid_origin(context, origin) || !valid_csrf(context, csrf)) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        content_type =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
+        if (content_type == NULL || strcmp(content_type, "application/json") != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_UNSUPPORTED_MEDIA_TYPE,
+                              "{\"error\":\"unsupported_media_type\"}\n",
+                              NULL);
+        }
+        if (!valid_sync_request(state->body, state->body_size, request_id)) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_sync_request\"}\n", NULL);
+        }
+        if (config == NULL || config[0] != '/' || strlen(config) >= PATH_MAX) {
+            return queue_json(
+                connection, MHD_HTTP_CONFLICT, "{\"error\":\"full_generation_disabled\"}\n", NULL);
+        }
         if (read_bounded_file(context->state_path, existing, sizeof(existing))) {
             bool active = sync_state_active(existing, existing_id);
-            if (strcmp(existing_id, request_id) == 0)
-                return queue_sync_json(connection, active ? MHD_HTTP_ACCEPTED : MHD_HTTP_OK,
-                    existing, context->csrf_token, "/api/v1/sync/status");
-            if (active)
-                return queue_json(connection, MHD_HTTP_CONFLICT,
-                    "{\"error\":\"sync_already_running\"}\n", NULL);
+            if (strcmp(existing_id, request_id) == 0) {
+                return queue_sync_json(connection,
+                                       active ? MHD_HTTP_ACCEPTED : MHD_HTTP_OK,
+                                       existing,
+                                       context->csrf_token,
+                                       "/api/v1/sync/status");
+            }
+            if (active) {
+                return queue_json(
+                    connection, MHD_HTTP_CONFLICT, "{\"error\":\"sync_already_running\"}\n", NULL);
+            }
         }
-        if (!write_initial_sync_state(context, request_id, run_id, initial) ||
-            !launch_sync_worker(context, config, run_id, request_id))
-            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                "{\"error\":\"sync_worker_start_failed\"}\n", NULL);
-        (void)snprintf(accepted, sizeof(accepted),
-            "{\"api_version\":1,\"phase\":\"requested\",\"result\":\"running\",\"progress_revision\":1,\"request_id\":\"%s\","
-            "\"run_id\":\"%s\",\"status_url\":\"/api/v1/sync/status\"}\n",
-            request_id, run_id);
-        return queue_sync_json(connection, MHD_HTTP_ACCEPTED, accepted,
-            context->csrf_token, "/api/v1/sync/status");
+        generate_sync_run_id(run_id);
+        /* INVARIANT: a request is made durable only after its complete 202 response is known to
+         * fit, so no admitted job can become unreportable because of response truncation. */
+        if (!trainlog_web_sync_accepted_serialize(
+                request_id, run_id, accepted, sizeof(accepted), &accepted_size) ||
+            !write_initial_sync_state(context, request_id, run_id, initial) ||
+            !launch_sync_worker(context, config, run_id, request_id)) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"sync_worker_start_failed\"}\n",
+                              NULL);
+        }
+        return queue_sync_json_sized(connection,
+                                     MHD_HTTP_ACCEPTED,
+                                     accepted,
+                                     accepted_size,
+                                     context->csrf_token,
+                                     "/api/v1/sync/status");
     }
     if (strcmp(url, "/api/v1/dashboard") == 0) {
         TrainlogWebDashboardQuery query;
@@ -509,20 +681,30 @@ static enum MHD_Result handle_request(void *closure,
         char json[TRAINLOG_WEB_JSON_CAPACITY];
         size_t json_size;
         time_t now;
-        if (!is_get)
-            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-                "{\"error\":\"method_not_allowed\"}\n", "GET");
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
         now = time(NULL);
-        if (now == (time_t)-1 || (int64_t)now != (int64_t)(time_t)now)
-            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                "{\"error\":\"clock_unavailable\"}\n", NULL);
+        if (now == (time_t)-1 || (int64_t)now != (int64_t)(time_t)now) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"clock_unavailable\"}\n",
+                              NULL);
+        }
         query.reference_unix_second = (int64_t)now;
-        if (trainlog_web_dashboard_load(context->database, &query,
-                &snapshot) != TRAINLOG_STATUS_OK ||
-            trainlog_web_dashboard_serialize(&snapshot, json, sizeof(json),
-                &json_size) != TRAINLOG_STATUS_OK || json_size == 0U)
-            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                "{\"error\":\"dashboard_unavailable\"}\n", NULL);
+        if (trainlog_web_dashboard_load(context->database, &query, &snapshot) !=
+                TRAINLOG_STATUS_OK ||
+            trainlog_web_dashboard_serialize(&snapshot, json, sizeof(json), &json_size) !=
+                TRAINLOG_STATUS_OK ||
+            json_size == 0U) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"dashboard_unavailable\"}\n",
+                              NULL);
+        }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
     }
     if (strcmp(url, "/api/v1/dashboard-layout") == 0) {
@@ -543,97 +725,137 @@ static enum MHD_Result handle_request(void *closure,
         if (is_get) {
             layout_result = trainlog_dashboard_layout_load(&layout, &source);
             if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK ||
-                !trainlog_dashboard_layout_serialize(&layout, source, true,
-                    json, sizeof(json), &json_size) || json_size == 0U)
-                return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                    "{\"error\":\"layout_unavailable\"}\n", NULL);
+                !trainlog_dashboard_layout_serialize(
+                    &layout, source, true, json, sizeof(json), &json_size) ||
+                json_size == 0U) {
+                return queue_json(connection,
+                                  MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                  "{\"error\":\"layout_unavailable\"}\n",
+                                  NULL);
+            }
             if (source == TRAINLOG_DASHBOARD_LAYOUT_INVALID_PERSISTED &&
                 !context->invalid_layout_reported) {
-                (void)fprintf(stderr, "Trainlog Web : agencement persisté invalide, défaut utilisé\n");
+                (void)fprintf(stderr,
+                              "Trainlog Web : agencement persisté invalide, défaut utilisé\n");
                 context->invalid_layout_reported = true;
             }
-            return queue_layout_json(connection, MHD_HTTP_OK, json,
-                layout.revision, context->csrf_token);
+            return queue_layout_json(
+                connection, MHD_HTTP_OK, json, layout.revision, context->csrf_token);
         }
         if (strcmp(method, MHD_HTTP_METHOD_PUT) != 0 &&
-            strcmp(method, MHD_HTTP_METHOD_DELETE) != 0)
-            return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-                "{\"error\":\"method_not_allowed\"}\n", "GET, PUT, DELETE");
+            strcmp(method, MHD_HTTP_METHOD_DELETE) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET, PUT, DELETE");
+        }
         origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
-        csrf = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
-            "X-Trainlog-CSRF-Token");
-        if (!valid_origin(context, origin) || !valid_csrf(context, csrf))
-            return queue_json(connection, MHD_HTTP_FORBIDDEN,
-                "{\"error\":\"mutation_forbidden\"}\n", NULL);
-        if_match = MHD_lookup_connection_value(connection, MHD_HEADER_KIND,
-            MHD_HTTP_HEADER_IF_MATCH);
-        if (!parse_if_match(if_match, &expected))
-            return queue_json(connection, MHD_HTTP_PRECONDITION_REQUIRED,
-                "{\"error\":\"precondition_required\"}\n", NULL);
+        csrf = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-CSRF-Token");
+        if (!valid_origin(context, origin) || !valid_csrf(context, csrf)) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        if_match =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+        if (!parse_if_match(if_match, &expected)) {
+            return queue_json(connection,
+                              MHD_HTTP_PRECONDITION_REQUIRED,
+                              "{\"error\":\"precondition_required\"}\n",
+                              NULL);
+        }
         if (strcmp(method, MHD_HTTP_METHOD_DELETE) == 0) {
-            if (state->body_size != 0U)
-                return queue_json(connection, MHD_HTTP_BAD_REQUEST,
-                    "{\"error\":\"unexpected_body\"}\n", NULL);
+            if (state->body_size != 0U) {
+                return queue_json(
+                    connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"unexpected_body\"}\n", NULL);
+            }
             layout_result = trainlog_dashboard_layout_delete(expected);
-            if (layout_result == TRAINLOG_DASHBOARD_LAYOUT_CONFLICT)
-                return queue_json(connection, MHD_HTTP_PRECONDITION_FAILED,
-                    "{\"error\":\"revision_conflict\"}\n", NULL);
-            if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK)
-                return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                    "{\"error\":\"layout_delete_failed\"}\n", NULL);
+            if (layout_result == TRAINLOG_DASHBOARD_LAYOUT_CONFLICT) {
+                return queue_json(connection,
+                                  MHD_HTTP_PRECONDITION_FAILED,
+                                  "{\"error\":\"revision_conflict\"}\n",
+                                  NULL);
+            }
+            if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK) {
+                return queue_json(connection,
+                                  MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                  "{\"error\":\"layout_delete_failed\"}\n",
+                                  NULL);
+            }
             trainlog_dashboard_layout_default(&layout);
             if (!trainlog_dashboard_layout_serialize(&layout,
-                    TRAINLOG_DASHBOARD_LAYOUT_DEFAULT, true, json, sizeof(json), &json_size))
-                return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                    "{\"error\":\"layout_unavailable\"}\n", NULL);
-            return queue_layout_json(connection, MHD_HTTP_OK, json, 0U,
-                context->csrf_token);
+                                                     TRAINLOG_DASHBOARD_LAYOUT_DEFAULT,
+                                                     true,
+                                                     json,
+                                                     sizeof(json),
+                                                     &json_size)) {
+                return queue_json(connection,
+                                  MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                  "{\"error\":\"layout_unavailable\"}\n",
+                                  NULL);
+            }
+            return queue_layout_json(connection, MHD_HTTP_OK, json, 0U, context->csrf_token);
         }
         {
-            const char *content_type = MHD_lookup_connection_value(connection,
-                MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
-            if (content_type == NULL || strcmp(content_type, "application/json") != 0)
-                return queue_json(connection, MHD_HTTP_UNSUPPORTED_MEDIA_TYPE,
-                    "{\"error\":\"unsupported_media_type\"}\n", NULL);
+            const char *content_type = MHD_lookup_connection_value(
+                connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
+            if (content_type == NULL || strcmp(content_type, "application/json") != 0) {
+                return queue_json(connection,
+                                  MHD_HTTP_UNSUPPORTED_MEDIA_TYPE,
+                                  "{\"error\":\"unsupported_media_type\"}\n",
+                                  NULL);
+            }
         }
-        layout_result = trainlog_dashboard_layout_parse(state->body,
-            state->body_size, &layout);
-        if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK || layout.revision != expected)
-            return queue_json(connection, MHD_HTTP_BAD_REQUEST,
-                "{\"error\":\"invalid_layout\"}\n", NULL);
+        layout_result = trainlog_dashboard_layout_parse(state->body, state->body_size, &layout);
+        if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK || layout.revision != expected) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_layout\"}\n", NULL);
+        }
         layout_result = trainlog_dashboard_layout_save(&layout, expected, &saved);
-        if (layout_result == TRAINLOG_DASHBOARD_LAYOUT_CONFLICT)
-            return queue_json(connection, MHD_HTTP_PRECONDITION_FAILED,
-                "{\"error\":\"revision_conflict\"}\n", NULL);
+        if (layout_result == TRAINLOG_DASHBOARD_LAYOUT_CONFLICT) {
+            return queue_json(connection,
+                              MHD_HTTP_PRECONDITION_FAILED,
+                              "{\"error\":\"revision_conflict\"}\n",
+                              NULL);
+        }
         if (layout_result != TRAINLOG_DASHBOARD_LAYOUT_OK ||
             !trainlog_dashboard_layout_serialize(&saved,
-                TRAINLOG_DASHBOARD_LAYOUT_PERSISTED, true, json, sizeof(json), &json_size))
-            return queue_json(connection, MHD_HTTP_INTERNAL_SERVER_ERROR,
-                "{\"error\":\"layout_save_failed\"}\n", NULL);
-        return queue_layout_json(connection, MHD_HTTP_OK, json, saved.revision,
-            context->csrf_token);
+                                                 TRAINLOG_DASHBOARD_LAYOUT_PERSISTED,
+                                                 true,
+                                                 json,
+                                                 sizeof(json),
+                                                 &json_size)) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"layout_save_failed\"}\n",
+                              NULL);
+        }
+        return queue_layout_json(
+            connection, MHD_HTTP_OK, json, saved.revision, context->csrf_token);
     }
     /* INVARIANT: API paths never fall through to the SPA index. */
-    if (strncmp(url, "/api/", 5U) == 0)
-        return queue_json(connection, MHD_HTTP_NOT_FOUND,
-            "{\"error\":\"not_found\"}\n", NULL);
-    if (strstr(url, "..") != NULL)
-        return queue_json(connection, MHD_HTTP_NOT_FOUND,
-            "{\"error\":\"not_found\"}\n", NULL);
-    asset = is_ui_route(url) ? trainlog_web_index_asset()
-        : trainlog_web_asset_find(url);
-    if (asset == NULL)
-        return queue_json(connection, MHD_HTTP_NOT_FOUND,
-            "{\"error\":\"not_found\"}\n", NULL);
-    if (!is_get && !is_head)
-        return queue_json(connection, MHD_HTTP_METHOD_NOT_ALLOWED,
-            "{\"error\":\"method_not_allowed\"}\n", "GET, HEAD");
+    if (strncmp(url, "/api/", 5U) == 0) {
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    if (strstr(url, "..") != NULL) {
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    asset = is_ui_route(url) ? trainlog_web_index_asset() : trainlog_web_asset_find(url);
+    if (asset == NULL) {
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    if (!is_get && !is_head) {
+        return queue_json(connection,
+                          MHD_HTTP_METHOD_NOT_ALLOWED,
+                          "{\"error\":\"method_not_allowed\"}\n",
+                          "GET, HEAD");
+    }
     return queue_asset(connection, asset);
 }
 
-static void request_completed(void *closure, struct MHD_Connection *connection,
-    void **request_closure, enum MHD_RequestTerminationCode termination)
-{
+static void request_completed(void *closure,
+                              struct MHD_Connection *connection,
+                              void **request_closure,
+                              enum MHD_RequestTerminationCode termination) {
     (void)closure;
     (void)connection;
     (void)termination;
@@ -641,32 +863,35 @@ static void request_completed(void *closure, struct MHD_Connection *connection,
     *request_closure = NULL;
 }
 
-static enum MHD_Result accept_loopback_only(void *closure,
-    const struct sockaddr *address, socklen_t address_length)
-{
+static enum MHD_Result
+accept_loopback_only(void *closure, const struct sockaddr *address, socklen_t address_length) {
     const struct sockaddr_in *ipv4;
     (void)closure;
     if (address == NULL || address_length < (socklen_t)sizeof(*ipv4) ||
-        address->sa_family != AF_INET) return MHD_NO;
+        address->sa_family != AF_INET) {
+        return MHD_NO;
+    }
     ipv4 = (const struct sockaddr_in *)address;
     return ipv4->sin_addr.s_addr == htonl(INADDR_LOOPBACK) ? MHD_YES : MHD_NO;
 }
 
-int trainlog_web_server_run(TrainlogDatabase *database, const char *database_path,
-    uint16_t port,
-    const volatile sig_atomic_t *stop_requested,
-    char *diagnostic, size_t diagnostic_capacity)
-{
+int trainlog_web_server_run(TrainlogDatabase *database,
+                            const char *database_path,
+                            uint16_t port,
+                            const volatile sig_atomic_t *stop_requested,
+                            char *diagnostic,
+                            size_t diagnostic_capacity) {
     struct sockaddr_in bind_address;
     struct MHD_Daemon *daemon;
     TrainlogWebContext context;
     int result = 0;
     if (database == NULL || database_path == NULL || database_path[0] != '/' ||
-        stop_requested == NULL) return -1;
+        stop_requested == NULL) {
+        return -1;
+    }
     web_diagnostic(diagnostic, diagnostic_capacity, "");
     if (!trainlog_web_assets_available()) {
-        web_diagnostic(diagnostic, diagnostic_capacity,
-            "support frontend absent de ce binaire");
+        web_diagnostic(diagnostic, diagnostic_capacity, "support frontend absent de ce binaire");
         return -1;
     }
     (void)memset(&bind_address, 0, sizeof(bind_address));
@@ -677,35 +902,50 @@ int trainlog_web_server_run(TrainlogDatabase *database, const char *database_pat
     context.database = database;
     context.database_path = database_path;
     context.worker_pid = -1;
-    if (snprintf(context.state_path, sizeof(context.state_path), "%s.sync-run.json",
-            database_path) < 0 || strlen(context.state_path) >= sizeof(context.state_path) - 1U) {
+    if (snprintf(
+            context.state_path, sizeof(context.state_path), "%s.sync-run.json", database_path) <
+            0 ||
+        strlen(context.state_path) >= sizeof(context.state_path) - 1U) {
         web_diagnostic(diagnostic, diagnostic_capacity, "chemin d'état sync trop long");
         return -1;
     }
     context.invalid_layout_reported = false;
     if (!generate_csrf_token(context.csrf_token)) {
-        web_diagnostic(diagnostic, diagnostic_capacity,
-            "impossible de générer la protection CSRF");
+        web_diagnostic(diagnostic, diagnostic_capacity, "impossible de générer la protection CSRF");
         return -1;
     }
     errno = 0;
     daemon = MHD_start_daemon(MHD_USE_ERROR_LOG | MHD_USE_NO_THREAD_SAFETY,
-        0U, accept_loopback_only, NULL, handle_request, &context,
-        MHD_OPTION_SOCK_ADDR_LEN, (socklen_t)sizeof(bind_address), &bind_address,
-        MHD_OPTION_CONNECTION_LIMIT, TRAINLOG_HTTP_CONNECTION_LIMIT,
-        MHD_OPTION_PER_IP_CONNECTION_LIMIT, TRAINLOG_HTTP_PER_IP_LIMIT,
-        MHD_OPTION_CONNECTION_MEMORY_LIMIT,
-            (size_t)TRAINLOG_HTTP_CONNECTION_MEMORY_LIMIT,
-        MHD_OPTION_CONNECTION_TIMEOUT, TRAINLOG_HTTP_TIMEOUT_SECONDS,
-        MHD_OPTION_LISTEN_BACKLOG_SIZE, TRAINLOG_HTTP_BACKLOG,
-        MHD_OPTION_NOTIFY_COMPLETED, request_completed, NULL,
-        MHD_OPTION_END);
+                              0U,
+                              accept_loopback_only,
+                              NULL,
+                              handle_request,
+                              &context,
+                              MHD_OPTION_SOCK_ADDR_LEN,
+                              (socklen_t)sizeof(bind_address),
+                              &bind_address,
+                              MHD_OPTION_CONNECTION_LIMIT,
+                              TRAINLOG_HTTP_CONNECTION_LIMIT,
+                              MHD_OPTION_PER_IP_CONNECTION_LIMIT,
+                              TRAINLOG_HTTP_PER_IP_LIMIT,
+                              MHD_OPTION_CONNECTION_MEMORY_LIMIT,
+                              (size_t)TRAINLOG_HTTP_CONNECTION_MEMORY_LIMIT,
+                              MHD_OPTION_CONNECTION_TIMEOUT,
+                              TRAINLOG_HTTP_TIMEOUT_SECONDS,
+                              MHD_OPTION_LISTEN_BACKLOG_SIZE,
+                              TRAINLOG_HTTP_BACKLOG,
+                              MHD_OPTION_NOTIFY_COMPLETED,
+                              request_completed,
+                              NULL,
+                              MHD_OPTION_END);
     if (daemon == NULL) {
         char message[256];
-        (void)snprintf(message, sizeof(message),
-            "impossible d'écouter sur 127.0.0.1:%u%s%s",
-            (unsigned int)port, errno == 0 ? "" : " : ",
-            errno == 0 ? "" : strerror(errno));
+        (void)snprintf(message,
+                       sizeof(message),
+                       "impossible d'écouter sur 127.0.0.1:%u%s%s",
+                       (unsigned int)port,
+                       errno == 0 ? "" : " : ",
+                       errno == 0 ? "" : strerror(errno));
         web_diagnostic(diagnostic, diagnostic_capacity, message);
         return -1;
     }
@@ -721,38 +961,37 @@ int trainlog_web_server_run(TrainlogDatabase *database, const char *database_pat
         int selected;
         if (context.worker_pid > 0) {
             int worker_status;
-            if (waitpid(context.worker_pid, &worker_status, WNOHANG) ==
-                    context.worker_pid)
+            if (waitpid(context.worker_pid, &worker_status, WNOHANG) == context.worker_pid) {
                 context.worker_pid = -1;
+            }
         }
         FD_ZERO(&read_set);
         FD_ZERO(&write_set);
         FD_ZERO(&except_set);
-        if (MHD_get_fdset(daemon, &read_set, &write_set, &except_set,
-                &maximum_fd) != MHD_YES) {
-            web_diagnostic(diagnostic, diagnostic_capacity,
-                "impossible de préparer la boucle HTTP");
+        if (MHD_get_fdset(daemon, &read_set, &write_set, &except_set, &maximum_fd) != MHD_YES) {
+            web_diagnostic(
+                diagnostic, diagnostic_capacity, "impossible de préparer la boucle HTTP");
             result = -1;
             break;
         }
         if (MHD_get_timeout(daemon, &timeout_ms) != MHD_YES ||
-            timeout_ms > TRAINLOG_HTTP_POLL_MAX_MS)
+            timeout_ms > TRAINLOG_HTTP_POLL_MAX_MS) {
             timeout_ms = TRAINLOG_HTTP_POLL_MAX_MS;
+        }
         timeout.tv_sec = (time_t)(timeout_ms / 1000ULL);
         timeout.tv_usec = (suseconds_t)((timeout_ms % 1000ULL) * 1000ULL);
-        selected = select(maximum_fd + 1, &read_set, &write_set, &except_set,
-            &timeout);
+        selected = select(maximum_fd + 1, &read_set, &write_set, &except_set, &timeout);
         if (selected < 0) {
-            if (errno == EINTR) continue;
-            web_diagnostic(diagnostic, diagnostic_capacity,
-                "échec de la boucle HTTP locale");
+            if (errno == EINTR) {
+                continue;
+            }
+            web_diagnostic(diagnostic, diagnostic_capacity, "échec de la boucle HTTP locale");
             result = -1;
             break;
         }
-        if (*stop_requested == 0 && MHD_run_from_select(daemon, &read_set,
-                &write_set, &except_set) != MHD_YES) {
-            web_diagnostic(diagnostic, diagnostic_capacity,
-                "échec du traitement HTTP local");
+        if (*stop_requested == 0 &&
+            MHD_run_from_select(daemon, &read_set, &write_set, &except_set) != MHD_YES) {
+            web_diagnostic(diagnostic, diagnostic_capacity, "échec du traitement HTTP local");
             result = -1;
             break;
         }
@@ -767,7 +1006,9 @@ int trainlog_web_server_run(TrainlogDatabase *database, const char *database_pat
             (void)kill(-context.worker_pid, SIGTERM);
             for (attempt = 0U; attempt < 50U; ++attempt) {
                 waited = waitpid(context.worker_pid, &worker_status, WNOHANG);
-                if (waited == context.worker_pid || waited < 0) break;
+                if (waited == context.worker_pid || waited < 0) {
+                    break;
+                }
                 (void)nanosleep(&delay, NULL);
             }
             if (waited == 0) {

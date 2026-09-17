@@ -72,7 +72,11 @@ def run_adapter(
         diagnostic = (
             result.stderr.decode("utf-8", "replace")[:1024] or "MTP adapter failed"
         ).strip()
-        if allow_missing_peer and "expected peer was not found" in diagnostic:
+        missing_peer = diagnostic in {
+            "double failed 6 expected Android peer not found",
+            "MTP adapter failed status=6 diagnostic=expected Android peer not found",
+        }
+        if allow_missing_peer and missing_peer:
             return False
         raise RuntimeError(diagnostic)
     return True
@@ -276,4 +280,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except RuntimeError as error:
+        print(f"sync peer failed: {error}", file=sys.stderr)
+        raise SystemExit(1) from None

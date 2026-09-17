@@ -1,10 +1,12 @@
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "trainlog/generation_mtp.h"
+#include "bounded_path.h"
 
 typedef struct Node {
     uint32_t id, parent;
@@ -15,13 +17,41 @@ typedef struct Node {
 static Node nodes[2048];
 static size_t node_count;
 static const char *remote;
+static bool scan_failed;
+static uint32_t stable_path_id(const char *path) {
+    const unsigned char *cursor = (const unsigned char *)path;
+    uint32_t value = UINT32_C(2166136261);
+    while (*cursor != '\0') {
+        value ^= (uint32_t)*cursor++;
+        value *= UINT32_C(16777619);
+    }
+    return value == 0U || value == UINT32_MAX ? value ^ UINT32_C(0x80000000) : value;
+}
+
 static uint32_t scan(const char *path, uint32_t parent) {
     DIR *d;
     struct dirent *e;
-    uint32_t self = (uint32_t)(node_count + 1U);
-    Node *n = &nodes[node_count++];
+    uint32_t self;
+    Node *n;
     struct stat st;
-    lstat(path, &st);
+    if (lstat(path, &st) != 0) {
+        if (errno != ENOENT) {
+            scan_failed = true;
+        }
+        return 0U;
+    }
+    if (node_count >= sizeof(nodes) / sizeof(nodes[0])) {
+        scan_failed = true;
+        return 0U;
+    }
+    self = stable_path_id(path);
+    for (size_t index = 0U; index < node_count; index++) {
+        if (nodes[index].id == self && strcmp(nodes[index].path, path) != 0) {
+            scan_failed = true;
+            return 0U;
+        }
+    }
+    n = &nodes[node_count++];
     n->id = self;
     n->parent = parent;
     n->folder = S_ISDIR(st.st_mode);
@@ -33,17 +63,23 @@ static uint32_t scan(const char *path, uint32_t parent) {
         while ((e = readdir(d))) {
             if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) {
                 char child[1024];
-                snprintf(child, sizeof(child), "%s/%s", path, e->d_name);
+                if (!trainlog_test_join_path(child, sizeof(child), path, e->d_name)) {
+                    scan_failed = true;
+                    break;
+                }
                 scan(child, self);
             }
         }
         closedir(d);
+    } else if (n->folder && errno != ENOENT) {
+        scan_failed = true;
     }
     return self;
 }
-static void rebuild(void) {
+static bool rebuild(void) {
     node_count = 0U;
-    scan(remote, UINT32_MAX);
+    scan_failed = false;
+    return scan(remote, UINT32_MAX) != 0U && !scan_failed;
 }
 static Node *node(uint32_t id) {
     size_t i;
@@ -87,7 +123,9 @@ static TrainlogStatus children(unsigned int b,
     (void)b;
     (void)d;
     (void)s;
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     if (p == UINT32_MAX) {
         p = nodes[0].id;
     }
@@ -121,12 +159,16 @@ static TrainlogStatus ensure(unsigned int b,
     (void)b;
     (void)d;
     (void)s;
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     parent = node(p);
     if (!parent) {
         return TRAINLOG_STATUS_NOT_FOUND;
     }
-    snprintf(path, sizeof(path), "%s/%s", parent->path, name);
+    if (!trainlog_test_join_path(path, sizeof(path), parent->path, name)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     if (mkdir(path, 0700) == 0) {
         *created = true;
     } else if (access(path, F_OK) == 0) {
@@ -134,7 +176,9 @@ static TrainlogStatus ensure(unsigned int b,
     } else {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     size_t i;
     for (i = 0; i < node_count; i++) {
         if (strcmp(nodes[i].path, path) == 0) {
@@ -162,7 +206,9 @@ static TrainlogStatus receive(unsigned int b, unsigned int d, uint32_t id, const
     Node *n;
     (void)b;
     (void)d;
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     n = node(id);
     return n && copy(n->path, path) == 0 ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_SYSTEM_ERROR;
 }
@@ -178,16 +224,22 @@ static TrainlogStatus send_file(unsigned int b,
     (void)b;
     (void)d;
     (void)s;
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     parent = node(p);
     if (!parent) {
         return TRAINLOG_STATUS_NOT_FOUND;
     }
-    snprintf(path, sizeof(path), "%s/%s", parent->path, name);
+    if (!trainlog_test_join_path(path, sizeof(path), parent->path, name)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     if (copy(local, path) != 0) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     size_t i;
     for (i = 0; i < node_count; i++) {
         if (strcmp(nodes[i].path, path) == 0) {
@@ -201,26 +253,38 @@ static TrainlogStatus remove_object(unsigned int b, unsigned int d, uint32_t id)
     Node *n;
     (void)b;
     (void)d;
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     n = node(id);
     return n && unlink(n->path) == 0 ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_SYSTEM_ERROR;
 }
 static TrainlogStatus rename_object(unsigned int b, unsigned int d, uint32_t id, const char *name) {
     Node *n;
-    char path[1024], *slash;
+    char parent[1024];
+    char path[1024];
+    char *slash;
     (void)b;
     (void)d;
-    rebuild();
+    if (!rebuild()) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     n = node(id);
     if (!n) {
         return TRAINLOG_STATUS_NOT_FOUND;
     }
-    snprintf(path, sizeof(path), "%s", n->path);
-    slash = strrchr(path, '/');
+    if (strlen(n->path) >= sizeof(parent)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    (void)memcpy(parent, n->path, strlen(n->path) + 1U);
+    slash = strrchr(parent, '/');
     if (!slash) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
-    snprintf(slash + 1, (size_t)(path + sizeof(path) - (slash + 1)), "%s", name);
+    *slash = '\0';
+    if (!trainlog_test_join_path(path, sizeof(path), parent, name)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     return rename(n->path, path) == 0 ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_SYSTEM_ERROR;
 }
 static const TrainlogGenerationMtpIo io = {
