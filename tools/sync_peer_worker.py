@@ -72,10 +72,14 @@ def recovery_acknowledgements(db, producer_peer_id: str, consumer_peer_id: str) 
     rows = db.execute(
         "SELECT ack_json FROM sync_consumed_generations WHERE producer_peer_id=? "
         "AND consumer_peer_id=? AND result IN('consumed','rejected') "
-        "ORDER BY consumed_at,generation_id LIMIT 32",
+        "ORDER BY consumed_at DESC,generation_id DESC LIMIT 32",
         (producer_peer_id, consumer_peer_id),
     ).fetchall()
     acknowledgements = [json.loads(row[0]) for row in rows]
+    # WHY: the bounded envelope must prioritize the newest interrupted
+    # conversations. Older acknowledged generations are normally already
+    # archived; selecting them first can starve the exact ACKs needed to free
+    # active producer capacity.
     # ACKs created before rejection diagnostics were normalized may contain a
     # solidus that Android's platform JSON canonicalizer hashes differently.
     # They remain durable evidence but cannot close a peer row, so do not let

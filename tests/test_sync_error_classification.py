@@ -43,8 +43,41 @@ class SyncErrorClassificationTest(unittest.TestCase):
 
         self.assertEqual(
             [(value["generation_id"], value["result"]) for value in acknowledgements],
-            [("gen_consumed", "consumed"), ("gen_rejected", "rejected")],
+            [("gen_rejected", "rejected"), ("gen_consumed", "consumed")],
         )
+
+    def test_recovery_envelope_prioritizes_recent_terminal_evidence(self):
+        with sqlite3.connect(":memory:") as database:
+            database.execute(
+                "CREATE TABLE sync_consumed_generations("
+                "generation_id TEXT,producer_peer_id TEXT,consumer_peer_id TEXT,"
+                "consumed_at TEXT,result TEXT,ack_json TEXT)"
+            )
+            for index in range(40):
+                generation = f"gen_{index:02d}"
+                database.execute(
+                    "INSERT INTO sync_consumed_generations VALUES(?,?,?,?,?,?)",
+                    (
+                        generation,
+                        "android",
+                        "desktop",
+                        f"2026-09-18T12:{index:02d}:00Z",
+                        "consumed",
+                        json.dumps({
+                            "generation_id": generation,
+                            "result": "consumed",
+                            "diagnostic": "",
+                        }),
+                    ),
+                )
+
+            acknowledgements = sync_peer_worker.recovery_acknowledgements(
+                database, "android", "desktop"
+            )
+
+        self.assertEqual(32, len(acknowledgements))
+        self.assertEqual("gen_39", acknowledgements[0]["generation_id"])
+        self.assertEqual("gen_08", acknowledgements[-1]["generation_id"])
 
     def test_mtp_refreshes_a_retained_peer_advertisement_before_validation(self):
         expected_peer = "peer_00000000-0000-4000-8000-000000000001"
