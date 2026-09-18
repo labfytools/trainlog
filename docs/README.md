@@ -14,6 +14,9 @@ evidence and chronology.
 
 ## Interfaces
 
+- [Web Sessions V1](web_sessions.md) owns the implemented preparation, resume,
+  history and Android-delivery workflow.
+
 - [Android](android.md) owns field-companion capture, local persistence,
   glanceable summaries, permissions, and Android interaction rules.
 - [Desktop TUI](tui.md) owns Notcurses navigation, correction, detailed

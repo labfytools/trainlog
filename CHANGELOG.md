@@ -2,6 +2,11 @@
 
 ## Unreleased — 0.1.2
 
+- Implemented `TRAINLOG_WEB_SESSIONS_V1` with paged preparation, resume and
+  history views, stable details, optimistic/idempotent manual preparation,
+  explicit proposal derivation, desktop schema v23, Android schema v22 and the
+  separate `trainlog-session-preparations` V1 generation participant.
+
 - Added compatible non-destructive generation archival on desktop schema v22
   and Android schema v21. Only exactly acknowledged generations older than the
   two active recovery tips leave admission after a verified durable payload

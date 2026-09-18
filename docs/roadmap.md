@@ -24,7 +24,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v22, Android schema v21, Notcurses, direct
+Desktop schema v23, Android schema v22, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
@@ -33,7 +33,7 @@ exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
 tile rendering exist. The Dashboard's bounded progression and BODY ZONES
-visualizations are implemented; the other four Web routes remain placeholders.
+visualizations and Sessions V1 are implemented; the other three Web routes remain placeholders.
 The corrective prepared-item projection and bounded phase-owned MTP outbox are
 implemented without opening the Sessions route, changing schemas, or changing
 the frozen Dashboard and exchange contracts.
@@ -53,7 +53,8 @@ transactional consumption, durable correlated ACK and restart/replay entry
 points. The orchestrator, Web API and Web control are complete behind an
 explicit trusted opt-in. The authorized private direct-MTP rollout passed on
 real hardware; automatic V3 selection remains unchanged without that opt-in.
-The next work returns to separately contracted Web surfaces.
+The next separately contracted Web surface is Exercises. Sessions V1 is
+complete in software and is not reopened by that future contract.
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.

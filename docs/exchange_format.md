@@ -1,5 +1,15 @@
 # Trainlog Exchange Format v1
 
+## Manual session preparations
+
+`trainlog-session-preparations` V1 has a strict root `format`, `version`,
+`generated_at`, and bounded `deliveries` array. Each delivery contains stable
+delivery, preparation, revision, reserved execution and occurrence identities,
+immutable metadata, and at most 64 ordered target-only occurrences. Null target
+values remain distinct from zero. Performed sets, continuous results, MAX and
+feedback are excluded. This format does not change `TRAINLOG_FORMAT_V1` or any
+mobile snapshot version.
+
 ## TRAINLOG_AI_SESSION_DRAFT_V1
 
 `TRAINLOG_AI_SESSION_DRAFT_V1` is a separately versioned AI-proposal contract,

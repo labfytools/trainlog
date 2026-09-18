@@ -1,5 +1,11 @@
 # Android application
 
+Android schema v22 adds a pending manual-preparation store which is separate
+from AI proposals and the exactly-one active-session singleton. A received
+preparation is inert until explicit start; an occupied singleton is never
+overwritten. Starting preserves the desktop-reserved execution `session_id`,
+copies targets only and creates no performed facts.
+
 ## 1. Purpose
 
 The Android application is Trainlog's low-friction capture client.

@@ -1,5 +1,17 @@
 # Tests and validation
 
+`web_sessions` exercises production preparation creation, durable request
+replay, immutable successor revisions, stale-revision conflict, duplicate
+exercise occurrences, list search and persisted detail serialization. The Web
+Vitest suite covers the shell and API parsers; the embedded frontend is also
+built into the canonical Meson binary.
+
+`SessionPreparationExchangeTest` covers Android import replay, occupied
+singleton refusal, explicit start, reserved execution identity and absence of
+performed facts. `SyncGenerationServiceTest` and
+`SyncDeploymentConversationTest` exercise the real optional artifact through
+generation validation and 24 bidirectional conversations.
+
 `SyncDeploymentConversationTest` executes both production generation services
 and reopens Android storage. `test_web_sync_browser.py` adds a real Firefox click
 through the C adapter, observes the desktop commit at an Android test barrier,

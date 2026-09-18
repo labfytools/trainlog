@@ -50,8 +50,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v22 |
-| Android SQLite | schema v21 |
+| Desktop SQLite | schema v23 |
+| Android SQLite | schema v22 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -72,6 +72,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
+| Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (isolated software validation; controlled deployment pending) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
@@ -216,8 +217,16 @@ and linked into the binary. The read-only Dashboard uses one typed Core
 snapshot, a seven-tile responsive grid, factual size-adaptive tiles, an ECharts
 progression series, an original BODY ZONES SVG, and private versioned layout
 persistence with optimistic conflict and CSRF/Origin protection. It provides no
-business mutation or automatic browser launch. Analyse, Programmes, Sessions,
-and Exercises remain explicit placeholders.
+automatic browser launch. Sessions provides complete paged preparation,
+resume and history views, stable details, optimistic manual-preparation writes,
+explicit proposal derivation and generation-backed Android delivery. Analyse,
+Programmes and Exercises remain explicit placeholders.
+
+Desktop schema v23 owns immutable manual-preparation revisions, stable ordered
+occurrences, persistent HTTP idempotency keys and delivery-to-execution identity.
+Android schema v22 stores received preparations separately from AI proposals
+and the active singleton. An exact correlated ACK is required before delivery
+is shown as acknowledged.
 
 The Next Session tile no longer treats the frozen Dashboard
 `next_session.available` placeholder as a durable inventory. A separate bounded
@@ -378,9 +387,8 @@ tests, Android debug assembly, and 211 Android tests (207 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
-- `WEB_NEXT_MODULE_SELECTION_V1`: Analyse, Programmes, Séances and Exercices
-  remain shell placeholders until their Core/API ownership and implementation
-  order are explicitly contracted.
+- `WEB_NEXT_MODULE_SELECTION_V1`: Analyse, Programmes and Exercices remain
+  shell placeholders. Exercises is the next proposed Web module.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - Session Generator V1 is hidden while V2 planning semantics are developed.
 - Hardware MTP validation requires a connected unlocked Android device.

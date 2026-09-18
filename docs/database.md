@@ -1,5 +1,15 @@
 # Desktop database
 
+## Schema v23: Web session preparations
+
+Schema v23 adds `session_preparations`, immutable
+`session_preparation_revisions` and ordered `session_preparation_entries`.
+`session_preparation_requests` makes Web command replay durable, while
+`session_preparation_deliveries` binds one immutable revision to one reserved
+execution `session_id` and its correlated generation/ACK evidence. These tables
+store no performed sets, MAX results or feedback and do not alter imported AI
+proposal identity.
+
 ## Schema v13: machine-specific exercises
 
 Migration v12→v13 is additive and transactional. It adds exercise-owned load
@@ -16,8 +26,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=21
-DATABASE_SCHEMA_V21=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=23
+DATABASE_SCHEMA_V23=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -36,7 +46,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-21
+23
 ```
 
 The independent actual-set loads documented in the current desktop, Android

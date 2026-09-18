@@ -17,7 +17,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.2 development) | Display the implemented local Dashboard and persist its private layout through typed Trainlog Core/API boundaries. Analyse, Programmes, Sessions, and Exercises remain placeholders. |
+| Local Web (0.1.2 development) | Display the Dashboard and the implemented Sessions inventory, detail, manual preparation, and Android-delivery workflow through typed Trainlog Core/API boundaries. Analyse, Programmes, and Exercises remain placeholders. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -318,7 +318,7 @@ not contain cloud credentials and does not run `rclone`.
 As of 2026-09-17:
 
 - `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
-- desktop SQLite schema v22 and Android SQLite schema v21;
+- desktop SQLite schema v23 and Android SQLite schema v22;
 - Notcurses is the only active desktop terminal backend;
 - direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
   all-files access setting;
@@ -330,7 +330,8 @@ As of 2026-09-17:
 - `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
   Android-triggered bidirectional smoke test.
 - `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
-  `WEB_DASHBOARD_V1=PASS/FROZEN`; the other four Web routes remain placeholders;
+  `WEB_DASHBOARD_V1=PASS/FROZEN` and `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN`;
+  Analyse, Programmes, and Exercises remain placeholders;
 - `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
 - `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` through explicit staged
   services; automatic synchronization still selects V3. The opt-in grouped Web

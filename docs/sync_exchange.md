@@ -1,5 +1,16 @@
 # Synchronization exchange
 
+## Manual session preparations V1
+
+`trainlog-session-preparations` V1 is a separate optional desktop-to-Android
+generation artifact. It carries immutable ready revision snapshots and stable
+delivery, preparation, occurrence and reserved execution identities. It never
+overloads mobile export, AI proposals or execution-drafts V1. Android validates
+the complete artifact in the generation transaction and stores it as pending;
+start remains an explicit foreground action. Desktop records the exact
+generation relation at capture and changes delivery state to acknowledged only
+after accepting the correlated durable consumption ACK.
+
 ## Causal deletion safety gate
 
 Android and desktop expose staged producers and consumers for the independent
@@ -18,7 +29,7 @@ available because availability is independently guarded by causal state.
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v22 and Android schema v21 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v23 and Android schema v22 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
