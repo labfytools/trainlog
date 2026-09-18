@@ -923,18 +923,14 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
     if ((preparation_id == NULL || preparation_id[0] == '\0') && source_proposal != NULL) {
         if (sqlite3_prepare_v2(
                 database->connection,
-                "UPDATE session_preparations SET source_proposal_id=?1,source_payload_sha256=?2 "
-                "WHERE preparation_id=?3 AND EXISTS(SELECT 1 FROM ai_session_draft_imports i WHERE "
-                "i.draft_id=?1 AND i.payload_sha256=?2)",
+                "SELECT 1 FROM ai_session_draft_imports WHERE draft_id=?1 AND payload_sha256=?2",
                 -1,
                 &statement,
                 NULL) != SQLITE_OK ||
             sqlite3_bind_text(statement, 1, source_proposal, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
             sqlite3_bind_text(statement, 2, source_fingerprint, -1, SQLITE_TRANSIENT) !=
                 SQLITE_OK ||
-            sqlite3_bind_text(statement, 3, actual_preparation, -1, SQLITE_TRANSIENT) !=
-                SQLITE_OK ||
-            sqlite3_step(statement) != SQLITE_DONE || sqlite3_changes(database->connection) != 1) {
+            sqlite3_step(statement) != SQLITE_ROW) {
             status = TRAINLOG_STATUS_CONFLICT;
             goto rollback;
         }
@@ -964,7 +960,7 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
         statement = NULL;
     } else if (sqlite3_prepare_v2(
                    database->connection,
-                   "INSERT INTO session_preparations VALUES(?1,?2,?3,?3,?4,'local',NULL,NULL)",
+                   "INSERT INTO session_preparations VALUES(?1,?2,?3,?3,?4,'local',?5,?6)",
                    -1,
                    &statement,
                    NULL) != SQLITE_OK ||
@@ -973,6 +969,14 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
                sqlite3_bind_text(statement, 2, revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
                sqlite3_bind_text(statement, 3, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
                sqlite3_bind_text(statement, 4, editing_state, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+               (source_proposal == NULL
+                    ? sqlite3_bind_null(statement, 5)
+                    : sqlite3_bind_text(statement, 5, source_proposal, -1, SQLITE_TRANSIENT)) !=
+                   SQLITE_OK ||
+               (source_fingerprint == NULL
+                    ? sqlite3_bind_null(statement, 6)
+                    : sqlite3_bind_text(statement, 6, source_fingerprint, -1, SQLITE_TRANSIENT)) !=
+                   SQLITE_OK ||
                sqlite3_step(statement) != SQLITE_DONE) {
         status = TRAINLOG_STATUS_DATABASE_ERROR;
         goto rollback;

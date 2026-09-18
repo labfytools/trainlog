@@ -44,6 +44,13 @@ static bool creation_replay_revision_and_pagination(void) {
         "{\"title\":\"Réordonnée\",\"session_type\":\"training\","
         "\"planned_for\":null,\"notes\":null,\"editing_state\":\"draft\","
         "\"occurrences\":[]}";
+    static const char DERIVED_BODY[] =
+        "{\"title\":\"Derived\",\"session_type\":\"training\","
+        "\"planned_for\":null,\"notes\":null,\"editing_state\":\"draft\","
+        "\"occurrences\":[],\"source_proposal_id\":"
+        "\"aid_11111111-1111-4111-8111-111111111111\","
+        "\"source_payload_sha256\":"
+        "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
     TrainlogDatabase *database = NULL;
     TrainlogWebSessionsPageQuery query = {TRAINLOG_WEB_SESSION_PREPARATIONS, 0U, 1U, "échappée"};
     char *created = NULL;
@@ -70,6 +77,17 @@ static bool creation_replay_revision_and_pagination(void) {
                                                      TRAINLOG_TRACKING_REPS,
                                                      TRAINLOG_RECORDING_SETS,
                                                      0U) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO ai_session_drafts(draft_id,created_at,session_type,title) "
+                       "VALUES('aid_11111111-1111-4111-8111-111111111111','2026-09-18T00:00:00Z',"
+                       "'training','Source');"
+                       "INSERT INTO ai_session_draft_imports VALUES("
+                       "last_insert_rowid(),'aid_11111111-1111-4111-8111-111111111111',"
+                       "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',"
+                       "'2026-09-18T00:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     CHECK(trainlog_web_sessions_save_json(database,
                                           NULL,
                                           "",
@@ -122,6 +140,17 @@ static bool creation_replay_revision_and_pagination(void) {
                                           &updated_size) == TRAINLOG_STATUS_OK);
     CHECK(updated_size > 0U);
     CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_revisions") == 2);
+    CHECK(trainlog_web_sessions_save_json(database,
+                                          NULL,
+                                          "",
+                                          "request-derived-1",
+                                          DERIVED_BODY,
+                                          strlen(DERIVED_BODY),
+                                          &detail,
+                                          &detail_size) == TRAINLOG_STATUS_OK);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM session_preparations WHERE source_proposal_id="
+                 "'aid_11111111-1111-4111-8111-111111111111'") == 1);
     free(detail);
     detail = NULL;
     detail_size = 0U;
@@ -133,7 +162,7 @@ static bool creation_replay_revision_and_pagination(void) {
                                           strlen(UPDATE_BODY),
                                           &detail,
                                           &detail_size) == TRAINLOG_STATUS_CONFLICT);
-    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_revisions") == 2);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_revisions") == 3);
     free(created);
     free(replayed);
     free(detail);
