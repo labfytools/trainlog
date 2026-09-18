@@ -2,6 +2,21 @@
 
 ## Unreleased — 0.1.2
 
+- Completed the controlled Web Sessions presentation/withdrawal rollout on the
+  paired private installation. Desktop migrated from schema v23 to v24 and
+  Android from v22 to v23 without clearing application data. The requested
+  validation preparation was withdrawn once; Android reported
+  `execution_preserved` because its delivery had already started. Two
+  post-withdrawal direct-MTP generations around component restart proved no
+  resurrection or duplication while preserving the source proposal and all
+  actual workout data.
+
+- Fixed a rollout-discovered stale peer-advertisement failure in the
+  full-generation MTP worker. Each MTP run now requires one successful pull
+  from the expected phone before validating peer identity and capabilities, so
+  a retained pre-upgrade advertisement cannot reject a compatible upgraded
+  Android peer.
+
 - Corrected Web Sessions presentation with one descending cross-type order,
   strict civil-date and zoned-timestamp formatting, contextual French states,
   readable persisted proposal provenance, and an installation-local versioned

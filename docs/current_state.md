@@ -3,11 +3,13 @@
 The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
-persistent peer identities. The controlled rollout verified real backups, the
-schema-v17 to v20 Android update chain, desktop v18 to v21 migration, three
-complete hardware conversations, restart, and idempotent replay. Drive was not
-configured and remains outside this local MTP result. This is a private 0.1.2
-development deployment, not a public release; v0.1.1 is unchanged.
+persistent peer identities. The latest controlled rollout verified real
+backups and restoration, desktop schema v23 to v24 and Android schema v22 to
+v23 migration, signing-preserving Android replacement, the requested durable
+preparation withdrawal, two complete post-withdrawal hardware conversations,
+restart, and idempotent replay. Drive was not configured and remains outside
+this local MTP result. This is a private 0.1.2 development deployment, not a
+public release; v0.1.1 is unchanged.
 
 `TRAINLOG_NATIVE_BUILD_AND_CANDIDATE_V1` closes the native warning gate. Strict
 GCC 16.2.1 and Clang 22.1.8 builds now pass the same 81-test inventory, and the
@@ -19,7 +21,7 @@ The rollout packager now keeps the legacy request daemon and one-shot helper in
 the same relocatable, hashed bundle as the Web generation coordinator, avoiding
 mixed-checkout user-service execution during the controlled rollout.
 
-Snapshot date: **2026-09-17**.
+Snapshot date: **2026-09-18**.
 
 `TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,
 generation/ACK, Android-backup, Web Dashboard serialization, tests, doubles and
@@ -240,11 +242,14 @@ preparation** action; withdrawn rows remain technically inspectable but cannot
 be edited or delivered.
 
 The controlled deployment preserved the installed Android signing identity and
-advanced its private `versionCode` without uninstalling or clearing data. The
-validation preparation derived from the six-occurrence proposal remained a
-separate pending Android preparation across application and service restart.
-Two correlated generation conversations completed without a duplicate,
-performed fact, or active-draft replacement.
+advanced its private `versionCode` from 13 to 14 without uninstalling or
+clearing data. The requested six-occurrence validation preparation was already
+`started` on Android at preflight, so withdrawal retained its immutable
+delivery and returned `execution_preserved`; it did not delete or complete the
+reserved execution. The source proposal retained its identity, `archived`
+state, content and publication timestamp. Two correlated post-withdrawal
+generation conversations, separated by component restart, completed without
+resurrection, duplicate withdrawal, performed fact, or draft mutation.
 
 The Next Session tile no longer treats the frozen Dashboard
 `next_session.available` placeholder as a durable inventory. A separate bounded
@@ -264,7 +269,9 @@ orders revisions per `run_id`, and rejects stale responses from older runs.
 The reciprocal MTP read is bounded to the Android peer advertisement, current
 generation reference and consumption ACK, plus the single Android generation
 named by that reference. Historical generations and other retained evidence
-are neither traversed nor deleted during polling.
+are neither traversed nor deleted during polling. Before peer validation, MTP
+mode now requires one successful current-device pull; a retained pre-upgrade
+advertisement can no longer cause a false missing-capability failure.
 
 ## Data semantics
 
@@ -369,10 +376,13 @@ stable-data presentation tests. A real-device/manual visual language-switch
 smoke remains a manual validation; it does not change the validated status.
 
 Hardware-dependent MTP is not automated. The controlled real-device rollout
-validated two consecutive full-generation exchanges around a Trainlog-service
-restart. The expected AI proposal was verified in the persistent Android store
-and the read-only Web proposal projection with its original identity and
-content; no proposal-to-execution-draft conversion was performed.
+validated two consecutive post-withdrawal full-generation exchanges around a
+Trainlog component restart. Android retained exactly one withdrawal result as
+`execution_preserved`, retained the linked delivery as `started`, and exposed
+no active preparation or start action after replay. Desktop retained exactly
+one acknowledged withdrawal and no active preparation. The source AI proposal
+was verified with its original identity, state, entry content and publication
+timestamp; no proposal-to-execution-draft conversion was performed.
 
 ## Active limitations
 
