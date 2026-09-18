@@ -792,10 +792,16 @@ static TrainlogStatus insert_preparation_entry(TrainlogDatabase *database,
     value = yyjson_obj_get(entry, "target_weight_kg");
     if (value == NULL || yyjson_is_null(value)) {
         (void)sqlite3_bind_null(statement, 11);
-    } else if (!yyjson_is_num(value) || !isfinite(yyjson_get_real(value)) ||
-               yyjson_get_real(value) <= 0.0 || yyjson_get_real(value) > 2000.0 ||
-               sqlite3_bind_double(statement, 11, yyjson_get_real(value)) != SQLITE_OK) {
-        goto invalid;
+    } else {
+        double target_weight;
+        if (!yyjson_is_num(value)) {
+            goto invalid;
+        }
+        target_weight = yyjson_get_num(value);
+        if (!isfinite(target_weight) || target_weight <= 0.0 || target_weight > 2000.0 ||
+            sqlite3_bind_double(statement, 11, target_weight) != SQLITE_OK) {
+            goto invalid;
+        }
     }
     if (!bind_nullable_text(statement, 12, yyjson_obj_get(entry, "notes"))) {
         goto invalid;

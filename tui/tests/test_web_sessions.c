@@ -46,8 +46,11 @@ static bool creation_replay_revision_and_pagination(void) {
         "\"occurrences\":[]}";
     static const char DERIVED_BODY[] =
         "{\"title\":\"Derived\",\"session_type\":\"training\","
-        "\"planned_for\":null,\"notes\":null,\"editing_state\":\"draft\","
-        "\"occurrences\":[],\"source_proposal_id\":"
+        "\"planned_for\":\"2026-09-17\",\"notes\":null,\"editing_state\":\"ready\","
+        "\"occurrences\":[{\"exercise_id\":\"ex_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\","
+        "\"equipment_id\":null,\"load_mode\":\"external\",\"rest_seconds\":90,"
+        "\"target_sets\":4,\"target_reps\":10,\"target_duration_seconds\":null,"
+        "\"target_weight_kg\":39,\"notes\":null}],\"source_proposal_id\":"
         "\"aid_11111111-1111-4111-8111-111111111111\","
         "\"source_payload_sha256\":"
         "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
