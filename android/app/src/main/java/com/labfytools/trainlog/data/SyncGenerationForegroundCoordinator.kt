@@ -21,7 +21,10 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
         repository.inSyncGenerationTransaction { db ->
             db.rawQuery(
                 "SELECT generation_id,manifest_sha256,staging_path FROM sync_generations " +
-                    "WHERE run_id=? AND status IN('captured','published','waiting_acknowledgement') " +
+                    "WHERE run_id=? AND (status IN('captured','published','waiting_acknowledgement') " +
+                    "OR (status='acknowledged' AND NOT EXISTS(" +
+                    "SELECT 1 FROM sync_consumed_generations c WHERE c.run_id=sync_generations.run_id " +
+                    "AND c.result IN('consumed','rejected')))) " +
                     (if (consumerPeerId == null) "" else "AND consumer_peer_id=? ") +
                     "LIMIT 2",
                 if (consumerPeerId == null) arrayOf(runId) else arrayOf(runId, consumerPeerId),
