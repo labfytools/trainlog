@@ -51,13 +51,14 @@ static bool format_now(char output[TRAINLOG_TIMESTAMP_MAX + 1U]) {
            strftime(output, TRAINLOG_TIMESTAMP_MAX + 1U, "%Y-%m-%dT%H:%M:%SZ", &utc) > 0U;
 }
 
-static TrainlogStatus load_ai_proposals(
-    TrainlogDatabase *database, TrainlogWebPreparedItems *output) {
+static TrainlogStatus load_ai_proposals(TrainlogDatabase *database,
+                                        TrainlogWebPreparedItems *output) {
     static const char SQL[] =
         "SELECT d.draft_id,COALESCE(d.title,''),COALESCE(d.planned_for,''),"
         "COUNT(e.id),CASE WHEN d.published_at IS NULL THEN 'pending_publication' ELSE 'published' "
         "END,d.created_at FROM ai_session_drafts d LEFT JOIN ai_session_draft_entries e ON "
-        "e.draft_row_id=d.id GROUP BY d.id ORDER BY COALESCE(d.planned_for,'9999-12-31'),"
+        "e.draft_row_id=d.id WHERE d.withdrawn_at IS NULL GROUP BY d.id ORDER BY "
+        "COALESCE(d.planned_for,'9999-12-31'),"
         "d.created_at,d.draft_id LIMIT ?1;";
     sqlite3_stmt *statement = NULL;
     int step;
@@ -99,8 +100,8 @@ fail:
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
-static TrainlogStatus load_manual_preparations(
-    TrainlogDatabase *database, TrainlogWebPreparedItems *output) {
+static TrainlogStatus load_manual_preparations(TrainlogDatabase *database,
+                                               TrainlogWebPreparedItems *output) {
     static const char SQL[] =
         "SELECT p.preparation_id,r.title,COALESCE(r.planned_for,''),COUNT(e.entry_id),"
         "p.editing_state,p.updated_at FROM session_preparations p JOIN "
@@ -148,8 +149,8 @@ fail:
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
-static TrainlogStatus load_execution_drafts(
-    TrainlogDatabase *database, TrainlogWebPreparedItems *output) {
+static TrainlogStatus load_execution_drafts(TrainlogDatabase *database,
+                                            TrainlogWebPreparedItems *output) {
     static const char SQL[] =
         "SELECT d.session_id,d.state,d.session_type,COALESCE(substr(d.started_at,1,10),''),"
         "COALESCE(json_array_length(d.payload_json,'$.exercises'),0),COALESCE(d.started_at,'') "
@@ -201,8 +202,8 @@ fail:
     return TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
-TrainlogStatus trainlog_web_prepared_items_load(
-    TrainlogDatabase *database, TrainlogWebPreparedItems *output) {
+TrainlogStatus trainlog_web_prepared_items_load(TrainlogDatabase *database,
+                                                TrainlogWebPreparedItems *output) {
     TrainlogStatus status;
     TrainlogStatus end_status;
 

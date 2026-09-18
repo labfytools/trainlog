@@ -23,6 +23,7 @@
 #include "trainlog/web_dashboard.h"
 #include "trainlog/web_prepared_items.h"
 #include "trainlog/web_programs.h"
+#include "trainlog/web_session_deletions.h"
 #include "trainlog/web_sessions.h"
 #include "trainlog/dashboard_layout.h"
 #include "trainlog/web_preferences.h"
@@ -793,6 +794,77 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
     return queue_owned_programs_json(connection, status, json, json_size);
 }
 
+static enum MHD_Result queue_session_deletion_result(struct MHD_Connection *connection,
+                                                     TrainlogStatus status,
+                                                     char *json,
+                                                     size_t json_size) {
+    if (status == TRAINLOG_STATUS_CONFLICT) {
+        free(json);
+        return queue_json(
+            connection, MHD_HTTP_CONFLICT, "{\"error\":\"deletion_conflict\"}\n", NULL);
+    }
+    if (status == TRAINLOG_STATUS_NOT_FOUND) {
+        free(json);
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+        free(json);
+        return queue_json(
+            connection, MHD_HTTP_UNPROCESSABLE_CONTENT, "{\"error\":\"invalid_deletion\"}\n", NULL);
+    }
+    return queue_owned_sessions_json(connection, status, json, json_size);
+}
+
+static enum MHD_Result handle_session_deletion(TrainlogWebContext *context,
+                                               struct MHD_Connection *connection,
+                                               const char *url,
+                                               const char *method) {
+    static const char PREFIX[] = "/api/v1/sessions/";
+    const char *request_id =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+    const char *if_match =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+    const char *kind = url + strlen(PREFIX);
+    const char *separator = strchr(kind, '/');
+    char kind_buffer[32];
+    char identity[TRAINLOG_ID_MAX + 1U];
+    char revision[TRAINLOG_ID_MAX + 1U];
+    char *json = NULL;
+    size_t json_size = 0U;
+    TrainlogStatus status;
+
+    if (strcmp(method, MHD_HTTP_METHOD_DELETE) != 0) {
+        return queue_json(connection,
+                          MHD_HTTP_METHOD_NOT_ALLOWED,
+                          "{\"error\":\"method_not_allowed\"}\n",
+                          "DELETE");
+    }
+    if (separator == NULL || separator[1] == '\0' ||
+        !copy_path_component(kind_buffer, sizeof(kind_buffer), kind, (size_t)(separator - kind)) ||
+        !copy_path_component(identity, sizeof(identity), separator + 1, strlen(separator + 1))) {
+        return queue_json(
+            connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_identity\"}\n", NULL);
+    }
+    if (strcmp(kind_buffer, "proposal") != 0 && strcmp(kind_buffer, "draft") != 0 &&
+        strcmp(kind_buffer, "history") != 0) {
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    if (!program_mutation_allowed(context, connection) || request_id == NULL ||
+        request_id[0] == '\0' || strlen(request_id) > 128U) {
+        return queue_json(
+            connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+    }
+    if (!parse_quoted_revision(if_match, revision, sizeof(revision))) {
+        return queue_json(connection,
+                          MHD_HTTP_PRECONDITION_REQUIRED,
+                          "{\"error\":\"precondition_required\"}\n",
+                          NULL);
+    }
+    status = trainlog_web_session_delete_json(
+        context->database, kind_buffer, identity, revision, request_id, &json, &json_size);
+    return queue_session_deletion_result(connection, status, json, json_size);
+}
+
 static enum MHD_Result handle_request(void *closure,
                                       struct MHD_Connection *connection,
                                       const char *url,
@@ -1032,6 +1104,13 @@ static enum MHD_Result handle_request(void *closure,
         size_t offset;
         size_t limit;
         size_t index;
+
+        if (strcmp(method, MHD_HTTP_METHOD_DELETE) == 0 &&
+            strncmp(url,
+                    "/api/v1/sessions/preparation/",
+                    strlen("/api/v1/sessions/preparation/")) != 0) {
+            return handle_session_deletion(context, connection, url, method);
+        }
 
         if (!is_get && (strcmp(url, "/api/v1/sessions/preparations") == 0 ||
                         strncmp(url,

@@ -1721,15 +1721,26 @@ class TrainlogRepository(
         val root = try { JSONObject(json) } catch (_: Exception) {
             return AiSessionDraftImportResult.Invalid("Artifact de brouillons IA JSON invalide.")
         }
-        if (!root.hasExactKeys(setOf("format", "version", "generated_at", "drafts")) ||
+        val version = root.value("version")
+        val expectedKeys = if (version.isExactJsonInteger(2)) {
+            setOf("format", "version", "generated_at", "drafts", "withdrawals")
+        } else {
+            setOf("format", "version", "generated_at", "drafts")
+        }
+        if (!root.hasExactKeys(expectedKeys) ||
             root.value("format") != "trainlog-ai-session-drafts" ||
-            !root.value("version").isExactJsonInteger(1) ||
+            (!version.isExactJsonInteger(1) && !version.isExactJsonInteger(2)) ||
             !root.value("generated_at").isNonemptyJsonString() || root.value("drafts") !is JSONArray ||
             !isUtcTimestamp(root.optString("generated_at"))) {
-            return AiSessionDraftImportResult.Invalid("Artifact de brouillons IA v1 non supporté.")
+            return AiSessionDraftImportResult.Invalid("Artifact de brouillons IA non supporté.")
         }
         val drafts = root.getJSONArray("drafts")
-        if (drafts.length() > MAX_AI_DRAFTS)
+        val withdrawals = if (version.isExactJsonInteger(2)) {
+            root.getJSONArray("withdrawals")
+        } else {
+            JSONArray()
+        }
+        if (drafts.length() > MAX_AI_DRAFTS || withdrawals.length() > MAX_AI_DRAFTS)
             return AiSessionDraftImportResult.Invalid("Trop de brouillons IA.")
 
         val db = database.writableDatabase
@@ -1846,6 +1857,31 @@ class TrainlogRepository(
                      * permanent tombstones and never recreate their children. */
                     skipped++
                 }
+            }
+            for (withdrawalIndex in 0 until withdrawals.length()) {
+                val withdrawal = withdrawals.opt(withdrawalIndex) as? JSONObject
+                    ?: throw IllegalArgumentException("Retrait de proposition IA invalide.")
+                if (!withdrawal.hasExactKeys(setOf("draft_id", "withdrawn_at"))) {
+                    throw IllegalArgumentException("Champs de retrait IA invalides.")
+                }
+                val draftId = withdrawal.value("draft_id") as? String
+                    ?: throw IllegalArgumentException("draft_id de retrait invalide.")
+                val withdrawnAt = withdrawal.value("withdrawn_at") as? String
+                    ?: throw IllegalArgumentException("withdrawn_at invalide.")
+                if (!draftId.matches(AI_DRAFT_ID_V4_PATTERN) || !isUtcTimestamp(withdrawnAt)) {
+                    throw IllegalArgumentException("Retrait de proposition IA invalide.")
+                }
+                db.execSQL(
+                    "INSERT OR IGNORE INTO ai_session_drafts(" +
+                        "draft_id,created_at,state,state_changed_at) VALUES(?,?,'deleted',?);",
+                    arrayOf(draftId, withdrawnAt, withdrawnAt),
+                )
+                db.execSQL(
+                    "UPDATE ai_session_drafts SET state='deleted',state_changed_at=? " +
+                        "WHERE draft_id=? AND state='pending';",
+                    arrayOf(withdrawnAt, draftId),
+                )
+                db.delete("ai_session_draft_entries", "draft_id=?", arrayOf(draftId))
             }
             db.setTransactionSuccessful()
             AiSessionDraftImportResult.Applied(imported, skipped)

@@ -1,5 +1,6 @@
 #include "trainlog/web_programs.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -468,6 +469,44 @@ TrainlogStatus trainlog_web_programs_detail_json(TrainlogDatabase *database,
     return write_document(document, output_json, output_size);
 }
 
+static bool equipment_is_known(TrainlogDatabase *database, yyjson_val *equipment) {
+    sqlite3_stmt *statement = NULL;
+    int result;
+
+    if (yyjson_is_null(equipment)) {
+        return true;
+    }
+    result = sqlite3_prepare_v2(
+        database->connection,
+        "SELECT 1 FROM custom_equipment e WHERE e.equipment_id=?1 AND NOT EXISTS("
+        "SELECT 1 FROM sync_causal_state c WHERE c.target_kind='custom_equipment' "
+        "AND c.target_id=e.equipment_id AND c.deleted=1)",
+        -1,
+        &statement,
+        NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, yyjson_get_str(equipment), -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    (void)sqlite3_finalize(statement);
+    return result == SQLITE_ROW;
+}
+
+static bool valid_target_weight(const char *load_mode, yyjson_val *weight) {
+    double target_weight;
+
+    if (strcmp(load_mode, "none") == 0) {
+        return yyjson_is_null(weight);
+    }
+    if (!yyjson_is_num(weight)) {
+        return false;
+    }
+    target_weight = yyjson_get_num(weight);
+    return isfinite(target_weight) && target_weight > 0.0 && target_weight <= 2000.0;
+}
+
 static bool valid_occurrence(TrainlogDatabase *database, yyjson_val *occurrence) {
     static const char *const KEYS[] = {"entry_id",
                                        "exercise_id",
@@ -487,6 +526,8 @@ static bool valid_occurrence(TrainlogDatabase *database, yyjson_val *occurrence)
     int prepare_result;
     int bind_result;
     int step_result;
+    yyjson_val *equipment;
+    yyjson_val *weight;
 
     if (!object_has_exact_keys(occurrence, KEYS, sizeof(KEYS) / sizeof(KEYS[0])) ||
         !bounded_string(yyjson_obj_get(occurrence, "entry_id"), 128U, false) ||
@@ -505,6 +546,11 @@ static bool valid_occurrence(TrainlogDatabase *database, yyjson_val *occurrence)
     load_mode = yyjson_get_str(yyjson_obj_get(occurrence, "load_mode"));
     if (strcmp(load_mode, "none") != 0 && strcmp(load_mode, "external") != 0 &&
         strcmp(load_mode, "assistance") != 0) {
+        return false;
+    }
+    equipment = yyjson_obj_get(occurrence, "equipment_id");
+    weight = yyjson_obj_get(occurrence, "target_weight_kg");
+    if (!equipment_is_known(database, equipment) || !valid_target_weight(load_mode, weight)) {
         return false;
     }
     prepare_result =
@@ -552,10 +598,12 @@ static bool valid_occurrence(TrainlogDatabase *database, yyjson_val *occurrence)
     if (strcmp(tracking_mode, "reps") == 0) {
         yyjson_val *target_reps = yyjson_obj_get(occurrence, "target_reps");
         return yyjson_is_int(target_reps) && yyjson_get_sint(target_reps) >= 1 &&
+               yyjson_get_sint(target_reps) <= 10000 &&
                yyjson_is_null(yyjson_obj_get(occurrence, "target_duration_seconds"));
     }
     return yyjson_is_int(yyjson_obj_get(occurrence, "target_duration_seconds")) &&
            yyjson_get_sint(yyjson_obj_get(occurrence, "target_duration_seconds")) >= 1 &&
+           yyjson_get_sint(yyjson_obj_get(occurrence, "target_duration_seconds")) <= 604800 &&
            yyjson_is_null(yyjson_obj_get(occurrence, "target_reps"));
 }
 
@@ -955,24 +1003,42 @@ static TrainlogStatus program_persist_import(TrainlogDatabase *database,
     return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_DATABASE_ERROR : status;
 }
 
-static TrainlogStatus program_build_import_response(const char *program_id,
+static TrainlogStatus program_build_import_response(yyjson_val *program,
                                                     const char *digest,
-                                                    size_t session_count,
                                                     bool imported,
                                                     char **output_json,
                                                     size_t *output_size) {
     yyjson_mut_doc *response = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = response == NULL ? NULL : yyjson_mut_obj(response);
+    yyjson_mut_val *warnings = response == NULL ? NULL : yyjson_mut_arr(response);
+    yyjson_val *start_date = yyjson_obj_get(program, "start_date");
+    yyjson_val *end_date = yyjson_obj_get(program, "end_date");
 
-    if (response == NULL || root == NULL) {
+    if (response == NULL || root == NULL || warnings == NULL) {
         yyjson_mut_doc_free(response);
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
     yyjson_mut_doc_set_root(response, root);
     (void)yyjson_mut_obj_add_uint(response, root, "api_version", 1U);
-    (void)yyjson_mut_obj_add_strcpy(response, root, "program_id", program_id);
+    (void)yyjson_mut_obj_add_strcpy(
+        response, root, "program_id", yyjson_get_str(yyjson_obj_get(program, "program_id")));
+    (void)yyjson_mut_obj_add_strcpy(
+        response, root, "title", yyjson_get_str(yyjson_obj_get(program, "title")));
+    if (yyjson_is_null(start_date)) {
+        (void)yyjson_mut_obj_add_null(response, root, "start_date");
+    } else {
+        (void)yyjson_mut_obj_add_strcpy(response, root, "start_date", yyjson_get_str(start_date));
+    }
+    if (yyjson_is_null(end_date)) {
+        (void)yyjson_mut_obj_add_null(response, root, "end_date");
+    } else {
+        (void)yyjson_mut_obj_add_strcpy(response, root, "end_date", yyjson_get_str(end_date));
+    }
     (void)yyjson_mut_obj_add_strcpy(response, root, "payload_sha256", digest);
-    (void)yyjson_mut_obj_add_uint(response, root, "session_count", session_count);
+    (void)yyjson_mut_obj_add_uint(
+        response, root, "session_count", yyjson_arr_size(yyjson_obj_get(program, "sessions")));
+    (void)yyjson_mut_obj_add_uint(response, root, "unknown_exercise_count", 0U);
+    (void)yyjson_mut_obj_add_val(response, root, "warnings", warnings);
     (void)yyjson_mut_obj_add_bool(response, root, "imported", imported);
     return write_document(response, output_json, output_size);
 }
@@ -1018,12 +1084,7 @@ TrainlogStatus trainlog_web_programs_import_json(TrainlogDatabase *database,
         imported = status == TRAINLOG_STATUS_OK;
     }
     if (status == TRAINLOG_STATUS_OK) {
-        status = program_build_import_response(program_id,
-                                               digest,
-                                               yyjson_arr_size(yyjson_obj_get(program, "sessions")),
-                                               imported,
-                                               output_json,
-                                               output_size);
+        status = program_build_import_response(program, digest, imported, output_json, output_size);
     }
     yyjson_doc_free(input);
     return status;

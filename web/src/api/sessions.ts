@@ -264,3 +264,34 @@ export async function withdrawPreparation(
   }
   return value as unknown as PreparationWithdrawalResult
 }
+
+export type DeletableSessionKind = 'proposal' | 'draft' | 'history'
+
+export async function deleteSessionResource(
+  kind: DeletableSessionKind,
+  identity: string,
+  revision: string,
+): Promise<void> {
+  const csrf = await mutationCsrfToken()
+  const response = await fetch(
+    `/api/v1/sessions/${kind}/${encodeURIComponent(identity)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Trainlog-CSRF-Token': csrf,
+        'X-Trainlog-Request-ID': requestId(),
+        'If-Match': `"${revision}"`,
+      },
+      body: '{}',
+    },
+  )
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    const reason = object(value) && typeof value.error === 'string'
+      ? value.error
+      : `HTTP ${response.status}`
+    throw new Error(reason)
+  }
+}

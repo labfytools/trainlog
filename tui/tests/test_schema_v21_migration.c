@@ -29,6 +29,7 @@ static int scalar(sqlite3 *database, const char *sql) {
 
 int main(void) {
     static const char DOWNGRADE_TO_V20[] = "PRAGMA foreign_keys=OFF;"
+                                           "DROP TABLE web_session_deletion_requests;"
                                            "DROP TABLE program_requests;"
                                            "DROP TABLE program_session_entries;"
                                            "DROP TABLE program_sessions;"
@@ -78,6 +79,10 @@ int main(void) {
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(scalar(raw, "PRAGMA user_version") == TRAINLOG_DATABASE_SCHEMA_VERSION);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM session_preparation_withdrawals") == 0);
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM web_session_deletion_requests") == 0);
+    CHECK(scalar(raw,
+                 "SELECT COUNT(*) FROM pragma_table_info('ai_session_drafts') "
+                 "WHERE name='withdrawn_at'") == 1);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM sync_generations") == 0);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM sync_consumed_generations") == 0);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM sync_acknowledgements") == 0);

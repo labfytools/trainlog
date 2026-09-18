@@ -63,6 +63,41 @@ class AiSessionDraftRepositoryTest {
     }
 
     @Test
+    fun desktopWithdrawalTombstonePreventsLegacyReplay() {
+        val exercise = exercise()
+        val legacyArtifact = artifact(exercise.exerciseId)
+        assertEquals(
+            AiSessionDraftImportResult.Applied(1, 0),
+            repository.applyAiSessionDraftsJson(legacyArtifact),
+        )
+        val withdrawalArtifact = JSONObject()
+            .put("format", "trainlog-ai-session-drafts")
+            .put("version", 2)
+            .put("generated_at", "2026-09-18T12:01:00Z")
+            .put("drafts", JSONArray())
+            .put(
+                "withdrawals",
+                JSONArray().put(
+                    JSONObject()
+                        .put("draft_id", DRAFT_ID)
+                        .put("withdrawn_at", "2026-09-18T12:00:00Z"),
+                ),
+            )
+            .toString()
+
+        assertTrue(
+            repository.applyAiSessionDraftsJson(withdrawalArtifact) is
+                AiSessionDraftImportResult.Applied,
+        )
+        assertTrue(repository.listAiSessionDrafts().isEmpty())
+        assertEquals(
+            AiSessionDraftImportResult.Applied(0, 1),
+            repository.applyAiSessionDraftsJson(legacyArtifact),
+        )
+        assertTrue(repository.listAiSessionDrafts().isEmpty())
+    }
+
+    @Test
     fun pendingDraftIsListed() {
         val exercise = exercise()
         assertEquals(AiSessionDraftImportResult.Applied(1, 0),

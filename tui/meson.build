@@ -57,6 +57,7 @@ if web_assets_enabled
     '../web/src/app/useRoute.ts',
     '../web/src/components/EmptyState.tsx',
     '../web/src/components/DisplayPreferences.tsx',
+    '../web/src/components/DeleteConfirmationDialog.tsx',
     '../web/src/components/Footer.tsx',
     '../web/src/components/Header.tsx',
     '../web/src/components/SyncControl.tsx',
@@ -205,6 +206,7 @@ trainlog_core_sources = files(
   'src/web_prepared_items.c',
   'src/web_prepared_items_json.c',
   'src/web_sessions.c',
+  'src/web_session_deletions.c',
   'src/web_programs.c',
   'src/duration.c',
   'src/id.c',
@@ -378,6 +380,15 @@ test_web_programs = executable(
   c_args: strict_c_args,
 )
 test('web_programs', test_web_programs)
+
+test_web_session_deletions = executable(
+  'test_web_session_deletions',
+  'tests/test_web_session_deletions.c',
+  dependencies: trainlog_core_dep,
+  include_directories: trainlog_private_include,
+  c_args: strict_c_args,
+)
+test('web_session_deletions', test_web_session_deletions)
 
 test_dashboard_header = executable(
   'test_dashboard_header',

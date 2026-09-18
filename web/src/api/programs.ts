@@ -58,9 +58,30 @@ export interface ProgramDetail {
 export interface ProgramImportPreview {
   api_version: 1
   program_id: string
+  title: string
+  start_date: string | null
+  end_date: string | null
   payload_sha256: string
   session_count: number
+  unknown_exercise_count: number
+  warnings: string[]
   imported: boolean
+}
+
+function programImportPreview(value: unknown): ProgramImportPreview {
+  if (!object(value) || value.api_version !== 1 ||
+      typeof value.program_id !== 'string' || typeof value.title !== 'string' ||
+      (value.start_date !== null && typeof value.start_date !== 'string') ||
+      (value.end_date !== null && typeof value.end_date !== 'string') ||
+      typeof value.payload_sha256 !== 'string' ||
+      !Number.isSafeInteger(value.session_count) ||
+      !Number.isSafeInteger(value.unknown_exercise_count) ||
+      !Array.isArray(value.warnings) ||
+      !value.warnings.every((warning) => typeof warning === 'string') ||
+      typeof value.imported !== 'boolean') {
+    throw new TypeError('aperçu de programme invalide')
+  }
+  return value as unknown as ProgramImportPreview
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -152,7 +173,7 @@ export async function validateProgramImport(body: string): Promise<ProgramImport
   if (!response.ok) {
     throw new Error(await errorReason(response))
   }
-  return response.json() as Promise<ProgramImportPreview>
+  return programImportPreview(await response.json())
 }
 
 export async function importProgram(body: string): Promise<ProgramImportPreview> {
@@ -160,7 +181,7 @@ export async function importProgram(body: string): Promise<ProgramImportPreview>
   if (!response.ok) {
     throw new Error(await errorReason(response))
   }
-  return response.json() as Promise<ProgramImportPreview>
+  return programImportPreview(await response.json())
 }
 
 export async function archiveProgram(programId: string, revision: string): Promise<void> {

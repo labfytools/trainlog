@@ -96,7 +96,7 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.2",
-        "desktop_schema": 24,
+        "desktop_schema": 25,
         "android_schema": 23,
         "protocols": [
             "mobile-export-v3",
@@ -107,6 +107,7 @@ def main() -> int:
             "generation-ack-v1",
             "generation-archive-v1",
             "session-preparations-v2",
+            "ai-session-drafts-v2",
         ],
         "entry_points": [
             "bin/trainlog",

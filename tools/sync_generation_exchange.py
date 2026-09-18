@@ -68,7 +68,7 @@ ARTIFACTS = (
      "export_training_feedback.py", ()),
     ("causal-deletions", "trainlog-causal-deletions", 1, "causal-deletions-v1.json", True,
      "causal_delete_exchange.py", ("export",)),
-    ("ai-proposals", "trainlog-ai-session-drafts", 1, "ai-proposals-v1.json", False,
+    ("ai-proposals", "trainlog-ai-session-drafts", 2, "ai-proposals-v2.json", False,
      "export_ai_session_drafts.py", ()),
     ("session-preparations", "trainlog-session-preparations", 2,
      "session-preparations-v2.json", False, "export_session_preparations.py", ()),

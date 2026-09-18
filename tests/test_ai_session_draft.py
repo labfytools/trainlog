@@ -36,7 +36,7 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE exercises(id INTEGER PRIMARY KEY,exercise_id TEXT UNIQUE,recording_mode TEXT,tracking_mode TEXT,data_fields INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE exercise_aliases(source_exercise_id TEXT PRIMARY KEY,canonical_exercise_id TEXT);
 CREATE TABLE performed_sets(id INTEGER PRIMARY KEY);
-CREATE TABLE ai_session_drafts(id INTEGER PRIMARY KEY,draft_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL,planned_for TEXT,session_type TEXT NOT NULL,title TEXT,notes TEXT,archive_status TEXT NOT NULL DEFAULT 'pending',archived_at TEXT,archive_error TEXT,published_at TEXT);
+CREATE TABLE ai_session_drafts(id INTEGER PRIMARY KEY,draft_id TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL,planned_for TEXT,session_type TEXT NOT NULL,title TEXT,notes TEXT,archive_status TEXT NOT NULL DEFAULT 'pending',archived_at TEXT,archive_error TEXT,published_at TEXT,withdrawn_at TEXT);
 CREATE TABLE ai_session_draft_entries(id INTEGER PRIMARY KEY,draft_row_id INTEGER NOT NULL REFERENCES ai_session_drafts(id) ON DELETE CASCADE,entry_id TEXT NOT NULL UNIQUE,position INTEGER NOT NULL,exercise_row_id INTEGER NOT NULL REFERENCES exercises(id),source_exercise_id TEXT NOT NULL,recording_mode TEXT NOT NULL,tracking_mode TEXT NOT NULL,data_fields INTEGER NOT NULL,equipment_id TEXT,load_mode TEXT NOT NULL,target_sets INTEGER NOT NULL,target_reps INTEGER,target_duration_seconds INTEGER,target_weight_kg REAL,rest_seconds INTEGER NOT NULL,UNIQUE(draft_row_id,position));
 CREATE TABLE ai_session_draft_imports(draft_row_id INTEGER PRIMARY KEY,draft_id TEXT NOT NULL UNIQUE,payload_sha256 TEXT NOT NULL UNIQUE,imported_at TEXT NOT NULL);
 CREATE TRIGGER ai_session_draft_import_identity_guard BEFORE DELETE ON ai_session_drafts WHEN EXISTS(SELECT 1 FROM ai_session_draft_imports i WHERE i.draft_id=OLD.draft_id) BEGIN SELECT RAISE(ABORT,'AI draft import identity is permanent');END;
@@ -94,8 +94,13 @@ class DraftTests(unittest.TestCase):
         with self.assertRaisesRegex(ImportFailure, "conflit"):
             import_payload(con, changed)
         exported = build_export(con, "2026-09-14T09:02:00Z")
-        self.assertEqual({"format", "version", "generated_at", "drafts"}, set(exported))
+        self.assertEqual(
+            {"format", "version", "generated_at", "drafts", "withdrawals"},
+            set(exported),
+        )
         self.assertEqual("trainlog-ai-session-drafts", exported["format"])
+        self.assertEqual(2, exported["version"])
+        self.assertEqual([], exported["withdrawals"])
         outbound = exported["drafts"][0]["entries"][0]
         self.assertEqual(EX_REPS, outbound["exercise_id"])
         self.assertEqual(3, outbound["data_fields"])
@@ -110,6 +115,24 @@ class DraftTests(unittest.TestCase):
         self.assertEqual([], build_export(con, "2026-09-14T09:02:00Z")["drafts"])
         self.assertIn("published_at", {row[1] for row in con.execute(
             "PRAGMA table_info(ai_session_drafts)")})
+        con.close()
+
+    def test_withdrawn_proposal_is_exported_only_as_a_tombstone(self):
+        con = self.connect()
+        self.assertEqual("imported", import_payload(con, artifact()))
+        con.execute(
+            "UPDATE ai_session_drafts SET withdrawn_at=? WHERE draft_id=?",
+            ("2026-09-18T12:00:00Z", DRAFT_ID),
+        )
+        con.commit()
+
+        exported = build_export(con, "2026-09-18T12:01:00Z")
+
+        self.assertEqual([], exported["drafts"])
+        self.assertEqual(
+            [{"draft_id": DRAFT_ID, "withdrawn_at": "2026-09-18T12:00:00Z"}],
+            exported["withdrawals"],
+        )
         con.close()
 
     def test_target_sets_99_and_bounded_publication_lifecycle(self):

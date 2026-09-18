@@ -15,6 +15,7 @@
 
 #include <sqlite3.h>
 
+#include "database_internal.h"
 #include "trainlog/database.h"
 #include "trainlog/dashboard_layout.h"
 #include "trainlog/web_server.h"
@@ -235,6 +236,18 @@ static bool test_http_contract(TrainlogDatabase *database) {
     CHECK(json_string(created, "preparation_id", preparation_id, sizeof(preparation_id)));
     CHECK(json_string(created, "revision_id", revision_id, sizeof(revision_id)));
     free(created);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO ai_session_drafts("
+                       "draft_id,created_at,session_type,title,archive_status) VALUES("
+                       "'aid_66666666-6666-4666-8666-666666666666',"
+                       "'2026-09-18T10:00:00Z','training','Proposal HTTP','archived');"
+                       "INSERT INTO ai_session_draft_imports VALUES("
+                       "last_insert_rowid(),'aid_66666666-6666-4666-8666-666666666666',"
+                       "'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',"
+                       "'2026-09-18T10:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     (void)unlink("/tmp/trainlog-web-test.db.sync-run.json");
     CHECK(reserve_port(&port, 0) == -2);
     child = fork();
@@ -307,18 +320,17 @@ static bool test_http_contract(TrainlogDatabase *database) {
             revision_id);
         CHECK(exchange(port, request, response, sizeof(response)) &&
               strstr(response, "HTTP/1.1 403") != NULL);
-        (void)snprintf(
-            request,
-            sizeof(request),
-            "DELETE /api/v1/sessions/preparation/%s HTTP/1.1\r\n"
-            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
-            "Content-Type: application/json\r\nIf-Match: \"%s\"\r\n"
-            "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-delete\r\n"
-            "Content-Length: 2\r\n\r\n{}",
-            preparation_id,
-            (unsigned int)port,
-            revision_id,
-            token);
+        (void)snprintf(request,
+                       sizeof(request),
+                       "DELETE /api/v1/sessions/preparation/%s HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+                       "Content-Type: application/json\r\nIf-Match: \"%s\"\r\n"
+                       "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-delete\r\n"
+                       "Content-Length: 2\r\n\r\n{}",
+                       preparation_id,
+                       (unsigned int)port,
+                       revision_id,
+                       token);
         CHECK(exchange(port, request, response, sizeof(response)) &&
               strstr(response, "HTTP/1.1 200") != NULL &&
               strstr(response, "\"android_cancellation\":\"not_required\"") != NULL);
@@ -330,6 +342,42 @@ static bool test_http_contract(TrainlogDatabase *database) {
         CHECK(exchange(port, request, response, sizeof(response)) &&
               strstr(response, "HTTP/1.1 200") != NULL &&
               strstr(response, "\"state\":\"withdrawn\"") != NULL);
+        (void)snprintf(request,
+                       sizeof(request),
+                       "DELETE /api/v1/sessions/proposal/"
+                       "aid_66666666-6666-4666-8666-666666666666 HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+                       "Content-Type: application/json\r\nIf-Match: \"stale\"\r\n"
+                       "X-Trainlog-CSRF-Token: %s\r\n"
+                       "X-Trainlog-Request-ID: request-http-delete-proposal-stale\r\n"
+                       "Content-Length: 2\r\n\r\n{}",
+                       (unsigned int)port,
+                       token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 409") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/proposal/"
+            "aid_66666666-6666-4666-8666-666666666666 HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\n"
+            "If-Match: \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\n"
+            "X-Trainlog-Request-ID: request-http-delete-proposal\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            (unsigned int)port,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"state\":\"deleted\"") != NULL);
+        CHECK(exchange(port,
+                       "GET /api/v1/sessions/proposal/"
+                       "aid_66666666-6666-4666-8666-666666666666 HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 404") != NULL);
     }
     CHECK(exchange(port,
                    "GET /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
@@ -362,16 +410,15 @@ static bool test_http_contract(TrainlogDatabase *database) {
         CHECK(response_header(response, "ETag: ", etag, sizeof(etag)) &&
               strcmp(etag, "\"0\"") == 0);
         CHECK(response_header(response, "X-Trainlog-CSRF-Token: ", token, sizeof(token)));
-        (void)snprintf(
-            request,
-            sizeof(request),
-            "PUT /api/v1/web-preferences HTTP/1.1\r\nHost: 127.0.0.1\r\n"
-            "Origin: http://127.0.0.1:%u\r\nContent-Type: application/json\r\n"
-            "If-Match: \"0\"\r\nX-Trainlog-CSRF-Token: %s\r\nContent-Length: 82\r\n\r\n"
-            "{\"format\":\"trainlog-web-preferences\",\"version\":1,\"revision\":0,"
-            "\"date_format\":\"iso\"}",
-            (unsigned int)port,
-            token);
+        (void)snprintf(request,
+                       sizeof(request),
+                       "PUT /api/v1/web-preferences HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                       "Origin: http://127.0.0.1:%u\r\nContent-Type: application/json\r\n"
+                       "If-Match: \"0\"\r\nX-Trainlog-CSRF-Token: %s\r\nContent-Length: 82\r\n\r\n"
+                       "{\"format\":\"trainlog-web-preferences\",\"version\":1,\"revision\":0,"
+                       "\"date_format\":\"iso\"}",
+                       (unsigned int)port,
+                       token);
         CHECK(exchange(port, request, response, sizeof(response)) &&
               strstr(response, "HTTP/1.1 200") != NULL &&
               strstr(response, "\"revision\":1") != NULL &&
@@ -390,10 +437,7 @@ static bool test_http_contract(TrainlogDatabase *database) {
             const char *config = getenv("XDG_CONFIG_HOME");
 
             CHECK(config != NULL);
-            CHECK(snprintf(path,
-                           sizeof(path),
-                           "%s/trainlog/web/preferences-v1.json",
-                           config) > 0);
+            CHECK(snprintf(path, sizeof(path), "%s/trainlog/web/preferences-v1.json", config) > 0);
             stream = fopen(path, "w");
             CHECK(stream != NULL);
             CHECK(fputs("invalid preference\n", stream) >= 0);

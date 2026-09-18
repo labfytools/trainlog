@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the PC→Android trainlog-ai-session-drafts v1 companion."""
+"""Export the PC→Android trainlog-ai-session-drafts v2 companion."""
 
 from __future__ import annotations
 
@@ -28,6 +28,9 @@ def ensure_publication_state(connection):
     if "published_at" not in columns:
         connection.execute(
             "ALTER TABLE ai_session_drafts ADD COLUMN published_at TEXT")
+    if "withdrawn_at" not in columns:
+        connection.execute(
+            "ALTER TABLE ai_session_drafts ADD COLUMN withdrawn_at TEXT")
     # INVARIANT: publication never weakens the permanent Drive replay ledger,
     # including on an older v18 database whose FK was declared cascading.
     connection.execute(
@@ -45,7 +48,7 @@ def build_export(connection, generated_at):
     drafts = []
     rows = connection.execute(
         "SELECT id,draft_id,created_at,planned_for,session_type,title,notes "
-        "FROM ai_session_drafts WHERE published_at IS NULL "
+        "FROM ai_session_drafts WHERE published_at IS NULL AND withdrawn_at IS NULL "
         "ORDER BY created_at COLLATE BINARY,draft_id COLLATE BINARY LIMIT ?",
         (MAX_DRAFTS,),
     ).fetchall()
@@ -72,8 +75,22 @@ def build_export(connection, generated_at):
         })
     # CONTRACT: this companion is separate from every mobile-export version.
     # INVARIANT: archive bookkeeping is desktop-private and is never published.
-    return {"format": "trainlog-ai-session-drafts", "version": 1,
-            "generated_at": generated_at, "drafts": drafts}
+    withdrawals = [
+        {"draft_id": row[0], "withdrawn_at": row[1]}
+        for row in connection.execute(
+            "SELECT draft_id,withdrawn_at FROM ai_session_drafts "
+            "WHERE withdrawn_at IS NOT NULL ORDER BY withdrawn_at,draft_id "
+            "LIMIT ?",
+            (MAX_DRAFTS,),
+        )
+    ]
+    return {
+        "format": "trainlog-ai-session-drafts",
+        "version": 2,
+        "generated_at": generated_at,
+        "drafts": drafts,
+        "withdrawals": withdrawals,
+    }
 
 
 def mark_published(connection, payload, published_at):
@@ -84,9 +101,17 @@ def mark_published(connection, payload, published_at):
     retry exports the same deterministic IDs and the import ledger is retained.
     """
     ensure_publication_state(connection)
-    if (not isinstance(payload, dict) or set(payload) != {"format", "version", "generated_at", "drafts"}
-            or payload["format"] != "trainlog-ai-session-drafts" or payload["version"] != 1
-            or not isinstance(payload["drafts"], list) or len(payload["drafts"]) > MAX_DRAFTS):
+    expected_keys = {"format", "version", "generated_at", "drafts", "withdrawals"}
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != expected_keys
+        or payload["format"] != "trainlog-ai-session-drafts"
+        or payload["version"] != 2
+        or not isinstance(payload["drafts"], list)
+        or len(payload["drafts"]) > MAX_DRAFTS
+        or not isinstance(payload["withdrawals"], list)
+        or len(payload["withdrawals"]) > MAX_DRAFTS
+    ):
         raise ValueError("lot de brouillons IA publié invalide")
     draft_ids = []
     for draft in payload["drafts"]:

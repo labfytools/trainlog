@@ -33,7 +33,8 @@ static const ListDefinition LISTS[] = {
      "SELECT d.draft_id,COALESCE(d.title,''),d.planned_for,CASE WHEN d.published_at IS NULL THEN "
      "'local' ELSE 'published' END,COUNT(e.entry_id),d.created_at "
      "FROM ai_session_drafts d LEFT JOIN ai_session_draft_entries e ON e.draft_row_id=d.id "
-     "WHERE (?1='' OR d.title LIKE '%'||?1||'%' COLLATE NOCASE OR EXISTS(SELECT 1 FROM "
+     "WHERE d.withdrawn_at IS NULL AND (?1='' OR d.title LIKE '%'||?1||'%' COLLATE NOCASE OR "
+     "EXISTS(SELECT 1 FROM "
      "ai_session_draft_entries ae JOIN exercises x ON x.id=ae.exercise_row_id WHERE "
      "ae.draft_row_id=d.id AND x.name LIKE '%'||?1||'%' COLLATE NOCASE)) "
      "GROUP BY d.id ORDER BY COALESCE(d.planned_for,'9999-12-31'),d.created_at,d.draft_id LIMIT ?2 "
@@ -198,9 +199,11 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
     const char *sql =
         proposal ? "SELECT "
                    "d.draft_id,COALESCE(d.title,''),d.planned_for,d.session_type,d.notes,"
-                   "i.payload_sha256,d.draft_id,CASE WHEN d.published_at IS NULL THEN "
+                   "i.payload_sha256,COALESCE(i.payload_sha256,d.draft_id),CASE WHEN "
+                   "d.published_at IS NULL THEN "
                    "'local' ELSE 'published' END FROM ai_session_drafts d LEFT JOIN "
-                   "ai_session_draft_imports i ON i.draft_row_id=d.id WHERE d.draft_id=?1"
+                   "ai_session_draft_imports i ON i.draft_row_id=d.id WHERE d.draft_id=?1 AND "
+                   "d.withdrawn_at IS NULL"
                  : "SELECT "
                    "p.preparation_id,r.title,r.planned_for,r.session_type,r.notes,"
                    "COALESCE(p.source_payload_sha256,''),p.current_revision_id,"
@@ -339,8 +342,11 @@ static TrainlogStatus detail_for_history(TrainlogDatabase *database,
                                          const char *identity,
                                          yyjson_mut_doc *document,
                                          yyjson_mut_val *root) {
-    static const char SESSION_SQL[] = "SELECT session_id,session_type,started_at,ended_at,notes "
-                                      "FROM sessions WHERE session_id=?1";
+    static const char SESSION_SQL[] =
+        "SELECT s.session_id,s.session_type,s.started_at,s.ended_at,s.notes,"
+        "COALESCE(c.current_revision_id,'') FROM sessions s LEFT JOIN sync_causal_state c ON "
+        "c.target_kind='session' AND c.target_id=s.session_id AND c.deleted=0 "
+        "WHERE s.session_id=?1";
     static const char ENTRY_SQL[] =
         "SELECT "
         "se.entry_id,se.position,x.exercise_id,x.name,se.equipment_id,se.recording_mode,se."
@@ -369,7 +375,8 @@ static TrainlogStatus detail_for_history(TrainlogDatabase *database,
         !add_nullable_text(document, root, "session_type", statement, 1) ||
         !add_nullable_text(document, root, "started_at", statement, 2) ||
         !add_nullable_text(document, root, "ended_at", statement, 3) ||
-        !add_nullable_text(document, root, "notes", statement, 4)) {
+        !add_nullable_text(document, root, "notes", statement, 4) ||
+        !add_nullable_text(document, root, "revision_id", statement, 5)) {
         (void)sqlite3_finalize(statement);
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }

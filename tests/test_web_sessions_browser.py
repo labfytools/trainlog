@@ -123,6 +123,15 @@ class BrowserSessionsTest(unittest.TestCase):
                     str(EVIDENCE / "web-sessions-list-desktop.png")
                 ))
 
+                driver.find_element(By.XPATH, "//button[normalize-space()='Programmes']").click()
+                wait.until(lambda current: "Importer un programme" in current.page_source)
+                set_viewport(390, 844)
+                self.assertTrue(driver.save_screenshot(
+                    str(EVIDENCE / "web-programs-empty-mobile.png")
+                ))
+                driver.find_element(By.XPATH, "//button[normalize-space()='Préparation']").click()
+                wait.until(lambda current: "Nouvelle séance" in current.page_source)
+
                 driver.find_element(By.XPATH, "//button[normalize-space()='Nouvelle séance']").click()
                 wait.until(lambda current: "Nouvelle séance" in current.page_source)
                 title = driver.find_element(By.XPATH, "//label[normalize-space()='Titre']/input")

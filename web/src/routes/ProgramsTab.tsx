@@ -101,6 +101,18 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
             {' · '}{session.occurrences.length} exercice
             {session.occurrences.length > 1 ? 's' : ''}
           </p>
+          <ol className="program-occurrence-list">
+            {session.occurrences.map((occurrence) => <li key={occurrence.entry_id}>
+              <span>{occurrence.exercise_id}</span>
+              <small>
+                {occurrence.target_sets ?? '—'} série
+                {occurrence.target_sets === 1 ? '' : 's'} ·{' '}
+                {occurrence.tracking_mode === 'reps'
+                  ? `${occurrence.target_reps ?? '—'} répétitions`
+                  : `${occurrence.target_duration_seconds ?? '—'} s`}
+              </small>
+            </li>)}
+          </ol>
         </div>
         <button
           type="button"
@@ -219,11 +231,24 @@ export function ProgramsTab({ detailProgramId, onOpen, onBack }: {
     </div>
     {preview && <section className="import-preview" aria-labelledby="import-preview-title">
       <h2 id="import-preview-title">Aperçu avant import</h2>
-      <p><strong>{fileName}</strong></p>
+      <p><strong>{preview.title}</strong> · fichier {fileName}</p>
       <p>
-        Identité : {preview.program_id} · {preview.session_count} séance
+        {preview.session_count} séance
         {preview.session_count > 1 ? 's' : ''}
       </p>
+      <p>
+        {preview.start_date
+          ? formatCivilDate(preview.start_date, dateFormat)
+          : 'Début non défini'}
+        {' — '}
+        {preview.end_date
+          ? formatCivilDate(preview.end_date, dateFormat)
+          : 'fin non définie'}
+      </p>
+      <p>{preview.unknown_exercise_count} identité d’exercice inconnue.</p>
+      {preview.warnings.length > 0 && <ul>
+        {preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+      </ul>}
       <p>Aucune donnée n’a encore été enregistrée.</p>
       <div className="confirmation-actions">
         <button type="button" onClick={cancelImport}>Annuler</button>

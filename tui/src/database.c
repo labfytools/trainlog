@@ -1208,6 +1208,10 @@ static const char *const MIGRATE_V24_TO_V25_SQL =
     "CREATE TABLE IF NOT EXISTS program_requests("
     "request_id TEXT PRIMARY KEY,command TEXT NOT NULL,program_id TEXT NOT NULL,"
     "response_json TEXT NOT NULL,created_at TEXT NOT NULL);"
+    "CREATE TABLE IF NOT EXISTS web_session_deletion_requests("
+    "request_id TEXT PRIMARY KEY,resource_kind TEXT NOT NULL,target_id TEXT NOT NULL,"
+    "expected_revision TEXT NOT NULL,response_json TEXT NOT NULL,created_at TEXT NOT NULL,"
+    "UNIQUE(resource_kind,target_id));"
     "PRAGMA user_version=25;COMMIT;";
 
 /* CONTRACT: migration fixtures may retain additive v25 columns while
@@ -1249,6 +1253,43 @@ static TrainlogStatus ensure_v25_preparation_provenance(TrainlogDatabase *databa
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
     return TRAINLOG_STATUS_OK;
+}
+
+static TrainlogStatus ensure_v25_proposal_withdrawal(TrainlogDatabase *database) {
+    sqlite3_stmt *statement = NULL;
+    bool found = false;
+    int result;
+
+    result = sqlite3_prepare_v2(
+        database->connection, "PRAGMA table_info(ai_session_drafts);", -1, &statement, NULL);
+    if (result != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *name = (const char *)sqlite3_column_text(statement, 1);
+
+        if (name != NULL && strcmp(name, "withdrawn_at") == 0) {
+            found = true;
+        }
+    }
+    if (result != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (!found &&
+        execute_sql(database, "ALTER TABLE ai_session_drafts ADD COLUMN withdrawn_at TEXT;") !=
+            TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return TRAINLOG_STATUS_OK;
+}
+
+static TrainlogStatus ensure_v25_web_deletion_requests(TrainlogDatabase *database) {
+    return execute_sql(database,
+                       "CREATE TABLE IF NOT EXISTS web_session_deletion_requests("
+                       "request_id TEXT PRIMARY KEY,resource_kind TEXT NOT NULL,"
+                       "target_id TEXT NOT NULL,expected_revision TEXT NOT NULL,"
+                       "response_json TEXT NOT NULL,created_at TEXT NOT NULL,"
+                       "UNIQUE(resource_kind,target_id));");
 }
 
 /* CONTRACT: v18 was already deployed before bounded draft publication was
@@ -2087,6 +2128,12 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v25_preparation_provenance(database);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = ensure_v25_proposal_withdrawal(database);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = ensure_v25_web_deletion_requests(database);
     }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);

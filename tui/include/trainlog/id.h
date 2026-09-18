@@ -42,7 +42,8 @@
  * - `sxe` for persisted session-exercise occurrences;
  * - `sp`, `spr`, `spe`, `spd`, and `spw` for preparation, revision,
  *   occurrence, delivery, and withdrawal identities;
- * - `pgr` for desktop Program V1 revision identities.
+ * - `pgr` for desktop Program V1 revision identities;
+ * - `del` for immutable causal deletion operations.
  *
  * Imported v1 documents may contain other schema-valid opaque identifiers;
  * this API defines creation policy, not import validation.

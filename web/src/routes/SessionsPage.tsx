@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   fetchCatalog,
+  deleteSessionResource,
   fetchSessionDetail,
   fetchReadonlySessionDetail,
   prepareForAndroid,
@@ -14,6 +15,7 @@ import {
   type SessionDetail,
   type SessionListItem,
 } from '../api/sessions'
+import { DeleteConfirmationDialog } from '../components/DeleteConfirmationDialog'
 import { useDatePreferences } from '../presentation/DatePreferences'
 import {
   formatCivilDate,
@@ -39,6 +41,53 @@ function viewLabel(view: View): string {
 }
 
 export type SessionListEntry = SessionListItem & { collection: SessionCollection }
+
+function deletionKind(collection: SessionCollection): 'preparation' | 'proposal' | 'draft' | 'history' {
+  if (collection === 'preparations') return 'preparation'
+  if (collection === 'proposals') return 'proposal'
+  if (collection === 'drafts') return 'draft'
+  return 'history'
+}
+
+function deletionLabel(kind: 'preparation' | 'proposal' | 'draft' | 'history'): string {
+  const labels = {
+    preparation: 'Supprimer la préparation',
+    proposal: 'Supprimer la proposition',
+    draft: 'Abandonner le brouillon',
+    history: 'Supprimer la séance de l’historique',
+  }
+  return labels[kind]
+}
+
+function deletionType(kind: 'preparation' | 'proposal' | 'draft' | 'history'): string {
+  const labels = {
+    preparation: 'PRÉPARATION MANUELLE',
+    proposal: 'PROPOSITION IA',
+    draft: 'BROUILLON D’EXÉCUTION',
+    history: 'SÉANCE RÉALISÉE',
+  }
+  return labels[kind]
+}
+
+function deletionConsequence(kind: 'preparation' | 'proposal' | 'draft' | 'history'): string {
+  const consequences = {
+    preparation: 'La préparation sera retirée. Ses livraisons Android non commencées seront annulées, sans effacer un entraînement réel.',
+    proposal: 'La proposition sera retirée et son retrait sera propagé. Les préparations ou séances déjà dérivées seront conservées.',
+    draft: 'Le brouillon sera abandonné seulement s’il n’est pas actif ou modifié concurremment sur Android.',
+    history: 'La séance sera retirée de l’historique avec une protection empêchant sa réapparition depuis un ancien instantané.',
+  }
+  return consequences[kind]
+}
+
+function deletionSuccess(kind: 'preparation' | 'proposal' | 'draft' | 'history'): string {
+  const messages = {
+    preparation: 'Préparation supprimée.',
+    proposal: 'Proposition supprimée.',
+    draft: 'Brouillon abandonné.',
+    history: 'Séance supprimée de l’historique.',
+  }
+  return messages[kind]
+}
 
 function compareIdentity(left: SessionListEntry, right: SessionListEntry): number {
   return `${left.collection}:${left.identity}`.localeCompare(
@@ -250,8 +299,7 @@ function Editor({ initial, onSaved, onCancel }: {
 function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'proposal'; identity: string;
   onBack: () => void; onEdit: (detail: SessionDetail) => void }) {
   const { dateFormat } = useDatePreferences()
-  const deleteTrigger = useRef<HTMLButtonElement>(null)
-  const cancelDelete = useRef<HTMLButtonElement>(null)
+  const deleteTrigger = useRef<HTMLElement | null>(null)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [failed, setFailed] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -265,9 +313,6 @@ function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'pro
       if (!controller.signal.aborted) setFailed(true)
     })
     return () => controller.abort() }, [kind, identity])
-  useEffect(() => {
-    if (confirming) cancelDelete.current?.focus()
-  }, [confirming])
   if (failed) return <div className="error-panel" role="alert">Fiche indisponible. <button onClick={onBack}>Retour</button></div>
   if (!detail) return <p aria-live="polite">Chargement de la fiche…</p>
   const withdrawn = detail.state === 'withdrawn'
@@ -275,17 +320,20 @@ function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'pro
     setDeleting(true)
     setDeleteError('')
     try {
-      const result = await withdrawPreparation(detail.identity, detail.revision_id)
-      setConfirming(false)
-      setMessage(result.android_cancellation === 'pending'
-        ? 'Supprimée sur le PC — annulation Android à synchroniser.'
-        : 'Préparation supprimée sur le PC. Aucune livraison Android à annuler.')
-      setDetail({ ...detail, state: 'withdrawn', withdrawal_id: result.withdrawal_id })
-      try {
-        setDetail(await fetchSessionDetail('preparation', detail.identity))
-      } catch {
-        setMessage((current) => `${current} Rechargez la fiche pour obtenir l’état synchronisé.`)
+      if (kind === 'preparation') {
+        const result = await withdrawPreparation(detail.identity, detail.revision_id)
+        setMessage(result.android_cancellation === 'pending'
+          ? 'Supprimée sur le PC — annulation Android à synchroniser.'
+          : 'Préparation supprimée sur le PC. Aucune livraison Android à annuler.')
+        setDetail({ ...detail, state: 'withdrawn', withdrawal_id: result.withdrawal_id })
+      } else {
+        await deleteSessionResource('proposal', detail.identity, detail.revision_id)
+        setMessage('Proposition supprimée. Son retrait sera propagé sans toucher aux préparations dérivées.')
+        setConfirming(false)
+        onBack()
+        return
       }
+      setConfirming(false)
     } catch (reason) {
       setDeleteError(reason instanceof Error ? reason.message : 'Suppression impossible')
     } finally {
@@ -297,27 +345,28 @@ function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'pro
     {!withdrawn && <div className="detail-actions">
       <button type="button" className="primary-action" onClick={() => onEdit(detail)}>
         {kind === 'preparation' ? 'Modifier' : 'Préparer à partir de cette proposition'}</button>
-      {kind === 'preparation' && <button ref={deleteTrigger} type="button" className="danger-action"
-        onClick={() => setConfirming(true)}>Supprimer la préparation</button>}
+      <button
+        ref={(element) => { deleteTrigger.current = element }}
+        type="button"
+        className="danger-action"
+        onClick={() => setConfirming(true)}
+      >{deletionLabel(kind)}</button>
     </div>}</div>
     {message && <p className="success-panel" role="status">{message}</p>}
     {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
-    {confirming && <section className="delete-confirmation" role="alertdialog" aria-modal="true"
-      aria-labelledby="delete-preparation-title">
-      <h3 id="delete-preparation-title">Supprimer « {detail.title || 'Sans titre'} » ?</h3>
-      <p>{detail.state === 'local'
-        ? 'La préparation sera retirée du planning. Elle n’a aucune livraison Android connue.'
-        : 'La préparation sera retirée du planning. Ses livraisons Android non commencées seront annulées lors de la prochaine synchronisation ; toute exécution commencée sera conservée.'}</p>
-      <div className="confirmation-actions">
-        <button ref={cancelDelete} type="button" className="quiet-action" disabled={deleting}
-          onClick={() => {
-            setConfirming(false)
-            requestAnimationFrame(() => deleteTrigger.current?.focus())
-          }}>Conserver la préparation</button>
-        <button type="button" className="danger-action" disabled={deleting}
-          onClick={() => void remove()}>{deleting ? 'Suppression…' : 'Supprimer la préparation'}</button>
-      </div>
-    </section>}
+    {confirming && <DeleteConfirmationDialog
+      title={detail.title || 'Sans titre'}
+      itemType={deletionType(kind)}
+      date={detail.planned_for ? formatCivilDate(detail.planned_for, dateFormat) : null}
+      consequence={deletionConsequence(kind)}
+      cancelLabel="Conserver"
+      confirmLabel={deletionLabel(kind)}
+      busy={deleting}
+      error={deleteError}
+      returnFocus={deleteTrigger}
+      onCancel={() => setConfirming(false)}
+      onConfirm={() => void remove()}
+    />}
     <header className="detail-summary"><p className="eyebrow">{kind === 'proposal' ? 'PROPOSITION IA' : 'PRÉPARATION MANUELLE'}</p>
       <h2>{detail.title || 'Sans titre'}</h2><p>
         {detail.planned_for === null ? 'Non planifiée' : <time dateTime={detail.planned_for}>
@@ -351,8 +400,12 @@ function ReadonlyDetail({ kind, identity, onBack }: {
   kind: 'draft' | 'history'; identity: string; onBack: () => void
 }) {
   const { dateFormat } = useDatePreferences()
+  const deleteTrigger = useRef<HTMLElement | null>(null)
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
   const [failed, setFailed] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   useEffect(() => { const controller = new AbortController(); setFailed(false); setDetail(null)
     fetchReadonlySessionDetail(kind, identity, controller.signal).then((value) => {
       if (!controller.signal.aborted) setDetail(value)
@@ -367,8 +420,47 @@ function ReadonlyDetail({ kind, identity, onBack }: {
     ? detail.payload as Record<string, unknown> : null
   const startedAt = typeof detail.started_at === 'string' ? detail.started_at : null
   const endedAt = typeof detail.ended_at === 'string' ? detail.ended_at : null
+  const revision = typeof detail.revision_id === 'string' ? detail.revision_id : ''
+  const title = kind === 'draft'
+    ? String(detail.session_type ?? 'Brouillon')
+    : String(detail.session_type ?? 'Séance')
+  const remove = async () => {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteSessionResource(kind, identity, revision)
+      setConfirming(false)
+      onBack()
+    } catch (reason) {
+      setDeleteError(reason instanceof Error ? reason.message : 'Suppression impossible')
+    } finally {
+      setDeleting(false)
+    }
+  }
   return <article className="session-detail"><div className="sessions-toolbar">
-    <button type="button" className="quiet-action" onClick={onBack}>← Retour à la liste</button></div>
+    <button type="button" className="quiet-action" onClick={onBack}>← Retour à la liste</button>
+    <button
+      ref={(element) => { deleteTrigger.current = element }}
+      type="button"
+      className="danger-action"
+      disabled={!revision}
+      onClick={() => setConfirming(true)}
+    >{deletionLabel(kind)}</button>
+  </div>
+    {deleteError && !confirming && <p className="form-error" role="alert">{deleteError}</p>}
+    {confirming && <DeleteConfirmationDialog
+      title={title}
+      itemType={deletionType(kind)}
+      date={startedAt ? formatDateTime(startedAt, dateFormat) : null}
+      consequence={deletionConsequence(kind)}
+      cancelLabel="Conserver"
+      confirmLabel={deletionLabel(kind)}
+      busy={deleting}
+      error={deleteError}
+      returnFocus={deleteTrigger}
+      onCancel={() => setConfirming(false)}
+      onConfirm={() => void remove()}
+    />}
     <header className="detail-summary"><p className="eyebrow">{kind === 'draft' ? 'BROUILLON D’EXÉCUTION' : 'SÉANCE RÉALISÉE'}</p>
       <h2>{String(detail.session_type ?? 'Séance')}</h2>
       <p>{startedAt === null ? 'Début inconnu' : <time dateTime={startedAt}>
@@ -402,6 +494,11 @@ export function SessionsPage() {
   const [pending, setPending] = useState(true)
   const [failed, setFailed] = useState(false)
   const [editor, setEditor] = useState<SessionDetail | 'new' | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SessionListEntry | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [statusMessage, setStatusMessage] = useState('')
+  const deleteReturnFocus = useRef<HTMLElement | null>(null)
   const [detailPath, setDetailPath] = useState(() => window.location.pathname)
   const loadRevision = useRef(0)
   const detailMatch = useMemo(() => detailPath.match(/^\/seances\/(preparation|proposal|draft|history)\/([^/]+)$/), [detailPath])
@@ -458,6 +555,34 @@ export function SessionsPage() {
     return owner === undefined ? `État non reconnu (${state})`
       : sessionStateLabel(owner.collection, state)
   }
+  const confirmRowDeletion = async () => {
+    if (!deleteTarget) return
+    const kind = deletionKind(deleteTarget.collection)
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      if (kind === 'preparation' || kind === 'proposal') {
+        const detail = await fetchSessionDetail(kind, deleteTarget.identity)
+        if (kind === 'preparation') {
+          await withdrawPreparation(detail.identity, detail.revision_id)
+        } else {
+          await deleteSessionResource(kind, detail.identity, detail.revision_id)
+        }
+      } else {
+        const detail = await fetchReadonlySessionDetail(kind, deleteTarget.identity)
+        const revision = typeof detail.revision_id === 'string' ? detail.revision_id : ''
+        if (!revision) throw new Error('Cette ressource ne possède pas de révision supprimable.')
+        await deleteSessionResource(kind, deleteTarget.identity, revision)
+      }
+      setDeleteTarget(null)
+      setStatusMessage(deletionSuccess(kind))
+      load()
+    } catch (reason) {
+      setDeleteError(reason instanceof Error ? reason.message : 'Suppression impossible')
+    } finally {
+      setDeleting(false)
+    }
+  }
   if (editor) return <section className="page"><Editor initial={editor === 'new' ? undefined : editor}
     onCancel={() => setEditor(null)} onSaved={(identity) => { setEditor(null); open('preparations', identity) }} /></section>
   if (detailMatch && (detailMatch[1] === 'preparation' || detailMatch[1] === 'proposal')) {
@@ -495,6 +620,7 @@ export function SessionsPage() {
       onBack={back}
     />}
     {view !== 'programs' && <>
+    {statusMessage && <p className="success-panel" role="status">{statusMessage}</p>}
     <label className="session-search"><span>Rechercher par titre ou exercice</span><input type="search" value={search}
       onChange={(event) => setSearch(event.target.value)} /></label>
     <div className="session-filters" aria-label="Filtres de séances">
@@ -508,13 +634,48 @@ export function SessionsPage() {
     <p className="sort-indicator">Date décroissante</p>
     {pending && <p aria-live="polite">Chargement…</p>}{failed && <p className="error-panel" role="alert">Les données ne sont pas disponibles.</p>}
     {!pending && !failed && visibleItems.length === 0 && <p className="empty-inline">Aucun résultat pour cette vue.</p>}
-    <div className="session-list">{visibleItems.map((item) => <button type="button" className="session-row"
-      key={`${item.collection}-${item.identity}`} onClick={() => open(item.collection, item.identity)}>
-      <span><small>{item.collection === 'proposals' ? 'Proposition IA' : item.collection === 'preparations' ? 'Préparation manuelle' : item.collection === 'drafts' ? 'Brouillon d’exécution' : 'Séance réalisée'}</small>
-        <strong>{item.title || 'Sans titre'}</strong></span><span>{item.date === null
-        ? item.collection === 'preparations' || item.collection === 'proposals' ? 'Non planifiée' : 'Date inconnue'
-        : <time dateTime={item.date}>{formatCivilDate(item.date, dateFormat)}</time>}</span>
-      <span>{item.occurrence_count} exercice{item.occurrence_count > 1 ? 's' : ''}</span>
-      <span>{sessionStateLabel(item.collection, item.state)}</span></button>)}</div></>}
+    <div className="session-list">{visibleItems.map((item) => {
+      const kind = deletionKind(item.collection)
+      return <div className="session-row" key={`${item.collection}-${item.identity}`}>
+        <button
+          type="button"
+          className="session-row-main"
+          onClick={() => open(item.collection, item.identity)}
+        >
+          <span><small>{deletionType(kind)}</small><strong>{item.title || 'Sans titre'}</strong></span>
+          <span>{item.date === null
+            ? item.collection === 'preparations' || item.collection === 'proposals'
+              ? 'Non planifiée'
+              : 'Date inconnue'
+            : <time dateTime={item.date}>{formatCivilDate(item.date, dateFormat)}</time>}</span>
+          <span>{item.occurrence_count} exercice{item.occurrence_count > 1 ? 's' : ''}</span>
+          <span>{sessionStateLabel(item.collection, item.state)}</span>
+        </button>
+        <button
+          type="button"
+          className="trash-action"
+          aria-label={deletionLabel(kind)}
+          title={deletionLabel(kind)}
+          onClick={(event) => {
+            deleteReturnFocus.current = event.currentTarget
+            setDeleteError('')
+            setDeleteTarget(item)
+          }}
+        ><span aria-hidden="true">🗑</span></button>
+      </div>
+    })}</div>
+    {deleteTarget && <DeleteConfirmationDialog
+      title={deleteTarget.title || 'Sans titre'}
+      itemType={deletionType(deletionKind(deleteTarget.collection))}
+      date={deleteTarget.date ? formatCivilDate(deleteTarget.date, dateFormat) : null}
+      consequence={deletionConsequence(deletionKind(deleteTarget.collection))}
+      cancelLabel="Conserver"
+      confirmLabel={deletionLabel(deletionKind(deleteTarget.collection))}
+      busy={deleting}
+      error={deleteError}
+      returnFocus={deleteReturnFocus}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => void confirmRowDeletion()}
+    />}</>}
   </section>
 }
