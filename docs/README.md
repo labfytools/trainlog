@@ -16,6 +16,8 @@ evidence and chronology.
 
 - [Web Sessions V1](web_sessions.md) owns the implemented preparation, resume,
   history and Android-delivery workflow.
+- [Program format V1](program_format_v1.md) owns the strict desktop planning
+  import contract used by the Sessions Programs subtab.
 
 - [Android](android.md) owns field-companion capture, local persistence,
   glanceable summaries, permissions, and Android interaction rules.

@@ -4,12 +4,13 @@ Status: implementation contract for `TRAINLOG_WEB_SESSIONS_V1`.
 
 ## Scope and domain boundaries
 
-The Sessions route has three independent views:
+The Sessions route has four independent views:
 
 - Preparation lists manual preparations and immutable imported AI proposals.
 - Resume lists lifecycle-backed execution drafts that are not finalized or causally deleted.
 - History lists completed sessions. A missing `ended_at` is rendered as an unknown end time; it
   does not make a historical row an active draft.
+- Programs lists durable planning definitions and can explicitly derive a manual preparation.
 
 An AI proposal is never mutated by viewing it or by deriving a manual preparation. Derivation is
 an explicit command which creates a new `sp_<uuid-v4>` preparation and records the proposal ID and
@@ -78,6 +79,10 @@ generation containing it is published.
 
 ## Explicit exclusions
 
-This V1 does not implement Programs, Analysis, or the standalone Exercises route. It does not add
+Program V1 and its import boundary are specified separately in
+[`program_format_v1.md`](../program_format_v1.md). They do not turn a program
+into a template, proposal, draft or completed session.
+
+This V1 does not implement Analysis or the standalone Exercises route. It does not add
 live Web workout capture, historical correction, automatic training prescriptions, proposal
 acceptance, or automatic proposal-to-execution conversion.

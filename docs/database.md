@@ -1,5 +1,19 @@
 # Desktop database
 
+## Schema v25: Web deletion requests and Program V1
+
+Schema v25 adds durable Program V1 definitions, their ordered session and
+occurrence children, immutable import digests, request replay records and
+source provenance on derived manual preparations. It also adds the bounded Web
+session-deletion request ledger and nullable AI-proposal `withdrawn_at` state.
+Program import and each application command are transactional. Program rows
+contain planning targets only and cannot own performed sets.
+
+Proposal deletion is logical. Draft and completed-session deletion append an
+immutable causal operation and advance deleted causal state in the same
+transaction; completed sessions also receive a durable deleted finalization.
+These paths do not implement a generic cascading browser delete.
+
 ## Schema v24: durable preparation withdrawal
 
 Schema v24 adds nullable `session_preparations.withdrawn_at` and the immutable
@@ -37,8 +51,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=23
-DATABASE_SCHEMA_V23=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=25
+DATABASE_SCHEMA_V25=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -57,7 +71,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-23
+25
 ```
 
 The independent actual-set loads documented in the current desktop, Android

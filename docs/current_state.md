@@ -52,7 +52,7 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v24 |
+| Desktop SQLite | schema v25 |
 | Android SQLite | schema v23 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
@@ -221,10 +221,11 @@ progression series, an original BODY ZONES SVG, and private versioned layout
 persistence with optimistic conflict and CSRF/Origin protection. It provides no
 automatic browser launch. Sessions provides complete paged preparation,
 resume and history views, stable details, optimistic manual-preparation writes,
-explicit proposal derivation and generation-backed Android delivery. Analyse,
-Programmes and Exercises remain explicit placeholders.
+explicit proposal derivation and generation-backed Android delivery. Programmes
+is implemented as the fourth Sessions subtab; Analyse and Exercises remain
+explicit placeholders, and no standalone Programs route exists.
 
-Desktop schema v24 owns immutable manual-preparation revisions, stable ordered
+Desktop schema v25 owns immutable manual-preparation revisions, stable ordered
 occurrences, persistent HTTP idempotency keys, delivery-to-execution identity,
 and durable revision-bound withdrawal records. Android schema v23 stores
 received preparations and permanent withdrawal results separately from AI
@@ -240,6 +241,19 @@ labels and persisted proposal provenance replace raw enums and digest-only
 presentation. The preparation detail exposes a protected, idempotent **Delete
 preparation** action; withdrawn rows remain technically inspectable but cannot
 be edited or delivered.
+
+Sessions rows expose independent right-edge trash actions and an accessible
+destructive confirmation dialog. Proposal withdrawal preserves derived
+preparations and is propagated by `trainlog-ai-session-drafts` V2; inactive
+execution drafts and completed sessions use revision-guarded causal deletion.
+Active or concurrently changed drafts conflict instead of being erased.
+
+Program V1 is desktop-owned planning data in schema v25. The Sessions Programs
+subtab lists, searches, filters, deep-links and archives programs. Local JSON
+import is strict and bounded, previews through Core before committing, and has
+deterministic replay/conflict behavior. One explicit program-session action
+creates a provenance-bearing manual preparation without Android delivery or
+performed work.
 
 The controlled deployment preserved the installed Android signing identity and
 advanced its private `versionCode` from 13 to 14 without uninstalling or

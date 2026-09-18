@@ -1,10 +1,12 @@
 # Web Sessions V1
 
-The Sessions route implements three distinct views:
+The Sessions route implements four distinct views:
 
 - Preparation: manual preparations and immutable AI proposals;
 - Resume: lifecycle-backed execution drafts, continued only on Android;
 - History: completed sessions, including explicit unknown end times.
+- Programs: durable desktop planning definitions, import and explicit manual
+  preparation creation.
 
 Manual preparation supports a title, session type, optional calendar date,
 note, catalogue selection, duplicate occurrences, keyboard reordering,
@@ -58,5 +60,22 @@ The tombstone rejects an older delivery replay, including after process restart.
 Desktop marks a withdrawal acknowledged only after the correlated Android
 generation ACK. Until then Web reports that Android synchronization is pending.
 
+Every deletable row has a separate right-edge trash action with an accessible
+target. It never opens the detail. A focus-managed `alertdialog` names the item,
+kind, relevant date and consequence; Cancel and Escape write nothing. Proposal
+deletion records a durable logical withdrawal and publishes a bounded V2
+proposal tombstone without deleting derived preparations or performed work.
+Inactive execution drafts and completed sessions use the existing causal
+operation/state boundary. Active or stale drafts conflict, and completed-session
+deletion records a finalization so older snapshots cannot recreate the session.
+
+Programs are planning data owned by desktop schema v25. Import first runs the
+same strict Core validator in preview mode, then commits only after explicit
+confirmation. Exact content replay is idempotent; same-ID divergent content is
+a conflict. Archiving preserves definitions and derived preparations. Creating
+a preparation from one program session copies targets and provenance into a
+new manual preparation but creates no delivery, execution or performed data.
+See [Program format V1](program_format_v1.md).
+
 This V1 does not provide live Web capture, historical correction, automatic
-training generation, Programs, Analysis or the standalone Exercises route.
+training generation, Analysis or the standalone Exercises route.

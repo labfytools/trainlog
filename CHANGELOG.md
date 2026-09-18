@@ -2,6 +2,20 @@
 
 ## Unreleased — 0.1.2
 
+- Completed Web Sessions deletion and Program V1 on desktop schema v25. Separate
+  revision-guarded Core commands now withdraw manual preparations and AI
+  proposals or causally delete inactive execution drafts and selected completed
+  sessions. The accessible trash confirmation preserves derived preparations,
+  active/concurrent drafts and unrelated performed history; proposal withdrawals
+  use the bounded `trainlog-ai-session-drafts` V2 tombstone extension to prevent
+  legacy replay resurrection on Android.
+
+- Added Programs as the fourth Sessions subtab with complete paged listing,
+  search/state filtering, stable detail links, archival, strict bounded
+  `trainlog-program` V1 import preview and transactional commit. An explicit
+  program-session action creates a distinct provenance-bearing manual
+  preparation without automatic Android delivery or performed data.
+
 - Completed the controlled Web Sessions presentation/withdrawal rollout on the
   paired private installation. Desktop migrated from schema v23 to v24 and
   Android from v22 to v23 without clearing application data. The requested

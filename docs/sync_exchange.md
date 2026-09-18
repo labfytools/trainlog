@@ -40,7 +40,7 @@ available because availability is independently guarded by causal state.
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v24 and Android schema v23 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v25 and Android schema v23 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -143,7 +143,7 @@ does not publish to it or let it override an artifact in the new endpoint.
 | PC -> Android | `trainlog-equipment-associations-v2.json` | `trainlog-equipment-associations` v2 |
 | PC -> Android | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
-| PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1 companion |
+| PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1/v2 companion; v2 adds proposal withdrawals |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
@@ -522,7 +522,11 @@ retryable desktop status and never undoes the committed import. The desktop
 outbound companion selects at most 256 not-yet-published proposals in stable
 creation/identity order. Successful MTP publication transactionally marks only
 that exact batch; failure leaves it unchanged for retry, while later normal
-syncs drain further batches. The permanent Drive import ledger is independent.
+syncs drain further batches. V2 additionally carries at most 256 permanent
+proposal withdrawals. Desktop admission keeps the complete withdrawal set
+within that bound. Android stores each as a deleted tombstone before removing
+pending proposal entries, so an older V1 replay cannot resurrect the proposal.
+The permanent Drive import ledger is independent.
 The inbound outcome (`NONE`, `IMPORTED`, `ALREADY_IMPORTED`, `REJECTED`,
 `DRIVE_FAIL`, or `ARCHIVE_FAIL`) is retained in the successful sync report and
 history; fetched-invalid, Drive, and archive outcomes do not fail an otherwise

@@ -6,7 +6,9 @@ preparation is inert until explicit start; an occupied singleton is never
 overwritten. Starting preserves the desktop-reserved execution `session_id`,
 copies targets only and creates no performed facts.
 
-Android schema v23 adds the durable manual-preparation withdrawal ledger.
+Android schema v23 adds the durable manual-preparation withdrawal ledger. The
+schema is unchanged by Web proposal withdrawal: the existing durable AI draft
+state stores the V2 companion's `deleted` tombstone.
 Consumption is part of the outer generation transaction. Exact pending
 deliveries are changed to `cancelled`; exact started deliveries remain started,
 and their active or completed execution data is untouched. The stored result is
@@ -93,7 +95,9 @@ most 64 contiguous ordered SETS entries, target sets 1..99 and REPS targets
 1..999 (or the profile-required duration target). Entries must match the
 resolved exercise profile and known equipment.
 
-Pending proposals can be explicitly started or deleted. Start is one local
+Pending proposals can be explicitly started or deleted. A desktop V2 proposal
+withdrawal uses that same permanent tombstone boundary, removes only proposal
+entries, and leaves started drafts and performed sessions untouched. Start is one local
 transaction: it refuses when the singleton active draft exists, copies targets
 only, marks the proposal `started`, and removes its proposal entries. Delete
 is gated by a destructive confirmation naming the proposal; Cancel, Back and
