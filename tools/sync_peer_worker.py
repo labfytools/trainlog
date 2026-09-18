@@ -75,7 +75,15 @@ def recovery_acknowledgements(db, producer_peer_id: str, consumer_peer_id: str) 
         "ORDER BY consumed_at,generation_id LIMIT 32",
         (producer_peer_id, consumer_peer_id),
     ).fetchall()
-    return [json.loads(row[0]) for row in rows]
+    acknowledgements = [json.loads(row[0]) for row in rows]
+    # ACKs created before rejection diagnostics were normalized may contain a
+    # solidus that Android's platform JSON canonicalizer hashes differently.
+    # They remain durable evidence but cannot close a peer row, so do not let
+    # one legacy object block recovery of later compatible conversations.
+    return [
+        value for value in acknowledgements
+        if value.get("result") != "rejected" or "/" not in value.get("diagnostic", "")
+    ]
 
 
 def run_adapter(

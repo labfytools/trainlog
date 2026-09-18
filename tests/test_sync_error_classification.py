@@ -23,14 +23,18 @@ class SyncErrorClassificationTest(unittest.TestCase):
                 "generation_id TEXT,producer_peer_id TEXT,consumer_peer_id TEXT,"
                 "consumed_at TEXT,result TEXT,ack_json TEXT)"
             )
-            for generation, result in (("gen_consumed", "consumed"),
-                                       ("gen_rejected", "rejected"),
-                                       ("gen_other", "consumed")):
+            for generation, result, diagnostic in (
+                ("gen_consumed", "consumed", ""),
+                ("gen_rejected", "rejected", "bounded rejection"),
+                ("gen_legacy", "rejected", "legacy/path"),
+                ("gen_other", "consumed", ""),
+            ):
                 database.execute(
                     "INSERT INTO sync_consumed_generations VALUES(?,?,?,?,?,?)",
                     (generation, "android" if generation != "gen_other" else "other",
                      "desktop", generation, result,
-                     json.dumps({"generation_id": generation, "result": result})),
+                     json.dumps({"generation_id": generation, "result": result,
+                                 "diagnostic": diagnostic})),
                 )
 
             acknowledgements = sync_peer_worker.recovery_acknowledgements(

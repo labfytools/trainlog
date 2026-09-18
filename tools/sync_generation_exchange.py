@@ -566,6 +566,11 @@ def record_consumed(db: sqlite3.Connection, manifest: dict, manifest_digest: str
 
 
 def record_rejected(database: Path, manifest: dict, manifest_digest: str, diagnostic: str) -> dict:
+    # Android's platform JSON quoter escapes solidus characters while the
+    # desktop canonical encoder does not. Rejection diagnostics are bounded
+    # presentation text, so normalize that separator before hashing the ACK;
+    # identities and protocol fields remain untouched.
+    diagnostic = diagnostic.replace("/", ":")
     diagnostic = diagnostic.encode("utf-8")[:MAX_DIAGNOSTIC].decode("utf-8", "ignore")
     with closing(connect_database(database)) as db:
         require_schema(db); db.execute("BEGIN IMMEDIATE")
