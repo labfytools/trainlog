@@ -67,6 +67,8 @@ if web_assets_enabled
     '../web/src/dashboard/dashboardLayout.ts',
     '../web/src/routes/DashboardPage.tsx',
     '../web/src/routes/PlaceholderPage.tsx',
+    '../web/src/routes/SessionsPage.tsx',
+    '../web/src/api/sessions.ts',
     '../web/src/theme/app.css',
     '../web/src/theme/tokens.css',
   )
