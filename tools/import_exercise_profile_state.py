@@ -49,7 +49,9 @@ def validate(item):
 def apply_profile_state(con, root, allow_pending=False):
         if not isinstance(root,dict) or set(root)!={"format","version","generated_at","exercises"} or root["format"]!="trainlog-exercise-profile-state" or type(root["version"]) is not int or root["version"]!=1 or not isinstance(root["exercises"],list): fail("enveloppe profile-state invalide")
         parse_timestamp(root["generated_at"], "generated_at");con.row_factory=sqlite3.Row
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (17,18,19,20,21,22,23,24): fail("schema desktop v17-v24 requis")
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (
+                17, 18, 19, 20, 21, 22, 23, 24, 25):
+            fail("schema desktop v17-v25 requis")
         applied=equal=ancestor=pending=0;seen=set()
         for item in root["exercises"]:
             validate(item);eid=item["exercise_id"]

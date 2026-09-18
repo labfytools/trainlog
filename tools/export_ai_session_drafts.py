@@ -20,8 +20,9 @@ ID_PREFIX = "aid_"
 def ensure_publication_state(connection):
     """Install the additive v18 cursor for direct syncd/tool invocations."""
     owned_transaction = not connection.in_transaction
-    if connection.execute("PRAGMA user_version").fetchone()[0] not in (18, 19, 20, 21, 22, 23, 24):
-        raise ValueError("schema desktop v18-v24 requis")
+    supported_versions = (18, 19, 20, 21, 22, 23, 24, 25)
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
+        raise ValueError("schema desktop v18-v25 requis")
     columns = {row[1] for row in connection.execute(
         "PRAGMA table_info(ai_session_drafts)")}
     if "published_at" not in columns:

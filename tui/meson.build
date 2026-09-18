@@ -9,6 +9,7 @@ mtp_dep = dependency('libmtp', required: true)
 notcurses_dep = dependency('notcurses-core', required: true)
 microhttpd_dep = dependency('libmicrohttpd', required: true)
 yyjson_dep = dependency('yyjson', required: true)
+crypto_dep = dependency('libcrypto', required: true)
 
 utf8proc_dep = dependency('libutf8proc', required: false)
 if not utf8proc_dep.found()
@@ -74,6 +75,8 @@ if web_assets_enabled
     '../web/src/routes/PlaceholderPage.tsx',
     '../web/src/routes/SessionsPage.tsx',
     '../web/src/api/sessions.ts',
+    '../web/src/api/programs.ts',
+    '../web/src/routes/ProgramsTab.tsx',
     '../web/src/theme/app.css',
     '../web/src/theme/tokens.css',
   )
@@ -202,6 +205,7 @@ trainlog_core_sources = files(
   'src/web_prepared_items.c',
   'src/web_prepared_items_json.c',
   'src/web_sessions.c',
+  'src/web_programs.c',
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
@@ -235,6 +239,7 @@ trainlog_core = static_library(
     udev_dep,
     mtp_dep,
     yyjson_dep,
+    crypto_dep,
   ],
   c_args: strict_c_args,
 )
@@ -250,6 +255,7 @@ trainlog_core_dep = declare_dependency(
     udev_dep,
     mtp_dep,
     yyjson_dep,
+    crypto_dep,
   ],
 )
 
@@ -363,6 +369,15 @@ test_web_sessions = executable(
   c_args: strict_c_args,
 )
 test('web_sessions', test_web_sessions)
+
+test_web_programs = executable(
+  'test_web_programs',
+  'tests/test_web_programs.c',
+  dependencies: trainlog_core_dep,
+  include_directories: trainlog_private_include,
+  c_args: strict_c_args,
+)
+test('web_programs', test_web_programs)
 
 test_dashboard_header = executable(
   'test_dashboard_header',

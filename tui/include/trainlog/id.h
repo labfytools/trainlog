@@ -41,7 +41,8 @@
  * - `sy` for synchronization runs;
  * - `sxe` for persisted session-exercise occurrences;
  * - `sp`, `spr`, `spe`, `spd`, and `spw` for preparation, revision,
- *   occurrence, delivery, and withdrawal identities.
+ *   occurrence, delivery, and withdrawal identities;
+ * - `pgr` for desktop Program V1 revision identities.
  *
  * Imported v1 documents may contain other schema-valid opaque identifiers;
  * this API defines creation policy, not import validation.

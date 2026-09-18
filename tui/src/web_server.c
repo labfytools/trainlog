@@ -22,6 +22,7 @@
 
 #include "trainlog/web_dashboard.h"
 #include "trainlog/web_prepared_items.h"
+#include "trainlog/web_programs.h"
 #include "trainlog/web_sessions.h"
 #include "trainlog/dashboard_layout.h"
 #include "trainlog/web_preferences.h"
@@ -31,7 +32,7 @@
 #define TRAINLOG_HTTP_PER_IP_LIMIT 32U
 #define TRAINLOG_HTTP_CONNECTION_MEMORY_LIMIT (16U * 1024U)
 #define TRAINLOG_HTTP_HEADER_LIMIT (8U * 1024U)
-#define TRAINLOG_HTTP_BODY_LIMIT (128U * 1024U)
+#define TRAINLOG_HTTP_BODY_LIMIT TRAINLOG_WEB_PROGRAM_BYTES_MAX
 #define TRAINLOG_HTTP_LEGACY_BODY_LIMIT (4U * 1024U)
 #define TRAINLOG_HTTP_TIMEOUT_SECONDS 10U
 #define TRAINLOG_HTTP_BACKLOG 32U
@@ -564,6 +565,234 @@ static enum MHD_Result queue_owned_sessions_json(struct MHD_Connection *connecti
     return result;
 }
 
+static enum MHD_Result queue_owned_programs_json(struct MHD_Connection *connection,
+                                                 TrainlogStatus status,
+                                                 char *json,
+                                                 size_t json_size) {
+    if (status == TRAINLOG_STATUS_NOT_FOUND) {
+        free(json);
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    if (status == TRAINLOG_STATUS_CONFLICT) {
+        free(json);
+        return queue_json(
+            connection, MHD_HTTP_CONFLICT, "{\"error\":\"program_conflict\"}\n", NULL);
+    }
+    if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+        free(json);
+        return queue_json(
+            connection, MHD_HTTP_UNPROCESSABLE_CONTENT, "{\"error\":\"invalid_program\"}\n", NULL);
+    }
+    return queue_owned_sessions_json(connection, status, json, json_size);
+}
+
+static bool program_mutation_allowed(TrainlogWebContext *context,
+                                     struct MHD_Connection *connection) {
+    const char *origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
+    const char *csrf =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-CSRF-Token");
+    const char *content_type =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
+
+    return valid_origin(context, origin) && valid_csrf(context, csrf) && content_type != NULL &&
+           strcmp(content_type, "application/json") == 0;
+}
+
+static enum MHD_Result
+handle_program_list(TrainlogWebContext *context, struct MHD_Connection *connection, bool is_get) {
+    const char *search;
+    const char *state;
+    char *json = NULL;
+    size_t json_size = 0U;
+    size_t offset;
+    size_t limit;
+    TrainlogStatus status;
+
+    if (!is_get) {
+        return queue_json(
+            connection, MHD_HTTP_METHOD_NOT_ALLOWED, "{\"error\":\"method_not_allowed\"}\n", "GET");
+    }
+    search = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "search");
+    state = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "state");
+    if (!parse_page_number(MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "offset"),
+                           0U,
+                           1000000U,
+                           &offset) ||
+        !parse_page_number(MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "limit"),
+                           24U,
+                           TRAINLOG_WEB_SESSIONS_PAGE_MAX,
+                           &limit) ||
+        limit == 0U) {
+        return queue_json(connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_page\"}\n", NULL);
+    }
+    status = trainlog_web_programs_list_json(
+        context->database, search, state, offset, limit, &json, &json_size);
+    return queue_owned_programs_json(connection, status, json, json_size);
+}
+
+static enum MHD_Result handle_program_import(TrainlogWebContext *context,
+                                             struct MHD_Connection *connection,
+                                             const char *url,
+                                             const char *method,
+                                             TrainlogHttpRequestState *request) {
+    char *json = NULL;
+    size_t json_size = 0U;
+    bool commit = strcmp(url, "/api/v1/sessions/programs/import") == 0;
+    TrainlogStatus status;
+
+    if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+        return queue_json(connection,
+                          MHD_HTTP_METHOD_NOT_ALLOWED,
+                          "{\"error\":\"method_not_allowed\"}\n",
+                          "POST");
+    }
+    if (!program_mutation_allowed(context, connection)) {
+        return queue_json(
+            connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+    }
+    status = trainlog_web_programs_import_json(
+        context->database, request->body, request->body_size, commit, &json, &json_size);
+    return queue_owned_programs_json(connection, status, json, json_size);
+}
+
+static bool
+copy_path_component(char *output, size_t output_capacity, const char *input, size_t input_length) {
+    if (input_length == 0U || input_length >= output_capacity) {
+        return false;
+    }
+    (void)memcpy(output, input, input_length);
+    output[input_length] = '\0';
+    return true;
+}
+
+static bool parse_quoted_revision(const char *header, char *output, size_t output_capacity) {
+    size_t length = header == NULL ? 0U : strlen(header);
+
+    if (length < 3U || header[0] != '"' || header[length - 1U] != '"') {
+        return false;
+    }
+    return copy_path_component(output, output_capacity, header + 1, length - 2U);
+}
+
+static enum MHD_Result handle_program_archive(TrainlogWebContext *context,
+                                              struct MHD_Connection *connection,
+                                              const char *identity,
+                                              size_t identity_length,
+                                              const char *method) {
+    static const char SUFFIX[] = "/archive";
+    const char *request_id =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+    const char *if_match =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+    char program_id[TRAINLOG_ID_MAX + 1U];
+    char revision[TRAINLOG_ID_MAX + 1U];
+    char *json = NULL;
+    size_t json_size = 0U;
+    size_t program_length = identity_length - strlen(SUFFIX);
+    TrainlogStatus status;
+
+    if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+        return queue_json(connection,
+                          MHD_HTTP_METHOD_NOT_ALLOWED,
+                          "{\"error\":\"method_not_allowed\"}\n",
+                          "POST");
+    }
+    if (!program_mutation_allowed(context, connection) || request_id == NULL ||
+        request_id[0] == '\0' ||
+        !copy_path_component(program_id, sizeof(program_id), identity, program_length) ||
+        !parse_quoted_revision(if_match, revision, sizeof(revision))) {
+        return queue_json(connection,
+                          MHD_HTTP_PRECONDITION_REQUIRED,
+                          "{\"error\":\"precondition_required\"}\n",
+                          NULL);
+    }
+    status = trainlog_web_programs_archive_json(
+        context->database, program_id, revision, request_id, &json, &json_size);
+    return queue_owned_programs_json(connection, status, json, json_size);
+}
+
+static enum MHD_Result handle_program_prepare(TrainlogWebContext *context,
+                                              struct MHD_Connection *connection,
+                                              const char *identity,
+                                              const char *sessions_marker,
+                                              const char *method) {
+    static const char SUFFIX[] = "/prepare";
+    const char *request_id =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+    const char *session_id = sessions_marker + strlen("/sessions/");
+    size_t session_length = strlen(session_id);
+    char program_id[TRAINLOG_ID_MAX + 1U];
+    char program_session_id[TRAINLOG_ID_MAX + 1U];
+    char *json = NULL;
+    size_t json_size = 0U;
+    TrainlogStatus status;
+
+    if (session_length <= strlen(SUFFIX) ||
+        strcmp(session_id + session_length - strlen(SUFFIX), SUFFIX) != 0 ||
+        strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+        return queue_json(connection,
+                          MHD_HTTP_METHOD_NOT_ALLOWED,
+                          "{\"error\":\"method_not_allowed\"}\n",
+                          "POST");
+    }
+    session_length -= strlen(SUFFIX);
+    if (!program_mutation_allowed(context, connection) || request_id == NULL ||
+        request_id[0] == '\0' ||
+        !copy_path_component(
+            program_id, sizeof(program_id), identity, (size_t)(sessions_marker - identity)) ||
+        !copy_path_component(
+            program_session_id, sizeof(program_session_id), session_id, session_length)) {
+        return queue_json(
+            connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+    }
+    status = trainlog_web_programs_prepare_json(
+        context->database, program_id, program_session_id, request_id, &json, &json_size);
+    return queue_owned_programs_json(connection, status, json, json_size);
+}
+
+static enum MHD_Result handle_program_request(TrainlogWebContext *context,
+                                              struct MHD_Connection *connection,
+                                              const char *url,
+                                              const char *method,
+                                              bool is_get,
+                                              TrainlogHttpRequestState *request) {
+    static const char PREFIX[] = "/api/v1/sessions/program/";
+    static const char ARCHIVE_SUFFIX[] = "/archive";
+    const char *identity;
+    const char *sessions_marker;
+    char *json = NULL;
+    size_t json_size = 0U;
+    size_t identity_length;
+    TrainlogStatus status;
+
+    if (strcmp(url, "/api/v1/sessions/programs") == 0) {
+        return handle_program_list(context, connection, is_get);
+    }
+    if (strcmp(url, "/api/v1/sessions/programs/validate") == 0 ||
+        strcmp(url, "/api/v1/sessions/programs/import") == 0) {
+        return handle_program_import(context, connection, url, method, request);
+    }
+    if (strncmp(url, PREFIX, strlen(PREFIX)) != 0) {
+        return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    identity = url + strlen(PREFIX);
+    identity_length = strlen(identity);
+    sessions_marker = strstr(identity, "/sessions/");
+    if (identity_length > strlen(ARCHIVE_SUFFIX) &&
+        strcmp(identity + identity_length - strlen(ARCHIVE_SUFFIX), ARCHIVE_SUFFIX) == 0) {
+        return handle_program_archive(context, connection, identity, identity_length, method);
+    }
+    if (sessions_marker != NULL) {
+        return handle_program_prepare(context, connection, identity, sessions_marker, method);
+    }
+    if (!is_get || identity_length == 0U || identity_length > TRAINLOG_ID_MAX) {
+        return queue_json(
+            connection, MHD_HTTP_METHOD_NOT_ALLOWED, "{\"error\":\"method_not_allowed\"}\n", "GET");
+    }
+    status = trainlog_web_programs_detail_json(context->database, identity, &json, &json_size);
+    return queue_owned_programs_json(connection, status, json, json_size);
+}
+
 static enum MHD_Result handle_request(void *closure,
                                       struct MHD_Connection *connection,
                                       const char *url,
@@ -782,6 +1011,9 @@ static enum MHD_Result handle_request(void *closure,
         }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
     }
+    if (strncmp(url, "/api/v1/sessions/program", strlen("/api/v1/sessions/program")) == 0) {
+        return handle_program_request(context, connection, url, method, is_get, state);
+    }
     if (strncmp(url, "/api/v1/sessions", strlen("/api/v1/sessions")) == 0) {
         static const struct {
             const char *path;
@@ -985,12 +1217,8 @@ static enum MHD_Result handle_request(void *closure,
         if (is_get) {
             preferences_result = trainlog_web_preferences_load(&preferences, &source);
             if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK ||
-                !trainlog_web_preferences_serialize(&preferences,
-                                                    source,
-                                                    true,
-                                                    json,
-                                                    sizeof(json),
-                                                    &json_size)) {
+                !trainlog_web_preferences_serialize(
+                    &preferences, source, true, json, sizeof(json), &json_size)) {
                 return queue_json(connection,
                                   MHD_HTTP_INTERNAL_SERVER_ERROR,
                                   "{\"error\":\"preferences_unavailable\"}\n",
@@ -1002,11 +1230,8 @@ static enum MHD_Result handle_request(void *closure,
                               "Trainlog Web : préférences persistées invalides, défaut utilisé\n");
                 context->invalid_preferences_reported = true;
             }
-            return queue_layout_json(connection,
-                                     MHD_HTTP_OK,
-                                     json,
-                                     preferences.revision,
-                                     context->csrf_token);
+            return queue_layout_json(
+                connection, MHD_HTTP_OK, json, preferences.revision, context->csrf_token);
         }
         if (strcmp(method, MHD_HTTP_METHOD_PUT) != 0) {
             return queue_json(connection,
@@ -1040,15 +1265,11 @@ static enum MHD_Result handle_request(void *closure,
         }
         preferences_result =
             trainlog_web_preferences_parse(state->body, state->body_size, &preferences);
-        if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK ||
-            preferences.revision != expected) {
-            return queue_json(connection,
-                              MHD_HTTP_BAD_REQUEST,
-                              "{\"error\":\"invalid_preferences\"}\n",
-                              NULL);
+        if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK || preferences.revision != expected) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_preferences\"}\n", NULL);
         }
-        preferences_result =
-            trainlog_web_preferences_save(&preferences, expected, &saved);
+        preferences_result = trainlog_web_preferences_save(&preferences, expected, &saved);
         if (preferences_result == TRAINLOG_WEB_PREFERENCES_CONFLICT) {
             return queue_json(connection,
                               MHD_HTTP_PRECONDITION_FAILED,
@@ -1056,12 +1277,8 @@ static enum MHD_Result handle_request(void *closure,
                               NULL);
         }
         if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK ||
-            !trainlog_web_preferences_serialize(&saved,
-                                                TRAINLOG_WEB_PREFERENCES_PERSISTED,
-                                                true,
-                                                json,
-                                                sizeof(json),
-                                                &json_size)) {
+            !trainlog_web_preferences_serialize(
+                &saved, TRAINLOG_WEB_PREFERENCES_PERSISTED, true, json, sizeof(json), &json_size)) {
             return queue_json(connection,
                               MHD_HTTP_INTERNAL_SERVER_ERROR,
                               "{\"error\":\"preferences_save_failed\"}\n",

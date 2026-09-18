@@ -201,8 +201,9 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    if db.execute("PRAGMA user_version").fetchone()[0] != 24:
-        raise GenerationError("desktop schema v24 required")
+    supported_versions = (24, 25)
+    if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
+        raise GenerationError("desktop schema v24 or v25 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:

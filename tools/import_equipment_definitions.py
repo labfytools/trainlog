@@ -53,7 +53,8 @@ def validate(payload, reserved):
 
 def apply_definitions(connection, definitions, complete_causal_envelope=False):
     """Apply validated definitions without owning the surrounding transaction."""
-    if connection.execute("PRAGMA user_version").fetchone()[0] not in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24):
+    supported_versions = range(8, 26)
+    if connection.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         fail("schema desktop v8 à v21 requis")
     if not complete_causal_envelope and connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='custom_equipment' AND deleted=1 LIMIT 1").fetchone():
         fail("causal equipment protection requires the staged artifact")

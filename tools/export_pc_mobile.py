@@ -83,9 +83,11 @@ def main(complete_causal_envelope=False):
     con.row_factory = sqlite3.Row
     try:
         schema_version = con.execute("PRAGMA user_version").fetchone()[0]
-        if args.version == 4 and schema_version not in (19, 20, 21, 22, 23, 24):
+        if args.version == 4 and schema_version not in (19, 20, 21, 22, 23, 24, 25):
             raise ValueError("mobile V4 exige le schéma desktop v19 ou v20")
-        if schema_version not in (11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24) and not (args.version == 2 and schema_version == 10):
+        supported_versions = range(11, 26)
+        legacy_v2_schema = args.version == 2 and schema_version == 10
+        if schema_version not in supported_versions and not legacy_v2_schema:
             raise ValueError("schema desktop v11-v16 requis (v10 accepté pour export V2 explicite)")
         if not complete_causal_envelope and schema_version >= 20 and con.execute(
                 "SELECT 1 FROM sync_causal_state WHERE deleted=1 LIMIT 1").fetchone():

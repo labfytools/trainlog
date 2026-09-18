@@ -23,7 +23,8 @@ static const ListDefinition LISTS[] = {
      "FROM session_preparations p JOIN session_preparation_revisions r ON "
      "r.revision_id=p.current_revision_id "
      "LEFT JOIN session_preparation_entries e ON e.revision_id=r.revision_id "
-     "WHERE p.withdrawn_at IS NULL AND (?1='' OR r.title LIKE '%'||?1||'%' COLLATE NOCASE OR EXISTS(SELECT 1 FROM "
+     "WHERE p.withdrawn_at IS NULL AND (?1='' OR r.title LIKE '%'||?1||'%' COLLATE NOCASE OR "
+     "EXISTS(SELECT 1 FROM "
      "session_preparation_entries pe JOIN exercises x ON x.exercise_id=pe.exercise_id WHERE "
      "pe.revision_id=r.revision_id AND x.name LIKE '%'||?1||'%' COLLATE NOCASE)) "
      "GROUP BY p.preparation_id ORDER BY "
@@ -194,22 +195,22 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
                                           bool proposal,
                                           yyjson_mut_doc *document,
                                           yyjson_mut_val *root) {
-    const char *sql = proposal
-                          ? "SELECT "
-                            "d.draft_id,COALESCE(d.title,''),d.planned_for,d.session_type,d.notes,"
-                            "i.payload_sha256,d.draft_id,CASE WHEN d.published_at IS NULL THEN "
-                            "'local' ELSE 'published' END FROM ai_session_drafts d LEFT JOIN "
-                            "ai_session_draft_imports i ON i.draft_row_id=d.id WHERE d.draft_id=?1"
-                          : "SELECT "
-                            "p.preparation_id,r.title,r.planned_for,r.session_type,r.notes,"
-                            "COALESCE(p.source_payload_sha256,''),p.current_revision_id,"
-                            "CASE WHEN p.withdrawn_at IS NULL THEN p.delivery_state ELSE 'withdrawn' END,"
-                            "p.source_proposal_id,source.title,p.withdrawn_at,w.withdrawal_id,"
-                            "w.acknowledged_at FROM session_preparations p JOIN "
-                            "session_preparation_revisions r ON r.revision_id=p.current_revision_id "
-                            "LEFT JOIN ai_session_drafts source ON source.draft_id=p.source_proposal_id "
-                            "LEFT JOIN session_preparation_withdrawals w ON "
-                            "w.preparation_id=p.preparation_id WHERE p.preparation_id=?1";
+    const char *sql =
+        proposal ? "SELECT "
+                   "d.draft_id,COALESCE(d.title,''),d.planned_for,d.session_type,d.notes,"
+                   "i.payload_sha256,d.draft_id,CASE WHEN d.published_at IS NULL THEN "
+                   "'local' ELSE 'published' END FROM ai_session_drafts d LEFT JOIN "
+                   "ai_session_draft_imports i ON i.draft_row_id=d.id WHERE d.draft_id=?1"
+                 : "SELECT "
+                   "p.preparation_id,r.title,r.planned_for,r.session_type,r.notes,"
+                   "COALESCE(p.source_payload_sha256,''),p.current_revision_id,"
+                   "CASE WHEN p.withdrawn_at IS NULL THEN p.delivery_state ELSE 'withdrawn' END,"
+                   "p.source_proposal_id,source.title,p.withdrawn_at,w.withdrawal_id,"
+                   "w.acknowledged_at FROM session_preparations p JOIN "
+                   "session_preparation_revisions r ON r.revision_id=p.current_revision_id "
+                   "LEFT JOIN ai_session_drafts source ON source.draft_id=p.source_proposal_id "
+                   "LEFT JOIN session_preparation_withdrawals w ON "
+                   "w.preparation_id=p.preparation_id WHERE p.preparation_id=?1";
     const char *entry_sql =
         proposal
             ? "SELECT "
@@ -254,16 +255,13 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
     }
     if (!proposal) {
         static const char *const provenance_keys[] = {"source_proposal_id",
-                                                       "source_proposal_title",
-                                                       "withdrawn_at",
-                                                       "withdrawal_id",
-                                                       "withdrawal_acknowledged_at"};
+                                                      "source_proposal_title",
+                                                      "withdrawn_at",
+                                                      "withdrawal_id",
+                                                      "withdrawal_acknowledged_at"};
         for (column = 0; column < 5; ++column) {
-            if (!add_nullable_text(document,
-                                   root,
-                                   provenance_keys[column],
-                                   statement,
-                                   column + 8)) {
+            if (!add_nullable_text(
+                    document, root, provenance_keys[column], statement, column + 8)) {
                 (void)sqlite3_finalize(statement);
                 return TRAINLOG_STATUS_DATABASE_ERROR;
             }
@@ -717,6 +715,96 @@ static bool bind_nullable_text(sqlite3_stmt *statement, int index, yyjson_val *v
                                                      SQLITE_TRANSIENT) == SQLITE_OK;
 }
 
+static bool program_session_exists(TrainlogDatabase *database,
+                                   const char *program_id,
+                                   const char *program_session_id) {
+    sqlite3_stmt *statement = NULL;
+    int result;
+    bool found = false;
+
+    result = sqlite3_prepare_v2(database->connection,
+                                "SELECT 1 FROM program_sessions s JOIN programs p ON "
+                                "p.program_id=s.program_id WHERE p.program_id=?1 AND "
+                                "s.program_session_id=?2",
+                                -1,
+                                &statement,
+                                NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, program_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 2, program_session_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        found = sqlite3_step(statement) == SQLITE_ROW;
+    }
+    if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+    }
+    return found;
+}
+
+static TrainlogStatus insert_preparation_root(TrainlogDatabase *database,
+                                              const char *preparation_id,
+                                              const char *revision_id,
+                                              const char *created_at,
+                                              const char *editing_state,
+                                              const char *source_proposal_id,
+                                              const char *source_payload_sha256,
+                                              const char *source_program_id,
+                                              const char *source_program_session_id) {
+    static const char INSERT_SQL[] =
+        "INSERT INTO session_preparations("
+        "preparation_id,current_revision_id,created_at,updated_at,editing_state,"
+        "delivery_state,source_proposal_id,source_payload_sha256,withdrawn_at,"
+        "source_program_id,source_program_session_id) "
+        "VALUES(?1,?2,?3,?3,?4,'local',?5,?6,NULL,?7,?8)";
+    sqlite3_stmt *statement = NULL;
+    int result;
+
+    result = sqlite3_prepare_v2(database->connection, INSERT_SQL, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, preparation_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 2, revision_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 3, created_at, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 4, editing_state, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = source_proposal_id == NULL
+                     ? sqlite3_bind_null(statement, 5)
+                     : sqlite3_bind_text(statement, 5, source_proposal_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = source_payload_sha256 == NULL
+                     ? sqlite3_bind_null(statement, 6)
+                     : sqlite3_bind_text(statement, 6, source_payload_sha256, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = source_program_id == NULL
+                     ? sqlite3_bind_null(statement, 7)
+                     : sqlite3_bind_text(statement, 7, source_program_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result =
+            source_program_session_id == NULL
+                ? sqlite3_bind_null(statement, 8)
+                : sqlite3_bind_text(statement, 8, source_program_session_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return result == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
 static TrainlogStatus insert_preparation_entry(TrainlogDatabase *database,
                                                const char *revision_id,
                                                yyjson_val *entry,
@@ -854,7 +942,9 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
                                           "editing_state",
                                           "occurrences",
                                           "source_proposal_id",
-                                          "source_payload_sha256"};
+                                          "source_payload_sha256",
+                                          "source_program_id",
+                                          "source_program_session_id"};
     yyjson_doc *input = NULL;
     yyjson_val *root;
     yyjson_val *occurrences;
@@ -868,6 +958,8 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
     const char *editing_state;
     const char *source_proposal = NULL;
     const char *source_fingerprint = NULL;
+    const char *source_program = NULL;
+    const char *source_program_session = NULL;
     size_t index;
     TrainlogStatus status = TRAINLOG_STATUS_OK;
     yyjson_mut_doc *response;
@@ -912,6 +1004,21 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
         yyjson_doc_free(input);
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
+    if (yyjson_obj_get(root, "source_program_id") != NULL &&
+        (!bounded_json_string(
+             yyjson_obj_get(root, "source_program_id"), TRAINLOG_ID_MAX + 1U, &source_program) ||
+         !bounded_json_string(yyjson_obj_get(root, "source_program_session_id"),
+                              TRAINLOG_ID_MAX + 1U,
+                              &source_program_session))) {
+        yyjson_doc_free(input);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    if ((source_program == NULL) != (source_program_session == NULL) ||
+        (preparation_id != NULL && preparation_id[0] != '\0' && source_program != NULL) ||
+        (source_proposal != NULL && source_program != NULL)) {
+        yyjson_doc_free(input);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
     if (actual_preparation == NULL || actual_preparation[0] == '\0') {
         if (expected_revision[0] != '\0' ||
             trainlog_id_generate("sp", new_preparation, sizeof(new_preparation)) !=
@@ -947,6 +1054,12 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
     if (statement != NULL) {
         (void)sqlite3_finalize(statement);
         statement = NULL;
+    }
+    if ((preparation_id == NULL || preparation_id[0] == '\0') && source_program != NULL) {
+        if (!program_session_exists(database, source_program, source_program_session)) {
+            status = TRAINLOG_STATUS_CONFLICT;
+            goto rollback;
+        }
     }
     if ((preparation_id == NULL || preparation_id[0] == '\0') && source_proposal != NULL) {
         if (sqlite3_prepare_v2(
@@ -987,31 +1100,19 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
         }
         (void)sqlite3_finalize(statement);
         statement = NULL;
-    } else if (sqlite3_prepare_v2(
-                   database->connection,
-                   "INSERT INTO session_preparations("
-                   "preparation_id,current_revision_id,created_at,updated_at,editing_state,"
-                   "delivery_state,source_proposal_id,source_payload_sha256,withdrawn_at) "
-                   "VALUES(?1,?2,?3,?3,?4,'local',?5,?6,NULL)",
-                   -1,
-                   &statement,
-                   NULL) != SQLITE_OK ||
-               sqlite3_bind_text(statement, 1, actual_preparation, -1, SQLITE_TRANSIENT) !=
-                   SQLITE_OK ||
-               sqlite3_bind_text(statement, 2, revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-               sqlite3_bind_text(statement, 3, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-               sqlite3_bind_text(statement, 4, editing_state, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-               (source_proposal == NULL
-                    ? sqlite3_bind_null(statement, 5)
-                    : sqlite3_bind_text(statement, 5, source_proposal, -1, SQLITE_TRANSIENT)) !=
-                   SQLITE_OK ||
-               (source_fingerprint == NULL
-                    ? sqlite3_bind_null(statement, 6)
-                    : sqlite3_bind_text(statement, 6, source_fingerprint, -1, SQLITE_TRANSIENT)) !=
-                   SQLITE_OK ||
-               sqlite3_step(statement) != SQLITE_DONE) {
-        status = TRAINLOG_STATUS_DATABASE_ERROR;
-        goto rollback;
+    } else {
+        status = insert_preparation_root(database,
+                                         actual_preparation,
+                                         revision,
+                                         now,
+                                         editing_state,
+                                         source_proposal,
+                                         source_fingerprint,
+                                         source_program,
+                                         source_program_session);
+        if (status != TRAINLOG_STATUS_OK) {
+            goto rollback;
+        }
     }
     if (statement != NULL) {
         (void)sqlite3_finalize(statement);
@@ -1372,10 +1473,8 @@ TrainlogStatus trainlog_web_sessions_withdraw_json(TrainlogDatabase *database,
     (void)yyjson_mut_obj_add_strcpy(response, root, "preparation_id", preparation_id);
     (void)yyjson_mut_obj_add_strcpy(response, root, "revision_id", expected_revision);
     (void)yyjson_mut_obj_add_strcpy(response, root, "withdrawal_id", withdrawal_id);
-    (void)yyjson_mut_obj_add_strcpy(response,
-                                    root,
-                                    "android_cancellation",
-                                    has_deliveries ? "pending" : "not_required");
+    (void)yyjson_mut_obj_add_strcpy(
+        response, root, "android_cancellation", has_deliveries ? "pending" : "not_required");
     status = write_document(response, output_json, output_size);
     response = NULL;
     if (status != TRAINLOG_STATUS_OK ||

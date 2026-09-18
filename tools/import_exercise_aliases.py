@@ -56,7 +56,8 @@ def load(path):
 
 def apply_aliases(con, aliases):
     """Apply parsed aliases inside the caller-owned transaction."""
-    if con.execute("PRAGMA user_version").fetchone()[0] not in (12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24):
+    supported_versions = range(12, 26)
+    if con.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         fail("schema desktop v12-v21 requis")
     for source, canonical in aliases:
         target = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (canonical,)).fetchone()
