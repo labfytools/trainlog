@@ -27,6 +27,224 @@ class SyncGenerationServiceTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
+    fun desktopProgramDeletionGenerationIsAckedAndCannotResurrect() {
+        val repositoryRoot =
+            generateSequence(java.io.File(checkNotNull(System.getProperty("user.dir")))) {
+                    it.parentFile
+                }
+                .first { java.io.File(it, "tools/sync_generation_exchange.py").isFile }
+        val fixture = java.io.File(repositoryRoot, "build/tui/sync-generation-fixture")
+        val generationTool =
+            java.io.File(repositoryRoot, "tools/sync_generation_exchange.py").absolutePath
+        val root = Files.createTempDirectory("trainlog-program-deletion-generation-").toFile()
+        val desktopDb = java.io.File(root, "desktop.sqlite")
+        val desktopOwned = java.io.File(root, "desktop-owned")
+        val desktopObjects = java.io.File(root, "desktop-objects")
+        val androidName = "program-deletion-generation-${UUID.randomUUID()}.db"
+        val programId = "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val deletionId = "program-delete-generation-regression"
+        var android = TrainlogRepository(context, androidName)
+
+        fun run(vararg command: String): String {
+            val process =
+                ProcessBuilder(*command)
+                    .directory(repositoryRoot)
+                    .redirectErrorStream(true)
+                    .start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(
+                "command failed: ${command.joinToString(" ")}\n$output",
+                0,
+                process.waitFor(),
+            )
+            return output
+        }
+
+        fun captureAndPublish(service: SyncGenerationService): Pair<String, java.io.File> {
+            val captured =
+                run(
+                    "python3",
+                    generationTool,
+                    "capture-desktop",
+                    "--database",
+                    desktopDb.absolutePath,
+                    "--owned-root",
+                    desktopOwned.absolutePath,
+                    "--consumer-peer",
+                    service.peerId(),
+                )
+            val generationId =
+                checkNotNull(Regex("generation_id=(gen_[^ ]+)").find(captured)).groupValues[1]
+            run(
+                "python3",
+                generationTool,
+                "publish",
+                "--database",
+                desktopDb.absolutePath,
+                "--generation-id",
+                generationId,
+                "--object-root",
+                desktopObjects.absolutePath,
+            )
+            return generationId to java.io.File(desktopObjects, "generations/$generationId")
+        }
+
+        fun acceptAndroidAck(generationId: String, acknowledgement: String): String {
+            val acknowledgementFile =
+                java.io.File(root, "$generationId-ack.json").apply {
+                    writeText(acknowledgement)
+                }
+            return run(
+                "python3",
+                generationTool,
+                "accept-ack",
+                acknowledgementFile.absolutePath,
+                "--database",
+                desktopDb.absolutePath,
+            )
+        }
+
+        fun androidDeletionCount(): Int =
+            SQLiteDatabase.openDatabase(
+                    context.getDatabasePath(androidName).absolutePath,
+                    null,
+                    SQLiteDatabase.OPEN_READONLY,
+                )
+                .use { db ->
+                    db.rawQuery(
+                            "SELECT COUNT(*) FROM synced_program_deletions WHERE program_id=?",
+                            arrayOf(programId),
+                        )
+                        .use {
+                            assertTrue(it.moveToFirst())
+                            it.getInt(0)
+                        }
+                }
+
+        try {
+            val created = run(fixture.absolutePath, desktopDb.absolutePath, "program-create")
+            val createdProgram = JSONObject(created.substringAfter("PROGRAM_CREATE=").trim())
+            val initialRevision = createdProgram.getString("revision_id")
+            assertEquals(programId, createdProgram.getString("program_id"))
+
+            var service = SyncGenerationService(android)
+            val (liveGenerationId, livePublished) = captureAndPublish(service)
+            val desktopPeer =
+                JSONObject(java.io.File(livePublished, "manifest.json").readText())
+                    .getJSONObject("producer")
+                    .getString("peer_id")
+            val livePrograms =
+                JSONObject(java.io.File(livePublished, "programs-v1.json").readText())
+            assertEquals(
+                programId,
+                livePrograms
+                    .getJSONArray("programs")
+                    .getJSONObject(0)
+                    .getString("program_id"),
+            )
+            assertEquals(0, livePrograms.getJSONArray("deletions").length())
+            val liveAck = service.consume(livePublished)
+            assertEquals(programId, android.listSyncedPrograms().single().programId)
+            assertTrue(
+                acceptAndroidAck(liveGenerationId, liveAck).contains("ACK_ACCEPT=acknowledged")
+            )
+
+            val deleted =
+                run(
+                    fixture.absolutePath,
+                    desktopDb.absolutePath,
+                    "program-delete",
+                    initialRevision,
+                    deletionId,
+                )
+            val replayedDelete =
+                run(
+                    fixture.absolutePath,
+                    desktopDb.absolutePath,
+                    "program-delete",
+                    initialRevision,
+                    deletionId,
+                )
+            assertEquals(deleted, replayedDelete)
+            val deletionRevision =
+                JSONObject(deleted.substringAfter("PROGRAM_DELETE=").trim())
+                    .getString("revision_id")
+
+            val (deletionGenerationId, deletionPublished) = captureAndPublish(service)
+            val deletedPrograms =
+                JSONObject(java.io.File(deletionPublished, "programs-v1.json").readText())
+            assertEquals(0, deletedPrograms.getJSONArray("programs").length())
+            assertEquals(1, deletedPrograms.getJSONArray("deletions").length())
+            val exportedDeletion = deletedPrograms.getJSONArray("deletions").getJSONObject(0)
+            assertEquals(deletionId, exportedDeletion.getString("deletion_id"))
+            assertEquals(initialRevision, exportedDeletion.getString("predecessor_revision_id"))
+            assertEquals(deletionRevision, exportedDeletion.getString("revision_id"))
+            val deletionAck = service.consume(deletionPublished)
+            assertTrue(android.listSyncedPrograms().isEmpty())
+            assertTrue(
+                acceptAndroidAck(deletionGenerationId, deletionAck)
+                    .contains("ACK_ACCEPT=acknowledged")
+            )
+            val acknowledgedDeletion =
+                run(
+                        "sqlite3",
+                        desktopDb.absolutePath,
+                        "SELECT generation_id || '|' || (acknowledged_at IS NOT NULL) " +
+                            "FROM program_deletions WHERE request_id='$deletionId';",
+                    )
+                    .trim()
+            assertEquals("$deletionGenerationId|1", acknowledgedDeletion)
+
+            android.close()
+            android = TrainlogRepository(context, androidName)
+            service = SyncGenerationService(android)
+            val reopenedDesktopPeer =
+                checkNotNull(
+                        Regex("PEER_ID=(peer_[^\\s]+)")
+                            .find(
+                                run(
+                                    "python3",
+                                    generationTool,
+                                    "peer-id",
+                                    "--database",
+                                    desktopDb.absolutePath,
+                                )
+                            )
+                    )
+                    .groupValues[1]
+            assertEquals(desktopPeer, reopenedDesktopPeer)
+            assertEquals(liveAck, service.consume(livePublished))
+            assertTrue(android.listSyncedPrograms().isEmpty())
+            assertEquals(1, androidDeletionCount())
+
+            val (cleanGenerationId, cleanPublished) = captureAndPublish(service)
+            val cleanPrograms =
+                JSONObject(java.io.File(cleanPublished, "programs-v1.json").readText())
+            assertEquals(0, cleanPrograms.getJSONArray("programs").length())
+            assertEquals(0, cleanPrograms.getJSONArray("deletions").length())
+            val cleanAck = service.consume(cleanPublished)
+            assertTrue(android.listSyncedPrograms().isEmpty())
+            assertEquals(1, androidDeletionCount())
+            assertTrue(
+                acceptAndroidAck(cleanGenerationId, cleanAck).contains("ACK_ACCEPT=acknowledged")
+            )
+            assertEquals(
+                "1",
+                run(
+                        "sqlite3",
+                        desktopDb.absolutePath,
+                        "SELECT COUNT(*) FROM program_deletions WHERE program_id='$programId';",
+                    )
+                    .trim(),
+            )
+        } finally {
+            android.close()
+            context.deleteDatabase(androidName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun acknowledgedOutboundRemainsResumableUntilInboundIsTerminal() {
         val sourceName = "generation-resume-source-${UUID.randomUUID()}.db"
         val destinationName = "generation-resume-destination-${UUID.randomUUID()}.db"

@@ -54,7 +54,10 @@ replay.
 import, exact replay, responsive detail serialization, archive replay,
 revision-guarded terminal deletion, response replay, preparation creation,
 usage/provenance and absence of delivery. Schema migration coverage checks all
-v26 tables and columns. Programs Vitest covers preview before the only importing
+v26 tables and columns. `schema_v26_migration` additionally migrates a
+deterministically populated v25 fixture containing 24 sessions and 48 entries,
+with preparation provenance and history, and verifies exact typed projections
+after migration. Programs Vitest covers preview before the only importing
 mutation, explicit preparation creation/navigation, discrete trash confirmation,
 focus restoration, and Escape/Cancel zero-mutation behavior. The full HTTP,
 pagination, strict-parser and Core suites retain malformed, duplicate-key,
@@ -63,10 +66,14 @@ bounds, catalog/profile/equipment, conflict and rollback coverage.
 Android Programs projection tests cover schema-v23 to v24 migration, full
 nondeleted `trainlog-programs` V1 snapshot import, durable deletion tombstones,
 read-only Sessions list/detail data, exact replay, capability gating, and
-correlated ACK behavior. Python Programs/synchronization suites cover the
-staged companion's full snapshot, unacknowledged tombstone publication, and
-ACK-driven acknowledgment without changing mobile V3, catalog, or preparation
-artifacts.
+correlated ACK behavior. The integrated `SyncGenerationServiceTest` invokes the
+real production chain from a live Program through capture, publication, Android
+consumption, deletion/tombstone publication, real ACK, desktop acceptance and
+reopen; an exact old generation is idempotently recognized and ACKed while the
+durable tombstone prevents Program resurrection, and a second exchange creates
+no duplication. Python Programs/synchronization suites cover the staged
+companion's full snapshot, unacknowledged tombstone publication, and ACK-driven
+acknowledgment without changing mobile V3, catalog, or preparation artifacts.
 
 `test_web_sessions_browser.py` runs headless Firefox against the embedded
 production assets and C HTTP server with private temporary XDG roots. It creates

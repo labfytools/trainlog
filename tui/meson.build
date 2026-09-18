@@ -747,6 +747,15 @@ test_schema_v9_migration = executable(
 
 test('schema_v9_migration', test_schema_v9_migration)
 
+test_schema_v26_migration = executable(
+  'test_schema_v26_migration',
+  'tests/test_schema_v26_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('schema_v26_migration', test_schema_v26_migration)
+
 test_schema_v7_migration = executable(
   'test_schema_v7_migration',
   'tests/test_schema_v7_migration.c',

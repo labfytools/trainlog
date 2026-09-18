@@ -33,16 +33,44 @@ not assign `PASS` or `FROZEN` status.
 
 ## Validation recorded
 
-- Full Meson suite: **88/88**.
+- Full Meson suite: **89/89**.
 - Focused ASan/UBSan suite: **3/3**.
 - Web Vitest: **94** tests.
 - Web production build completed.
-- Android unit suite: **229** tests, **5 skipped**; `assembleDebug` completed.
+- Android unit suite: **230** tests, **5 skipped**; `assembleDebug` completed.
 - Python Programs and synchronization suites completed.
 - Format and diff validators completed, including `git diff --check`.
 - Real Firefox Programs screenshots passed and are retained as
   [desktop cards, 1440x1000](evidence/web-programs-v1-card-desktop.png) and
   [mobile deletion dialog, exact 390x844](evidence/web-programs-v1-delete-dialog-mobile-390x844.png).
+
+### Pre-switch migration and exchange gates
+
+`schema_v26_migration` deterministically migrates a populated v25 fixture with
+24 sessions, 48 entries, preparation provenance, and historical evidence. It
+asserts the exact typed post-migration projections rather than only table or
+column presence.
+
+The integrated Android `SyncGenerationServiceTest` executes the real production
+chain from a live Program through capture and publication, Android consumption,
+Program deletion and tombstone publication, the real correlated ACK, desktop
+acceptance and reopen. An exact old generation is idempotently recognized and
+ACKed while the durable tombstone prevents Program resurrection; a second
+exchange adds no duplicate data.
+
+### Private real-copy v25 to v26 migration evidence
+
+A private real-copy migration gate preserved user-data confidentiality while
+validating the source backup at v25 and its post-migration v26 result. The
+post-migration integrity check passed, foreign-key violations numbered **0**,
+and the business-data SHA-256 was identical before and after migration:
+`b264dd1b5fd7cdc599b2f6e2a20c01af794949e7871b8e3107ff3b29a06c6e11`.
+
+The program identity hash was `1b14...`; the 24 sessions hash was `593f...`;
+the 164 entries hash was `b991...`; and the two preparations hash was
+`2e273...`. The copy contained no `deleted_at` values and no
+`program_deletions` rows. All 45 unchanged business tables matched their
+canonical field-level hashes.
 
 These results are implementation and presentation-validation evidence. They do
 not substitute for separate deployment validation.
