@@ -112,6 +112,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
     fun run(
         directory: File,
         timeout: Duration = Duration.ofMinutes(5),
+        afterPeerPublication: (() -> Unit)? = null,
         afterPublication: (() -> Unit)? = null,
     ): ForegroundGenerationResult =
         try {
@@ -139,6 +140,13 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                     )
                     .toString(),
             )
+            /* WHY: trainlog-syncd is intentionally driven by the established
+             * Android request artifact, not by polling generation internals.
+             * CONTRACT: each explicit foreground attempt publishes the peer
+             * identity before its caller emits one fresh request signal.
+             * INVARIANT: a failed attempt's request, run, generations, and
+             * ACK evidence remain immutable; retry creates new correlation. */
+            afterPeerPublication?.invoke()
             val deadline = System.nanoTime() + timeout.toNanos()
             val requestRaw =
                 awaitCorrelated(File(directory, "request-v1.json"), deadline) { candidate ->

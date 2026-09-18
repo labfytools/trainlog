@@ -54,7 +54,26 @@ internal suspend fun publishBundleAndRequest(
                 value.opt("version") is Int && value.getInt("version") == 1 && value.opt("enabled") == true
         } catch (_: Exception) { false }
         if (!enabled) return@withContext SyncRequestResult.Error("Invalid generation synchronization opt-in.")
-        return@withContext when (val result = SyncGenerationForegroundCoordinator(repository).run(canonicalExchangeDirectory())) {
+        val opened = exporter.openStorageSnapshot()
+        if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
+            return@withContext SyncRequestResult.Error("prepare:${opened.message}")
+        }
+        val snapshot = (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
+        return@withContext when (
+            val result = SyncGenerationForegroundCoordinator(repository).run(
+                canonicalExchangeDirectory(),
+                afterPeerPublication = {
+                    when (val request = requestOutbox.requestSync(snapshot)) {
+                        is SyncRequestResult.Requested -> Unit
+                        SyncRequestResult.Unsupported ->
+                            throw IllegalStateException("Generation synchronization is unsupported.")
+                        is SyncRequestResult.Error -> throw IllegalStateException(request.message)
+                        is SyncRequestResult.Completed ->
+                            throw IllegalStateException("Unexpected completed request signal.")
+                    }
+                },
+            )
+        ) {
             is ForegroundGenerationResult.Completed -> SyncRequestResult.Completed(result.runId)
             is ForegroundGenerationResult.Error -> SyncRequestResult.Error(result.message)
         }

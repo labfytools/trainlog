@@ -103,11 +103,15 @@ class SyncDeploymentConversationTest {
             repeat(conversations) {
                 val coordinator = SyncGenerationForegroundCoordinator(repository)
                 val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                var requestSignals = 0
                 val result =
                     executor.submit<ForegroundGenerationResult> {
-                        coordinator.run(transport, Duration.ofSeconds(30)) {
-                            release?.let { awaitFile(File(it)) }
-                        }
+                        coordinator.run(
+                            transport,
+                            Duration.ofSeconds(30),
+                            afterPeerPublication = { requestSignals += 1 },
+                            afterPublication = { release?.let { awaitFile(File(it)) } },
+                        )
                     }
                 val peer = JSONObject(awaitFile(File(transport, "android-peer-v1.json")).readText())
                 if (suppliedTransport == null) {
@@ -138,6 +142,7 @@ class SyncDeploymentConversationTest {
                     "conversation ${it + 1}: $completed",
                     completed is ForegroundGenerationResult.Completed,
                 )
+                assertEquals("one fresh request signal per conversation", 1, requestSignals)
                 var workerOutput = ""
                 localWorker?.let { worker ->
                     workerOutput = worker.inputStream.bufferedReader().readText()
