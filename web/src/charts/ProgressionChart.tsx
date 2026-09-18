@@ -6,6 +6,8 @@ import { SVGRenderer } from 'echarts/renderers'
 import type { ProgressionIdentity, ProgressionPoint } from '../api/dashboard'
 import { formatDateTime, formatDose, formatWeight } from '../dashboard/dashboardFormat'
 import { trainlogChartTheme } from './trainlogChartTheme'
+import { useDatePreferences } from '../presentation/DatePreferences'
+import type { WebDateFormat } from '../api/webPreferences'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, SVGRenderer])
 
@@ -50,9 +52,13 @@ export function progressionCollisionMetadata(points: ProgressionPoint[]): Array<
   })
 }
 
-export function progressionTooltip(identity: ProgressionIdentity, point: ProgressionPoint): string {
+export function progressionTooltip(
+  identity: ProgressionIdentity,
+  point: ProgressionPoint,
+  dateFormat: WebDateFormat = 'fr',
+): string {
   return [
-    formatDateTime(point.timestamp),
+    formatDateTime(point.timestamp, dateFormat),
     formatWeight(point.weight_kg),
     identity.exercise_name,
     identity.equipment_label,
@@ -62,6 +68,7 @@ export function progressionTooltip(identity: ProgressionIdentity, point: Progres
 }
 
 export function ProgressionChart({ identity, points }: ProgressionChartProps) {
+  const { dateFormat } = useDatePreferences()
   const host = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -91,7 +98,7 @@ export function ProgressionChart({ identity, points }: ProgressionChartProps) {
         formatter: (params: unknown) => {
           const candidate = Array.isArray(params) ? params[0] : params
           const datum = (candidate as { data?: ChartDatum } | undefined)?.data
-          return datum === undefined ? '' : progressionTooltip(identity, datum.point)
+          return datum === undefined ? '' : progressionTooltip(identity, datum.point, dateFormat)
         },
       },
       xAxis: {
@@ -112,7 +119,7 @@ export function ProgressionChart({ identity, points }: ProgressionChartProps) {
     const observer = new ResizeObserver(() => chart.resize())
     observer.observe(element)
     return () => { observer.disconnect(); chart.dispose() }
-  }, [identity, points])
+  }, [dateFormat, identity, points])
 
   return <div className="progression-chart" ref={host} data-testid="progression-chart" role="img" aria-label={`Courbe de ${identity.exercise_name} : ${points.length} ${points.length === 1 ? 'mesure réelle' : 'mesures réelles'} en kilogrammes. La ligne relie les observations sans représenter de mesures intermédiaires.`} />
 }

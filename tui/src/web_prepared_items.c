@@ -56,7 +56,7 @@ static TrainlogStatus load_ai_proposals(
     static const char SQL[] =
         "SELECT d.draft_id,COALESCE(d.title,''),COALESCE(d.planned_for,''),"
         "COUNT(e.id),CASE WHEN d.published_at IS NULL THEN 'pending_publication' ELSE 'published' "
-        "END FROM ai_session_drafts d LEFT JOIN ai_session_draft_entries e ON "
+        "END,d.created_at FROM ai_session_drafts d LEFT JOIN ai_session_draft_entries e ON "
         "e.draft_row_id=d.id GROUP BY d.id ORDER BY COALESCE(d.planned_for,'9999-12-31'),"
         "d.created_at,d.draft_id LIMIT ?1;";
     sqlite3_stmt *statement = NULL;
@@ -80,10 +80,60 @@ static TrainlogStatus load_ai_proposals(
             !copy_column(statement, 1, item->title, sizeof(item->title)) ||
             !copy_column(statement, 2, item->planned_for, sizeof(item->planned_for)) ||
             !read_count(statement, 3, &item->occurrence_count) ||
-            !copy_column(statement, 4, item->state, sizeof(item->state))) {
+            !copy_column(statement, 4, item->state, sizeof(item->state)) ||
+            !copy_column(statement, 5, item->sort_timestamp, sizeof(item->sort_timestamp))) {
             goto fail;
         }
         (void)snprintf(item->provenance, sizeof(item->provenance), "%s", "ai_import");
+        ++output->item_count;
+    }
+    if (step != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return TRAINLOG_STATUS_OK;
+
+fail:
+    if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+    }
+    return TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+static TrainlogStatus load_manual_preparations(
+    TrainlogDatabase *database, TrainlogWebPreparedItems *output) {
+    static const char SQL[] =
+        "SELECT p.preparation_id,r.title,COALESCE(r.planned_for,''),COUNT(e.entry_id),"
+        "p.editing_state,p.updated_at FROM session_preparations p JOIN "
+        "session_preparation_revisions r ON r.revision_id=p.current_revision_id LEFT JOIN "
+        "session_preparation_entries e ON e.revision_id=r.revision_id WHERE "
+        "p.withdrawn_at IS NULL GROUP BY p.preparation_id ORDER BY "
+        "COALESCE(r.planned_for,'9999-12-31'),p.updated_at,p.preparation_id LIMIT ?1;";
+    sqlite3_stmt *statement = NULL;
+    int step;
+
+    if (sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_int64(
+            statement, 1, (sqlite3_int64)(TRAINLOG_WEB_PREPARED_ITEM_CAPACITY + 1U)) != SQLITE_OK) {
+        goto fail;
+    }
+    while ((step = sqlite3_step(statement)) == SQLITE_ROW) {
+        TrainlogWebPreparedItem *item;
+
+        if (output->item_count == TRAINLOG_WEB_PREPARED_ITEM_CAPACITY) {
+            output->partial = true;
+            continue;
+        }
+        item = &output->items[output->item_count];
+        item->kind = TRAINLOG_WEB_PREPARED_MANUAL_PREPARATION;
+        if (!copy_column(statement, 0, item->identity, sizeof(item->identity)) ||
+            !copy_column(statement, 1, item->title, sizeof(item->title)) ||
+            !copy_column(statement, 2, item->planned_for, sizeof(item->planned_for)) ||
+            !read_count(statement, 3, &item->occurrence_count) ||
+            !copy_column(statement, 4, item->state, sizeof(item->state)) ||
+            !copy_column(statement, 5, item->sort_timestamp, sizeof(item->sort_timestamp))) {
+            goto fail;
+        }
+        (void)snprintf(item->provenance, sizeof(item->provenance), "%s", "manual_preparation");
         ++output->item_count;
     }
     if (step != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
@@ -102,7 +152,8 @@ static TrainlogStatus load_execution_drafts(
     TrainlogDatabase *database, TrainlogWebPreparedItems *output) {
     static const char SQL[] =
         "SELECT d.session_id,d.state,d.session_type,COALESCE(substr(d.started_at,1,10),''),"
-        "COALESCE(json_array_length(d.payload_json,'$.exercises'),0) FROM execution_drafts d "
+        "COALESCE(json_array_length(d.payload_json,'$.exercises'),0),COALESCE(d.started_at,'') "
+        "FROM execution_drafts d "
         "WHERE NOT EXISTS(SELECT 1 FROM execution_draft_finalizations f WHERE "
         "f.session_id=d.session_id) AND NOT EXISTS(SELECT 1 FROM sync_causal_state c WHERE "
         "c.target_kind='execution_draft' AND c.target_id=d.session_id AND c.deleted=1) "
@@ -131,7 +182,8 @@ static TrainlogStatus load_execution_drafts(
             !copy_column(statement, 1, item->state, sizeof(item->state)) ||
             !copy_column(statement, 2, item->title, sizeof(item->title)) ||
             !copy_column(statement, 3, item->planned_for, sizeof(item->planned_for)) ||
-            !read_count(statement, 4, &item->occurrence_count)) {
+            !read_count(statement, 4, &item->occurrence_count) ||
+            !copy_column(statement, 5, item->sort_timestamp, sizeof(item->sort_timestamp))) {
             goto fail;
         }
         (void)snprintf(item->provenance, sizeof(item->provenance), "%s", "execution_store");
@@ -165,7 +217,10 @@ TrainlogStatus trainlog_web_prepared_items_load(
     if (status != TRAINLOG_STATUS_OK) {
         return status;
     }
-    status = load_ai_proposals(database, output);
+    status = load_manual_preparations(database, output);
+    if (status == TRAINLOG_STATUS_OK) {
+        status = load_ai_proposals(database, output);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = load_execution_drafts(database, output);
     }

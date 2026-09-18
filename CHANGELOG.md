@@ -2,6 +2,22 @@
 
 ## Unreleased — 0.1.2
 
+- Corrected Web Sessions presentation with one descending cross-type order,
+  strict civil-date and zoned-timestamp formatting, contextual French states,
+  readable persisted proposal provenance, and an installation-local versioned
+  French/ISO date preference. The Dashboard prepared-item list, Footer, charts
+  and synchronization timestamps use the same presentation helpers without
+  changing machine values.
+
+- Added revision-guarded, idempotent **Delete preparation** through the Core
+  service and protected loopback API. Desktop schema v24 retains an immutable
+  withdrawal ledger and all preparation/delivery evidence. The separate
+  `trainlog-session-preparations` V2 generation participant propagates exact
+  withdrawals; Android schema v23 cancels only pending deliveries, preserves
+  started executions and permanently prevents older delivery replay from
+  resurrecting a withdrawn preparation. V1 remains readable and
+  `TRAINLOG_FORMAT_V1` is unchanged.
+
 - Implemented `TRAINLOG_WEB_SESSIONS_V1` with paged preparation, resume and
   history views, stable details, optimistic/idempotent manual preparation,
   explicit proposal derivation, desktop schema v23, Android schema v22 and the

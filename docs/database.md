@@ -1,5 +1,16 @@
 # Desktop database
 
+## Schema v24: durable preparation withdrawal
+
+Schema v24 adds nullable `session_preparations.withdrawn_at` and the immutable
+`session_preparation_withdrawals` ledger. Each preparation has at most one
+withdrawal identity, bound to the exact current revision, request timestamp,
+generation and correlated ACK. The service transaction inserts this ledger row
+and withdraws the preparation together. It does not delete or rewrite revision,
+entry, delivery, proposal, execution, session, feedback or acknowledgement
+evidence. A withdrawn preparation is excluded from active projections and
+cannot be edited or delivered again.
+
 ## Schema v23: Web session preparations
 
 Schema v23 adds `session_preparations`, immutable

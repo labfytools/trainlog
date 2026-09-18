@@ -47,6 +47,16 @@
 .sync-details[open] { position: absolute; z-index: 20; right: 0; top: 2.8rem; min-width: 20rem; padding: .8rem; border: 1px solid var(--surface-2); border-radius: .7rem; background: var(--base); box-shadow: 0 .5rem 2rem #0008; }
 .sync-details h2 { font-size: 1rem; }
 .sync-details ul { padding-left: 1.2rem; }
+.display-preferences { position: relative; margin-left: auto; }
+.preferences-trigger { min-height: 2.5rem; padding: .55rem .75rem; color: var(--subtext-0); background: transparent; border: 1px solid var(--surface-2); border-radius: .55rem; cursor: pointer; white-space: nowrap; }
+.preferences-trigger:focus-visible { outline: 3px solid var(--lavender); outline-offset: 2px; }
+.preferences-dialog { position: absolute; z-index: 30; top: 3rem; right: 0; width: min(24rem, calc(100vw - 2rem)); padding: 1rem; color: var(--text); background: var(--base); border: 1px solid var(--surface-2); border-radius: .75rem; box-shadow: 0 .75rem 2.5rem #0009; }
+.preferences-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.preferences-heading h2 { margin-bottom: .75rem; font-size: 1rem; }
+.preferences-dialog fieldset { display: grid; gap: .65rem; border: 0; padding: 0; }
+.preferences-dialog legend { margin-bottom: .55rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
+.preferences-dialog label { display: flex; align-items: center; gap: .55rem; }
+.preference-example { margin: .85rem 0 0; color: var(--overlay-1); font-size: var(--font-size-xs); }
 
 .app-main { width: 100%; min-width: 0; padding: clamp(2.25rem, 5vw, 5rem) var(--shell-gutter) clamp(3rem, 7vw, 7rem); }
 .page { width: min(100%, 92rem); min-width: 0; margin: 0 auto; }
@@ -59,15 +69,20 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 .sessions-toolbar { margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.detail-actions, .confirmation-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .65rem; }
 .session-tabs { display: flex; gap: .4rem; padding: .3rem; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); }
 .session-tabs button, .quiet-action, .primary-action, .editor-actions button { min-height: 2.6rem; padding: .6rem .9rem; border: 1px solid transparent; border-radius: .55rem; color: var(--text); background: transparent; cursor: pointer; }
 .session-tabs button[aria-selected="true"] { color: var(--crust); background: var(--lavender); font-weight: 700; }
 .primary-action, .editor-actions .primary-action { color: var(--crust); background: var(--lavender); font-weight: 700; }
+.danger-action { min-height: 2.6rem; padding: .6rem .9rem; color: var(--red); background: transparent; border: 1px solid var(--red); border-radius: .55rem; cursor: pointer; font-weight: 700; }
+.danger-action:hover { color: var(--crust); background: var(--red); }
+.danger-action:disabled { cursor: not-allowed; opacity: .55; }
 .quiet-action { border-color: var(--surface-2); }
 .session-search { display: grid; gap: .45rem; max-width: 34rem; margin-bottom: 1.5rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
 .session-filters { display: flex; flex-wrap: wrap; gap: .8rem; margin: -.35rem 0 1.25rem; }
 .session-filters label { display: grid; min-width: 10rem; gap: .35rem; color: var(--subtext-0); font-size: var(--font-size-xs); }
 .session-filters select, .session-filters input { min-height: 2.5rem; padding: .55rem .7rem; color: var(--text); background: var(--mantle); border: 1px solid var(--surface-2); border-radius: .5rem; }
+.sort-indicator { width: max-content; margin: -.5rem 0 1rem; padding: .35rem .55rem; color: var(--lavender); background: rgb(180 190 254 / 8%); border-radius: .4rem; font: 650 var(--font-size-xs) var(--font-mono); }
 .session-search input, .form-grid input, .form-grid select, .form-grid textarea, .catalog-picker input, .occurrence-fields input, .occurrence-fields select { width: 100%; min-height: 2.7rem; padding: .65rem .75rem; border: 1px solid var(--surface-2); border-radius: .5rem; color: var(--text); background: var(--base); font-size: var(--font-size-md); }
 .session-list { display: grid; gap: .6rem; }
 .session-row { width: 100%; padding: 1rem 1.1rem; display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(7rem, 1fr)); gap: 1rem; align-items: center; text-align: left; color: var(--text); border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); cursor: pointer; }
@@ -93,6 +108,10 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .editor-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .empty-inline, .error-panel, .form-error { padding: 1rem; border-radius: .65rem; background: var(--base); color: var(--subtext-0); }
 .error-panel, .form-error { border: 1px solid var(--red); color: var(--red); }
+.success-panel { padding: 1rem; border: 1px solid var(--green); border-radius: .65rem; color: var(--green); background: rgb(166 227 161 / 7%); }
+.delete-confirmation { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--red); border-radius: .75rem; background: var(--base); }
+.delete-confirmation h3 { margin-top: 0; }
+.delete-confirmation p { color: var(--subtext-0); line-height: 1.55; }
 .detail-summary, .detail-tile { margin-bottom: 1rem; padding: 1.1rem; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--base); }
 .detail-occurrences li { display: grid; gap: .35rem; }
 .detail-occurrences span, .detail-occurrences small { color: var(--subtext-0); }
@@ -241,8 +260,8 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 }
 
 @media (max-width: 28rem) {
-  .app-shell { padding-bottom: 12.5rem; }
-  .status-footer { grid-template-columns: 1fr; }
+  .app-shell { padding-bottom: 0; }
+  .status-footer { position: static; grid-template-columns: 1fr; }
   .status-zone, .backend-state { grid-column: auto; }
   h1 { font-size: 2.3rem; }
 }

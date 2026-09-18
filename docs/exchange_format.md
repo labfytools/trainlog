@@ -2,8 +2,19 @@
 
 ## Manual session preparations
 
-`trainlog-session-preparations` V1 has a strict root `format`, `version`,
-`generated_at`, and bounded `deliveries` array. Each delivery contains stable
+`trainlog-session-preparations` V2 has a strict root `format`, `version`,
+`generated_at`, bounded `deliveries`, and bounded `withdrawals`. Delivery
+entries retain the V1 shape. Each withdrawal contains its stable
+`spw_<uuid-v4>` identity, the exact preparation and revision, request timestamp,
+and the bounded exact delivery/revision/reserved-execution identities that the
+Android consumer may affect. Only a matching local `pending` delivery becomes
+`cancelled`; a matching `started` delivery and its execution are preserved.
+The durable Android withdrawal row prevents an older V1 delivery or generation
+from recreating a startable preparation.
+
+The readable legacy `trainlog-session-preparations` V1 root has a strict
+`format`, `version`, `generated_at`, and bounded `deliveries` array. Each
+delivery contains stable
 delivery, preparation, revision, reserved execution and occurrence identities,
 immutable metadata, and at most 64 ordered target-only occurrences. Null target
 values remain distinct from zero. Performed sets, continuous results, MAX and

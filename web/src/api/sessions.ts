@@ -46,6 +46,11 @@ export interface SessionDetail {
   session_type: 'training' | 'max_test'
   notes: string | null
   source_fingerprint: string | null
+  source_proposal_id?: string | null
+  source_proposal_title?: string | null
+  withdrawn_at?: string | null
+  withdrawal_id?: string | null
+  withdrawal_acknowledged_at?: string | null
   state: string
   occurrences: PreparationOccurrence[]
 }
@@ -220,4 +225,42 @@ export async function prepareForAndroid(identity: string, revision: string): Pro
     const reason = object(value) && typeof value.error === 'string' ? value.error : `HTTP ${response.status}`
     throw new Error(reason)
   }
+}
+
+export interface PreparationWithdrawalResult {
+  preparation_id: string
+  revision_id: string
+  withdrawal_id: string
+  android_cancellation: 'pending' | 'not_required'
+}
+
+export async function withdrawPreparation(
+  identity: string,
+  revision: string,
+): Promise<PreparationWithdrawalResult> {
+  const csrf = await mutationCsrfToken()
+  const response = await fetch(
+    `/api/v1/sessions/preparation/${encodeURIComponent(identity)}`, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Trainlog-CSRF-Token': csrf,
+        'X-Trainlog-Request-ID': requestId(),
+        'If-Match': `"${revision}"`,
+      },
+      body: '{}',
+    })
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    const reason = object(value) && typeof value.error === 'string'
+      ? value.error : `HTTP ${response.status}`
+    throw new Error(reason)
+  }
+  if (!object(value) || value.preparation_id !== identity || value.revision_id !== revision ||
+      typeof value.withdrawal_id !== 'string' ||
+      !['pending', 'not_required'].includes(String(value.android_cancellation))) {
+    throw new TypeError('réponse de suppression invalide')
+  }
+  return value as unknown as PreparationWithdrawalResult
 }

@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react'
 import { routes, type AppRoute } from '../app/routes'
 import { SyncControl } from './SyncControl'
+import { DisplayPreferences } from './DisplayPreferences'
 
 interface HeaderProps {
   activeRoute: AppRoute
@@ -32,6 +33,7 @@ export function Header({ activeRoute, onNavigate, onSyncCommitted }: HeaderProps
           </a>
         ))}
       </nav>
+      <DisplayPreferences />
       <SyncControl onCommitted={onSyncCommitted} />
     </header>
   )

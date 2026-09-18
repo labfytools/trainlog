@@ -70,8 +70,8 @@ ARTIFACTS = (
      "causal_delete_exchange.py", ("export",)),
     ("ai-proposals", "trainlog-ai-session-drafts", 1, "ai-proposals-v1.json", False,
      "export_ai_session_drafts.py", ()),
-    ("session-preparations", "trainlog-session-preparations", 1,
-     "session-preparations-v1.json", False, "export_session_preparations.py", ()),
+    ("session-preparations", "trainlog-session-preparations", 2,
+     "session-preparations-v2.json", False, "export_session_preparations.py", ()),
 )
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS}
 
@@ -201,8 +201,8 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    if db.execute("PRAGMA user_version").fetchone()[0] != 23:
-        raise GenerationError("desktop schema v23 required")
+    if db.execute("PRAGMA user_version").fetchone()[0] != 24:
+        raise GenerationError("desktop schema v24 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -407,12 +407,12 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                  for value in descriptors])
             # CONTRACT: the exact generation relation is recorded only after
             # its complete immutable artifact has been captured successfully.
-            preparation_path = stage / "session-preparations-v1.json"
+            preparation_path = stage / "session-preparations-v2.json"
             if preparation_path.is_file():
                 captured_preparations = strict_json(
                     preparation_path.read_bytes(), MAX_ARTIFACT
-                )["deliveries"]
-                for delivery in captured_preparations:
+                )
+                for delivery in captured_preparations["deliveries"]:
                     cursor = db.execute(
                         "UPDATE session_preparation_deliveries SET generation_id=? "
                         "WHERE delivery_id=? AND revision_id=? AND "
@@ -421,6 +421,14 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                     )
                     if cursor.rowcount != 1:
                         raise GenerationError("preparation delivery changed during capture")
+                for withdrawal in captured_preparations["withdrawals"]:
+                    cursor = db.execute(
+                        "UPDATE session_preparation_withdrawals SET generation_id=? "
+                        "WHERE withdrawal_id=? AND revision_id=? AND generation_id IS NULL",
+                        (generation, withdrawal["withdrawal_id"], withdrawal["revision_id"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise GenerationError("preparation withdrawal changed during capture")
             causal_path = stage / "causal-deletions-v1.json"
             if causal_path.is_file():
                 for operation in json.loads(causal_path.read_text())["operations"]:
@@ -683,6 +691,11 @@ def accept_ack(database: Path, path: Path) -> str:
             db.execute(
                 "UPDATE session_preparation_deliveries SET state='acknowledged',acknowledged_at=? "
                 "WHERE generation_id=? AND state IN('pending','remote_unknown')",
+                (ack["consumed_at"], ack["generation_id"]),
+            )
+            db.execute(
+                "UPDATE session_preparation_withdrawals SET acknowledged_at=? "
+                "WHERE generation_id=? AND acknowledged_at IS NULL",
                 (ack["consumed_at"], ack["generation_id"]),
             )
             db.execute(

@@ -79,4 +79,18 @@ TrainlogStatus trainlog_web_sessions_deliver_json(TrainlogDatabase *database,
                                                   char **output_json,
                                                   size_t *output_size);
 
+/*
+ * CONTRACT: withdrawal is a logical, durable removal of one preparation.
+ * It preserves immutable revisions and every execution identity. Only the
+ * current revision may be withdrawn, and request_id makes response replay
+ * idempotent. Android delivery cancellation is completed by the versioned
+ * generation participant rather than by deleting delivery evidence here.
+ */
+TrainlogStatus trainlog_web_sessions_withdraw_json(TrainlogDatabase *database,
+                                                   const char *preparation_id,
+                                                   const char *expected_revision,
+                                                   const char *request_id,
+                                                   char **output_json,
+                                                   size_t *output_size);
+
 #endif

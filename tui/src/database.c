@@ -923,6 +923,22 @@ static const char *const MIGRATE_V22_TO_V23_SQL =
     "UNIQUE(preparation_id,revision_id,delivery_id));"
     "PRAGMA user_version=23;COMMIT;";
 
+/* WHY: omitting a delivered preparation from later snapshots cannot retract
+ * an already consumed Android object and permits replay resurrection.
+ * CONTRACT: v24 records one immutable, exportable withdrawal per preparation
+ * while retaining revisions, deliveries, ACKs and execution identities.
+ * INVARIANT: migration withdraws nothing and never touches workout facts. */
+static const char *const MIGRATE_V23_TO_V24_SQL =
+    "BEGIN IMMEDIATE;"
+    "ALTER TABLE session_preparations ADD COLUMN withdrawn_at TEXT;"
+    "CREATE TABLE session_preparation_withdrawals("
+    "withdrawal_id TEXT PRIMARY KEY,"
+    "preparation_id TEXT NOT NULL UNIQUE REFERENCES session_preparations(preparation_id),"
+    "revision_id TEXT NOT NULL REFERENCES session_preparation_revisions(revision_id),"
+    "requested_at TEXT NOT NULL,generation_id TEXT,acknowledged_at TEXT,"
+    "UNIQUE(preparation_id,revision_id));"
+    "PRAGMA user_version=24;COMMIT;";
+
 /* CONTRACT: v18 was already deployed before bounded draft publication was
  * added. Keep its version number and add only the nullable lifecycle cursor;
  * NULL deliberately means retryable/not yet published. */
@@ -1619,7 +1635,7 @@ static TrainlogStatus initialize_or_validate_schema(
     } else if (version == 11 || version == 12 || version == 13 || version == 14 ||
                version == 15 || version == 16 || version == 17 || version == 18 ||
                version == 19 || version == 20 || version == 21 || version == 22 ||
-               version == 23) {
+               version == 23 || version == 24) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -1798,6 +1814,9 @@ static TrainlogStatus initialize_or_validate_schema(
     if (status == TRAINLOG_STATUS_OK && version < 23) {
         status = execute_sql(database, MIGRATE_V22_TO_V23_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 24) {
+        status = execute_sql(database, MIGRATE_V23_TO_V24_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -1813,7 +1832,7 @@ static TrainlogStatus initialize_or_validate_schema(
         set_open_diagnostic(
             output_diagnostic,
             output_diagnostic_capacity,
-            version == 0 ? "create schema v23" : "migrate database to schema v23",
+            version == 0 ? "create schema v24" : "migrate database to schema v24",
             database->connection,
             SQLITE_ERROR
         );

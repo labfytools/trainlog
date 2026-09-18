@@ -40,8 +40,8 @@
  * - `bo` for body observations.
  * - `sy` for synchronization runs;
  * - `sxe` for persisted session-exercise occurrences;
- * - `sp`, `spr`, `spe`, and `spd` for preparation, revision, occurrence, and
- *   delivery identities.
+ * - `sp`, `spr`, `spe`, `spd`, and `spw` for preparation, revision,
+ *   occurrence, delivery, and withdrawal identities.
  *
  * Imported v1 documents may contain other schema-valid opaque identifiers;
  * this API defines creation policy, not import validation.

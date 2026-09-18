@@ -9,6 +9,7 @@ import { PlaceholderPage } from '../routes/PlaceholderPage'
 import { SessionsPage } from '../routes/SessionsPage'
 import type { RouteId } from './routes'
 import { useRoute } from './useRoute'
+import { DatePreferencesProvider } from '../presentation/DatePreferences'
 
 const placeholderContent: Record<Exclude<RouteId, 'dashboard'>, [string, string, string]> = {
   analysis: ['Analyse', 'COMPRENDRE', 'Les analyses détaillées apparaîtront ici lorsque leurs read models Core seront disponibles.'],
@@ -17,7 +18,7 @@ const placeholderContent: Record<Exclude<RouteId, 'dashboard'>, [string, string,
   exercises: ['Exercices', 'EXPLORER', 'Le catalogue canonique des exercices sera consultable depuis cette page.'],
 }
 
-export function App() {
+function AppContent() {
   const [route, navigate] = useRoute()
   const [health, setHealth] = useState<Health | null>(null)
   const [healthPending, setHealthPending] = useState(true)
@@ -89,4 +90,8 @@ export function App() {
       <Footer health={health} healthPending={healthPending} healthFailed={healthFailed} dashboard={dashboard} />
     </div>
   )
+}
+
+export function App() {
+  return <DatePreferencesProvider><AppContent /></DatePreferencesProvider>
 }

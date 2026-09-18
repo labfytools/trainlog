@@ -318,7 +318,7 @@ not contain cloud credentials and does not run `rclone`.
 As of 2026-09-17:
 
 - `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
-- desktop SQLite schema v23 and Android SQLite schema v22;
+- desktop SQLite schema v24 and Android SQLite schema v23;
 - Notcurses is the only active desktop terminal backend;
 - direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
   all-files access setting;

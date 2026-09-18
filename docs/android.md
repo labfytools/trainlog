@@ -6,6 +6,14 @@ preparation is inert until explicit start; an occupied singleton is never
 overwritten. Starting preserves the desktop-reserved execution `session_id`,
 copies targets only and creates no performed facts.
 
+Android schema v23 adds the durable manual-preparation withdrawal ledger.
+Consumption is part of the outer generation transaction. Exact pending
+deliveries are changed to `cancelled`; exact started deliveries remain started,
+and their active or completed execution data is untouched. The stored result is
+`pending_cancelled`, `execution_preserved`, or `no_matching_delivery`.
+Withdrawal replay is idempotent, and an older preparation delivery is skipped
+once the withdrawal identity for that preparation exists.
+
 ## 1. Purpose
 
 The Android application is Trainlog's low-friction capture client.

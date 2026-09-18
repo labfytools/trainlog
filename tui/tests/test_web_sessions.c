@@ -29,6 +29,33 @@ static int scalar(TrainlogDatabase *database, const char *sql) {
     return result;
 }
 
+static bool json_string(const char *json, const char *key, char *output, size_t capacity) {
+    char marker[96];
+    const char *start;
+    const char *end;
+    size_t length;
+
+    if (snprintf(marker, sizeof(marker), "\"%s\":\"", key) < 0) {
+        return false;
+    }
+    start = strstr(json, marker);
+    if (start == NULL) {
+        return false;
+    }
+    start += strlen(marker);
+    end = strchr(start, '"');
+    if (end == NULL) {
+        return false;
+    }
+    length = (size_t)(end - start);
+    if (length == 0U || length >= capacity) {
+        return false;
+    }
+    (void)memcpy(output, start, length);
+    output[length] = '\0';
+    return true;
+}
+
 static bool creation_replay_revision_and_pagination(void) {
     static const char CREATE_BODY[] =
         "{\"title\":\"Séance échappée \\\"A\\\"\",\"session_type\":\"training\","
@@ -178,6 +205,186 @@ static bool creation_replay_revision_and_pagination(void) {
     return true;
 }
 
+static bool withdrawal_is_durable_and_preserves_evidence(void) {
+    static const char READY_BODY[] =
+        "{\"title\":\"Préparation à retirer\",\"session_type\":\"training\","
+        "\"planned_for\":\"2026-09-20\",\"notes\":null,\"editing_state\":\"ready\","
+        "\"occurrences\":[{\"exercise_id\":\"ex_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\","
+        "\"equipment_id\":null,\"load_mode\":\"none\",\"rest_seconds\":60,"
+        "\"target_sets\":2,\"target_reps\":8,\"target_duration_seconds\":null,"
+        "\"target_weight_kg\":null,\"notes\":null}],\"source_proposal_id\":"
+        "\"aid_11111111-1111-4111-8111-111111111111\",\"source_payload_sha256\":"
+        "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+    static const char EDIT_BODY[] =
+        "{\"title\":\"Modification interdite\",\"session_type\":\"training\","
+        "\"planned_for\":null,\"notes\":null,\"editing_state\":\"draft\","
+        "\"occurrences\":[]}";
+    static const char LOCAL_READY_BODY[] =
+        "{\"title\":\"Préparation locale\",\"session_type\":\"training\","
+        "\"planned_for\":null,\"notes\":null,\"editing_state\":\"ready\","
+        "\"occurrences\":[{\"exercise_id\":\"ex_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\","
+        "\"equipment_id\":null,\"load_mode\":\"none\",\"rest_seconds\":0,"
+        "\"target_sets\":1,\"target_reps\":1,\"target_duration_seconds\":null,"
+        "\"target_weight_kg\":null,\"notes\":null}]}";
+    TrainlogDatabase *database = NULL;
+    TrainlogWebSessionsPageQuery query = {
+        TRAINLOG_WEB_SESSION_PREPARATIONS, 0U, 64U, ""};
+    char *created = NULL;
+    char *delivery = NULL;
+    char *withdrawal = NULL;
+    char *replayed = NULL;
+    char *detail = NULL;
+    char *page = NULL;
+    size_t created_size = 0U;
+    size_t delivery_size = 0U;
+    size_t withdrawal_size = 0U;
+    size_t replayed_size = 0U;
+    size_t detail_size = 0U;
+    size_t page_size = 0U;
+    char preparation_id[128];
+    char revision_id[128];
+    char local_preparation_id[128];
+    char local_revision_id[128];
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+                                                     "ex_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                                     "Exercice retrait",
+                                                     "exercice retrait",
+                                                     TRAINLOG_TRACKING_REPS,
+                                                     TRAINLOG_RECORDING_SETS,
+                                                     0U) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO ai_session_drafts(draft_id,created_at,session_type,title) "
+                       "VALUES('aid_11111111-1111-4111-8111-111111111111',"
+                       "'2026-09-18T00:00:00Z','training','Proposition conservée');"
+                       "INSERT INTO ai_session_draft_imports VALUES(last_insert_rowid(),"
+                       "'aid_11111111-1111-4111-8111-111111111111',"
+                       "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',"
+                       "'2026-09-18T00:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_sessions_save_json(database,
+                                          NULL,
+                                          "",
+                                          "request-withdraw-create",
+                                          READY_BODY,
+                                          strlen(READY_BODY),
+                                          &created,
+                                          &created_size) == TRAINLOG_STATUS_OK);
+    CHECK(json_string(created, "preparation_id", preparation_id, sizeof(preparation_id)));
+    CHECK(json_string(created, "revision_id", revision_id, sizeof(revision_id)));
+    CHECK(trainlog_web_sessions_withdraw_json(database,
+                                              preparation_id,
+                                              "spr_ffffffff-ffff-4fff-8fff-ffffffffffff",
+                                              "request-withdraw-stale",
+                                              &withdrawal,
+                                              &withdrawal_size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(withdrawal == NULL && withdrawal_size == 0U);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_withdrawals") == 0);
+    CHECK(trainlog_web_sessions_deliver_json(database,
+                                             preparation_id,
+                                             revision_id,
+                                             "request-withdraw-deliver",
+                                             &delivery,
+                                             &delivery_size) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_web_sessions_withdraw_json(database,
+                                              preparation_id,
+                                              revision_id,
+                                              "request-withdraw-exact",
+                                              &withdrawal,
+                                              &withdrawal_size) == TRAINLOG_STATUS_OK);
+    CHECK(strstr(withdrawal, "\"android_cancellation\":\"pending\"") != NULL);
+    CHECK(trainlog_web_sessions_withdraw_json(database,
+                                              preparation_id,
+                                              revision_id,
+                                              "request-withdraw-exact",
+                                              &replayed,
+                                              &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(withdrawal_size == replayed_size && strcmp(withdrawal, replayed) == 0);
+    free(replayed);
+    replayed = NULL;
+    replayed_size = 0U;
+    CHECK(trainlog_web_sessions_withdraw_json(database,
+                                              "sp_ffffffff-ffff-4fff-8fff-ffffffffffff",
+                                              revision_id,
+                                              "request-withdraw-exact",
+                                              &replayed,
+                                              &replayed_size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_withdrawals") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_deliveries") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_revisions") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM ai_session_drafts") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM session_preparation_deliveries WHERE state='pending'") ==
+          1);
+    CHECK(trainlog_web_sessions_list_json(database, &query, &page, &page_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(page, preparation_id) == NULL);
+    CHECK(trainlog_web_sessions_detail_json(
+              database, "preparation", preparation_id, &detail, &detail_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(detail, "\"state\":\"withdrawn\"") != NULL);
+    CHECK(strstr(detail, "\"source_proposal_title\":\"Proposition conservée\"") != NULL);
+    CHECK(strstr(detail, "\"withdrawal_id\":\"spw_") != NULL);
+    CHECK(trainlog_web_sessions_save_json(database,
+                                          preparation_id,
+                                          revision_id,
+                                          "request-after-withdraw-save",
+                                          EDIT_BODY,
+                                          strlen(EDIT_BODY),
+                                          &replayed,
+                                          &replayed_size) == TRAINLOG_STATUS_NOT_FOUND);
+    CHECK(trainlog_web_sessions_deliver_json(database,
+                                             preparation_id,
+                                             revision_id,
+                                             "request-after-withdraw-deliver",
+                                             &replayed,
+                                             &replayed_size) == TRAINLOG_STATUS_CONFLICT);
+    free(replayed);
+    replayed = NULL;
+    replayed_size = 0U;
+    CHECK(trainlog_web_sessions_save_json(database,
+                                          NULL,
+                                          "",
+                                          "request-local-create",
+                                          LOCAL_READY_BODY,
+                                          strlen(LOCAL_READY_BODY),
+                                          &replayed,
+                                          &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(json_string(replayed,
+                      "preparation_id",
+                      local_preparation_id,
+                      sizeof(local_preparation_id)));
+    CHECK(json_string(replayed, "revision_id", local_revision_id, sizeof(local_revision_id)));
+    free(replayed);
+    replayed = NULL;
+    replayed_size = 0U;
+    CHECK(trainlog_web_sessions_withdraw_json(database,
+                                              local_preparation_id,
+                                              local_revision_id,
+                                              "request-local-withdraw",
+                                              &replayed,
+                                              &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(strstr(replayed, "\"android_cancellation\":\"not_required\"") != NULL);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_withdrawals") == 2);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_deliveries") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM ai_session_drafts") == 1);
+
+    free(created);
+    free(delivery);
+    free(withdrawal);
+    free(replayed);
+    free(detail);
+    free(page);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void) {
-    return creation_replay_revision_and_pagination() ? 0 : 1;
+    return creation_replay_revision_and_pagination() &&
+                   withdrawal_is_durable_and_preserves_evidence()
+               ? 0
+               : 1;
 }

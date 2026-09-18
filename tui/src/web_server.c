@@ -24,6 +24,7 @@
 #include "trainlog/web_prepared_items.h"
 #include "trainlog/web_sessions.h"
 #include "trainlog/dashboard_layout.h"
+#include "trainlog/web_preferences.h"
 #include "web_assets.h"
 
 #define TRAINLOG_HTTP_CONNECTION_LIMIT 32U
@@ -45,6 +46,7 @@ typedef struct TrainlogWebContext {
     pid_t worker_pid;
     char csrf_token[65];
     bool invalid_layout_reported;
+    bool invalid_preferences_reported;
 } TrainlogWebContext;
 
 typedef struct TrainlogHttpRequestState {
@@ -817,17 +819,19 @@ static enum MHD_Result handle_request(void *closure,
             char expected_buffer[TRAINLOG_ID_MAX + 1U];
             char identity_buffer[TRAINLOG_ID_MAX + 1U];
             bool delivery = false;
+            bool withdrawal = false;
             TrainlogStatus status;
 
             if ((strcmp(url, "/api/v1/sessions/preparations") == 0 &&
                  strcmp(method, MHD_HTTP_METHOD_POST) != 0) ||
                 (strcmp(url, "/api/v1/sessions/preparations") != 0 &&
                  strcmp(method, MHD_HTTP_METHOD_PUT) != 0 &&
-                 strcmp(method, MHD_HTTP_METHOD_POST) != 0)) {
+                 strcmp(method, MHD_HTTP_METHOD_POST) != 0 &&
+                 strcmp(method, MHD_HTTP_METHOD_DELETE) != 0)) {
                 return queue_json(connection,
                                   MHD_HTTP_METHOD_NOT_ALLOWED,
                                   "{\"error\":\"method_not_allowed\"}\n",
-                                  "POST, PUT");
+                                  "POST, PUT, DELETE");
             }
             if (!valid_origin(context, origin) || !valid_csrf(context, csrf)) {
                 return queue_json(
@@ -858,12 +862,13 @@ static enum MHD_Result handle_request(void *closure,
                     identity = identity_buffer;
                     delivery = true;
                 }
+                withdrawal = !delivery && strcmp(method, MHD_HTTP_METHOD_DELETE) == 0;
                 if ((delivery && strcmp(method, MHD_HTTP_METHOD_POST) != 0) ||
-                    (!delivery && strcmp(method, MHD_HTTP_METHOD_PUT) != 0)) {
+                    (!delivery && !withdrawal && strcmp(method, MHD_HTTP_METHOD_PUT) != 0)) {
                     return queue_json(connection,
                                       MHD_HTTP_METHOD_NOT_ALLOWED,
                                       "{\"error\":\"method_not_allowed\"}\n",
-                                      delivery ? "POST" : "PUT");
+                                      delivery ? "POST" : "PUT, DELETE");
                 }
                 if (if_match == NULL || if_match[0] != '"') {
                     return queue_json(connection,
@@ -884,6 +889,9 @@ static enum MHD_Result handle_request(void *closure,
             }
             if (delivery) {
                 status = trainlog_web_sessions_deliver_json(
+                    context->database, identity, expected, request_id, &json, &json_size);
+            } else if (withdrawal) {
+                status = trainlog_web_sessions_withdraw_json(
                     context->database, identity, expected, request_id, &json, &json_size);
             } else {
                 status = trainlog_web_sessions_save_json(context->database,
@@ -961,6 +969,106 @@ static enum MHD_Result handle_request(void *closure,
             }
         }
         return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+    }
+    if (strcmp(url, "/api/v1/web-preferences") == 0) {
+        TrainlogWebPreferences preferences;
+        TrainlogWebPreferences saved;
+        TrainlogWebPreferencesSource source;
+        TrainlogWebPreferencesResult preferences_result;
+        char json[TRAINLOG_WEB_PREFERENCES_JSON_CAPACITY];
+        size_t json_size;
+        uint64_t expected;
+        const char *origin;
+        const char *csrf;
+        const char *if_match;
+
+        if (is_get) {
+            preferences_result = trainlog_web_preferences_load(&preferences, &source);
+            if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK ||
+                !trainlog_web_preferences_serialize(&preferences,
+                                                    source,
+                                                    true,
+                                                    json,
+                                                    sizeof(json),
+                                                    &json_size)) {
+                return queue_json(connection,
+                                  MHD_HTTP_INTERNAL_SERVER_ERROR,
+                                  "{\"error\":\"preferences_unavailable\"}\n",
+                                  NULL);
+            }
+            if (source == TRAINLOG_WEB_PREFERENCES_INVALID_PERSISTED &&
+                !context->invalid_preferences_reported) {
+                (void)fprintf(stderr,
+                              "Trainlog Web : préférences persistées invalides, défaut utilisé\n");
+                context->invalid_preferences_reported = true;
+            }
+            return queue_layout_json(connection,
+                                     MHD_HTTP_OK,
+                                     json,
+                                     preferences.revision,
+                                     context->csrf_token);
+        }
+        if (strcmp(method, MHD_HTTP_METHOD_PUT) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET, PUT");
+        }
+        origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
+        csrf = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-CSRF-Token");
+        if (!valid_origin(context, origin) || !valid_csrf(context, csrf)) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        if_match =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+        if (!parse_if_match(if_match, &expected)) {
+            return queue_json(connection,
+                              MHD_HTTP_PRECONDITION_REQUIRED,
+                              "{\"error\":\"precondition_required\"}\n",
+                              NULL);
+        }
+        {
+            const char *content_type = MHD_lookup_connection_value(
+                connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
+            if (content_type == NULL || strcmp(content_type, "application/json") != 0) {
+                return queue_json(connection,
+                                  MHD_HTTP_UNSUPPORTED_MEDIA_TYPE,
+                                  "{\"error\":\"unsupported_media_type\"}\n",
+                                  NULL);
+            }
+        }
+        preferences_result =
+            trainlog_web_preferences_parse(state->body, state->body_size, &preferences);
+        if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK ||
+            preferences.revision != expected) {
+            return queue_json(connection,
+                              MHD_HTTP_BAD_REQUEST,
+                              "{\"error\":\"invalid_preferences\"}\n",
+                              NULL);
+        }
+        preferences_result =
+            trainlog_web_preferences_save(&preferences, expected, &saved);
+        if (preferences_result == TRAINLOG_WEB_PREFERENCES_CONFLICT) {
+            return queue_json(connection,
+                              MHD_HTTP_PRECONDITION_FAILED,
+                              "{\"error\":\"revision_conflict\"}\n",
+                              NULL);
+        }
+        if (preferences_result != TRAINLOG_WEB_PREFERENCES_OK ||
+            !trainlog_web_preferences_serialize(&saved,
+                                                TRAINLOG_WEB_PREFERENCES_PERSISTED,
+                                                true,
+                                                json,
+                                                sizeof(json),
+                                                &json_size)) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"preferences_save_failed\"}\n",
+                              NULL);
+        }
+        return queue_layout_json(
+            connection, MHD_HTTP_OK, json, saved.revision, context->csrf_token);
     }
     if (strcmp(url, "/api/v1/dashboard-layout") == 0) {
         TrainlogDashboardLayout layout;
@@ -1165,6 +1273,7 @@ int trainlog_web_server_run(TrainlogDatabase *database,
         return -1;
     }
     context.invalid_layout_reported = false;
+    context.invalid_preferences_reported = false;
     if (!generate_csrf_token(context.csrf_token)) {
         web_diagnostic(diagnostic, diagnostic_capacity, "impossible de générer la protection CSRF");
         return -1;

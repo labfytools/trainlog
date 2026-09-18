@@ -47,12 +47,15 @@ if web_assets_enabled
     '../web/src/api/health.ts',
     '../web/src/api/dashboard.ts',
     '../web/src/api/dashboardLayout.ts',
+    '../web/src/api/preparedItems.ts',
     '../web/src/api/sync.ts',
     '../web/src/api/sync.test.ts',
+    '../web/src/api/webPreferences.ts',
     '../web/src/app/App.tsx',
     '../web/src/app/routes.ts',
     '../web/src/app/useRoute.ts',
     '../web/src/components/EmptyState.tsx',
+    '../web/src/components/DisplayPreferences.tsx',
     '../web/src/components/Footer.tsx',
     '../web/src/components/Header.tsx',
     '../web/src/components/SyncControl.tsx',
@@ -65,6 +68,8 @@ if web_assets_enabled
     '../web/src/dashboard/DashboardTiles.tsx',
     '../web/src/dashboard/dashboardFormat.ts',
     '../web/src/dashboard/dashboardLayout.ts',
+    '../web/src/presentation/DatePreferences.tsx',
+    '../web/src/presentation/dateFormat.ts',
     '../web/src/routes/DashboardPage.tsx',
     '../web/src/routes/PlaceholderPage.tsx',
     '../web/src/routes/SessionsPage.tsx',
@@ -266,6 +271,7 @@ trainlog_tui_sources = files(
   'src/theme.c',
   'src/tui.c',
   'src/dashboard_layout.c',
+  'src/web_preferences.c',
   'src/web_server.c',
 )
 trainlog_tui_sources += web_assets_source
@@ -376,7 +382,8 @@ test('cli', test_cli)
 
 test_web_server = executable(
   'test_web_server',
-  ['tests/test_web_server.c', 'src/web_server.c', 'src/dashboard_layout.c', web_assets_source],
+  ['tests/test_web_server.c', 'src/web_server.c', 'src/dashboard_layout.c',
+   'src/web_preferences.c', web_assets_source],
   dependencies: [trainlog_core_dep, microhttpd_dep, yyjson_dep],
   include_directories: trainlog_private_include,
   c_args: strict_c_args,
@@ -781,6 +788,11 @@ test(
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_sync_generation_exchange.py'],
   timeout: 120,
+)
+test(
+  'session_preparation_export',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_session_preparation_export.py'],
 )
 test(
   'generation_archival',

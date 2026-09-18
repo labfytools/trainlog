@@ -70,7 +70,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
         private val SUPPORTED =
             (ANDROID_KINDS.values +
                     Kind("trainlog-ai-session-drafts", 1, "ai-proposals-v1.json", false) +
-                    Kind("trainlog-session-preparations", 1, "session-preparations-v1.json", false))
+                    Kind("trainlog-session-preparations", 2, "session-preparations-v2.json", false))
                 .map { it.format to it.version }
                 .toSet()
 

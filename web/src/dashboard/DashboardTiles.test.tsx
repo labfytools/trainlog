@@ -20,7 +20,7 @@ describe('tuiles Dashboard alimentées par le contrat', () => {
       api_version: 1 as const,
       generated_at: '2026-09-17T12:00:00Z',
       partial: false,
-      items: [{ identity: 'aid_one', kind: 'ai_proposal' as const, title: 'Préparation', planned_for: '2026-09-18', state: 'published', occurrence_count: 6, provenance: 'ai_import' }],
+      items: [{ identity: 'aid_one', kind: 'ai_proposal' as const, title: 'Préparation', planned_for: '2026-09-18', state: 'published', sort_timestamp: '2026-09-17T12:00:00Z', occurrence_count: 6, provenance: 'ai_import' }],
     }
     const { rerender } = render(
       <NextSessionTile size="large" preparedItems={proposal} pending={false} failed={false} />,
@@ -34,7 +34,7 @@ describe('tuiles Dashboard alimentées par le contrat', () => {
   })
 
   it('conserve une lecture durable lorsque son actualisation échoue', () => {
-    render(<NextSessionTile size="medium" preparedItems={{ api_version: 1, generated_at: '2026-09-17T12:00:00Z', partial: false, items: [{ identity: 'aid_one', kind: 'ai_proposal', title: 'Conservée', planned_for: null, state: 'published', occurrence_count: 1, provenance: 'ai_import' }] }} pending={false} failed />)
+    render(<NextSessionTile size="medium" preparedItems={{ api_version: 1, generated_at: '2026-09-17T12:00:00Z', partial: false, items: [{ identity: 'aid_one', kind: 'ai_proposal', title: 'Conservée', planned_for: null, state: 'published', sort_timestamp: '2026-09-17T12:00:00Z', occurrence_count: 1, provenance: 'ai_import' }] }} pending={false} failed />)
     expect(screen.getByText('Conservée')).toBeInTheDocument()
     expect(screen.getByText(/Dernière lecture conservée/)).toBeInTheDocument()
     expect(screen.queryByText('Aucun élément disponible')).not.toBeInTheDocument()
@@ -42,8 +42,8 @@ describe('tuiles Dashboard alimentées par le contrat', () => {
 
   it('rend chaque proposition consultable sans la transformer en brouillon', () => {
     render(<NextSessionTile size="large" preparedItems={{ api_version: 1, generated_at: '2026-09-17T12:00:00Z', partial: false, items: [
-      { identity: 'aid_first', kind: 'ai_proposal', title: 'Première', planned_for: null, state: 'published', occurrence_count: 2, provenance: 'ai_import' },
-      { identity: 'aid_expected', kind: 'ai_proposal', title: 'Attendue', planned_for: null, state: 'published', occurrence_count: 6, provenance: 'ai_import' },
+      { identity: 'aid_first', kind: 'ai_proposal', title: 'Première', planned_for: null, state: 'published', sort_timestamp: '2026-09-16T12:00:00Z', occurrence_count: 2, provenance: 'ai_import' },
+      { identity: 'aid_expected', kind: 'ai_proposal', title: 'Attendue', planned_for: null, state: 'published', sort_timestamp: '2026-09-17T12:00:00Z', occurrence_count: 6, provenance: 'ai_import' },
     ] }} pending={false} failed={false} />)
     const expected = document.querySelector('[data-prepared-identity="aid_expected"]')
     expect(expected).toHaveTextContent('Attendue')

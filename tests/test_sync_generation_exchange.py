@@ -24,8 +24,9 @@ CREATE TABLE sync_acknowledgements(ack_id TEXT PRIMARY KEY,generation_id TEXT,ru
 CREATE TABLE sync_generation_archives(generation_id TEXT PRIMARY KEY,archive_path TEXT UNIQUE,manifest_sha256 TEXT,archive_sha256 TEXT,archived_at TEXT,audit_json TEXT);
 CREATE TABLE sync_causal_publications(operation_id TEXT,generation_id TEXT,first_emission INTEGER,PRIMARY KEY(operation_id,generation_id));
 CREATE TABLE session_preparation_deliveries(delivery_id TEXT PRIMARY KEY,preparation_id TEXT,revision_id TEXT,execution_session_id TEXT,state TEXT,created_at TEXT,generation_id TEXT,acknowledged_at TEXT);
-CREATE TABLE session_preparations(preparation_id TEXT PRIMARY KEY,current_revision_id TEXT,delivery_state TEXT);
-PRAGMA user_version=23;
+CREATE TABLE session_preparations(preparation_id TEXT PRIMARY KEY,current_revision_id TEXT,delivery_state TEXT,withdrawn_at TEXT);
+CREATE TABLE session_preparation_withdrawals(withdrawal_id TEXT PRIMARY KEY,preparation_id TEXT UNIQUE,revision_id TEXT,requested_at TEXT,generation_id TEXT,acknowledged_at TEXT);
+PRAGMA user_version=24;
 """
 
 class GenerationTest(unittest.TestCase):
@@ -69,6 +70,72 @@ class GenerationTest(unittest.TestCase):
         self.assertEqual("acknowledged",generation.accept_ack(self.database,ack_path));self.assertEqual("unchanged",generation.accept_ack(self.database,ack_path))
         with closing(sqlite3.connect(destination)) as reopened:
             self.assertEqual(ack,generation.record_consumed(reopened,manifest,checksum));self.assertEqual(1,reopened.execute("SELECT count(*) FROM facts WHERE id='imported'").fetchone()[0])
+
+    def test_withdrawal_generation_relation_is_durable_until_ack(self):
+        withdrawal = "spw_77777777-7777-4777-8777-777777777777"
+        preparation = "sp_88888888-8888-4888-8888-888888888888"
+        revision = "spr_99999999-9999-4999-8999-999999999999"
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute(
+                "INSERT INTO session_preparations VALUES(?,?,?,?)",
+                (preparation, revision, "acknowledged", "2026-09-18T12:00:00Z"),
+            )
+            db.execute(
+                "INSERT INTO session_preparation_withdrawals VALUES(?,?,?,?,NULL,NULL)",
+                (withdrawal, preparation, revision, "2026-09-18T12:00:00Z"),
+            )
+            db.commit()
+        artifacts = (("session-preparations", "trainlog-session-preparations", 2,
+                      "session-preparations-v2.json", False, "controlled.py", ()),)
+        payload = {
+            "format": "trainlog-session-preparations",
+            "version": 2,
+            "generated_at": "2026-09-18T12:01:00Z",
+            "deliveries": [],
+            "withdrawals": [{
+                "withdrawal_id": withdrawal,
+                "preparation_id": preparation,
+                "revision_id": revision,
+                "requested_at": "2026-09-18T12:00:00Z",
+                "deliveries": [],
+            }],
+        }
+        def exporter(_tool, _extra, output, _snapshot):
+            output.write_text(json.dumps(payload))
+        with mock.patch.object(generation, "ARTIFACTS", artifacts), \
+             mock.patch.object(generation, "SUPPORTED", {("trainlog-session-preparations", 2)}), \
+             mock.patch.object(generation, "run_export", exporter):
+            stage, manifest, checksum = generation.capture_desktop(
+                self.database, self.root / "withdrawal", PEER_B, RUN, GEN,
+            )
+        self.assertTrue((stage / "session-preparations-v2.json").is_file())
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(
+                (GEN, None),
+                db.execute(
+                    "SELECT generation_id,acknowledged_at FROM session_preparation_withdrawals",
+                ).fetchone(),
+            )
+            db.execute("UPDATE sync_generations SET status='waiting_acknowledgement' WHERE generation_id=?", (GEN,))
+            db.commit()
+        ack = generation.ack_document(
+            RUN,
+            GEN,
+            manifest["producer"]["peer_id"],
+            PEER_B,
+            checksum,
+            "consumed",
+            generation.now(),
+        )
+        ack_path = self.root / "withdrawal-ack.json"
+        ack_path.write_bytes(generation.canonical(ack))
+        self.assertEqual("acknowledged", generation.accept_ack(self.database, ack_path))
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertIsNotNone(
+                db.execute(
+                    "SELECT acknowledged_at FROM session_preparation_withdrawals",
+                ).fetchone()[0],
+            )
     def test_substitution_and_transaction_failure_leave_no_consumption(self):
         _,manifest,checksum=self.capture();published=self.publish()
         (published/"history.json").write_text("{}")

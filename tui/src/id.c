@@ -19,7 +19,8 @@ static bool prefix_is_supported(const char *prefix) {
      */
     return strcmp(prefix, "ex") == 0 || strcmp(prefix, "se") == 0 || strcmp(prefix, "bo") == 0 ||
            strcmp(prefix, "sy") == 0 || strcmp(prefix, "sxe") == 0 || strcmp(prefix, "sp") == 0 ||
-           strcmp(prefix, "spr") == 0 || strcmp(prefix, "spe") == 0 || strcmp(prefix, "spd") == 0;
+           strcmp(prefix, "spr") == 0 || strcmp(prefix, "spe") == 0 || strcmp(prefix, "spd") == 0 ||
+           strcmp(prefix, "spw") == 0;
 }
 
 TrainlogStatus trainlog_id_generate(const char *prefix, char *output, size_t output_size) {

@@ -11,7 +11,8 @@
 
 typedef enum TrainlogWebPreparedItemKind {
     TRAINLOG_WEB_PREPARED_AI_PROPOSAL = 0,
-    TRAINLOG_WEB_PREPARED_EXECUTION_DRAFT = 1
+    TRAINLOG_WEB_PREPARED_EXECUTION_DRAFT = 1,
+    TRAINLOG_WEB_PREPARED_MANUAL_PREPARATION = 2
 } TrainlogWebPreparedItemKind;
 
 typedef struct TrainlogWebPreparedItem {
@@ -20,6 +21,7 @@ typedef struct TrainlogWebPreparedItem {
     char state[32];
     char title[TRAINLOG_NAME_MAX + 1U];
     char planned_for[11];
+    char sort_timestamp[TRAINLOG_TIMESTAMP_MAX + 1U];
     size_t occurrence_count;
     char provenance[32];
 } TrainlogWebPreparedItem;

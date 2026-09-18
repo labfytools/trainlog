@@ -111,7 +111,7 @@ class SyncGenerationServiceTest {
                 .use { db ->
                     db.rawQuery("PRAGMA user_version", null).use {
                         assertTrue(it.moveToFirst())
-                        assertEquals(22, it.getInt(0))
+                        assertEquals(23, it.getInt(0))
                     }
                     db.rawQuery("SELECT COUNT(*) FROM exercises", null).use {
                         assertTrue(it.moveToFirst())

@@ -2,13 +2,25 @@
 
 `web_sessions` exercises production preparation creation, durable request
 replay, immutable successor revisions, stale-revision conflict, duplicate
-exercise occurrences, list search and persisted detail serialization. The Web
-Vitest suite covers the shell and API parsers; the embedded frontend is also
-built into the canonical Meson binary.
+exercise occurrences, list search, persisted detail serialization, revision-
+guarded withdrawal, conflicting idempotency-key reuse, active-list exclusion,
+and preservation of proposal/revision/delivery evidence. The HTTP test covers
+the real protected DELETE route and the versioned local preference GET/PUT,
+including CSRF, ETag, persistence and invalid-file fallback. The Web Vitest
+suite additionally covers cross-type global ordering beyond 32 rows, timestamp
+offsets, stable ties, invalid/absent dates, contextual states, confirmation
+cancel, the DELETE request and preference conflict behavior. Date tests run
+under `Pacific/Honolulu` and `Pacific/Kiritimati`.
 
 `SessionPreparationExchangeTest` covers Android import replay, occupied
-singleton refusal, explicit start, reserved execution identity and absence of
-performed facts. `SyncGenerationServiceTest` and
+singleton refusal, explicit start, reserved execution identity, schema-v22 to
+v23 migration, permanent withdrawal replay, pending cancellation, started
+execution preservation, multi-delivery targeting, witness preservation and
+absence of performed facts. `test_session_preparation_export.py` proves that a
+withdrawn preparation is not redelivered, its exact evidence is exported in V2,
+and an acknowledged withdrawal is not republished. Generation tests bind the
+withdrawal to one immutable generation and acknowledge it only after the exact
+durable ACK. `SyncGenerationServiceTest` and
 `SyncDeploymentConversationTest` exercise the real optional artifact through
 generation validation and 24 bidirectional conversations. It also asserts that
 every foreground conversation emits exactly one fresh daemon request signal;
@@ -28,6 +40,14 @@ retained staging and unrelated legacy files, adapter expiry produces the stable
 The C MTP regression keeps a malformed retained generation beside the current
 reference and proves that pull downloads only the referenced generation while
 still rejecting a truncated object inside that current generation.
+
+`test_web_sessions_browser.py` runs headless Firefox against the embedded
+production assets and C HTTP server with private temporary XDG roots. It creates
+only a synthetic ready preparation and delivery, verifies French then persisted
+ISO presentation, captures desktop and an exact BiDi-emulated 390x844 viewport,
+performs the real confirmation click, checks the schema-v24 withdrawal ledger
+after reload, and validates the resulting V2 export evidence. Android repository
+tests exercise the actual V2 consumer rather than a permissive protocol mock.
 
 `web_prepared_items` exercises the production SQLite projection and JSON
 serializer with a proposal and an execution draft, then proves finalized and

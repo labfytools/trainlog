@@ -1884,9 +1884,17 @@ class TrainlogRepository(
         val root = try { JSONObject(json) } catch (_: Exception) {
             return AiSessionDraftImportResult.Invalid("Artifact de préparations invalide.")
         }
-        if (!root.hasExactKeys(setOf("format", "version", "generated_at", "deliveries")) ||
-            root.optString("format") != "trainlog-session-preparations" || root.optInt("version") != 1)
-            return AiSessionDraftImportResult.Invalid("Artifact de préparations v1 non supporté.")
+        val version = root.optInt("version")
+        val rootKeys = if (version == 1) {
+            setOf("format", "version", "generated_at", "deliveries")
+        } else {
+            setOf("format", "version", "generated_at", "deliveries", "withdrawals")
+        }
+        if (!root.hasExactKeys(rootKeys) ||
+            root.optString("format") != "trainlog-session-preparations" ||
+            version !in setOf(1, 2)) {
+            return AiSessionDraftImportResult.Invalid("Artifact de préparations non supporté.")
+        }
         val values = root.optJSONArray("deliveries")
             ?: return AiSessionDraftImportResult.Invalid("Livraisons de préparations manquantes.")
         if (values.length() > 128) return AiSessionDraftImportResult.Invalid("Trop de préparations.")
@@ -1904,8 +1912,10 @@ class TrainlogRepository(
                 val preparationId = delivery.getString("preparation_id")
                 val revisionId = delivery.getString("revision_id")
                 val executionId = delivery.getString("execution_session_id")
-                require(deliveryId.startsWith("spd_") && preparationId.startsWith("sp_") &&
-                    revisionId.startsWith("spr_") && executionId.startsWith("se_")) { "Identité de préparation invalide." }
+                require(stableUuidV4Id(deliveryId, "spd_") &&
+                    stableUuidV4Id(preparationId, "sp_") &&
+                    stableUuidV4Id(revisionId, "spr_") &&
+                    stableUuidV4Id(executionId, "se_")) { "Identité de préparation invalide." }
                 require(delivery.getString("state") in setOf("pending", "remote_unknown")) { "État de livraison invalide." }
                 val occurrences = delivery.getJSONArray("occurrences")
                 require(occurrences.length() in 1..64) { "Occurrences de préparation invalides." }
@@ -1915,7 +1925,15 @@ class TrainlogRepository(
                     arrayOf(deliveryId),
                 ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) to cursor.getString(1) else null }
                 val canonical = delivery.toString()
-                if (existing == null) {
+                val withdrawn = db.rawQuery(
+                    "SELECT 1 FROM session_preparation_withdrawals WHERE preparation_id=?",
+                    arrayOf(preparationId),
+                ).use { cursor -> cursor.moveToFirst() }
+                if (existing == null && withdrawn) {
+                    /* INVARIANT: an older generation cannot resurrect a
+                     * delivery after its preparation withdrawal was consumed. */
+                    skipped++
+                } else if (existing == null) {
                     db.insertOrThrow("session_preparation_deliveries", null, ContentValues().apply {
                         put("delivery_id", deliveryId); put("preparation_id", preparationId)
                         put("revision_id", revisionId); put("execution_session_id", executionId)
@@ -1930,11 +1948,105 @@ class TrainlogRepository(
                     skipped++
                 }
             }
+            if (version == 2) {
+                val withdrawals = root.getJSONArray("withdrawals")
+                require(withdrawals.length() <= 128) { "Trop de retraits de préparations." }
+                for (withdrawalIndex in 0 until withdrawals.length()) {
+                    applySessionPreparationWithdrawal(db, withdrawals.getJSONObject(withdrawalIndex))
+                }
+            }
             AiSessionDraftImportResult.Applied(imported, skipped)
         } catch (error: IllegalArgumentException) {
             AiSessionDraftImportResult.Invalid(error.message ?: "Préparation invalide.")
         } catch (_: Exception) {
             AiSessionDraftImportResult.DatabaseError
+        }
+    }
+
+    /**
+     * Applies one immutable preparation withdrawal inside the generation
+     * transaction. Pending deliveries become non-startable; started delivery
+     * rows and every execution record are preserved verbatim.
+     */
+    private fun applySessionPreparationWithdrawal(db: SQLiteDatabase, withdrawal: JSONObject) {
+        require(withdrawal.hasExactKeys(setOf(
+            "withdrawal_id",
+            "preparation_id",
+            "revision_id",
+            "requested_at",
+            "deliveries",
+        ))) { "Forme de retrait de préparation invalide." }
+        val withdrawalId = withdrawal.getString("withdrawal_id")
+        val preparationId = withdrawal.getString("preparation_id")
+        val revisionId = withdrawal.getString("revision_id")
+        require(stableUuidV4Id(withdrawalId, "spw_") &&
+            stableUuidV4Id(preparationId, "sp_") &&
+            stableUuidV4Id(revisionId, "spr_")) { "Identité de retrait de préparation invalide." }
+        val deliveries = withdrawal.getJSONArray("deliveries")
+        require(deliveries.length() <= 128) { "Trop de livraisons dans le retrait." }
+        val canonical = withdrawal.toString()
+        val existing = db.rawQuery(
+            "SELECT preparation_id,revision_id,payload_json FROM " +
+                "session_preparation_withdrawals WHERE withdrawal_id=?",
+            arrayOf(withdrawalId),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2))
+            }
+        }
+        require(existing == null ||
+            (existing.first == preparationId && existing.second == revisionId &&
+                JSONObject(existing.third).toString() == canonical)) {
+            "Identité de retrait réutilisée avec un contenu différent."
+        }
+        var result = "no_matching_delivery"
+        for (deliveryIndex in 0 until deliveries.length()) {
+            val delivery = deliveries.getJSONObject(deliveryIndex)
+            require(delivery.hasExactKeys(setOf(
+                "delivery_id",
+                "revision_id",
+                "execution_session_id",
+            ))) { "Livraison de retrait invalide." }
+            val deliveryId = delivery.getString("delivery_id")
+            val deliveryRevision = delivery.getString("revision_id")
+            val executionId = delivery.getString("execution_session_id")
+            require(stableUuidV4Id(deliveryId, "spd_") &&
+                stableUuidV4Id(deliveryRevision, "spr_") &&
+                stableUuidV4Id(executionId, "se_")) { "Identité de livraison de retrait invalide." }
+            val state = db.rawQuery(
+                "SELECT state FROM session_preparation_deliveries WHERE delivery_id=? AND " +
+                    "preparation_id=? AND revision_id=? AND execution_session_id=?",
+                arrayOf(deliveryId, preparationId, deliveryRevision, executionId),
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            when (state) {
+                "pending" -> {
+                    db.execSQL(
+                        "UPDATE session_preparation_deliveries SET state='cancelled' " +
+                            "WHERE delivery_id=? AND state='pending'",
+                        arrayOf(deliveryId),
+                    )
+                    if (result != "execution_preserved") {
+                        result = "pending_cancelled"
+                    }
+                }
+                "cancelled" -> if (result != "execution_preserved") {
+                    result = "pending_cancelled"
+                }
+                "started" -> result = "execution_preserved"
+            }
+        }
+        if (existing == null) {
+            db.insertOrThrow("session_preparation_withdrawals", null, ContentValues().apply {
+                put("withdrawal_id", withdrawalId)
+                put("preparation_id", preparationId)
+                put("revision_id", revisionId)
+                put("requested_at", withdrawal.getString("requested_at"))
+                put("received_at", OffsetDateTime.now(java.time.ZoneOffset.UTC).toString())
+                put("result", result)
+                put("payload_json", canonical)
+            })
         }
     }
 
@@ -6156,6 +6268,13 @@ class TrainlogRepository(
         finally{if(db.inTransaction())db.endTransaction()}
     }
 
+    private fun stableUuidV4Id(value: String, prefix: String): Boolean {
+        if (!value.startsWith(prefix)) return false
+        val suffix = value.removePrefix(prefix)
+        val parsed = runCatching { UUID.fromString(suffix) }.getOrNull() ?: return false
+        return parsed.version() == 4 && parsed.variant() == 2 && parsed.toString() == suffix
+    }
+
     private fun stableFeedbackId(value:String,prefix:String):Boolean = value.startsWith(prefix) &&
         runCatching { UUID.fromString(value.removePrefix(prefix)) }.isSuccess
     private fun canonicalExerciseId(db:SQLiteDatabase,id:String):String? = db.rawQuery(
@@ -8076,7 +8195,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    22,
+    23,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -8123,6 +8242,7 @@ private class TrainlogDatabaseHelper(
         createSyncGenerationTables(db)
         createSyncGenerationArchiveTable(db)
         createSessionPreparationTables(db)
+        createSessionPreparationWithdrawalTable(db)
         seedEquipment(db)
     }
 
@@ -8304,6 +8424,14 @@ private class TrainlogDatabaseHelper(
             createSessionPreparationTables(db)
             version = 22
         }
+        if (version < 23 && newVersion >= 23) {
+            /* WHY: snapshot omission cannot retract a preparation already
+             * received by Android. CONTRACT: v23 stores immutable withdrawal
+             * identity and the local application result. INVARIANT: no
+             * delivery, active draft, or completed session is removed. */
+            createSessionPreparationWithdrawalTable(db)
+            version = 23
+        }
 
         if (version != newVersion) {
             error(
@@ -8421,6 +8549,17 @@ private class TrainlogDatabaseHelper(
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS session_preparation_identity ON " +
             "session_preparation_deliveries(preparation_id,revision_id);")
+    }
+
+    private fun createSessionPreparationWithdrawalTable(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS session_preparation_withdrawals(" +
+                "withdrawal_id TEXT PRIMARY KEY,preparation_id TEXT NOT NULL UNIQUE," +
+                "revision_id TEXT NOT NULL,requested_at TEXT NOT NULL,received_at TEXT NOT NULL," +
+                "result TEXT NOT NULL CHECK(result IN(" +
+                "'pending_cancelled','execution_preserved','no_matching_delivery'))," +
+                "payload_json TEXT NOT NULL);",
+        )
     }
 
     private fun createAiSessionDraftTables(db: SQLiteDatabase) {

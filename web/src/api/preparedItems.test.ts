@@ -8,8 +8,8 @@ describe('projection des préparations', () => {
       generated_at: '2026-09-17T12:00:00Z',
       partial: false,
       items: [
-        { identity: 'aid_one', kind: 'ai_proposal', title: 'Plan', planned_for: '2026-09-18', state: 'published', occurrence_count: 6, provenance: 'ai_import' },
-        { identity: 'se_one', kind: 'execution_draft', title: 'training', planned_for: null, state: 'active', occurrence_count: 2, provenance: 'execution_store' },
+        { identity: 'aid_one', kind: 'ai_proposal', title: 'Plan', planned_for: '2026-09-18', state: 'published', sort_timestamp: '2026-09-17T12:00:00Z', occurrence_count: 6, provenance: 'ai_import' },
+        { identity: 'se_one', kind: 'execution_draft', title: 'training', planned_for: null, state: 'active', sort_timestamp: '2026-09-17T13:00:00Z', occurrence_count: 2, provenance: 'execution_store' },
       ],
     })
     expect(value.items.map((item) => item.kind)).toEqual(['ai_proposal', 'execution_draft'])

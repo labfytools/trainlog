@@ -13,11 +13,12 @@ from trainlog_sqlite import connect_database
 
 MAX_DELIVERIES = 128
 MAX_ENTRIES = 64
+MAX_WITHDRAWALS = 128
 
 
 def build_export(connection: sqlite3.Connection) -> dict:
-    if connection.execute("PRAGMA user_version").fetchone()[0] != 23:
-        raise ValueError("desktop schema v23 required")
+    if connection.execute("PRAGMA user_version").fetchone()[0] != 24:
+        raise ValueError("desktop schema v24 required")
     deliveries = []
     rows = connection.execute(
         "SELECT d.delivery_id,d.preparation_id,d.revision_id,d.execution_session_id,d.state,"
@@ -25,7 +26,7 @@ def build_export(connection: sqlite3.Connection) -> dict:
         "FROM session_preparation_deliveries d "
         "JOIN session_preparations p ON p.preparation_id=d.preparation_id "
         "JOIN session_preparation_revisions r ON r.revision_id=d.revision_id "
-        "WHERE d.state IN('pending','remote_unknown') "
+        "WHERE p.withdrawn_at IS NULL AND d.state IN('pending','remote_unknown') "
         "ORDER BY d.created_at,d.delivery_id LIMIT ?",
         (MAX_DELIVERIES + 1,),
     ).fetchall()
@@ -56,10 +57,40 @@ def build_export(connection: sqlite3.Connection) -> dict:
                 "notes": entry[13],
             } for entry in entries],
         })
+    withdrawals = []
+    withdrawal_rows = connection.execute(
+        "SELECT withdrawal_id,preparation_id,revision_id,requested_at "
+        "FROM session_preparation_withdrawals WHERE acknowledged_at IS NULL "
+        "ORDER BY requested_at,withdrawal_id LIMIT ?",
+        (MAX_WITHDRAWALS + 1,),
+    ).fetchall()
+    if len(withdrawal_rows) > MAX_WITHDRAWALS:
+        raise ValueError("preparation withdrawal capacity exceeded")
+    for row in withdrawal_rows:
+        related = connection.execute(
+            "SELECT delivery_id,revision_id,execution_session_id "
+            "FROM session_preparation_deliveries WHERE preparation_id=? "
+            "ORDER BY created_at,delivery_id LIMIT ?",
+            (row[1], MAX_DELIVERIES + 1),
+        ).fetchall()
+        if len(related) > MAX_DELIVERIES:
+            raise ValueError("preparation withdrawal delivery capacity exceeded")
+        withdrawals.append({
+            "withdrawal_id": row[0],
+            "preparation_id": row[1],
+            "revision_id": row[2],
+            "requested_at": row[3],
+            "deliveries": [{
+                "delivery_id": delivery[0],
+                "revision_id": delivery[1],
+                "execution_session_id": delivery[2],
+            } for delivery in related],
+        })
     return {
-        "format": "trainlog-session-preparations", "version": 1,
+        "format": "trainlog-session-preparations", "version": 2,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "deliveries": deliveries,
+        "withdrawals": withdrawals,
     }
 
 

@@ -1,14 +1,15 @@
-const dateFormat = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-const dateTimeFormat = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+import type { WebDateFormat } from '../api/webPreferences'
+import {
+  formatDate as formatPresentationDate,
+  formatDateTime as formatPresentationDateTime,
+} from '../presentation/dateFormat'
+
 const numberFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 })
 
-function parsed(value: string): Date | null {
-  const result = new Date(value)
-  return Number.isNaN(result.valueOf()) ? null : result
-}
-
-export const formatDate = (value: string) => { const date = parsed(value); return date === null ? value : dateFormat.format(date) }
-export const formatDateTime = (value: string) => { const date = parsed(value); return date === null ? value : dateTimeFormat.format(date) }
+export const formatDate = (value: string, format: WebDateFormat = 'fr') =>
+  formatPresentationDate(value, format)
+export const formatDateTime = (value: string, format: WebDateFormat = 'fr') =>
+  formatPresentationDateTime(value, format)
 export const formatWeight = (value: number) => `${numberFormat.format(value)} kg`
 export const formatDose = (value: number) => numberFormat.format(value)
 export function formatDuration(seconds: number): string {

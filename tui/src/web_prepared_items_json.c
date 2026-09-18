@@ -105,6 +105,8 @@ TrainlogStatus trainlog_web_prepared_items_serialize(
             kind = "ai_proposal";
         } else if (item->kind == TRAINLOG_WEB_PREPARED_EXECUTION_DRAFT) {
             kind = "execution_draft";
+        } else if (item->kind == TRAINLOG_WEB_PREPARED_MANUAL_PREPARATION) {
+            kind = "manual_preparation";
         } else {
             output[0] = '\0';
             return TRAINLOG_STATUS_INVALID_ARGUMENT;
@@ -124,6 +126,8 @@ TrainlogStatus trainlog_web_prepared_items_serialize(
         }
         append(&writer, ",\"state\":");
         string(&writer, item->state);
+        append(&writer, ",\"sort_timestamp\":");
+        string(&writer, item->sort_timestamp);
         append(&writer, ",\"occurrence_count\":%zu,\"provenance\":", item->occurrence_count);
         string(&writer, item->provenance);
         append(&writer, "}");

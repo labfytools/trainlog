@@ -18,6 +18,7 @@
 #include "trainlog/database.h"
 #include "trainlog/dashboard_layout.h"
 #include "trainlog/web_server.h"
+#include "trainlog/web_sessions.h"
 #include "web_assets.h"
 
 #define CHECK(value)                                                                               \
@@ -149,6 +150,25 @@ static bool response_header(const char *response, const char *name, char *output
     return true;
 }
 
+static bool json_string(const char *json, const char *key, char *output, size_t capacity) {
+    char marker[96];
+    const char *start;
+    const char *end;
+    size_t length;
+
+    CHECK(snprintf(marker, sizeof(marker), "\"%s\":\"", key) > 0);
+    start = strstr(json, marker);
+    CHECK(start != NULL);
+    start += strlen(marker);
+    end = strchr(start, '"');
+    CHECK(end != NULL);
+    length = (size_t)(end - start);
+    CHECK(length > 0U && length < capacity);
+    (void)memcpy(output, start, length);
+    output[length] = '\0';
+    return true;
+}
+
 static bool test_sync_accepted_serialization(void) {
     static const char REQUEST_ID[] = "sy_11111111-1111-4111-8111-111111111111";
     static const char RUN_ID[] = "sy_22222222-2222-4222-8222-222222222222";
@@ -175,6 +195,13 @@ static bool test_sync_accepted_serialization(void) {
 }
 
 static bool test_http_contract(TrainlogDatabase *database) {
+    static const char READY_BODY[] =
+        "{\"title\":\"Préparation HTTP\",\"session_type\":\"training\","
+        "\"planned_for\":\"2026-09-20\",\"notes\":null,\"editing_state\":\"ready\","
+        "\"occurrences\":[{\"exercise_id\":\"ex_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\","
+        "\"equipment_id\":null,\"load_mode\":\"none\",\"rest_seconds\":60,"
+        "\"target_sets\":2,\"target_reps\":8,\"target_duration_seconds\":null,"
+        "\"target_weight_kg\":null,\"notes\":null}]}";
     char response[32768];
     char large_request[12000];
     char request[8192];
@@ -184,6 +211,30 @@ static bool test_http_contract(TrainlogDatabase *database) {
     pid_t child;
     int status;
     struct sigaction action;
+    char *created = NULL;
+    size_t created_size = 0U;
+    char preparation_id[128];
+    char revision_id[128];
+
+    CHECK(trainlog_database_insert_exercise_profiled(database,
+                                                     "ex_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                                     "Exercice HTTP",
+                                                     "exercice http",
+                                                     TRAINLOG_TRACKING_REPS,
+                                                     TRAINLOG_RECORDING_SETS,
+                                                     0U) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_web_sessions_save_json(database,
+                                          NULL,
+                                          "",
+                                          "request-http-create",
+                                          READY_BODY,
+                                          strlen(READY_BODY),
+                                          &created,
+                                          &created_size) == TRAINLOG_STATUS_OK);
+    CHECK(created_size > 0U);
+    CHECK(json_string(created, "preparation_id", preparation_id, sizeof(preparation_id)));
+    CHECK(json_string(created, "revision_id", revision_id, sizeof(revision_id)));
+    free(created);
     (void)unlink("/tmp/trainlog-web-test.db.sync-run.json");
     CHECK(reserve_port(&port, 0) == -2);
     child = fork();
@@ -243,6 +294,42 @@ static bool test_http_contract(TrainlogDatabase *database) {
                        response,
                        sizeof(response)) &&
               strstr(response, "HTTP/1.1 405") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/preparation/%s HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\nIf-Match: \"%s\"\r\n"
+            "X-Trainlog-CSRF-Token: wrong\r\nX-Trainlog-Request-ID: request-http-delete\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            preparation_id,
+            (unsigned int)port,
+            revision_id);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 403") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/preparation/%s HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\nIf-Match: \"%s\"\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-delete\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            preparation_id,
+            (unsigned int)port,
+            revision_id,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"android_cancellation\":\"not_required\"") != NULL);
+        (void)snprintf(request,
+                       sizeof(request),
+                       "GET /api/v1/sessions/preparation/%s HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n\r\n",
+                       preparation_id);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"state\":\"withdrawn\"") != NULL);
     }
     CHECK(exchange(port,
                    "GET /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
@@ -262,6 +349,64 @@ static bool test_http_contract(TrainlogDatabase *database) {
           strstr(response, "HTTP/1.1 200") != NULL);
     CHECK(strstr(response, "\"api_version\":1") != NULL);
     CHECK(strstr(response, "\"items\":[]") != NULL);
+    {
+        char token[80];
+        char etag[32];
+        CHECK(exchange(port,
+                       "GET /api/v1/web-preferences HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"date_format\":\"fr\"") != NULL &&
+              strstr(response, "\"source\":\"default\"") != NULL);
+        CHECK(response_header(response, "ETag: ", etag, sizeof(etag)) &&
+              strcmp(etag, "\"0\"") == 0);
+        CHECK(response_header(response, "X-Trainlog-CSRF-Token: ", token, sizeof(token)));
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "PUT /api/v1/web-preferences HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+            "Origin: http://127.0.0.1:%u\r\nContent-Type: application/json\r\n"
+            "If-Match: \"0\"\r\nX-Trainlog-CSRF-Token: %s\r\nContent-Length: 82\r\n\r\n"
+            "{\"format\":\"trainlog-web-preferences\",\"version\":1,\"revision\":0,"
+            "\"date_format\":\"iso\"}",
+            (unsigned int)port,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"revision\":1") != NULL &&
+              strstr(response, "\"date_format\":\"iso\"") != NULL &&
+              strstr(response, "\"source\":\"persisted\"") != NULL);
+        CHECK(exchange(port,
+                       "GET /api/v1/web-preferences HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"revision\":1") != NULL &&
+              strstr(response, "\"date_format\":\"iso\"") != NULL);
+        {
+            char path[4096];
+            FILE *stream;
+            const char *config = getenv("XDG_CONFIG_HOME");
+
+            CHECK(config != NULL);
+            CHECK(snprintf(path,
+                           sizeof(path),
+                           "%s/trainlog/web/preferences-v1.json",
+                           config) > 0);
+            stream = fopen(path, "w");
+            CHECK(stream != NULL);
+            CHECK(fputs("invalid preference\n", stream) >= 0);
+            CHECK(fclose(stream) == 0);
+        }
+        CHECK(exchange(port,
+                       "GET /api/v1/web-preferences HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"date_format\":\"fr\"") != NULL &&
+              strstr(response, "\"source\":\"invalid_persisted\"") != NULL);
+    }
     CHECK(exchange(port,
                    "POST /api/v1/prepared-items HTTP/1.1\r\nHost: 127.0.0.1\r\n"
                    "Content-Length: 0\r\n\r\n",

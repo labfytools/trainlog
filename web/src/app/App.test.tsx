@@ -118,7 +118,7 @@ describe('shell Trainlog', () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(responseValue(input, actual, health))))
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Utilisateur')).toHaveTextContent('fy59'))
-    expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('2026-09-15T10:00:00+02:00')
+    expect(screen.getByLabelText('Dernière séance')).toHaveTextContent('15/09/2026')
     expect(screen.getByLabelText('Dernière zone')).toHaveTextContent('DOS · BRAS')
   })
 

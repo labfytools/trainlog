@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchSyncStatus, newRequestId, startSync, syncIsActive, type SyncStatus } from '../api/sync'
+import { useDatePreferences } from '../presentation/DatePreferences'
+import { formatDateTime } from '../presentation/dateFormat'
 
 const labels: Record<string, string> = {
   idle: 'Synchronisation inactive',
@@ -41,6 +43,7 @@ function statusAction(status: SyncStatus | null): string {
 }
 
 export function SyncControl({ onCommitted }: { onCommitted: () => void }) {
+  const { dateFormat } = useDatePreferences()
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [error, setError] = useState('')
   const statusRef = useRef<SyncStatus | null>(null)
@@ -148,8 +151,10 @@ export function SyncControl({ onCommitted }: { onCommitted: () => void }) {
             </ul>
           </section>
         )}
-        {status?.started_at && <p>Démarrée : {status.started_at}</p>}
-        {status?.finished_at && <p>Dernier résultat : {status.finished_at}</p>}
+        {status?.started_at && <p>Démarrée : <time dateTime={status.started_at}>
+          {formatDateTime(status.started_at, dateFormat)}</time></p>}
+        {status?.finished_at && <p>Dernier résultat : <time dateTime={status.finished_at}>
+          {formatDateTime(status.finished_at, dateFormat)}</time></p>}
       </details>
     </div>
   )

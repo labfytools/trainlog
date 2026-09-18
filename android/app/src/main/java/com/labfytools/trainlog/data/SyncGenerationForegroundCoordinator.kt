@@ -163,6 +163,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                                 "mobile-history-v4",
                                 "execution-draft-v1",
                                 "generation-archive-v1",
+                                "session-preparations-v2",
                             )
                         ),
                     )

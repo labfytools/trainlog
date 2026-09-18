@@ -23,7 +23,7 @@ static const ListDefinition LISTS[] = {
      "FROM session_preparations p JOIN session_preparation_revisions r ON "
      "r.revision_id=p.current_revision_id "
      "LEFT JOIN session_preparation_entries e ON e.revision_id=r.revision_id "
-     "WHERE (?1='' OR r.title LIKE '%'||?1||'%' COLLATE NOCASE OR EXISTS(SELECT 1 FROM "
+     "WHERE p.withdrawn_at IS NULL AND (?1='' OR r.title LIKE '%'||?1||'%' COLLATE NOCASE OR EXISTS(SELECT 1 FROM "
      "session_preparation_entries pe JOIN exercises x ON x.exercise_id=pe.exercise_id WHERE "
      "pe.revision_id=r.revision_id AND x.name LIKE '%'||?1||'%' COLLATE NOCASE)) "
      "GROUP BY p.preparation_id ORDER BY "
@@ -202,9 +202,14 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
                             "ai_session_draft_imports i ON i.draft_row_id=d.id WHERE d.draft_id=?1"
                           : "SELECT "
                             "p.preparation_id,r.title,r.planned_for,r.session_type,r.notes,"
-                            "COALESCE(p.source_payload_sha256,''),p.current_revision_id,p.delivery_"
-                            "state FROM session_preparations p JOIN session_preparation_revisions "
-                            "r ON r.revision_id=p.current_revision_id WHERE p.preparation_id=?1";
+                            "COALESCE(p.source_payload_sha256,''),p.current_revision_id,"
+                            "CASE WHEN p.withdrawn_at IS NULL THEN p.delivery_state ELSE 'withdrawn' END,"
+                            "p.source_proposal_id,source.title,p.withdrawn_at,w.withdrawal_id,"
+                            "w.acknowledged_at FROM session_preparations p JOIN "
+                            "session_preparation_revisions r ON r.revision_id=p.current_revision_id "
+                            "LEFT JOIN ai_session_drafts source ON source.draft_id=p.source_proposal_id "
+                            "LEFT JOIN session_preparation_withdrawals w ON "
+                            "w.preparation_id=p.preparation_id WHERE p.preparation_id=?1";
     const char *entry_sql =
         proposal
             ? "SELECT "
@@ -245,6 +250,23 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
         if (!add_nullable_text(document, root, keys[column], statement, column)) {
             (void)sqlite3_finalize(statement);
             return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+    }
+    if (!proposal) {
+        static const char *const provenance_keys[] = {"source_proposal_id",
+                                                       "source_proposal_title",
+                                                       "withdrawn_at",
+                                                       "withdrawal_id",
+                                                       "withdrawal_acknowledged_at"};
+        for (column = 0; column < 5; ++column) {
+            if (!add_nullable_text(document,
+                                   root,
+                                   provenance_keys[column],
+                                   statement,
+                                   column + 8)) {
+                (void)sqlite3_finalize(statement);
+                return TRAINLOG_STATUS_DATABASE_ERROR;
+            }
         }
     }
     if (sqlite3_finalize(statement) != SQLITE_OK) {
@@ -947,7 +969,8 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
         const char *current = NULL;
         if (sqlite3_prepare_v2(
                 database->connection,
-                "SELECT current_revision_id FROM session_preparations WHERE preparation_id=?1",
+                "SELECT current_revision_id FROM session_preparations WHERE preparation_id=?1 "
+                "AND withdrawn_at IS NULL",
                 -1,
                 &statement,
                 NULL) != SQLITE_OK ||
@@ -966,7 +989,10 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
         statement = NULL;
     } else if (sqlite3_prepare_v2(
                    database->connection,
-                   "INSERT INTO session_preparations VALUES(?1,?2,?3,?3,?4,'local',?5,?6)",
+                   "INSERT INTO session_preparations("
+                   "preparation_id,current_revision_id,created_at,updated_at,editing_state,"
+                   "delivery_state,source_proposal_id,source_payload_sha256,withdrawn_at) "
+                   "VALUES(?1,?2,?3,?3,?4,'local',?5,?6,NULL)",
                    -1,
                    &statement,
                    NULL) != SQLITE_OK ||
@@ -1026,7 +1052,8 @@ TrainlogStatus trainlog_web_sessions_save_json(TrainlogDatabase *database,
                                "UPDATE session_preparations SET "
                                "current_revision_id=?1,updated_at=?2,editing_state=?3,delivery_"
                                "state=CASE WHEN delivery_state='local' THEN 'local' ELSE 'pending' "
-                               "END WHERE preparation_id=?4 AND current_revision_id=?5",
+                               "END WHERE preparation_id=?4 AND current_revision_id=?5 AND "
+                               "withdrawn_at IS NULL",
                                -1,
                                &statement,
                                NULL) != SQLITE_OK ||
@@ -1135,7 +1162,8 @@ TrainlogStatus trainlog_web_sessions_deliver_json(TrainlogDatabase *database,
     if (sqlite3_prepare_v2(
             database->connection,
             "SELECT 1 FROM session_preparations p WHERE p.preparation_id=?1 AND "
-            "p.current_revision_id=?2 AND p.editing_state='ready' AND EXISTS(SELECT 1 FROM "
+            "p.current_revision_id=?2 AND p.withdrawn_at IS NULL AND p.editing_state='ready' "
+            "AND EXISTS(SELECT 1 FROM "
             "session_preparation_entries e WHERE e.revision_id=p.current_revision_id)",
             -1,
             &statement,
@@ -1211,6 +1239,166 @@ TrainlogStatus trainlog_web_sessions_deliver_json(TrainlogDatabase *database,
     return TRAINLOG_STATUS_OK;
 
 delivery_rollback:
+    if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+    }
+    yyjson_mut_doc_free(response);
+    (void)sqlite3_exec(database->connection, "ROLLBACK", NULL, NULL, NULL);
+    free(*output_json);
+    *output_json = NULL;
+    *output_size = 0U;
+    return status;
+}
+
+TrainlogStatus trainlog_web_sessions_withdraw_json(TrainlogDatabase *database,
+                                                   const char *preparation_id,
+                                                   const char *expected_revision,
+                                                   const char *request_id,
+                                                   char **output_json,
+                                                   size_t *output_size) {
+    sqlite3_stmt *statement = NULL;
+    char withdrawal_id[TRAINLOG_GENERATED_ID_CAPACITY];
+    char now[TRAINLOG_TIMESTAMP_MAX + 1U];
+    yyjson_mut_doc *response = NULL;
+    yyjson_mut_val *root;
+    TrainlogStatus status = TRAINLOG_STATUS_DATABASE_ERROR;
+    bool has_deliveries = false;
+
+    if (database == NULL || preparation_id == NULL || expected_revision == NULL ||
+        request_id == NULL || request_id[0] == '\0' || output_json == NULL || output_size == NULL ||
+        trainlog_id_generate("spw", withdrawal_id, sizeof(withdrawal_id)) != TRAINLOG_STATUS_OK ||
+        !timestamp_now(now)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    *output_json = NULL;
+    *output_size = 0U;
+    if (sqlite3_exec(database->connection, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    /* INVARIANT: a lost HTTP response may be replayed without creating a
+     * second withdrawal or reconsidering a now-inactive preparation. */
+    if (sqlite3_prepare_v2(database->connection,
+                           "SELECT command,preparation_id,revision_id,response_json FROM "
+                           "session_preparation_requests WHERE request_id=?1",
+                           -1,
+                           &statement,
+                           NULL) == SQLITE_OK &&
+        sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT) == SQLITE_OK &&
+        sqlite3_step(statement) == SQLITE_ROW) {
+        const char *command = (const char *)sqlite3_column_text(statement, 0);
+        const char *saved_preparation = (const char *)sqlite3_column_text(statement, 1);
+        const char *saved_revision = (const char *)sqlite3_column_text(statement, 2);
+        const char *saved = (const char *)sqlite3_column_text(statement, 3);
+        if (command == NULL || saved_preparation == NULL || saved_revision == NULL ||
+            strcmp(command, "withdraw") != 0 || strcmp(saved_preparation, preparation_id) != 0 ||
+            strcmp(saved_revision, expected_revision) != 0) {
+            status = TRAINLOG_STATUS_CONFLICT;
+            goto withdraw_rollback;
+        }
+        *output_size = saved == NULL ? 0U : strlen(saved);
+        *output_json = saved == NULL ? NULL : strdup(saved);
+        (void)sqlite3_finalize(statement);
+        (void)sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL);
+        return *output_json == NULL ? TRAINLOG_STATUS_SYSTEM_ERROR : TRAINLOG_STATUS_OK;
+    }
+    if (statement != NULL) {
+        (void)sqlite3_finalize(statement);
+        statement = NULL;
+    }
+    if (sqlite3_prepare_v2(database->connection,
+                           "SELECT EXISTS(SELECT 1 FROM session_preparation_deliveries d WHERE "
+                           "d.preparation_id=p.preparation_id) FROM session_preparations p WHERE "
+                           "p.preparation_id=?1 AND p.current_revision_id=?2 AND "
+                           "p.withdrawn_at IS NULL",
+                           -1,
+                           &statement,
+                           NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+        goto withdraw_rollback;
+    }
+    if (sqlite3_step(statement) != SQLITE_ROW) {
+        status = TRAINLOG_STATUS_CONFLICT;
+        goto withdraw_rollback;
+    }
+    has_deliveries = sqlite3_column_int(statement, 0) != 0;
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        goto withdraw_rollback;
+    }
+    statement = NULL;
+    /* CONTRACT: this transaction changes only planning availability and the
+     * exportable withdrawal ledger. Delivery/execution evidence is retained
+     * verbatim so a remotely started workout can never be erased here. */
+    if (sqlite3_prepare_v2(database->connection,
+                           "INSERT INTO session_preparation_withdrawals VALUES("
+                           "?1,?2,?3,?4,NULL,NULL)",
+                           -1,
+                           &statement,
+                           NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, withdrawal_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 4, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        goto withdraw_rollback;
+    }
+    statement = NULL;
+    if (sqlite3_prepare_v2(database->connection,
+                           "UPDATE session_preparations SET withdrawn_at=?1,updated_at=?1 WHERE "
+                           "preparation_id=?2 AND current_revision_id=?3 AND withdrawn_at IS NULL",
+                           -1,
+                           &statement,
+                           NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_changes(database->connection) != 1 ||
+        sqlite3_finalize(statement) != SQLITE_OK) {
+        statement = NULL;
+        status = TRAINLOG_STATUS_CONFLICT;
+        goto withdraw_rollback;
+    }
+    statement = NULL;
+    response = yyjson_mut_doc_new(NULL);
+    root = response == NULL ? NULL : yyjson_mut_obj(response);
+    if (response == NULL || root == NULL) {
+        status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto withdraw_rollback;
+    }
+    yyjson_mut_doc_set_root(response, root);
+    (void)yyjson_mut_obj_add_uint(response, root, "api_version", 1U);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "preparation_id", preparation_id);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "revision_id", expected_revision);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "withdrawal_id", withdrawal_id);
+    (void)yyjson_mut_obj_add_strcpy(response,
+                                    root,
+                                    "android_cancellation",
+                                    has_deliveries ? "pending" : "not_required");
+    status = write_document(response, output_json, output_size);
+    response = NULL;
+    if (status != TRAINLOG_STATUS_OK ||
+        sqlite3_prepare_v2(database->connection,
+                           "INSERT INTO session_preparation_requests VALUES("
+                           "?1,'withdraw',?2,?3,?4,?5)",
+                           -1,
+                           &statement,
+                           NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, preparation_id, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 4, *output_json, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 5, now, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK ||
+        sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) != SQLITE_OK) {
+        statement = NULL;
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto withdraw_rollback;
+    }
+    return TRAINLOG_STATUS_OK;
+
+withdraw_rollback:
     if (statement != NULL) {
         (void)sqlite3_finalize(statement);
     }

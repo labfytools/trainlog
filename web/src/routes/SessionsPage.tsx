@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   fetchCatalog,
   fetchSessionDetail,
@@ -6,6 +6,7 @@ import {
   prepareForAndroid,
   fetchAllSessionPages,
   savePreparation,
+  withdrawPreparation,
   type CatalogChoice,
   type PreparationInput,
   type PreparationOccurrence,
@@ -13,10 +14,62 @@ import {
   type SessionDetail,
   type SessionListItem,
 } from '../api/sessions'
+import { useDatePreferences } from '../presentation/DatePreferences'
+import {
+  formatCivilDate,
+  formatDateTime,
+  validDateSortValue,
+  validTimestampValue,
+} from '../presentation/dateFormat'
 
 type View = 'preparation' | 'resume' | 'history'
 const collections: Record<View, SessionCollection[]> = {
   preparation: ['preparations', 'proposals'], resume: ['drafts'], history: ['history'],
+}
+
+export type SessionListEntry = SessionListItem & { collection: SessionCollection }
+
+function compareIdentity(left: SessionListEntry, right: SessionListEntry): number {
+  return `${left.collection}:${left.identity}`.localeCompare(
+    `${right.collection}:${right.identity}`, 'en')
+}
+
+function compareTimestampDescending(left: string, right: string): number {
+  const leftTimestamp = validTimestampValue(left)
+  const rightTimestamp = validTimestampValue(right)
+  if (leftTimestamp === null && rightTimestamp === null) return 0
+  if (leftTimestamp === null) return 1
+  if (rightTimestamp === null) return -1
+  return rightTimestamp - leftTimestamp
+}
+
+export function sortSessionItems(items: readonly SessionListEntry[], view: View): SessionListEntry[] {
+  return [...items].sort((left, right) => {
+    if (view === 'preparation') {
+      const leftDate = validDateSortValue(left.date)
+      const rightDate = validDateSortValue(right.date)
+      if (leftDate !== null && rightDate !== null && leftDate !== rightDate) {
+        return rightDate.localeCompare(leftDate, 'en')
+      }
+      if (leftDate === null && rightDate !== null) return 1
+      if (leftDate !== null && rightDate === null) return -1
+    }
+    const timestampOrder = compareTimestampDescending(left.sort_timestamp, right.sort_timestamp)
+    return timestampOrder !== 0 ? timestampOrder : compareIdentity(left, right)
+  })
+}
+
+export function sessionStateLabel(collection: SessionCollection, state: string): string {
+  const labels: Record<SessionCollection, Record<string, string>> = {
+    preparations: {
+      draft: 'En préparation', ready: 'Prête', local: 'Locale', pending: 'À synchroniser',
+      acknowledged: 'Reçue', remote_unknown: 'État Android inconnu', withdrawn: 'Supprimée',
+    },
+    proposals: { local: 'À valider', pending: 'À valider', published: 'Publiée' },
+    drafts: { active: 'En cours', pending: 'À reprendre', stale: 'À vérifier' },
+    history: { completed: 'Terminée' },
+  }
+  return labels[collection][state] ?? `État non reconnu (${state})`
 }
 
 function parseDecimal(value: string): number | null {
@@ -185,19 +238,87 @@ function Editor({ initial, onSaved, onCancel }: {
 
 function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'proposal'; identity: string;
   onBack: () => void; onEdit: (detail: SessionDetail) => void }) {
+  const { dateFormat } = useDatePreferences()
+  const deleteTrigger = useRef<HTMLButtonElement>(null)
+  const cancelDelete = useRef<HTMLButtonElement>(null)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [failed, setFailed] = useState(false)
-  useEffect(() => { const controller = new AbortController(); setFailed(false)
-    fetchSessionDetail(kind, identity, controller.signal).then(setDetail).catch(() => setFailed(true))
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [message, setMessage] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+  useEffect(() => { const controller = new AbortController(); setFailed(false); setDetail(null)
+    fetchSessionDetail(kind, identity, controller.signal).then((value) => {
+      if (!controller.signal.aborted) setDetail(value)
+    }).catch(() => {
+      if (!controller.signal.aborted) setFailed(true)
+    })
     return () => controller.abort() }, [kind, identity])
+  useEffect(() => {
+    if (confirming) cancelDelete.current?.focus()
+  }, [confirming])
   if (failed) return <div className="error-panel" role="alert">Fiche indisponible. <button onClick={onBack}>Retour</button></div>
   if (!detail) return <p aria-live="polite">Chargement de la fiche…</p>
+  const withdrawn = detail.state === 'withdrawn'
+  const remove = async () => {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const result = await withdrawPreparation(detail.identity, detail.revision_id)
+      setConfirming(false)
+      setMessage(result.android_cancellation === 'pending'
+        ? 'Supprimée sur le PC — annulation Android à synchroniser.'
+        : 'Préparation supprimée sur le PC. Aucune livraison Android à annuler.')
+      setDetail({ ...detail, state: 'withdrawn', withdrawal_id: result.withdrawal_id })
+      try {
+        setDetail(await fetchSessionDetail('preparation', detail.identity))
+      } catch {
+        setMessage((current) => `${current} Rechargez la fiche pour obtenir l’état synchronisé.`)
+      }
+    } catch (reason) {
+      setDeleteError(reason instanceof Error ? reason.message : 'Suppression impossible')
+    } finally {
+      setDeleting(false)
+    }
+  }
   return <article className="session-detail"><div className="sessions-toolbar">
     <button type="button" className="quiet-action" onClick={onBack}>← Retour à la liste</button>
-    <button type="button" className="primary-action" onClick={() => onEdit(detail)}>
-      {kind === 'preparation' ? 'Modifier' : 'Préparer à partir de cette proposition'}</button></div>
+    {!withdrawn && <div className="detail-actions">
+      <button type="button" className="primary-action" onClick={() => onEdit(detail)}>
+        {kind === 'preparation' ? 'Modifier' : 'Préparer à partir de cette proposition'}</button>
+      {kind === 'preparation' && <button ref={deleteTrigger} type="button" className="danger-action"
+        onClick={() => setConfirming(true)}>Supprimer la préparation</button>}
+    </div>}</div>
+    {message && <p className="success-panel" role="status">{message}</p>}
+    {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
+    {confirming && <section className="delete-confirmation" role="alertdialog" aria-modal="true"
+      aria-labelledby="delete-preparation-title">
+      <h3 id="delete-preparation-title">Supprimer « {detail.title || 'Sans titre'} » ?</h3>
+      <p>{detail.state === 'local'
+        ? 'La préparation sera retirée du planning. Elle n’a aucune livraison Android connue.'
+        : 'La préparation sera retirée du planning. Ses livraisons Android non commencées seront annulées lors de la prochaine synchronisation ; toute exécution commencée sera conservée.'}</p>
+      <div className="confirmation-actions">
+        <button ref={cancelDelete} type="button" className="quiet-action" disabled={deleting}
+          onClick={() => {
+            setConfirming(false)
+            requestAnimationFrame(() => deleteTrigger.current?.focus())
+          }}>Conserver la préparation</button>
+        <button type="button" className="danger-action" disabled={deleting}
+          onClick={() => void remove()}>{deleting ? 'Suppression…' : 'Supprimer la préparation'}</button>
+      </div>
+    </section>}
     <header className="detail-summary"><p className="eyebrow">{kind === 'proposal' ? 'PROPOSITION IA' : 'PRÉPARATION MANUELLE'}</p>
-      <h2>{detail.title || 'Sans titre'}</h2><p>{detail.planned_for ?? 'Aucune date planifiée'} · {detail.state}</p></header>
+      <h2>{detail.title || 'Sans titre'}</h2><p>
+        {detail.planned_for === null ? 'Non planifiée' : <time dateTime={detail.planned_for}>
+          {formatCivilDate(detail.planned_for, dateFormat)}</time>}
+        {' · '}{sessionStateLabel(kind === 'proposal' ? 'proposals' : 'preparations', detail.state)}
+      </p>
+      {detail.withdrawn_at && <p>Retirée le <time dateTime={detail.withdrawn_at}>
+        {formatDateTime(detail.withdrawn_at, dateFormat)}</time> · {
+        detail.withdrawal_acknowledged_at
+          ? 'annulation Android consommée'
+          : 'annulation Android à synchroniser'
+      }</p>}</header>
     {detail.notes && <section className="detail-tile"><h3>Note</h3><p>{detail.notes}</p></section>}
     <section className="detail-tile"><h3>Exercices ordonnés</h3><ol className="detail-occurrences">
       {detail.occurrences.map((occurrence) => <li key={occurrence.entry_id}>
@@ -206,31 +327,44 @@ function Detail({ kind, identity, onBack, onEdit }: { kind: 'preparation' | 'pro
           {occurrence.tracking_mode === 'duration' ? ' s' : ' répétitions'}</span>
         <small>{occurrence.load_mode === 'none' ? 'Sans charge' : `${occurrence.load_mode} · ${occurrence.target_weight_kg ?? '—'} kg`}</small>
       </li>)}</ol></section>
-    {detail.source_fingerprint && <section className="detail-tile"><h3>Provenance</h3>
-      <code>{detail.source_fingerprint}</code></section>}
+    {detail.source_proposal_id && <section className="detail-tile"><h3>Provenance</h3>
+      <p>Dérivée de la proposition <a href={`/seances/proposal/${encodeURIComponent(detail.source_proposal_id)}`}>
+        « {detail.source_proposal_title || detail.source_proposal_id} »</a>.</p>
+      {detail.source_fingerprint && <details><summary>Détail technique</summary>
+        <code>{detail.source_fingerprint}</code></details>}
+    </section>}
   </article>
 }
 
 function ReadonlyDetail({ kind, identity, onBack }: {
   kind: 'draft' | 'history'; identity: string; onBack: () => void
 }) {
+  const { dateFormat } = useDatePreferences()
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
   const [failed, setFailed] = useState(false)
-  useEffect(() => { const controller = new AbortController(); setFailed(false)
-    fetchReadonlySessionDetail(kind, identity, controller.signal).then(setDetail).catch(() => setFailed(true))
+  useEffect(() => { const controller = new AbortController(); setFailed(false); setDetail(null)
+    fetchReadonlySessionDetail(kind, identity, controller.signal).then((value) => {
+      if (!controller.signal.aborted) setDetail(value)
+    }).catch(() => {
+      if (!controller.signal.aborted) setFailed(true)
+    })
     return () => controller.abort() }, [kind, identity])
   if (failed) return <div className="error-panel" role="alert">Fiche indisponible. <button onClick={onBack}>Retour</button></div>
   if (!detail) return <p aria-live="polite">Chargement de la fiche…</p>
   const occurrences = Array.isArray(detail.occurrences) ? detail.occurrences as Array<Record<string, unknown>> : []
   const payload = typeof detail.payload === 'object' && detail.payload !== null
     ? detail.payload as Record<string, unknown> : null
+  const startedAt = typeof detail.started_at === 'string' ? detail.started_at : null
+  const endedAt = typeof detail.ended_at === 'string' ? detail.ended_at : null
   return <article className="session-detail"><div className="sessions-toolbar">
     <button type="button" className="quiet-action" onClick={onBack}>← Retour à la liste</button></div>
     <header className="detail-summary"><p className="eyebrow">{kind === 'draft' ? 'BROUILLON D’EXÉCUTION' : 'SÉANCE RÉALISÉE'}</p>
       <h2>{String(detail.session_type ?? 'Séance')}</h2>
-      <p>{String(detail.started_at ?? 'Début inconnu')} · {kind === 'history'
-        ? detail.ended_at ? `fin ${String(detail.ended_at)}` : 'heure de fin inconnue'
-        : `à poursuivre sur Android · ${String(detail.state ?? '')}`}</p></header>
+      <p>{startedAt === null ? 'Début inconnu' : <time dateTime={startedAt}>
+        {formatDateTime(startedAt, dateFormat)}</time>} · {kind === 'history'
+        ? endedAt ? <>fin <time dateTime={endedAt}>{formatDateTime(endedAt, dateFormat)}</time></>
+          : 'heure de fin inconnue'
+        : `à poursuivre sur Android · ${sessionStateLabel('drafts', String(detail.state ?? ''))}`}</p></header>
     {typeof detail.notes === 'string' && detail.notes && <section className="detail-tile"><h3>Notes</h3><p>{detail.notes}</p></section>}
     {kind === 'history' && <section className="detail-tile"><h3>Prévu / Réalisé</h3><ol className="detail-occurrences">
       {occurrences.map((occurrence) => <li key={String(occurrence.entry_id)}>
@@ -247,8 +381,9 @@ function ReadonlyDetail({ kind, identity, onBack }: {
 }
 
 export function SessionsPage() {
+  const { dateFormat } = useDatePreferences()
   const [view, setView] = useState<View>('preparation')
-  const [items, setItems] = useState<Array<SessionListItem & { collection: SessionCollection }>>([])
+  const [items, setItems] = useState<SessionListEntry[]>([])
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -257,11 +392,21 @@ export function SessionsPage() {
   const [failed, setFailed] = useState(false)
   const [editor, setEditor] = useState<SessionDetail | 'new' | null>(null)
   const [detailPath, setDetailPath] = useState(() => window.location.pathname)
+  const loadRevision = useRef(0)
   const detailMatch = useMemo(() => detailPath.match(/^\/seances\/(preparation|proposal|draft|history)\/([^/]+)$/), [detailPath])
-  const load = () => { const controller = new AbortController(); setPending(true); setFailed(false)
+  const load = () => { const controller = new AbortController(); const revision = ++loadRevision.current
+    setPending(true); setFailed(false)
     Promise.all(collections[view].map((collection) => fetchAllSessionPages(collection, search, controller.signal)
       .then((pageItems) => pageItems.map((item) => ({ ...item, collection })))))
-      .then((pages) => setItems(pages.flat())).catch(() => setFailed(true)).finally(() => setPending(false))
+      .then((pages) => {
+        if (revision === loadRevision.current) setItems(sortSessionItems(pages.flat(), view))
+      }).catch((reason) => {
+        if (revision === loadRevision.current && !(reason instanceof DOMException && reason.name === 'AbortError')) {
+          setFailed(true)
+        }
+      }).finally(() => {
+        if (revision === loadRevision.current) setPending(false)
+      })
     return controller }
   useEffect(() => { const controller = load(); return () => controller.abort() }, [view, search])
   useEffect(() => { const pop = () => setDetailPath(window.location.pathname)
@@ -273,13 +418,18 @@ export function SessionsPage() {
     window.history.pushState(null, '', path); setDetailPath(path)
   }
   const back = () => { window.history.pushState(null, '', '/seances'); setDetailPath('/seances'); setEditor(null) }
-  const visibleItems = useMemo(() => items.filter((item) => {
+  const visibleItems = useMemo(() => sortSessionItems(items.filter((item) => {
     if (stateFilter && item.state !== stateFilter) return false
     if (dateFrom && (!item.date || item.date < dateFrom)) return false
     if (dateTo && (!item.date || item.date > dateTo)) return false
     return true
-  }), [items, stateFilter, dateFrom, dateTo])
+  }), view), [items, stateFilter, dateFrom, dateTo, view])
   const states = useMemo(() => [...new Set(items.map((item) => item.state))].sort(), [items])
+  const filterStateLabel = (state: string) => {
+    const owner = items.find((item) => item.state === state)
+    return owner === undefined ? `État non reconnu (${state})`
+      : sessionStateLabel(owner.collection, state)
+  }
   if (editor) return <section className="page"><Editor initial={editor === 'new' ? undefined : editor}
     onCancel={() => setEditor(null)} onSaved={(identity) => { setEditor(null); open('preparations', identity) }} /></section>
   if (detailMatch && (detailMatch[1] === 'preparation' || detailMatch[1] === 'proposal')) {
@@ -301,17 +451,22 @@ export function SessionsPage() {
       onChange={(event) => setSearch(event.target.value)} /></label>
     <div className="session-filters" aria-label="Filtres de séances">
       <label>État<select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)}>
-        <option value="">Tous</option>{states.map((state) => <option value={state} key={state}>{state}</option>)}
+        <option value="">Tous</option>{states.map((state) => <option value={state} key={state}>
+          {filterStateLabel(state)}</option>)}
       </select></label>
       <label>Du<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
       <label>Au<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
     </div>
+    <p className="sort-indicator">Date décroissante</p>
     {pending && <p aria-live="polite">Chargement…</p>}{failed && <p className="error-panel" role="alert">Les données ne sont pas disponibles.</p>}
     {!pending && !failed && visibleItems.length === 0 && <p className="empty-inline">Aucun résultat pour cette vue.</p>}
     <div className="session-list">{visibleItems.map((item) => <button type="button" className="session-row"
       key={`${item.collection}-${item.identity}`} onClick={() => open(item.collection, item.identity)}>
       <span><small>{item.collection === 'proposals' ? 'Proposition IA' : item.collection === 'preparations' ? 'Préparation manuelle' : item.collection === 'drafts' ? 'Brouillon d’exécution' : 'Séance réalisée'}</small>
-        <strong>{item.title || 'Sans titre'}</strong></span><span>{item.date ?? 'Date inconnue'}</span>
-      <span>{item.occurrence_count} exercice{item.occurrence_count > 1 ? 's' : ''}</span><span>{item.state}</span></button>)}</div>
+        <strong>{item.title || 'Sans titre'}</strong></span><span>{item.date === null
+        ? item.collection === 'preparations' || item.collection === 'proposals' ? 'Non planifiée' : 'Date inconnue'
+        : <time dateTime={item.date}>{formatCivilDate(item.date, dateFormat)}</time>}</span>
+      <span>{item.occurrence_count} exercice{item.occurrence_count > 1 ? 's' : ''}</span>
+      <span>{sessionStateLabel(item.collection, item.state)}</span></button>)}</div>
   </section>
 }

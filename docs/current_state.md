@@ -50,8 +50,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v23 |
-| Android SQLite | schema v22 |
+| Desktop SQLite | schema v24 |
+| Android SQLite | schema v23 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -222,11 +222,22 @@ resume and history views, stable details, optimistic manual-preparation writes,
 explicit proposal derivation and generation-backed Android delivery. Analyse,
 Programmes and Exercises remain explicit placeholders.
 
-Desktop schema v23 owns immutable manual-preparation revisions, stable ordered
-occurrences, persistent HTTP idempotency keys and delivery-to-execution identity.
-Android schema v22 stores received preparations separately from AI proposals
-and the active singleton. An exact correlated ACK is required before delivery
-is shown as acknowledged.
+Desktop schema v24 owns immutable manual-preparation revisions, stable ordered
+occurrences, persistent HTTP idempotency keys, delivery-to-execution identity,
+and durable revision-bound withdrawal records. Android schema v23 stores
+received preparations and permanent withdrawal results separately from AI
+proposals and the active singleton. Pending deliveries are cancelled by an
+exact V2 withdrawal; started executions are preserved. An exact correlated ACK
+is required before delivery or withdrawal is shown as acknowledged.
+
+Sessions and the prepared-items Dashboard projection now share descending
+planned-date presentation with timestamp and stable-identity tie-breaks. Web
+dates default to French presentation, with an installation-local versioned ISO
+preference outside business SQLite and synchronization. Contextual French state
+labels and persisted proposal provenance replace raw enums and digest-only
+presentation. The preparation detail exposes a protected, idempotent **Delete
+preparation** action; withdrawn rows remain technically inspectable but cannot
+be edited or delivered.
 
 The controlled deployment preserved the installed Android signing identity and
 advanced its private `versionCode` without uninstalling or clearing data. The
@@ -237,9 +248,9 @@ performed fact, or active-draft replacement.
 
 The Next Session tile no longer treats the frozen Dashboard
 `next_session.available` placeholder as a durable inventory. A separate bounded
-`GET /api/v1/prepared-items` Core projection distinguishes imported AI
-proposals from active or pending execution drafts and exposes stable identity,
-state, title/date, occurrence count, and provenance. Reload and later sync
+`GET /api/v1/prepared-items` Core projection distinguishes manual preparations,
+imported AI proposals, and active or pending execution drafts and exposes stable
+identity, state, title/date, occurrence count, and provenance. Reload and later sync
 failure do not erase the last successfully read projection. Proposal targets
 remain planning data and never alter Dashboard actual-work metrics.
 

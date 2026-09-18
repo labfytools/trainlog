@@ -1,5 +1,7 @@
 import type { Health } from '../api/health'
 import type { DashboardSnapshot } from '../api/dashboard'
+import { useDatePreferences } from '../presentation/DatePreferences'
+import { formatDate } from '../presentation/dateFormat'
 
 interface FooterProps {
   health: Health | null
@@ -9,6 +11,7 @@ interface FooterProps {
 }
 
 export function Footer({ health, healthPending, healthFailed, dashboard }: FooterProps) {
+  const { dateFormat } = useDatePreferences()
   const backendLabel = healthPending ? 'Connexion en cours' :
     healthFailed ? 'Backend indisponible' : `Backend connecté · v${health?.version ?? '—'}`
 
@@ -20,7 +23,10 @@ export function Footer({ health, healthPending, healthFailed, dashboard }: Foote
       </section>
       <section className="status-block status-session" aria-label="Dernière séance">
         <span className="status-label">DERNIÈRE SÉANCE</span>
-        <span className="status-value">{dashboard?.data.footer.last_session_date ?? 'Indisponible'}</span>
+        <span className="status-value">{dashboard?.data.footer.last_session_date
+          ? <time dateTime={dashboard.data.footer.last_session_date}>
+            {formatDate(dashboard.data.footer.last_session_date, dateFormat)}</time>
+          : 'Indisponible'}</span>
       </section>
       <section className="status-block status-zone" aria-label="Dernière zone">
         <span className="status-label">DERNIÈRE ZONE</span>

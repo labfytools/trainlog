@@ -12,10 +12,51 @@ equipment/load semantics and profile-compatible targets. Draft saves may remain
 incomplete. Marking ready validates executable content; preparing for Android
 then creates a distinct immutable delivery and reserved execution identity.
 
+Every view has one stable descending presentation order. Preparation merges
+manual preparations and proposals by valid planned civil date, then factual
+`sort_timestamp`, then kind and stable identity. Undated or invalidly dated
+items remain visible after valid dates. Resume uses the execution-draft recency
+timestamp supplied by Core, and History uses the real start instant; both use
+stable identity to break exact ties. Search and filters operate on the complete
+paged result and reapply the same order. Late results from an older view or
+query cannot replace the current list.
+
+Web presentation defaults to French civil dates (`DD/MM/YYYY`) and 24-hour
+times. A local **Display settings** dialog can select ISO dates. The versioned
+preference is stored atomically with private permissions in
+`$XDG_CONFIG_HOME/trainlog/web/preferences-v1.json`, falling back to
+`$HOME/.config`; it is neither business data nor synchronized state. Missing
+or invalid storage uses the French default, and invalid storage is reported.
+Civil `YYYY-MM-DD` values are validated and never timezone-shifted. Zoned
+timestamps preserve their instant and are presented in the browser timezone;
+the original machine value remains in API data and `<time datetime>`.
+
+Stored states remain wire-level enums, while Sessions presents contextual
+French labels. A preparation derived from a proposal exposes the persisted
+source identity and title as a stable deep link; the source digest remains a
+technical detail and no title-based inference is performed.
+
 Opening or deriving from an AI proposal never accepts, starts, deletes or
 rewrites the source. Derivation records the exact proposal identity and imported
 payload fingerprint. The Android screen labels manual preparations separately
 and refuses to overwrite an active draft.
+
+**Delete preparation** is a durable logical withdrawal, not physical evidence
+purging. The protected DELETE command requires Host/Origin/CSRF, a bounded
+idempotency key and the exact current revision. One desktop transaction records
+the immutable withdrawal and makes the preparation unavailable for editing,
+new delivery, active Sessions lists and the Dashboard projection. Revisions,
+delivery rows, ACK evidence, the source proposal and all execution identities
+remain intact.
+
+The separately versioned `trainlog-session-preparations` V2 artifact carries
+unacknowledged withdrawals and the exact linked delivery identities. Android
+schema v23 stores one permanent withdrawal result per preparation. Pending
+deliveries become `cancelled`; started deliveries, the active draft and all
+completed facts remain unchanged and are recorded as `execution_preserved`.
+The tombstone rejects an older delivery replay, including after process restart.
+Desktop marks a withdrawal acknowledged only after the correlated Android
+generation ACK. Until then Web reports that Android synchronization is pending.
 
 This V1 does not provide live Web capture, historical correction, automatic
 training generation, Programs, Analysis or the standalone Exercises route.

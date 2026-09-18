@@ -24,7 +24,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v23, Android schema v22, Notcurses, direct
+Desktop schema v24, Android schema v23, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
@@ -34,9 +34,11 @@ CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
 tile rendering exist. The Dashboard's bounded progression and BODY ZONES
 visualizations and Sessions V1 are implemented; the other three Web routes remain placeholders.
-The corrective prepared-item projection and bounded phase-owned MTP outbox are
-implemented without opening the Sessions route, changing schemas, or changing
-the frozen Dashboard and exchange contracts.
+The corrective prepared-item projection, bounded phase-owned MTP outbox,
+Sessions presentation correction, local date preference and durable preparation
+withdrawal are implemented. The withdrawal uses the separate versioned
+session-preparations V2 participant and does not change the frozen Dashboard,
+mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
 

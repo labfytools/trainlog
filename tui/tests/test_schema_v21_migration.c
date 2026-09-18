@@ -27,13 +27,14 @@ int main(void)
         TRAINLOG_TRACKING_REPS,TRAINLOG_RECORDING_SETS,0U)==TRAINLOG_STATUS_OK);
     trainlog_database_close(database);database=NULL;
     CHECK(sqlite3_open(path,&raw)==SQLITE_OK);
-    CHECK(sqlite3_exec(raw,"PRAGMA foreign_keys=OFF;DROP TABLE session_preparation_deliveries;DROP TABLE session_preparation_requests;DROP TABLE session_preparation_entries;DROP TABLE session_preparation_revisions;DROP TABLE session_preparations;DROP TABLE sync_generation_archives;DROP TABLE sync_causal_publications;DROP TABLE sync_acknowledgements;DROP TABLE sync_consumed_generations;DROP TABLE sync_generation_artifacts;DROP TABLE sync_generations;DROP TABLE sync_peer_identity;PRAGMA user_version=20;",NULL,NULL,NULL)==SQLITE_OK);
+    CHECK(sqlite3_exec(raw,"PRAGMA foreign_keys=OFF;DROP TABLE session_preparation_withdrawals;DROP TABLE session_preparation_deliveries;DROP TABLE session_preparation_requests;DROP TABLE session_preparation_entries;DROP TABLE session_preparation_revisions;DROP TABLE session_preparations;DROP TABLE sync_generation_archives;DROP TABLE sync_causal_publications;DROP TABLE sync_acknowledgements;DROP TABLE sync_consumed_generations;DROP TABLE sync_generation_artifacts;DROP TABLE sync_generations;DROP TABLE sync_peer_identity;PRAGMA user_version=20;",NULL,NULL,NULL)==SQLITE_OK);
     CHECK(sqlite3_close(raw)==SQLITE_OK);
     CHECK(trainlog_database_open(path,&database)==TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_exercise_count(database,&exercises)==TRAINLOG_STATUS_OK);CHECK(exercises>0U);
     trainlog_database_close(database);database=NULL;
     CHECK(sqlite3_open(path,&raw)==SQLITE_OK);
-    CHECK(scalar(raw,"PRAGMA user_version")==23);
+    CHECK(scalar(raw,"PRAGMA user_version")==TRAINLOG_DATABASE_SCHEMA_VERSION);
+    CHECK(scalar(raw,"SELECT COUNT(*) FROM session_preparation_withdrawals")==0);
     CHECK(scalar(raw,"SELECT COUNT(*) FROM sync_generations")==0);
     CHECK(scalar(raw,"SELECT COUNT(*) FROM sync_consumed_generations")==0);
     CHECK(scalar(raw,"SELECT COUNT(*) FROM sync_acknowledgements")==0);

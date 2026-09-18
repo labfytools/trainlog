@@ -1,4 +1,4 @@
-export type PreparedItemKind = 'ai_proposal' | 'execution_draft'
+export type PreparedItemKind = 'ai_proposal' | 'execution_draft' | 'manual_preparation'
 
 export interface PreparedItem {
   identity: string
@@ -6,6 +6,7 @@ export interface PreparedItem {
   title: string
   planned_for: string | null
   state: string
+  sort_timestamp: string
   occurrence_count: number
   provenance: string
 }
@@ -24,11 +25,12 @@ function record(value: unknown): value is Record<string, unknown> {
 function validItem(value: unknown): value is PreparedItem {
   if (!record(value)) return false
   const kind = value.kind
-  return (kind === 'ai_proposal' || kind === 'execution_draft') &&
+  return (kind === 'ai_proposal' || kind === 'execution_draft' || kind === 'manual_preparation') &&
     typeof value.identity === 'string' &&
     typeof value.title === 'string' &&
     (value.planned_for === null || typeof value.planned_for === 'string') &&
     typeof value.state === 'string' &&
+    typeof value.sort_timestamp === 'string' &&
     Number.isSafeInteger(value.occurrence_count) &&
     Number(value.occurrence_count) >= 0 &&
     typeof value.provenance === 'string'

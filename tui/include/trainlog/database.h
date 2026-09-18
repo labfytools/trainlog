@@ -16,7 +16,7 @@
 #include "trainlog/model.h"
 #include "trainlog/status.h"
 
-#define TRAINLOG_DATABASE_SCHEMA_VERSION 23
+#define TRAINLOG_DATABASE_SCHEMA_VERSION 24
 
 typedef struct TrainlogDatabase TrainlogDatabase;
 
