@@ -210,7 +210,10 @@ class GenerationTest(unittest.TestCase):
             filename=name+".json";(directory/filename).write_text("{}")
             artifacts.append({"logical_name":name,"format":"test","version":1,"filename":f"generations/{GEN}/{filename}","size":2,"sha256":"0"*64,"required":True})
         manifest={"format":generation.MANIFEST,"version":1,"generation_id":GEN,"run_id":RUN,"producer":{"peer_id":PEER_A,"kind":"android"},"consumer_peer_id":PEER_B,"generated_at":"2026-09-17T10:00:00+02:00","parent_generation_id":None,"artifacts":artifacts}
-        def write_fact(db,_payload,_trace=False):db.execute("INSERT INTO facts VALUES('partial','must roll back')");return {}
+        def write_fact(db, _payload, _trace=False, complete_causal_envelope=False):
+            self.assertTrue(complete_causal_envelope)
+            db.execute("INSERT INTO facts VALUES('partial','must roll back')")
+            return {}
         with mock.patch.object(generation,"validate_published",return_value=(manifest,"a"*64)), \
              mock.patch.object(generation.causal_delete_exchange,"load",return_value={"operations":[]}), \
              mock.patch.object(generation.execution_draft_exchange,"load",return_value={}), \

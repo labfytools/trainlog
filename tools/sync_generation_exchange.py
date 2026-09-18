@@ -633,7 +633,7 @@ def consume_desktop(database: Path, directory: Path) -> dict:
                 causal_delete_exchange.apply_operation(db, operation)
             import_exercise_profile_state.apply_profile_state(db, profile, allow_pending=True)
             import_equipment_definitions.apply_definitions(db, definitions, complete_causal_envelope=True)
-            import_mobile_export.apply_payload(db, history)
+            import_mobile_export.apply_payload(db, history, complete_causal_envelope=True)
             import_exercise_profile_state.apply_profile_state(db, profile)
             import_exercise_aliases.apply_aliases(db, aliases)
             import_equipment_associations.apply_associations(db, association_payload, reserved, mobile_occurrences)

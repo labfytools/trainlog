@@ -44,3 +44,12 @@ exposing SQL or paths.
 The rollout-specific backup hashes, deployed commit, causal operation,
 generation/ACK identifiers and restart/non-resurrection results are appended
 after the controlled private rollout. No public tag or release is created.
+
+During the first post-delete hardware exchange, the desktop correctly rejected
+Android's still-live snapshot with `causal protection refuses legacy/live
+replay`. This exposed a missing full-envelope dominance rule: Android publishes
+its half before consuming the desktop tombstone in the same conversation. The
+production full-generation consumer now filters only live facts already
+dominated by causal state applied from that complete envelope; standalone
+snapshot imports retain their strict rejection. A regression exercises this
+ordering and proves the tombstone and absent session remain unchanged.

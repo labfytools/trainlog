@@ -1960,7 +1960,30 @@ def import_body(
         report["body_imported"] += 1
 
 
-def apply_payload(connection, payload, trace_exercises=False):
+def causal_snapshot_view(payload, protected):
+    """Return the live subset of a snapshot after its causal envelope."""
+    filtered = dict(payload)
+    filtered["exercises"] = [
+        value for value in payload["exercises"]
+        if ("exercise", value["exercise_id"]) not in protected
+    ]
+    filtered["sessions"] = [
+        value for value in payload["sessions"]
+        if ("session", value["session_id"]) not in protected
+    ]
+    filtered["body_observations"] = []
+    for value in payload["body_observations"]:
+        if ("body_observation", value["observation_id"]) in protected:
+            continue
+        if payload["version"] == 4 and value["session_id"] is not None and \
+                ("session", value["session_id"]) in protected:
+            value = dict(value)
+            value["session_id"] = None
+        filtered["body_observations"].append(value)
+    return filtered
+
+
+def apply_payload(connection, payload, trace_exercises=False, complete_causal_envelope=False):
     """Apply a validated artifact without owning commit or rollback."""
     connection.row_factory = sqlite3.Row
     report = {
@@ -1988,9 +2011,17 @@ def apply_payload(connection, payload, trace_exercises=False):
                     {("body_observation", value["observation_id"]) for value in payload["body_observations"]} |
                     {("exercise", value["exercise_id"]) for value in payload["exercises"]})
         collision = protected & incoming
-        if collision:
+        if collision and not complete_causal_envelope:
             kind, identity = sorted(collision)[0]
             raise ImportFailure(f"causal protection refuses legacy/live replay: {kind}/{identity}")
+        if complete_causal_envelope:
+            # WHY: Android publishes its snapshot before consuming this run's
+            # desktop half, so that snapshot may still contain objects deleted
+            # by the causal artifact already applied above. CONTRACT: only the
+            # complete generation consumer may discard those dominated live
+            # facts. INVARIANT: the durable tombstone remains authoritative and
+            # ordinary standalone imports continue to reject the collision.
+            payload = causal_snapshot_view(payload, protected)
     has_explicit_max = any("max_weight_kg" in entry for session in payload["sessions"] for entry in session["exercises"])
     if has_explicit_max and schema_version < 9:
         raise ImportFailure("max_weight_kg exige le schéma desktop v9")

@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 IMPORTER = ROOT / "tools/import_mobile_export.py"
 EXPORTER = ROOT / "tools/export_pc_mobile.py"
+sys.path.insert(0, str(ROOT / "tools"))
+import import_mobile_export
 from test_mobile_import_variable_sets import SCHEMA
 
 V11_SCHEMA = SCHEMA.replace("PRAGMA user_version=10;", "") + """
@@ -163,6 +165,29 @@ def main():
                 "SELECT target_id,current_revision_id,deleted FROM sync_causal_state "
                 "WHERE target_kind='session' ORDER BY target_id"
             ).fetchall() == revisions_before
+
+            # A full generation applies causal operations before its mobile
+            # snapshot. The older live fact is dominated rather than rejected
+            # or reinserted; standalone import keeps the stricter collision.
+            con.execute("DELETE FROM sessions WHERE session_id='se_v3'")
+            con.execute(
+                "UPDATE sync_causal_state SET current_revision_id='del_fixture',"
+                "deleted=1,operation_id='del_fixture' WHERE target_kind='session' "
+                "AND target_id='se_v3'"
+            )
+            report = import_mobile_export.apply_payload(
+                con,
+                import_mobile_export.load_payload(artifact),
+                complete_causal_envelope=True,
+            )
+            assert report["sessions_imported"] == 0
+            assert con.execute(
+                "SELECT COUNT(*) FROM sessions WHERE session_id='se_v3'"
+            ).fetchone()[0] == 0
+            assert tuple(con.execute(
+                "SELECT current_revision_id,deleted FROM sync_causal_state "
+                "WHERE target_kind='session' AND target_id='se_v3'"
+            ).fetchone()) == ("del_fixture", 1)
         exported = root / "pc-v3.json"
         run([sys.executable, str(EXPORTER), str(exported), "--database", str(db)])
         roundtrip = json.loads(exported.read_text())
