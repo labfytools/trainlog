@@ -908,7 +908,7 @@ static enum MHD_Result handle_request(void *closure,
             if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
                 free(json);
                 return queue_json(connection,
-                                  MHD_HTTP_UNPROCESSABLE_ENTITY,
+                                  MHD_HTTP_UNPROCESSABLE_CONTENT,
                                   "{\"error\":\"invalid_preparation\"}\n",
                                   NULL);
             }
