@@ -4,8 +4,8 @@ The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
 persistent peer identities. The latest controlled rollout verified real
-desktop and Android backups, populated-copy migration, desktop schema v25 to
-v26, and an in-place private Android update from versionCode 15 to 16. The
+desktop and Android backups, desktop schema v26 to v27, and an in-place private
+Android update from versionCode 16 to 17 with schema v24 to v25. The
 installed APK remains `com.labfytools.trainlog` 0.1.2, is
 non-debuggable, and retains certificate SHA-256
 `aa56c97f2781a0d01f007f4444c3970deb58ad8327ca3da7b0b90f37dbe2ad25`.
@@ -82,7 +82,7 @@ parallel implementation of its rules.
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
-| Program execution flow | `TRAINLOG_PROGRAM_EXECUTION_FLOW_V1=IMPLEMENTED_VALIDATED_AWAITING_ROLLOUT` |
+| Program execution flow | `TRAINLOG_PROGRAM_EXECUTION_FLOW_V1=PASS` (private coordinated deployment, real execution, correlated ACK, restart, replay, and deletion validated) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
@@ -280,6 +280,23 @@ restart and completion. The optional Android-to-desktop
 against desktop schema v27 without transferring ownership of Program
 definitions. Web and Android derive their session state from these persisted
 identities; no display-field heuristic is used.
+
+The private Program execution rollout installed desktop schema v27 and the
+signed nondebuggable Android versionCode 17/schema v25 update without
+uninstalling or clearing application data. A strictly disposable Program was
+synchronized to Android, started, left and resumed through the durable
+singleton, and completed as session
+`se_6bb66f59-a6fb-4759-a75d-c1a79ea107e8`. Android displayed `Effectuée` and
+desktop/Web received the same completed provenance through the real
+`program-executions-v1` producer and consumer. A second exchange created no
+duplicate and no second active draft. The disposable Program was then deleted
+through the revision-guarded Web command; Android retained exactly one
+tombstone and desktop retained exactly one acknowledged deletion ledger row.
+After both stores and the Trainlog components were reopened, exact replay of
+the preserved pre-deletion Android generation returned its production durable
+ACK without duplicating the execution or resurrecting the Program. A final
+correlated exchange remained completed with no missing capability. The real
+Program remains active and unique with 24 sessions and 164 ordered entries.
 
 The private Programs rollout migrated desktop schema v25 to v26 and Android
 schema v23 to v24 after verified backups, then installed the signed

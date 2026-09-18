@@ -64,6 +64,12 @@ its coordinated private desktop/Android deployment, correlated deletion ACK,
 and post-restart non-resurrection validation. It must not be reopened by the
 Exercises contract.
 
+`TRAINLOG_PROGRAM_EXECUTION_FLOW_V1=PASS` after its coordinated private
+desktop/Android rollout, real start/resume/completion, correlated
+`program-executions-v1` exchange, idempotence exchange, component restart,
+preserved-generation replay, and disposable-Program deletion proof. It also
+must not be reopened by the Exercises contract.
+
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.
 `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` supplies the reproducible isolated

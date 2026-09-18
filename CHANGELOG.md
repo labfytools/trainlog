@@ -11,6 +11,14 @@
   mobile export V3, `programs-v1`, or `TRAINLOG_FORMAT_V1`. Web also exposes
   `À faire`, `Préparée`, `En cours`, and `Effectuée` session states, while the
   existing logical Program deletion and confirmation semantics remain intact.
+  The coordinated private deployment advanced the daily Android installation
+  from versionCode 16/schema v24 to versionCode 17/schema v25 and desktop from
+  schema v26 to v27 without uninstalling, clearing, or losing user data. A
+  disposable Program session was started, resumed, completed, synchronized and
+  displayed as completed on Android and Web. Correlated ACKs, a second
+  idempotence exchange, store/component restart, exact old-generation replay,
+  causal Program deletion, tombstone acknowledgement and non-resurrection all
+  passed while the real 24-session/164-entry Program remained unchanged.
 
 - Completed the private coordinated deployment of
   `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1`. Desktop schema v26 adds
