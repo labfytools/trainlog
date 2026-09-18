@@ -11,30 +11,18 @@
 
 #include <uuid/uuid.h>
 
-static bool prefix_is_supported(const char *prefix)
-{
+static bool prefix_is_supported(const char *prefix) {
     /*
      * Keep official creator prefixes deliberately small and explicit.
      * The exchange parser remains more permissive because imported v1 IDs are
      * opaque values governed by the frozen wire-schema syntax.
      */
-    return strcmp(prefix, "ex") == 0 ||
-           strcmp(prefix, "se") == 0 ||
-           strcmp(prefix, "bo") == 0 ||
-           strcmp(prefix, "sy") == 0 ||
-           strcmp(prefix, "sxe") == 0 ||
-           strcmp(prefix, "sp") == 0 ||
-           strcmp(prefix, "spr") == 0 ||
-           strcmp(prefix, "spe") == 0 ||
-           strcmp(prefix, "spd") == 0;
+    return strcmp(prefix, "ex") == 0 || strcmp(prefix, "se") == 0 || strcmp(prefix, "bo") == 0 ||
+           strcmp(prefix, "sy") == 0 || strcmp(prefix, "sxe") == 0 || strcmp(prefix, "sp") == 0 ||
+           strcmp(prefix, "spr") == 0 || strcmp(prefix, "spe") == 0 || strcmp(prefix, "spd") == 0;
 }
 
-TrainlogStatus trainlog_id_generate(
-    const char *prefix,
-    char *output,
-    size_t output_size
-)
-{
+TrainlogStatus trainlog_id_generate(const char *prefix, char *output, size_t output_size) {
     uuid_t value;
     char uuid_text[TRAINLOG_UUID_TEXT_LENGTH + 1U];
     int written;
@@ -55,16 +43,9 @@ TrainlogStatus trainlog_id_generate(
     uuid_generate_random(value);
     uuid_unparse_lower(value, uuid_text);
 
-    written = snprintf(
-        output,
-        output_size,
-        "%s_%s",
-        prefix,
-        uuid_text
-    );
+    written = snprintf(output, output_size, "%s_%s", prefix, uuid_text);
 
-    if (written < 0 ||
-        (size_t)written >= output_size) {
+    if (written < 0 || (size_t)written >= output_size) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
 

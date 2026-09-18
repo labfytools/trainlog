@@ -4,7 +4,7 @@ import {
   fetchSessionDetail,
   fetchReadonlySessionDetail,
   prepareForAndroid,
-  fetchSessionPage,
+  fetchAllSessionPages,
   savePreparation,
   type CatalogChoice,
   type PreparationInput,
@@ -214,14 +214,17 @@ export function SessionsPage() {
   const [view, setView] = useState<View>('preparation')
   const [items, setItems] = useState<Array<SessionListItem & { collection: SessionCollection }>>([])
   const [search, setSearch] = useState('')
+  const [stateFilter, setStateFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [pending, setPending] = useState(true)
   const [failed, setFailed] = useState(false)
   const [editor, setEditor] = useState<SessionDetail | 'new' | null>(null)
   const [detailPath, setDetailPath] = useState(() => window.location.pathname)
   const detailMatch = useMemo(() => detailPath.match(/^\/seances\/(preparation|proposal|draft|history)\/([^/]+)$/), [detailPath])
   const load = () => { const controller = new AbortController(); setPending(true); setFailed(false)
-    Promise.all(collections[view].map((collection) => fetchSessionPage(collection, 0, search, controller.signal)
-      .then((page) => page.items.map((item) => ({ ...item, collection })))))
+    Promise.all(collections[view].map((collection) => fetchAllSessionPages(collection, search, controller.signal)
+      .then((pageItems) => pageItems.map((item) => ({ ...item, collection })))))
       .then((pages) => setItems(pages.flat())).catch(() => setFailed(true)).finally(() => setPending(false))
     return controller }
   useEffect(() => { const controller = load(); return () => controller.abort() }, [view, search])
@@ -234,6 +237,13 @@ export function SessionsPage() {
     window.history.pushState(null, '', path); setDetailPath(path)
   }
   const back = () => { window.history.pushState(null, '', '/seances'); setDetailPath('/seances'); setEditor(null) }
+  const visibleItems = useMemo(() => items.filter((item) => {
+    if (stateFilter && item.state !== stateFilter) return false
+    if (dateFrom && (!item.date || item.date < dateFrom)) return false
+    if (dateTo && (!item.date || item.date > dateTo)) return false
+    return true
+  }), [items, stateFilter, dateFrom, dateTo])
+  const states = useMemo(() => [...new Set(items.map((item) => item.state))].sort(), [items])
   if (editor) return <section className="page"><Editor initial={editor === 'new' ? undefined : editor}
     onCancel={() => setEditor(null)} onSaved={(identity) => { setEditor(null); open('preparations', identity) }} /></section>
   if (detailMatch && (detailMatch[1] === 'preparation' || detailMatch[1] === 'proposal')) {
@@ -253,9 +263,16 @@ export function SessionsPage() {
       {view === 'preparation' && <button type="button" className="primary-action" onClick={() => setEditor('new')}>Nouvelle séance</button>}</div>
     <label className="session-search"><span>Rechercher par titre ou exercice</span><input type="search" value={search}
       onChange={(event) => setSearch(event.target.value)} /></label>
+    <div className="session-filters" aria-label="Filtres de séances">
+      <label>État<select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)}>
+        <option value="">Tous</option>{states.map((state) => <option value={state} key={state}>{state}</option>)}
+      </select></label>
+      <label>Du<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+      <label>Au<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+    </div>
     {pending && <p aria-live="polite">Chargement…</p>}{failed && <p className="error-panel" role="alert">Les données ne sont pas disponibles.</p>}
-    {!pending && !failed && items.length === 0 && <p className="empty-inline">Aucun résultat pour cette vue.</p>}
-    <div className="session-list">{items.map((item) => <button type="button" className="session-row"
+    {!pending && !failed && visibleItems.length === 0 && <p className="empty-inline">Aucun résultat pour cette vue.</p>}
+    <div className="session-list">{visibleItems.map((item) => <button type="button" className="session-row"
       key={`${item.collection}-${item.identity}`} onClick={() => open(item.collection, item.identity)}>
       <span><small>{item.collection === 'proposals' ? 'Proposition IA' : item.collection === 'preparations' ? 'Préparation manuelle' : item.collection === 'drafts' ? 'Brouillon d’exécution' : 'Séance réalisée'}</small>
         <strong>{item.title || 'Sans titre'}</strong></span><span>{item.date ?? 'Date inconnue'}</span>

@@ -429,6 +429,12 @@ static bool is_ui_route(const char *url) {
             return true;
         }
     }
+    /* CONTRACT: Sessions detail identities are client-side path segments. A
+     * direct load must receive the SPA, while the /api guard below remains
+     * authoritative for every adapter route. */
+    if (strncmp(url, "/seances/", strlen("/seances/")) == 0) {
+        return true;
+    }
     return false;
 }
 
@@ -515,7 +521,8 @@ static bool parse_if_match(const char *value, uint64_t *revision) {
     return true;
 }
 
-static bool parse_page_number(const char *value, size_t default_value, size_t maximum, size_t *out) {
+static bool
+parse_page_number(const char *value, size_t default_value, size_t maximum, size_t *out) {
     char *end = NULL;
     unsigned long long parsed;
 
@@ -792,21 +799,19 @@ static enum MHD_Result handle_request(void *closure,
         size_t limit;
         size_t index;
 
-        if (!is_get &&
-            (strcmp(url, "/api/v1/sessions/preparations") == 0 ||
-             strncmp(url,
-                     "/api/v1/sessions/preparation/",
-                     strlen("/api/v1/sessions/preparation/")) == 0)) {
-            const char *origin =
-                MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
-            const char *csrf = MHD_lookup_connection_value(
-                connection, MHD_HEADER_KIND, "X-Trainlog-CSRF-Token");
+        if (!is_get && (strcmp(url, "/api/v1/sessions/preparations") == 0 ||
+                        strncmp(url,
+                                "/api/v1/sessions/preparation/",
+                                strlen("/api/v1/sessions/preparation/")) == 0)) {
+            const char *origin = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Origin");
+            const char *csrf =
+                MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-CSRF-Token");
             const char *content_type = MHD_lookup_connection_value(
                 connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_CONTENT_TYPE);
-            const char *request_id = MHD_lookup_connection_value(
-                connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
-            const char *if_match = MHD_lookup_connection_value(
-                connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+            const char *request_id =
+                MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+            const char *if_match =
+                MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
             const char *identity = NULL;
             const char *expected = "";
             char expected_buffer[TRAINLOG_ID_MAX + 1U];
@@ -825,10 +830,8 @@ static enum MHD_Result handle_request(void *closure,
                                   "POST, PUT");
             }
             if (!valid_origin(context, origin) || !valid_csrf(context, csrf)) {
-                return queue_json(connection,
-                                  MHD_HTTP_FORBIDDEN,
-                                  "{\"error\":\"mutation_forbidden\"}\n",
-                                  NULL);
+                return queue_json(
+                    connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
             }
             if (content_type == NULL || strcmp(content_type, "application/json") != 0 ||
                 request_id == NULL || request_id[0] == '\0' || strlen(request_id) > 128U) {
@@ -869,8 +872,7 @@ static enum MHD_Result handle_request(void *closure,
                                       NULL);
                 }
                 length = strlen(if_match);
-                if (length < 3U || length - 2U > TRAINLOG_ID_MAX ||
-                    if_match[length - 1U] != '"') {
+                if (length < 3U || length - 2U > TRAINLOG_ID_MAX || if_match[length - 1U] != '"') {
                     return queue_json(connection,
                                       MHD_HTTP_BAD_REQUEST,
                                       "{\"error\":\"invalid_revision\"}\n",
@@ -881,12 +883,8 @@ static enum MHD_Result handle_request(void *closure,
                 expected = expected_buffer;
             }
             if (delivery) {
-                status = trainlog_web_sessions_deliver_json(context->database,
-                                                            identity,
-                                                            expected,
-                                                            request_id,
-                                                            &json,
-                                                            &json_size);
+                status = trainlog_web_sessions_deliver_json(
+                    context->database, identity, expected, request_id, &json, &json_size);
             } else {
                 status = trainlog_web_sessions_save_json(context->database,
                                                          identity,
@@ -926,8 +924,7 @@ static enum MHD_Result handle_request(void *closure,
         limit_value = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "limit");
         search = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "search");
         if (!parse_page_number(offset_value, 0U, 1000000U, &offset) ||
-            !parse_page_number(
-                limit_value, 24U, TRAINLOG_WEB_SESSIONS_PAGE_MAX, &limit) ||
+            !parse_page_number(limit_value, 24U, TRAINLOG_WEB_SESSIONS_PAGE_MAX, &limit) ||
             limit == 0U) {
             return queue_json(
                 connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_page\"}\n", NULL);
@@ -941,8 +938,8 @@ static enum MHD_Result handle_request(void *closure,
             if (strcmp(url, collections[index].path) == 0) {
                 TrainlogWebSessionsPageQuery query = {
                     collections[index].collection, offset, limit, search};
-                TrainlogStatus status = trainlog_web_sessions_list_json(
-                    context->database, &query, &json, &json_size);
+                TrainlogStatus status =
+                    trainlog_web_sessions_list_json(context->database, &query, &json, &json_size);
                 return queue_owned_sessions_json(connection, status, json, json_size);
             }
         }
@@ -958,11 +955,8 @@ static enum MHD_Result handle_request(void *closure,
 
                 (void)memcpy(kind_buffer, kind, (size_t)(separator - kind));
                 kind_buffer[separator - kind] = '\0';
-                status = trainlog_web_sessions_detail_json(context->database,
-                                                           kind_buffer,
-                                                           separator + 1,
-                                                           &json,
-                                                           &json_size);
+                status = trainlog_web_sessions_detail_json(
+                    context->database, kind_buffer, separator + 1, &json, &json_size);
                 return queue_owned_sessions_json(connection, status, json, json_size);
             }
         }

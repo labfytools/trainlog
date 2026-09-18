@@ -100,6 +100,31 @@ export async function fetchSessionPage(
   return value as unknown as SessionPage
 }
 
+export async function fetchAllSessionPages(
+  collection: SessionCollection,
+  search = '',
+  signal?: AbortSignal,
+): Promise<SessionListItem[]> {
+  const items: SessionListItem[] = []
+  const identities = new Set<string>()
+  let offset = 0
+
+  for (;;) {
+    const page = await fetchSessionPage(collection, offset, search, signal)
+    if (page.offset !== offset) throw new TypeError('curseur de séances obsolète')
+    for (const item of page.items) {
+      if (identities.has(item.identity)) throw new TypeError('pagination de séances incohérente')
+      identities.add(item.identity)
+      items.push(item)
+    }
+    if (!page.more) return items
+    if (page.next_offset <= offset || page.items.length === 0) {
+      throw new TypeError('curseur de séances obsolète')
+    }
+    offset = page.next_offset
+  }
+}
+
 export async function fetchSessionDetail(
   kind: 'preparation' | 'proposal', identity: string, signal?: AbortSignal,
 ): Promise<SessionDetail> {

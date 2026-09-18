@@ -9,12 +9,12 @@
 #include "trainlog/database.h"
 #include "trainlog/web_sessions.h"
 
-#define CHECK(expression)                                                                         \
-    do {                                                                                          \
-        if (!(expression)) {                                                                      \
+#define CHECK(expression)                                                                          \
+    do {                                                                                           \
+        if (!(expression)) {                                                                       \
             (void)fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expression); \
-            return false;                                                                         \
-        }                                                                                         \
+            return false;                                                                          \
+        }                                                                                          \
     } while (0)
 
 static int scalar(TrainlogDatabase *database, const char *sql) {
@@ -45,8 +45,7 @@ static bool creation_replay_revision_and_pagination(void) {
         "\"planned_for\":null,\"notes\":null,\"editing_state\":\"draft\","
         "\"occurrences\":[]}";
     TrainlogDatabase *database = NULL;
-    TrainlogWebSessionsPageQuery query = {
-        TRAINLOG_WEB_SESSION_PREPARATIONS, 0U, 1U, "échappée"};
+    TrainlogWebSessionsPageQuery query = {TRAINLOG_WEB_SESSION_PREPARATIONS, 0U, 1U, "échappée"};
     char *created = NULL;
     char *replayed = NULL;
     char *detail = NULL;

@@ -65,6 +65,9 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .primary-action, .editor-actions .primary-action { color: var(--crust); background: var(--lavender); font-weight: 700; }
 .quiet-action { border-color: var(--surface-2); }
 .session-search { display: grid; gap: .45rem; max-width: 34rem; margin-bottom: 1.5rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
+.session-filters { display: flex; flex-wrap: wrap; gap: .8rem; margin: -.35rem 0 1.25rem; }
+.session-filters label { display: grid; min-width: 10rem; gap: .35rem; color: var(--subtext-0); font-size: var(--font-size-xs); }
+.session-filters select, .session-filters input { min-height: 2.5rem; padding: .55rem .7rem; color: var(--text); background: var(--mantle); border: 1px solid var(--surface-2); border-radius: .5rem; }
 .session-search input, .form-grid input, .form-grid select, .form-grid textarea, .catalog-picker input, .occurrence-fields input, .occurrence-fields select { width: 100%; min-height: 2.7rem; padding: .65rem .75rem; border: 1px solid var(--surface-2); border-radius: .5rem; color: var(--text); background: var(--base); font-size: var(--font-size-md); }
 .session-list { display: grid; gap: .6rem; }
 .session-row { width: 100%; padding: 1rem 1.1rem; display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(7rem, 1fr)); gap: 1rem; align-items: center; text-align: left; color: var(--text); border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); cursor: pointer; }

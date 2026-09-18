@@ -1,7 +1,8 @@
 /*
  * Trainlog id interface.
  *
- * Declares the module boundary and ownership contract; implementation and persistence remain in their owning modules.
+ * Declares the module boundary and ownership contract; implementation and persistence remain in
+ * their owning modules.
  */
 #ifndef TRAINLOG_ID_H
 #define TRAINLOG_ID_H
@@ -25,8 +26,7 @@
  * CONTRACT: occurrence identities use the longer `sxe` prefix while the
  * frozen v1 object identities retain their existing two-character prefixes.
  */
-#define TRAINLOG_GENERATED_ID_CAPACITY \
-    (3U + 1U + TRAINLOG_UUID_TEXT_LENGTH + 1U)
+#define TRAINLOG_GENERATED_ID_CAPACITY (3U + 1U + TRAINLOG_UUID_TEXT_LENGTH + 1U)
 
 /**
  * @brief Generate an official Trainlog identifier using UUID version 4.
@@ -56,10 +56,6 @@
  *         Existing two-character prefixes still require 40 bytes; `sxe`
  *         requires TRAINLOG_GENERATED_ID_CAPACITY bytes.
  */
-TrainlogStatus trainlog_id_generate(
-    const char *prefix,
-    char *output,
-    size_t output_size
-);
+TrainlogStatus trainlog_id_generate(const char *prefix, char *output, size_t output_size);
 
 #endif

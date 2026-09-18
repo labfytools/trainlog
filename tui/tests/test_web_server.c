@@ -383,6 +383,13 @@ static bool test_http_contract(TrainlogDatabase *database) {
             port, "GET /analyse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", response, sizeof(response)) &&
         strstr(response, "<title>Trainlog</title>") != NULL);
     CHECK(exchange(port,
+                   "GET /seances/preparation/sp_11111111-1111-4111-8111-111111111111 "
+                   "HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 200") != NULL &&
+          strstr(response, "<title>Trainlog</title>") != NULL);
+    CHECK(exchange(port,
                    "GET /api/v1/unknown HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
                    response,
                    sizeof(response)) &&
