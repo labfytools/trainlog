@@ -17,7 +17,7 @@ internal sealed interface ForegroundGenerationResult {
 internal class SyncGenerationForegroundCoordinator(private val repository: TrainlogRepository) {
     private val service = SyncGenerationService(repository)
 
-    private fun resumableGeneration(runId: String, consumerPeerId: String? = null): CapturedSyncGeneration? =
+    internal fun resumableGeneration(runId: String, consumerPeerId: String? = null): CapturedSyncGeneration? =
         repository.inSyncGenerationTransaction { db ->
             db.rawQuery(
                 "SELECT generation_id,manifest_sha256,staging_path FROM sync_generations " +
@@ -209,9 +209,9 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
              * CONTRACT: an explicit retry for the same run republishes that
              * exact generation and resumes ACK handling; it never recaptures
              * mutable application state under an existing identity.
-             * INVARIANT: only an active generation for the correlated desktop
-             * consumer is resumable; acknowledged or archived runs remain
-             * excluded from new foreground work. */
+             * INVARIANT: a completed inbound ledger makes the run ineligible;
+             * an acknowledged outbound generation remains resumable only to
+             * finish its missing inbound half. */
             val captured =
                 resumableGeneration(
                     request.getString("run_id"),

@@ -27,6 +27,54 @@ class SyncGenerationServiceTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
+    fun acknowledgedOutboundRemainsResumableUntilInboundIsTerminal() {
+        val sourceName = "generation-resume-source-${UUID.randomUUID()}.db"
+        val destinationName = "generation-resume-destination-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-generation-resume-").toFile()
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        try {
+            val sourceService = SyncGenerationService(source)
+            val destinationService = SyncGenerationService(destination)
+            val runId = "sy_${UUID.randomUUID()}"
+            val outbound =
+                sourceService.capture(
+                    java.io.File(root, "source-owned"),
+                    destinationService.peerId(),
+                    runId,
+                )
+            val outboundDirectory =
+                sourceService.publish(outbound, java.io.File(root, "source-objects"))
+            sourceService.acceptAcknowledgement(
+                destinationService.consume(outboundDirectory).toByteArray()
+            )
+
+            val coordinator = SyncGenerationForegroundCoordinator(source)
+            assertEquals(
+                outbound.generationId,
+                coordinator.resumableGeneration(runId, destinationService.peerId())?.generationId,
+            )
+
+            val inbound =
+                destinationService.capture(
+                    java.io.File(root, "destination-owned"),
+                    sourceService.peerId(),
+                    runId,
+                )
+            sourceService.consume(
+                destinationService.publish(inbound, java.io.File(root, "destination-objects"))
+            )
+            assertEquals(null, coordinator.resumableGeneration(runId, destinationService.peerId()))
+        } finally {
+            source.close()
+            destination.close()
+            context.deleteDatabase(sourceName)
+            context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun v19MigrationPreservesDataAndInventsNoGenerationState() {
         val name = "generation-migration-${UUID.randomUUID()}.db"
         TrainlogRepository(context, name).also {
