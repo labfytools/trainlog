@@ -384,9 +384,11 @@ static TrainlogStatus add_program_sessions(TrainlogDatabase *database,
         "SELECT ps.program_session_id,ps.position,ps.title,ps.session_type,ps.planned_for,"
         "ps.note,CASE WHEN pe.state='completed' THEN 'completed' "
         "WHEN pe.state='in_progress' THEN 'in_progress' "
+        "WHEN pe.state='deleted' THEN 'deleted' "
         "WHEN EXISTS(SELECT 1 FROM session_preparations sp WHERE "
         "sp.source_program_session_id=ps.program_session_id AND sp.withdrawn_at IS NULL) "
-        "THEN 'prepared' ELSE 'todo' END,pe.session_id "
+        "THEN 'prepared' ELSE 'todo' END,"
+        "CASE WHEN pe.state='deleted' THEN NULL ELSE pe.session_id END "
         "FROM program_sessions ps LEFT JOIN program_session_executions pe "
         "ON pe.program_session_id=ps.program_session_id "
         "WHERE ps.program_id=?1 ORDER BY ps.position,ps.program_session_id";

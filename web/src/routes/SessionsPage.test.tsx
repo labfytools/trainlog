@@ -184,4 +184,64 @@ describe('Sessions page', () => {
     expect(screen.queryByRole('button', { name: 'Supprimer la préparation' })).not.toBeInTheDocument()
     expect(screen.getByText(/Dérivée de la proposition/)).toHaveTextContent('Proposition source')
   })
+
+  it('deletes completed Program history only after confirmation and refreshes honestly', async () => {
+    window.history.replaceState(null, '', '/seances')
+    let deleted = false
+    const target = {
+      identity: 'se_disposable', title: 'training', date: '2026-09-18', state: 'completed',
+      occurrence_count: 1, sort_timestamp: '2026-09-18T21:46:52+02:00',
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/sync/status') {
+        return response({ phase: 'idle', result: 'ok' }).then((value) => ({
+          ...value, headers: new Headers({ 'X-Trainlog-CSRF-Token': 'a'.repeat(64) }),
+        }))
+      }
+      if (url.includes('/api/v1/sessions/history?')) {
+        return response(page('history', deleted ? [] : [target]))
+      }
+      if (url.includes('/api/v1/sessions/history/se_disposable') && init?.method === 'DELETE') {
+        deleted = true
+        return response({ api_version: 1, kind: 'history', identity: target.identity,
+          state: 'deleted', deleted_at: '2026-09-18T22:00:00Z' })
+      }
+      if (url.includes('/api/v1/sessions/history/se_disposable')) {
+        if (deleted) return Promise.resolve({ ok: false, status: 404,
+          json: () => Promise.resolve({ error: 'not_found' }) })
+        return response({ api_version: 1, kind: 'history', identity: target.identity,
+          revision_id: 'lv_disposable', session_type: 'training',
+          started_at: '2026-09-18T21:46:52+02:00',
+          ended_at: '2026-09-18T21:50:52+02:00', notes: null, occurrences: [] })
+      }
+      if (url.includes('/api/v1/sessions/')) {
+        return response(page('empty', []))
+      }
+      throw new Error(`unexpected request ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<SessionsPage />)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Historique' }))
+    await screen.findByText('training')
+    const trigger = screen.getByRole('button', { name: 'Supprimer la séance de l’historique' })
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('La séance sera retirée de l’historique')
+    fireEvent.click(within(dialog).getByRole('button', {
+      name: 'Supprimer la séance de l’historique',
+    }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
+      'Séance supprimée de l’historique.',
+    ))
+    expect(screen.queryByText('training')).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([, options]) =>
+      (options as RequestInit | undefined)?.method === 'DELETE')).toHaveLength(1)
+
+    window.history.pushState(null, '', '/seances/history/se_disposable')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Fiche indisponible'))
+  })
 })

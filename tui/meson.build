@@ -756,6 +756,15 @@ test_schema_v26_migration = executable(
 
 test('schema_v26_migration', test_schema_v26_migration)
 
+test_schema_v28_migration = executable(
+  'test_schema_v28_migration',
+  'tests/test_schema_v28_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+
+test('schema_v28_migration', test_schema_v28_migration)
+
 test_schema_v7_migration = executable(
   'test_schema_v7_migration',
   'tests/test_schema_v7_migration.c',
@@ -800,6 +809,12 @@ test(
   'session_exchange_v3',
   python3_trainlog_tests,
   args: [meson.project_source_root() / 'tests/test_session_exchange_v3.py'],
+)
+
+test(
+  'program_execution_exchange',
+  python3_trainlog_tests,
+  args: [meson.project_source_root() / 'tests/test_program_execution_exchange.py'],
 )
 
 test(

@@ -248,6 +248,35 @@ static bool test_http_contract(TrainlogDatabase *database) {
                        NULL,
                        NULL,
                        NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO programs(program_id,title,state,created_at,updated_at,"
+                       "revision_id,source_format,source_version,source_payload_sha256) VALUES("
+                       "'pg_77777777-7777-4777-8777-777777777777','HTTP Program','active',"
+                       "'2026-09-18T10:00:00Z','2026-09-18T10:00:00Z','pgr_http',"
+                       "'trainlog-program',1,"
+                       "'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');"
+                       "INSERT INTO program_sessions(program_session_id,program_id,position,title,"
+                       "session_type) VALUES('pgs_88888888-8888-4888-8888-888888888888',"
+                       "'pg_77777777-7777-4777-8777-777777777777',0,'HTTP execution','training');"
+                       "INSERT INTO sessions(session_id,started_at,ended_at,session_type) VALUES("
+                       "'se_99999999-9999-4999-8999-999999999999','2026-09-18T12:00:00Z',"
+                       "'2026-09-18T13:00:00Z','training'),("
+                       "'se_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','2026-09-18T14:00:00Z',"
+                       "'2026-09-18T15:00:00Z','training');"
+                       "INSERT INTO sync_causal_state VALUES("
+                       "'session','se_99999999-9999-4999-8999-999999999999','lv_http',0,NULL),("
+                       "'session','se_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','lv_failure',0,NULL);"
+                       "INSERT INTO program_session_executions VALUES("
+                       "'pgs_88888888-8888-4888-8888-888888888888',"
+                       "'pg_77777777-7777-4777-8777-777777777777',"
+                       "'se_99999999-9999-4999-8999-999999999999','completed',"
+                       "'2026-09-18T13:00:00Z');"
+                       "CREATE TRIGGER inject_session_delete_failure BEFORE DELETE ON sessions "
+                       "WHEN OLD.session_id='se_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' BEGIN "
+                       "SELECT RAISE(ABORT,'injected session deletion failure');END;",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     (void)unlink("/tmp/trainlog-web-test.db.sync-run.json");
     CHECK(reserve_port(&port, 0) == -2);
     child = fork();
@@ -378,6 +407,95 @@ static bool test_http_contract(TrainlogDatabase *database) {
                        response,
                        sizeof(response)) &&
               strstr(response, "HTTP/1.1 404") != NULL);
+        CHECK(exchange(port,
+                       "GET /api/v1/sessions/history/"
+                       "se_99999999-9999-4999-8999-999999999999 HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"revision_id\":\"lv_http\"") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/history/"
+            "se_99999999-9999-4999-8999-999999999999 HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\nIf-Match: \"stale\"\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-history-stale\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            (unsigned int)port,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 409") != NULL &&
+              strstr(response, "deletion_conflict") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/history/"
+            "se_99999999-9999-4999-8999-999999999999 HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\nIf-Match: \"lv_http\"\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-history-delete\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            (unsigned int)port,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"state\":\"deleted\"") != NULL);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL);
+        CHECK(exchange(port,
+                       "GET /api/v1/sessions/program/"
+                       "pg_77777777-7777-4777-8777-777777777777 HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"execution_state\":\"deleted\"") != NULL &&
+              strstr(response, "\"execution_session_id\":null") != NULL);
+        CHECK(exchange(port,
+                       "GET /api/v1/sessions/history/"
+                       "se_99999999-9999-4999-8999-999999999999 HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 404") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/history/not/a/session HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\nIf-Match: \"revision\"\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-invalid-delete\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            (unsigned int)port,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 422") != NULL &&
+              strstr(response, "invalid_deletion") != NULL);
+        (void)snprintf(
+            request,
+            sizeof(request),
+            "DELETE /api/v1/sessions/history/"
+            "se_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nOrigin: http://127.0.0.1:%u\r\n"
+            "Content-Type: application/json\r\nIf-Match: \"lv_failure\"\r\n"
+            "X-Trainlog-CSRF-Token: %s\r\nX-Trainlog-Request-ID: request-http-db-failure\r\n"
+            "Content-Length: 2\r\n\r\n{}",
+            (unsigned int)port,
+            token);
+        CHECK(exchange(port, request, response, sizeof(response)) &&
+              strstr(response, "HTTP/1.1 500") != NULL &&
+              strstr(response, "sessions_unavailable") != NULL);
+        CHECK(exchange(port,
+                       "GET /api/v1/sessions/history/"
+                       "se_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa HTTP/1.1\r\n"
+                       "Host: 127.0.0.1\r\n\r\n",
+                       response,
+                       sizeof(response)) &&
+              strstr(response, "HTTP/1.1 200") != NULL &&
+              strstr(response, "\"revision_id\":\"lv_failure\"") != NULL);
     }
     CHECK(exchange(port,
                    "GET /api/v1/dashboard HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",

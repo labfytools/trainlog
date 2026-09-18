@@ -66,7 +66,7 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             inventory = json.loads((output / "candidate-inventory.json").read_text())
             self.assertEqual(inventory["product_version"], "0.1.2")
-            self.assertEqual(inventory["desktop_schema"], 27)
+            self.assertEqual(inventory["desktop_schema"], 28)
             self.assertEqual(inventory["android_schema"], 25)
             self.assertIn("session-preparations-v2", inventory["protocols"])
             self.assertIn("programs-v1", inventory["protocols"])

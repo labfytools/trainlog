@@ -351,8 +351,10 @@ static TrainlogStatus detail_for_history(TrainlogDatabase *database,
         "SELECT "
         "se.entry_id,se.position,x.exercise_id,x.name,se.equipment_id,se.recording_mode,se."
         "tracking_mode,se.load_mode,se.target_sets,se.target_reps,se.target_duration_seconds,se."
-        "target_weight_kg,se.rest_seconds,se.notes,se.max_weight_kg FROM session_exercises se JOIN "
-        "exercises x ON x.id=se.exercise_row_id JOIN sessions s ON s.id=se.session_row_id WHERE "
+        "target_weight_kg,se.rest_seconds,se.notes,mr.max_weight_kg FROM session_exercises se JOIN "
+        "exercises x ON x.id=se.exercise_row_id JOIN sessions s ON s.id=se.session_row_id LEFT "
+        "JOIN "
+        "max_results mr ON mr.session_exercise_row_id=se.id WHERE "
         "s.session_id=?1 ORDER BY se.position,se.entry_id";
     static const char SET_SQL[] =
         "SELECT ps.position,ps.reps,ps.duration_seconds,ps.weight_kg FROM performed_sets ps JOIN "

@@ -43,10 +43,15 @@ still rejecting a truncated object inside that current generation.
 
 `web_session_deletions` exercises proposal withdrawal replay, preservation of a
 derived preparation, active-draft conflict, causal draft/session deletion and
-completed-session finalization. The HTTP suite covers stale and successful
-proposal DELETE requests and post-delete deep-link absence. Vitest covers the
+completed-session finalization. It also builds a Program-origin completed
+session, deletes it through the production command, verifies one causal
+operation/tombstone and terminal execution provenance, then replays the exact
+request. The HTTP suite covers real history detail, stale and successful
+session DELETE requests, invalid identity, post-delete deep-link absence and an
+injected SQLite failure with complete rollback. Vitest covers the
 focus-managed confirmation, Cancel and Escape zero-mutation paths, the real
-DELETE call and focus restoration. AI companion tests prove that V2 exports a
+DELETE call, server-confirmed refresh, useful typed errors and focus
+restoration. AI companion tests prove that V2 exports a
 withdrawal without the proposal and that Android's tombstone rejects later V1
 replay.
 
@@ -84,6 +89,14 @@ acknowledge the correlated generation, expose Web `completed`, then continue
 through Program deletion, restart and old-generation replay without duplication
 or resurrection. The desktop populated migration test now continues through
 schema v27 and proves the new execution ledger starts empty.
+
+`schema_v28_migration` migrates a populated v27 fixture, preserves Program,
+session and execution identities byte-for-byte, admits the terminal deleted
+state, reports `integrity_check=ok` and an empty foreign-key check, and proves
+that migration invents no causal operation or deletion. The mobile V3 importer
+regression proves deterministic live causal revision seeding and exact replay.
+The Program execution exchange regression proves an old retained completed
+fact cannot override a session tombstone or duplicate terminal provenance.
 
 `test_web_sessions_browser.py` runs headless Firefox against the embedded
 production assets and C HTTP server with private temporary XDG roots. It creates

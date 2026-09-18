@@ -177,6 +177,17 @@ function requestId(): string {
   return `web-${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`
 }
 
+function deletionErrorMessage(value: unknown, status: number): string {
+  const reason = object(value) && typeof value.error === 'string' ? value.error : ''
+  const messages: Record<string, string> = {
+    deletion_conflict: 'Cette séance a changé. Rechargez la liste avant de réessayer.',
+    not_found: 'Cette séance n’existe plus dans l’historique.',
+    invalid_deletion: 'Cette séance ne peut pas être supprimée.',
+    sessions_unavailable: 'La suppression a échoué. Aucune donnée n’a été modifiée.',
+  }
+  return messages[reason] ?? `La suppression a échoué (HTTP ${status}).`
+}
+
 export async function savePreparation(
   input: PreparationInput,
   identity?: string,
@@ -289,9 +300,6 @@ export async function deleteSessionResource(
   )
   const value: unknown = await response.json()
   if (!response.ok) {
-    const reason = object(value) && typeof value.error === 'string'
-      ? value.error
-      : `HTTP ${response.status}`
-    throw new Error(reason)
+    throw new Error(deletionErrorMessage(value, response.status))
   }
 }

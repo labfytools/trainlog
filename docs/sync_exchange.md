@@ -177,6 +177,13 @@ is idempotent; identity reuse or regression is a hard conflict. Because the
 descriptor is optional, peers predating this companion keep exchanging all
 existing required domains without a capability failure.
 
+Desktop schema v28 adds terminal `deleted` provenance for a completed session
+removed through causal history deletion. A retained older
+`program-executions-v1` fact is skipped only when the matching session has a
+durable deleted causal state; absence of that tombstone remains a hard error.
+This dominance rule preserves provenance while preventing old generations from
+resurrecting active history.
+
 `trainlog-exercise-aliases` v1 is the separate EXERCISE_MERGE_V1 identity
 companion. Its root contains exactly `format`, `version`, and `aliases`; every
 entry contains exactly `source_exercise_id` and `canonical_exercise_id` using

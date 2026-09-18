@@ -2,6 +2,16 @@
 
 ## Unreleased — 0.1.2
 
+- Fixed the Web history deletion failure for Program-origin completed
+  sessions. The history detail query now reads explicit MAX results from
+  `max_results`; mobile history import seeds a deterministic causal live
+  revision when one is missing; and desktop schema v28 gives durable Program
+  execution provenance an explicit terminal `deleted` state. Deletion remains
+  revision-guarded, atomic and replay-safe. Retained Program-execution
+  generations cannot resurrect a causally deleted session, and Web errors now
+  distinguish stale, absent, invalid and internal failures without exposing
+  database details.
+
 - Added the Program execution flow. Android schema v25 can start or resume one
   Program session through the existing durable singleton, preserves stable
   Program provenance on completion, and presents explicit `À faire`, `En cours`

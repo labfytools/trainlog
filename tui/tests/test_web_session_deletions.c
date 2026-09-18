@@ -9,6 +9,7 @@
 #include "database_internal.h"
 #include "trainlog/database.h"
 #include "trainlog/status.h"
+#include "trainlog/web_programs.h"
 #include "trainlog/web_session_deletions.h"
 
 #define CHECK(condition)                                                                           \
@@ -176,10 +177,106 @@ static bool active_draft_conflicts_without_mutation(void) {
     return true;
 }
 
+static bool completed_program_execution_deletion_is_atomic_and_idempotent(void) {
+    char path[] = "/tmp/trainlog-web-delete-program-execution-XXXXXX";
+    TrainlogDatabase *database = NULL;
+    char *response = NULL;
+    char *replayed = NULL;
+    char *program_detail = NULL;
+    size_t response_size = 0U;
+    size_t replayed_size = 0U;
+    size_t program_detail_size = 0U;
+    int descriptor = mkstemp(path);
+
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO programs(program_id,title,state,created_at,updated_at,"
+                       "revision_id,source_format,source_version,source_payload_sha256) VALUES("
+                       "'pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Disposable Program','active',"
+                       "'2026-09-18T10:00:00Z','2026-09-18T10:00:00Z','pgr_fixture',"
+                       "'trainlog-program',1,"
+                       "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');"
+                       "INSERT INTO program_sessions(program_session_id,program_id,position,title,"
+                       "session_type) VALUES("
+                       "'pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',"
+                       "'pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',0,'Executed','training'),("
+                       "'pgs_cccccccc-cccc-4ccc-8ccc-cccccccccccc',"
+                       "'pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',1,'Untouched','training');"
+                       "INSERT INTO sessions(session_id,started_at,ended_at,session_type) VALUES("
+                       "'se_dddddddd-dddd-4ddd-8ddd-dddddddddddd','2026-09-18T10:00:00Z',"
+                       "'2026-09-18T11:00:00Z','training'),("
+                       "'se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','2026-09-17T10:00:00Z',"
+                       "'2026-09-17T11:00:00Z','training');"
+                       "INSERT INTO sync_causal_state VALUES("
+                       "'session','se_dddddddd-dddd-4ddd-8ddd-dddddddddddd','lv_fixture',0,NULL);"
+                       "INSERT INTO program_session_executions VALUES("
+                       "'pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',"
+                       "'pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',"
+                       "'se_dddddddd-dddd-4ddd-8ddd-dddddddddddd','completed',"
+                       "'2026-09-18T11:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_session_delete_json(database,
+                                           "history",
+                                           "se_dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                                           "lv_fixture",
+                                           "request-delete-program-history",
+                                           &response,
+                                           &response_size) == TRAINLOG_STATUS_OK);
+    CHECK(response != NULL && strstr(response, "\"state\":\"deleted\"") != NULL);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sessions WHERE "
+                 "session_id='se_dddddddd-dddd-4ddd-8ddd-dddddddddddd'") == 0);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sessions WHERE "
+                 "session_id='se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM programs") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_sessions") == 2);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_session_executions WHERE state='deleted' AND "
+                 "session_id='se_dddddddd-dddd-4ddd-8ddd-dddddddddddd' AND "
+                 "observed_at='2026-09-18T11:00:00Z'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sync_causal_operations WHERE target_kind='session' AND "
+                 "target_id='se_dddddddd-dddd-4ddd-8ddd-dddddddddddd'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sync_causal_state WHERE target_kind='session' AND "
+                 "target_id='se_dddddddd-dddd-4ddd-8ddd-dddddddddddd' AND deleted=1") == 1);
+    CHECK(trainlog_web_programs_detail_json(database,
+                                            "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                            &program_detail,
+                                            &program_detail_size) == TRAINLOG_STATUS_OK);
+    CHECK(program_detail != NULL && program_detail_size > 0U &&
+          strstr(program_detail, "\"execution_state\":\"deleted\"") != NULL &&
+          strstr(program_detail, "\"execution_session_id\":null") != NULL);
+    CHECK(trainlog_web_session_delete_json(database,
+                                           "history",
+                                           "se_dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                                           "lv_fixture",
+                                           "request-delete-program-history-replay",
+                                           &replayed,
+                                           &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(replayed != NULL && response_size == replayed_size && strcmp(response, replayed) == 0);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sync_causal_operations WHERE target_kind='session' AND "
+                 "target_id='se_dddddddd-dddd-4ddd-8ddd-dddddddddddd'") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM web_session_deletion_requests") == 1);
+    free(program_detail);
+    free(replayed);
+    free(response);
+    trainlog_database_close(database);
+    CHECK(unlink(path) == 0);
+    return true;
+}
+
 int main(void) {
     return proposal_deletion_is_durable_and_preserves_derivatives() &&
                    draft_and_history_use_causal_deletion() &&
-                   active_draft_conflicts_without_mutation()
+                   active_draft_conflicts_without_mutation() &&
+                   completed_program_execution_deletion_is_atomic_and_idempotent()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

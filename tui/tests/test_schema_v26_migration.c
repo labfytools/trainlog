@@ -432,12 +432,12 @@ static int run_test(void) {
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic, sizeof(diagnostic)) ==
           TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 27);
+    CHECK(version == 28);
     trainlog_database_close(database);
     database = NULL;
 
     CHECK(sqlite3_open_v2(path, &raw, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 27);
+    CHECK(scalar(raw, "PRAGMA user_version") == 28);
     CHECK(capture_projection(raw,
                              BUSINESS_PROJECTIONS,
                              sizeof(BUSINESS_PROJECTIONS) / sizeof(BUSINESS_PROJECTIONS[0]),

@@ -1,10 +1,22 @@
 # Desktop database
 
+## Schema v28: terminal Program execution provenance
+
+Schema v28 extends `program_session_executions.state` with the terminal
+`deleted` value. When a completed Program-origin session is causally deleted,
+the same transaction retires its execution provenance, removes the active
+history row, appends the immutable delete operation and advances the durable
+session tombstone. The provenance identity and timestamps remain intact; Web
+Program projections no longer claim that the missing session is completed.
+The v27 to v28 migration preserves all existing rows and creates no causal or
+deletion record.
+
 ## Schema v27: durable Program execution provenance
 
 Schema v27 adds `program_session_executions`, the stable link from one
 desktop-owned Program session to its Android execution `session_id`. The state
-advances only from `in_progress` to `completed`; a Program session and an
+advances from `in_progress` to `completed`; schema v28 additionally permits
+the terminal `completed` to `deleted` transition. A Program session and an
 execution session are each unique. Completed links are accepted only after the
 referenced completed session has been imported. The migration is additive,
 transactional, creates no execution row, and preserves Program definitions,
@@ -75,8 +87,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=27
-DATABASE_SCHEMA_V27=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=28
+DATABASE_SCHEMA_V28=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 

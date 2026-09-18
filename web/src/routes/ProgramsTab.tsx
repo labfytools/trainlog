@@ -68,6 +68,7 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
     prepared: 'Préparée',
     in_progress: 'En cours',
     completed: 'Effectuée',
+    deleted: 'Retirée',
   })[state]
   return <article className="session-detail program-detail">
     <div className="sessions-toolbar">
@@ -135,6 +136,7 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
         {session.execution_state === 'prepared' && <span>Préparation disponible</span>}
         {session.execution_state === 'in_progress' && <span>Séance en cours sur Android</span>}
         {session.execution_state === 'completed' && <span>✓ Séance effectuée</span>}
+        {session.execution_state === 'deleted' && <span>Exécution retirée de l’historique</span>}
       </li>)}
     </ol>
   </article>

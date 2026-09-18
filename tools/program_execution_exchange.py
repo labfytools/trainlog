@@ -87,8 +87,8 @@ def load(path: Path) -> dict:
 
 
 def apply_executions(db: sqlite3.Connection, root: dict) -> tuple[int, int, int]:
-    if db.execute("PRAGMA user_version").fetchone()[0] != 27:
-        fail("desktop schema v27 required")
+    if db.execute("PRAGMA user_version").fetchone()[0] not in (27, 28):
+        fail("desktop schema v27 or v28 required")
     added = 0
     advanced = 0
     skipped = 0
@@ -99,13 +99,6 @@ def apply_executions(db: sqlite3.Connection, root: dict) -> tuple[int, int, int]
         ).fetchone()
         if program_session is None or program_session[0] != item["program_id"]:
             fail("program execution references an unknown or mismatched session")
-        if item["state"] == "completed":
-            completed = db.execute(
-                "SELECT 1 FROM sessions WHERE session_id=?", (item["session_id"],)
-            ).fetchone()
-            if completed is None:
-                fail("completed program execution references missing history")
-
         existing = db.execute(
             "SELECT program_id,session_id,state,observed_at "
             "FROM program_session_executions WHERE program_session_id=?",
@@ -114,6 +107,27 @@ def apply_executions(db: sqlite3.Connection, root: dict) -> tuple[int, int, int]
         expected = (
             item["program_id"], item["session_id"], item["state"], item["observed_at"]
         )
+        if existing is not None and existing[0] == item["program_id"] and \
+                existing[1] == item["session_id"] and existing[2] == "deleted":
+            tombstone = db.execute(
+                "SELECT 1 FROM sync_causal_state "
+                "WHERE target_kind='session' AND target_id=? AND deleted=1",
+                (item["session_id"],),
+            ).fetchone()
+            if tombstone is None:
+                fail("deleted program execution lacks causal session tombstone")
+            # CONTRACT: a retained Android generation may repeat an execution
+            # fact after the desktop has causally deleted its completed
+            # history. The tombstone dominates that older fact and the durable
+            # terminal provenance row remains unchanged.
+            skipped += 1
+            continue
+        if item["state"] == "completed":
+            completed = db.execute(
+                "SELECT 1 FROM sessions WHERE session_id=?", (item["session_id"],)
+            ).fetchone()
+            if completed is None:
+                fail("completed program execution references missing history")
         if existing is None:
             db.execute(
                 "INSERT INTO program_session_executions("

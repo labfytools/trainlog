@@ -46,6 +46,20 @@ CREATE TABLE session_followup_revisions(revision_id TEXT PRIMARY KEY,followup_id
 PRAGMA user_version=16;
 """
 
+V20_SCHEMA = V16_SCHEMA.replace("PRAGMA user_version=16;", "") + """
+CREATE TABLE sync_note_state(
+ owner_kind TEXT NOT NULL,owner_id TEXT NOT NULL,revision_id TEXT NOT NULL,
+ parent_revision_id TEXT,value TEXT,PRIMARY KEY(owner_kind,owner_id));
+CREATE TABLE sync_causal_operations(
+ operation_id TEXT PRIMARY KEY,target_kind TEXT NOT NULL,target_id TEXT NOT NULL,
+ creator_id TEXT NOT NULL,predecessor_revision_id TEXT NOT NULL,created_at TEXT NOT NULL,
+ payload_sha256 TEXT NOT NULL,publication_context TEXT);
+CREATE TABLE sync_causal_state(
+ target_kind TEXT NOT NULL,target_id TEXT NOT NULL,current_revision_id TEXT NOT NULL,
+ deleted INTEGER NOT NULL,operation_id TEXT,PRIMARY KEY(target_kind,target_id));
+PRAGMA user_version=20;
+"""
+
 
 def run(command, ok=True):
     result = subprocess.run(command, text=True, capture_output=True)
@@ -127,6 +141,28 @@ def main():
             ("sxe_walk", "none", 0, None, None, None, None, None),
             ("sxe_max", "none", 0, None, None, None, None, "leg_press"),
         ]
+
+        # A schema with causal exchange support records the deterministic live
+        # snapshot revision on first import. Exact replay preserves it instead
+        # of replacing it with a peer-local random revision.
+        causal_db = root / "causal.sqlite"
+        with sqlite3.connect(causal_db) as con:
+            con.executescript(V20_SCHEMA)
+        run([sys.executable, str(IMPORTER), str(artifact), "--database", str(causal_db)])
+        with sqlite3.connect(causal_db) as con:
+            revisions_before = con.execute(
+                "SELECT target_id,current_revision_id,deleted FROM sync_causal_state "
+                "WHERE target_kind='session' ORDER BY target_id"
+            ).fetchall()
+        assert len(revisions_before) == 2
+        assert all(revision.startswith("lv_") and deleted == 0
+                   for _, revision, deleted in revisions_before)
+        run([sys.executable, str(IMPORTER), str(artifact), "--database", str(causal_db)])
+        with sqlite3.connect(causal_db) as con:
+            assert con.execute(
+                "SELECT target_id,current_revision_id,deleted FROM sync_causal_state "
+                "WHERE target_kind='session' ORDER BY target_id"
+            ).fetchall() == revisions_before
         exported = root / "pc-v3.json"
         run([sys.executable, str(EXPORTER), str(exported), "--database", str(db)])
         roundtrip = json.loads(exported.read_text())

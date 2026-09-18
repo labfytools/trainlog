@@ -1249,6 +1249,31 @@ static const char *const MIGRATE_V26_TO_V27_SQL =
     "ON program_session_executions(program_id,state);"
     "PRAGMA user_version=27;COMMIT;";
 
+/* WHY: a causally deleted completed session may retain immutable Program
+ * provenance after the session row disappears. CONTRACT: v28 adds only the
+ * terminal `deleted` execution state and preserves every existing identity and
+ * timestamp. INVARIANT: migration neither deletes history nor invents a
+ * Program execution or causal deletion. */
+static const char *const MIGRATE_V27_TO_V28_SQL =
+    "PRAGMA foreign_keys=OFF;BEGIN IMMEDIATE;"
+    "CREATE TABLE program_session_executions_v28("
+    "program_session_id TEXT PRIMARY KEY REFERENCES program_sessions(program_session_id) "
+    "ON DELETE RESTRICT,"
+    "program_id TEXT NOT NULL REFERENCES programs(program_id) ON DELETE RESTRICT,"
+    "session_id TEXT NOT NULL UNIQUE,"
+    "state TEXT NOT NULL CHECK(state IN('in_progress','completed','deleted')) ,"
+    "observed_at TEXT NOT NULL,"
+    "CHECK(length(program_id)>0 AND length(session_id)>0));"
+    "INSERT INTO program_session_executions_v28 "
+    "SELECT program_session_id,program_id,session_id,state,observed_at "
+    "FROM program_session_executions;"
+    "DROP INDEX program_session_executions_program;"
+    "DROP TABLE program_session_executions;"
+    "ALTER TABLE program_session_executions_v28 RENAME TO program_session_executions;"
+    "CREATE INDEX program_session_executions_program "
+    "ON program_session_executions(program_id,state);"
+    "PRAGMA user_version=28;COMMIT;PRAGMA foreign_keys=ON;";
+
 /* CONTRACT: migration fixtures may retain additive v25 columns while
  * deliberately lowering user_version. Add each provenance column only when
  * absent; a genuine v24 database still receives both before opening returns. */
@@ -2038,7 +2063,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     } else if (version == 11 || version == 12 || version == 13 || version == 14 || version == 15 ||
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
-               version == 26 || version == 27) {
+               version == 26 || version == 27 || version == 28) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2177,6 +2202,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 27) {
         status = execute_sql(database, MIGRATE_V26_TO_V27_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 28) {
+        status = execute_sql(database, MIGRATE_V27_TO_V28_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2196,7 +2224,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v27" : "migrate database to schema v27",
+                            version == 0 ? "create schema v28" : "migrate database to schema v28",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

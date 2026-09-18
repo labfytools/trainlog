@@ -4,7 +4,7 @@ The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
 persistent peer identities. The latest controlled rollout verified real
-desktop and Android backups, desktop schema v26 to v27, and an in-place private
+desktop and Android backups, desktop schema v26 to v28, and an in-place private
 Android update from versionCode 16 to 17 with schema v24 to v25. The
 installed APK remains `com.labfytools.trainlog` 0.1.2, is
 non-debuggable, and retains certificate SHA-256
@@ -57,7 +57,7 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v27 |
+| Desktop SQLite | schema v28 |
 | Android SQLite | schema v25 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
@@ -83,6 +83,7 @@ parallel implementation of its rules.
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
 | Program execution flow | `TRAINLOG_PROGRAM_EXECUTION_FLOW_V1=PASS` (private coordinated deployment, real execution, correlated ACK, restart, replay, and deletion validated) |
+| Web history deletion incident | `TRAINLOG_HISTORY_DELETE_HTTP500_FIX_V1=IMPLEMENTED` (Program-origin completed sessions use causal deletion and terminal execution provenance) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |

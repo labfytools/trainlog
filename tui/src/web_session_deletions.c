@@ -23,8 +23,23 @@ typedef struct DeleteContext {
     const char *target_id;
     const char *expected_revision;
     const char *request_id;
+    const char *failure_stage;
     char created_at[TRAINLOG_TIMESTAMP_MAX + 1U];
 } DeleteContext;
+
+static void log_database_failure(TrainlogDatabase *database, const DeleteContext *context) {
+    const int primary = sqlite3_errcode(database->connection);
+    const int extended = sqlite3_extended_errcode(database->connection);
+    const char *message = sqlite3_errmsg(database->connection);
+
+    (void)fprintf(stderr,
+                  "Trainlog Web session deletion failed: stage=%s sqlite_primary=%d "
+                  "sqlite_extended=%d diagnostic=%s\n",
+                  context->failure_stage,
+                  primary,
+                  extended,
+                  message == NULL ? "unavailable" : message);
+}
 
 static bool timestamp_now(char output[TRAINLOG_TIMESTAMP_MAX + 1U]) {
     time_t now = time(NULL);
@@ -263,14 +278,84 @@ static TrainlogStatus insert_causal_operation(TrainlogDatabase *database,
     return result == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
+/* WHY: Program provenance is durable evidence even after a user removes the
+ * completed workout from active history. CONTRACT: only a completed execution
+ * may enter the terminal deleted state. INVARIANT: the transition and session
+ * deletion share the surrounding transaction, so neither can commit alone. */
+static TrainlogStatus retire_program_execution(TrainlogDatabase *database, DeleteContext *context) {
+    sqlite3_stmt *statement = NULL;
+    const char *state;
+    int result;
+
+    context->failure_stage = "load_program_execution";
+    result = sqlite3_prepare_v2(database->connection,
+                                "SELECT state FROM program_session_executions "
+                                "WHERE session_id=?1",
+                                -1,
+                                &statement,
+                                NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, context->target_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    if (result == SQLITE_DONE) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_OK;
+    }
+    if (result != SQLITE_ROW) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    state = (const char *)sqlite3_column_text(statement, 0);
+    if (state == NULL || strcmp(state, "completed") != 0) {
+        (void)sqlite3_finalize(statement);
+        return TRAINLOG_STATUS_CONFLICT;
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+
+    statement = NULL;
+    context->failure_stage = "retire_program_execution";
+    result = sqlite3_prepare_v2(database->connection,
+                                "UPDATE program_session_executions "
+                                "SET state='deleted' "
+                                "WHERE session_id=?1 AND state='completed'",
+                                -1,
+                                &statement,
+                                NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, context->target_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_DONE) {
+        result = SQLITE_ERROR;
+    }
+    if (result != SQLITE_DONE) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return sqlite3_changes(database->connection) == 1 ? TRAINLOG_STATUS_OK
+                                                      : TRAINLOG_STATUS_CONFLICT;
+}
+
 static TrainlogStatus apply_causal_effect(TrainlogDatabase *database,
-                                          const DeleteContext *context,
+                                          DeleteContext *context,
                                           const char *causal_kind,
                                           const char *operation_id) {
     sqlite3_stmt *statement = NULL;
     int result;
 
     if (strcmp(context->kind, "history") == 0) {
+        TrainlogStatus status = retire_program_execution(database, context);
+
+        if (status != TRAINLOG_STATUS_OK) {
+            return status;
+        }
+        context->failure_stage = "detach_body_observations";
         result = sqlite3_prepare_v2(
             database->connection,
             "UPDATE body_observations SET session_row_id=NULL WHERE session_row_id=(SELECT id "
@@ -293,6 +378,8 @@ static TrainlogStatus apply_causal_effect(TrainlogDatabase *database,
             return TRAINLOG_STATUS_DATABASE_ERROR;
         }
     }
+    context->failure_stage =
+        strcmp(context->kind, "draft") == 0 ? "delete_draft" : "delete_session";
     result = sqlite3_prepare_v2(database->connection,
                                 strcmp(context->kind, "draft") == 0
                                     ? "DELETE FROM execution_drafts WHERE session_id=?1"
@@ -320,6 +407,7 @@ static TrainlogStatus apply_causal_effect(TrainlogDatabase *database,
         if (written < 0 || (size_t)written >= sizeof(final_revision)) {
             return TRAINLOG_STATUS_SYSTEM_ERROR;
         }
+        context->failure_stage = "store_session_finalization";
         result = sqlite3_prepare_v2(
             database->connection,
             "INSERT OR IGNORE INTO execution_draft_finalizations VALUES(?1,?2,?3)",
@@ -347,6 +435,7 @@ static TrainlogStatus apply_causal_effect(TrainlogDatabase *database,
             return TRAINLOG_STATUS_DATABASE_ERROR;
         }
     }
+    context->failure_stage = "store_causal_state";
     result = sqlite3_prepare_v2(database->connection,
                                 "INSERT OR REPLACE INTO sync_causal_state VALUES(?1,?2,?3,1,?3)",
                                 -1,
@@ -370,14 +459,14 @@ static TrainlogStatus apply_causal_effect(TrainlogDatabase *database,
     return result == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
-static TrainlogStatus delete_causal_resource(TrainlogDatabase *database,
-                                             const DeleteContext *context) {
+static TrainlogStatus delete_causal_resource(TrainlogDatabase *database, DeleteContext *context) {
     const char *causal_kind = strcmp(context->kind, "draft") == 0 ? "execution_draft" : "session";
     char current_revision[TRAINLOG_ID_MAX + 1U];
     char operation_id[TRAINLOG_GENERATED_ID_CAPACITY];
     bool active_draft;
     TrainlogStatus status;
 
+    context->failure_stage = "load_current_revision";
     status = load_current_revision(
         database, context->kind, context->target_id, current_revision, &active_draft);
     if (status != TRAINLOG_STATUS_OK) {
@@ -386,6 +475,7 @@ static TrainlogStatus delete_causal_resource(TrainlogDatabase *database,
     if (active_draft || strcmp(current_revision, context->expected_revision) != 0) {
         return TRAINLOG_STATUS_CONFLICT;
     }
+    context->failure_stage = "check_causal_capacity";
     status = causal_capacity_available(database);
     if (status != TRAINLOG_STATUS_OK) {
         return status;
@@ -393,6 +483,7 @@ static TrainlogStatus delete_causal_resource(TrainlogDatabase *database,
     if (trainlog_id_generate("del", operation_id, sizeof(operation_id)) != TRAINLOG_STATUS_OK) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
+    context->failure_stage = "insert_causal_operation";
     status =
         insert_causal_operation(database, context, causal_kind, current_revision, operation_id);
     if (status == TRAINLOG_STATUS_OK) {
@@ -552,7 +643,7 @@ TrainlogStatus trainlog_web_session_delete_json(TrainlogDatabase *database,
 
     if (database == NULL || kind == NULL || target_id == NULL || expected_revision == NULL ||
         request_id == NULL || output_json == NULL || output_size == NULL || target_id[0] == '\0' ||
-        expected_revision[0] == '\0' || request_id[0] == '\0' ||
+        expected_revision[0] == '\0' || request_id[0] == '\0' || strchr(target_id, '/') != NULL ||
         strlen(target_id) > TRAINLOG_ID_MAX || strlen(expected_revision) > TRAINLOG_ID_MAX ||
         strlen(request_id) > 128U ||
         (strcmp(kind, "proposal") != 0 && strcmp(kind, "draft") != 0 &&
@@ -565,20 +656,25 @@ TrainlogStatus trainlog_web_session_delete_json(TrainlogDatabase *database,
     context.target_id = target_id;
     context.expected_revision = expected_revision;
     context.request_id = request_id;
+    context.failure_stage = "begin_transaction";
     if (!timestamp_now(context.created_at)) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
     if (sqlite3_exec(database->connection, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) {
+        log_database_failure(database, &context);
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
+    context.failure_stage = "replay_request";
     status = replay_request(database, &context, output_json, output_size, &replayed);
     if (status == TRAINLOG_STATUS_OK && replayed) {
-        status = sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK
-                     ? TRAINLOG_STATUS_OK
-                     : TRAINLOG_STATUS_DATABASE_ERROR;
-        return status;
+        context.failure_stage = "commit_replayed_request";
+        if (sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) {
+            return TRAINLOG_STATUS_OK;
+        }
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
     }
     if (status == TRAINLOG_STATUS_OK) {
+        context.failure_stage = "apply_deletion";
         status = strcmp(kind, "proposal") == 0 ? delete_proposal(database, &context)
                                                : delete_causal_resource(database, &context);
     }
@@ -586,11 +682,17 @@ TrainlogStatus trainlog_web_session_delete_json(TrainlogDatabase *database,
         status = build_response(&context, output_json, output_size);
     }
     if (status == TRAINLOG_STATUS_OK) {
+        context.failure_stage = "store_deletion_request";
         status = store_request(database, &context, *output_json);
     }
-    if (status == TRAINLOG_STATUS_OK &&
-        sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) {
-        return TRAINLOG_STATUS_OK;
+    if (status == TRAINLOG_STATUS_OK) {
+        context.failure_stage = "commit_transaction";
+        if (sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) {
+            return TRAINLOG_STATUS_OK;
+        }
+    }
+    if (status == TRAINLOG_STATUS_DATABASE_ERROR || status == TRAINLOG_STATUS_OK) {
+        log_database_failure(database, &context);
     }
     (void)sqlite3_exec(database->connection, "ROLLBACK", NULL, NULL, NULL);
     free(*output_json);

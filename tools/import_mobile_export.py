@@ -15,6 +15,7 @@ from pathlib import Path
 from validate_json import TrainlogSemanticError, parse_timestamp
 from exercise_names import ExerciseNameCatalogError, load_exercise_names
 from trainlog_sqlite import connect_database
+from causal_delete_exchange import live_revision
 
 
 FORMAT = "trainlog-mobile-export"
@@ -846,9 +847,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in range(5, 28):
+    if version not in range(5, 29):
         raise ImportFailure(
-            f"base desktop schema v5 à v25 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v28 attendue, version trouvée: {version}"
         )
 
 
@@ -1978,8 +1979,8 @@ def apply_payload(connection, payload, trace_exercises=False):
     require_supported_schema(connection)
 
     schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
-    if payload["version"] == 4 and schema_version not in (19, 20, 21, 22, 23, 24, 25, 26, 27):
-        raise ImportFailure("mobile V4 exige le schéma desktop v19 à v25")
+    if payload["version"] == 4 and schema_version not in (19, 20, 21, 22, 23, 24, 25, 26, 27, 28):
+        raise ImportFailure("mobile V4 exige le schéma desktop v19 à v28")
     if schema_version >= 20:
         protected = {(row[0], row[1]) for row in connection.execute(
             "SELECT target_kind,target_id FROM sync_causal_state WHERE deleted=1")}
@@ -2000,6 +2001,30 @@ def apply_payload(connection, payload, trace_exercises=False):
     mapping = import_exercises(connection, payload, report, trace_exercises)
     import_sessions(connection, payload, mapping, report)
     import_body(connection, payload, report)
+    if schema_version >= 20:
+        for session in sorted(payload["sessions"], key=lambda value: value["session_id"]):
+            session_id = session["session_id"]
+            state = connection.execute(
+                "SELECT deleted FROM sync_causal_state "
+                "WHERE target_kind='session' AND target_id=?",
+                (session_id,),
+            ).fetchone()
+            if state is not None:
+                continue
+            # WHY: peers without a previously exchanged mutable revision must
+            # converge on the same predecessor before either can publish a
+            # causal delete. CONTRACT: use the canonical live snapshot shared
+            # with the deletion consumer. INVARIANT: no deletion row or random
+            # peer-local revision is invented by an ordinary history import.
+            revision = live_revision(connection, "session", session_id)
+            if revision is None:
+                raise ImportFailure("révision causale de séance introuvable: " + session_id)
+            connection.execute(
+                "INSERT INTO sync_causal_state("
+                "target_kind,target_id,current_revision_id,deleted,operation_id) "
+                "VALUES('session',?,?,0,NULL)",
+                (session_id, revision),
+            )
     return report
 
 
