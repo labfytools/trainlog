@@ -2,6 +2,18 @@
 
 ## Unreleased — 0.1.2
 
+- Completed the private grouped rollout of Web Sessions deletion and Program
+  V1 from desktop source `a0fc48f082b76dba2ae3a56fceb492169de89f89`.
+  Desktop migrated from schema v24 to v25 after backup, restoration, and
+  copy-migration verification. Android was updated in place to private
+  versionCode 15 with no uninstall or data clearing; the installed APK is
+  non-debuggable and retains the daily-installation certificate. Exact
+  pre/post-update logical comparison preserved all 46 Android tables and 1,023
+  rows. A preparation created explicitly as disposable was withdrawn through
+  the real 390×844 confirmation UI. Two full-generation exchanges around a
+  Trainlog-only restart retained exactly one Android withdrawal result, no
+  matching delivery or performed session, and no resurrection or duplication.
+
 - Completed Web Sessions deletion and Program V1 on desktop schema v25. Separate
   revision-guarded Core commands now withdraw manual preparations and AI
   proposals or causally delete inactive execution drafts and selected completed

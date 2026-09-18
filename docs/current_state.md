@@ -4,12 +4,17 @@ The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
 persistent peer identities. The latest controlled rollout verified real
-backups and restoration, desktop schema v23 to v24 and Android schema v22 to
-v23 migration, signing-preserving Android replacement, the requested durable
-preparation withdrawal, two complete post-withdrawal hardware conversations,
-restart, and idempotent replay. Drive was not configured and remains outside
-this local MTP result. This is a private 0.1.2 development deployment, not a
-public release; v0.1.1 is unchanged.
+desktop and Android backups, restoration and migration on copies, desktop
+schema v24 to v25, and an in-place private Android update from versionCode 14
+to 15. The installed APK remains `com.labfytools.trainlog` 0.1.2, is
+non-debuggable, and retains certificate SHA-256
+`aa56c97f2781a0d01f007f4444c3970deb58ad8327ca3da7b0b90f37dbe2ad25`.
+One preparation created explicitly as disposable was withdrawn through the Web
+confirmation flow. Two complete generation conversations around a Trainlog-only
+restart proved one durable Android `no_matching_delivery` result, no delivery
+or performed session, no resurrection, and no duplication. Drive was not
+configured and remains outside this local MTP result. This is a private 0.1.2
+development deployment, not a public release; v0.1.1 is unchanged.
 
 `TRAINLOG_NATIVE_BUILD_AND_CANDIDATE_V1` closes the native warning gate. Strict
 GCC 16.2.1 and Clang 22.1.8 builds now pass the same 81-test inventory, and the
@@ -75,6 +80,7 @@ parallel implementation of its rules.
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
+| Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |

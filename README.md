@@ -17,13 +17,15 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.2 development) | Display the Dashboard and the implemented Sessions inventory, detail, manual preparation, and Android-delivery workflow through typed Trainlog Core/API boundaries. Analyse, Programmes, and Exercises remain placeholders. |
+| Local Web (0.1.2 development) | Display the Dashboard and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and embedded Programs workflow through typed Trainlog Core/API boundaries. Analyse, the standalone Programmes route, and Exercises remain placeholders. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
 CLI/HTTP adapter, embedded frontend, read-only Dashboard API, factual tiles,
 visualizations, and private layout persistence are implemented. This does not
-make the other four Web routes functional or publish version 0.1.2.
+make the remaining placeholder routes functional or publish version 0.1.2.
+Programs is intentionally implemented as a Sessions subtab; the standalone
+top-level Programmes route remains a placeholder.
 
 ## Releases
 
@@ -318,7 +320,7 @@ not contain cloud credentials and does not run `rclone`.
 As of 2026-09-18:
 
 - `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
-- desktop SQLite schema v24 and Android SQLite schema v23;
+- desktop SQLite schema v25 and Android SQLite schema v23;
 - Notcurses is the only active desktop terminal backend;
 - direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
   all-files access setting;
@@ -331,7 +333,8 @@ As of 2026-09-18:
   Android-triggered bidirectional smoke test.
 - `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
   `WEB_DASHBOARD_V1=PASS/FROZEN` and `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN`;
-  Analyse, Programmes, and Exercises remain placeholders;
+  Programs is implemented inside Sessions; Analyse, Exercises, and the
+  standalone top-level Programmes route remain placeholders;
 - `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
 - `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` through explicit staged
   services; automatic synchronization still selects V3. The trusted local
