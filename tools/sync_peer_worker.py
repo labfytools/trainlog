@@ -67,6 +67,17 @@ def publish_json(path: Path, value: dict) -> None:
     os.replace(temporary, path)
 
 
+def recovery_acknowledgements(db, producer_peer_id: str, consumer_peer_id: str) -> list[dict]:
+    """Load bounded terminal ACK evidence for interrupted peer conversations."""
+    rows = db.execute(
+        "SELECT ack_json FROM sync_consumed_generations WHERE producer_peer_id=? "
+        "AND consumer_peer_id=? AND result IN('consumed','rejected') "
+        "ORDER BY consumed_at,generation_id LIMIT 32",
+        (producer_peer_id, consumer_peer_id),
+    ).fetchall()
+    return [json.loads(row[0]) for row in rows]
+
+
 def run_adapter(
     adapter: Path,
     operation: str,
@@ -309,18 +320,14 @@ def main() -> int:
     request_path = args.transport_root / "request-v1.json"
     publish_json(request_path, request)
     with closing(generation.connect_database(args.database)) as db:
-        acknowledgement_rows = db.execute(
-            "SELECT ack_json FROM sync_consumed_generations WHERE producer_peer_id=? "
-            "AND consumer_peer_id=? AND result='consumed' ORDER BY consumed_at,generation_id LIMIT 32",
-            (peer["peer_id"], desktop_peer),
-        ).fetchall()
+        acknowledgements = recovery_acknowledgements(db, peer["peer_id"], desktop_peer)
     archive_acknowledgements = {
         "format": "trainlog-sync-archive-acknowledgements",
         "version": 1,
         "run_id": args.run_id,
         "android_peer_id": peer["peer_id"],
         "desktop_peer_id": desktop_peer,
-        "acknowledgements": [json.loads(row[0]) for row in acknowledgement_rows],
+        "acknowledgements": acknowledgements,
     }
     archive_ack_path = args.transport_root / "desktop-archive-acknowledgements-v1.json"
     publish_json(archive_ack_path, archive_acknowledgements)

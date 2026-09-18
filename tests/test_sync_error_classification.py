@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,32 @@ import sync_peer_worker  # noqa: E402
 
 
 class SyncErrorClassificationTest(unittest.TestCase):
+    def test_recovery_envelope_includes_consumed_and_rejected_acknowledgements(self):
+        with sqlite3.connect(":memory:") as database:
+            database.execute(
+                "CREATE TABLE sync_consumed_generations("
+                "generation_id TEXT,producer_peer_id TEXT,consumer_peer_id TEXT,"
+                "consumed_at TEXT,result TEXT,ack_json TEXT)"
+            )
+            for generation, result in (("gen_consumed", "consumed"),
+                                       ("gen_rejected", "rejected"),
+                                       ("gen_other", "consumed")):
+                database.execute(
+                    "INSERT INTO sync_consumed_generations VALUES(?,?,?,?,?,?)",
+                    (generation, "android" if generation != "gen_other" else "other",
+                     "desktop", generation, result,
+                     json.dumps({"generation_id": generation, "result": result})),
+                )
+
+            acknowledgements = sync_peer_worker.recovery_acknowledgements(
+                database, "android", "desktop"
+            )
+
+        self.assertEqual(
+            [(value["generation_id"], value["result"]) for value in acknowledgements],
+            [("gen_consumed", "consumed"), ("gen_rejected", "rejected")],
+        )
+
     def test_mtp_refreshes_a_retained_peer_advertisement_before_validation(self):
         expected_peer = "peer_00000000-0000-4000-8000-000000000001"
         with tempfile.TemporaryDirectory() as directory:

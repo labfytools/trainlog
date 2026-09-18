@@ -53,3 +53,7 @@ production full-generation consumer now filters only live facts already
 dominated by causal state applied from that complete envelope; standalone
 snapshot imports retain their strict rejection. A regression exercises this
 ordering and proves the tombstone and absent session remain unchanged.
+The recovery envelope also republishes both consumed and rejected correlated
+ACKs. This lets Android close an interrupted generation with the real durable
+desktop rejection evidence and reclaim normal bounded capacity; no generation,
+ACK, tombstone or archive is manually purged or synthesized.
