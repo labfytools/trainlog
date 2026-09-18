@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,54 @@ import sync_peer_worker  # noqa: E402
 
 
 class SyncErrorClassificationTest(unittest.TestCase):
+    def test_mtp_refreshes_a_retained_peer_advertisement_before_validation(self):
+        expected_peer = "peer_00000000-0000-4000-8000-000000000001"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            peer_path = root / "android-peer-v1.json"
+            peer_path.write_text(
+                json.dumps(
+                    {
+                        "format": "trainlog-sync-peer",
+                        "version": 1,
+                        "peer_id": expected_peer,
+                        "capabilities": sorted(
+                            sync_peer_worker.CAPS - {"session-preparations-v2"}
+                        ),
+                    }
+                )
+            )
+            pulls = []
+
+            def refresh(_adapter, operation, peer, transport, _deadline, allow_missing):
+                pulls.append((operation, peer, transport, allow_missing))
+                peer_path.write_text(
+                    json.dumps(
+                        {
+                            "format": "trainlog-sync-peer",
+                            "version": 1,
+                            "peer_id": expected_peer,
+                            "capabilities": sorted(sync_peer_worker.CAPS),
+                        }
+                    )
+                )
+                return True
+
+            with mock.patch.object(sync_peer_worker, "run_adapter", side_effect=refresh):
+                sync_peer_worker.refresh_mtp_peer(
+                    Path("/adapter"),
+                    expected_peer,
+                    root,
+                    sync_peer_worker.time.monotonic() + 60,
+                )
+
+            value = sync_peer_worker.load_peer(root, expected_peer)
+            self.assertEqual(value["peer_id"], expected_peer)
+            self.assertEqual(
+                pulls,
+                [("pull", expected_peer, root, True)],
+            )
+
     def test_transport_timeout_has_a_stable_code_and_bounded_diagnostic(self):
         timeout = subprocess.TimeoutExpired(["adapter", "push"], 30)
         with mock.patch.object(sync_peer_worker.subprocess, "run", side_effect=timeout):

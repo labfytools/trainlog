@@ -194,6 +194,39 @@ def wait_json(path: Path, deadline: float, predicate, pump=None) -> dict:
         time.sleep(0.05)
 
 
+def refresh_mtp_peer(
+    adapter: Path,
+    peer: str,
+    root: Path,
+    deadline: float,
+) -> None:
+    """Require a successful device pull before trusting a retained peer file.
+
+    WHY: the durable transport root legitimately retains coordination objects
+    from earlier runs.  A local peer advertisement can therefore predate an
+    Android upgrade that adds a required capability.
+    CONTRACT: MTP mode validates only an advertisement obtained after at least
+    one successful pull of the expected physical peer during this run.
+    INVARIANT: an unavailable peer never makes a stale local advertisement
+    authoritative and remains a bounded wait state.
+    """
+    peer_path = root / "android-peer-v1.json"
+    while True:
+        pulled = run_adapter(
+            adapter,
+            "pull",
+            peer,
+            root,
+            deadline,
+            True,
+        )
+        if pulled and peer_path.is_file():
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError("timeout waiting for android-peer-v1.json")
+        time.sleep(0.05)
+
+
 def correlated_peer_error(root: Path, run_id: str) -> None:
     path = root / "android-generation-error-v1.json"
     if not path.is_file():
@@ -254,11 +287,12 @@ def main() -> int:
             deadline,
             True,
         )
-        # Android publishes its durable identity only while participating.  A
-        # missing expected advertisement is therefore a bounded wait state;
-        # device, transport, ambiguity and malformed-object failures remain
-        # immediate and distinct adapter errors.
-        wait_file(args.transport_root / "android-peer-v1.json", deadline, pump)
+        refresh_mtp_peer(
+            args.mtp_adapter,
+            args.expected_peer,
+            args.transport_root,
+            deadline,
+        )
     peer = load_peer(args.transport_root, args.expected_peer)
     with closing(generation.connect_database(args.database)) as db:
         generation.require_schema(db)
