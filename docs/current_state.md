@@ -4,9 +4,9 @@ The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
 persistent peer identities. The latest controlled rollout verified real
-desktop and Android backups, restoration and migration on copies, desktop
-schema v24 to v25, and an in-place private Android update from versionCode 14
-to 15. The installed APK remains `com.labfytools.trainlog` 0.1.2, is
+desktop and Android backups, populated-copy migration, desktop schema v25 to
+v26, and an in-place private Android update from versionCode 15 to 16. The
+installed APK remains `com.labfytools.trainlog` 0.1.2, is
 non-debuggable, and retains certificate SHA-256
 `aa56c97f2781a0d01f007f4444c3970deb58ad8327ca3da7b0b90f37dbe2ad25`.
 One preparation created explicitly as disposable was withdrawn through the Web
@@ -81,7 +81,7 @@ parallel implementation of its rules.
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
-| Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=IMPLEMENTED_VALIDATED` (not deployed; real Firefox Programs screenshots recorded) |
+| Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
@@ -271,6 +271,20 @@ program mutation actions. The optional staged controlled-generation
 snapshot plus unacknowledged tombstones under capability `programs-v1`; a
 durable correlated ACK records acknowledgment. It changes neither
 `TRAINLOG_FORMAT_V1`, mobile V3, catalog exchange, nor preparations.
+
+The private Programs rollout migrated desktop schema v25 to v26 and Android
+schema v23 to v24 after verified backups, then installed the signed
+non-debuggable versionCode 16 APK without uninstalling or clearing data. The
+real 24-session Program remained unique and readable on Web and Android. A
+clearly disposable Program was imported, synchronized, cancelled once without
+mutation, then logically deleted through the Web confirmation. Android consumed
+the real tombstone and desktop recorded its correlated generation ACK. A first
+post-restart attempt failed before generation with `device_unavailable` and
+`PTP_ERROR_IO`; no success state was recorded. Releasing the stale bounded MTP
+worker and restarting the local ADB server restored the same physical peer. The
+subsequent correlated exchange completed in both directions, and store reopen
+confirmed one durable Android tombstone, one acknowledged desktop deletion,
+no duplicate Program, and no resurrection.
 
 The controlled deployment preserved the installed Android signing identity and
 advanced its private `versionCode` from 13 to 14 without uninstalling or

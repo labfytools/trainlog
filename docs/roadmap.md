@@ -59,9 +59,10 @@ explicit trusted opt-in. The authorized private direct-MTP rollout passed on
 real hardware; automatic V3 selection remains unchanged without that opt-in.
 The next separately contracted Web surface is Exercises. Sessions deletion and
 its Programs subtab are complete in software and are not reopened by that
-future contract. `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1` is
-implemented and validated in automated and real Firefox Programs presentation
-checks, but is not deployed. It must not be reopened by the Exercises contract.
+future contract. `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` after
+its coordinated private desktop/Android deployment, correlated deletion ACK,
+and post-restart non-resurrection validation. It must not be reopened by the
+Exercises contract.
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.

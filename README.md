@@ -17,7 +17,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.2 development) | Display the Dashboard and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and embedded Programs workflow through typed Trainlog Core/API boundaries. Programs has responsive detail and terminal logical deletion; its latest Android projection companion is implemented but not deployed. Analyse, the standalone Programmes route, and Exercises remain placeholders. |
+| Local Web (0.1.2 development) | Display the Dashboard and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and embedded Programs workflow through typed Trainlog Core/API boundaries. Programs has responsive detail, terminal logical deletion, and a privately deployed read-only Android projection. Analyse, the standalone Programmes route, and Exercises remain placeholders. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -335,10 +335,9 @@ As of 2026-09-18:
   `WEB_DASHBOARD_V1=PASS/FROZEN` and `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN`;
   Programs is implemented inside Sessions; Analyse, Exercises, and the
   standalone top-level Programmes route remain placeholders;
-- `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=IMPLEMENTED_VALIDATED`:
-  desktop Programs presentation/logical deletion and the Android read-only
-  projection are implemented and have real Firefox screenshot evidence, but
-  deployment remains pending;
+- `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS`: the coordinated
+  private desktop/Android deployment, real Firefox presentation, correlated
+  `programs-v1` deletion ACK, restart/replay, and non-resurrection checks pass;
 - `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
 - `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` through explicit staged
   services; automatic synchronization still selects V3. The trusted local

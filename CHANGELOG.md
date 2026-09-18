@@ -2,8 +2,9 @@
 
 ## Unreleased — 0.1.2
 
-- Implemented `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1` without
-  deployment. Desktop schema v26 adds terminal logical Program deletion with
+- Completed the private coordinated deployment of
+  `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1`. Desktop schema v26 adds
+  terminal logical Program deletion with
   request/deleted revisions, durable response replay, generation linkage and
   acknowledgment state; source definitions and derived preparations remain,
   while deleted Programs cannot resurrect or prepare. The responsive Sessions
@@ -14,9 +15,12 @@
   `trainlog-programs` V1 (`programs-v1.json`) publishes nondeleted Programs and
   unacknowledged tombstones under capability `programs-v1`; it changes neither
   `TRAINLOG_FORMAT_V1`, mobile V3, catalog exchange, nor preparations. Real
-  Firefox Programs screenshots are recorded in
-  `docs/reviews/programs_presentation_android_delete_v1_evidence.md`;
-  deployment remains pending.
+  Firefox Programs screenshots and real rollout evidence are recorded in
+  `docs/reviews/programs_presentation_android_delete_v1_evidence.md`. The
+  signed private Android update advanced versionCode 15 to 16 without
+  uninstall or data clearing. A real disposable Program tombstone was consumed
+  and acknowledged, and a final correlated exchange after component restart
+  proved persistence, idempotence, and non-resurrection.
 
 - Completed the private grouped rollout of Web Sessions deletion and Program
   V1 from desktop source `a0fc48f082b76dba2ae3a56fceb492169de89f89`.
