@@ -17,6 +17,31 @@ internal sealed interface ForegroundGenerationResult {
 internal class SyncGenerationForegroundCoordinator(private val repository: TrainlogRepository) {
     private val service = SyncGenerationService(repository)
 
+    private fun resumableGeneration(runId: String, consumerPeerId: String? = null): CapturedSyncGeneration? =
+        repository.inSyncGenerationTransaction { db ->
+            db.rawQuery(
+                "SELECT generation_id,manifest_sha256,staging_path FROM sync_generations " +
+                    "WHERE run_id=? AND status IN('captured','published','waiting_acknowledgement') " +
+                    (if (consumerPeerId == null) "" else "AND consumer_peer_id=? ") +
+                    "LIMIT 2",
+                if (consumerPeerId == null) arrayOf(runId) else arrayOf(runId, consumerPeerId),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null
+                else {
+                    val captured =
+                        CapturedSyncGeneration(
+                            cursor.getString(0),
+                            runId,
+                            cursor.getString(1),
+                            File(cursor.getString(2)),
+                        )
+                    if (cursor.moveToNext())
+                        throw SyncGenerationException("ambiguous resumable generation")
+                    captured
+                }
+            }
+        }
+
     private fun requireExactKeys(value: JSONObject, expected: Set<String>, label: String) {
         val actual = value.keys().asSequence().toSet()
         if (actual != expected) throw SyncGenerationException("invalid $label fields")
@@ -152,12 +177,13 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                 awaitCorrelated(File(directory, "request-v1.json"), deadline) { candidate ->
                     val runId = candidate.optString("run_id")
                     runId.startsWith("sy_") &&
-                        !repository.inSyncGenerationTransaction { db ->
-                            db.rawQuery(
-                                "SELECT 1 FROM sync_generations WHERE run_id=? LIMIT 1",
-                                arrayOf(runId),
-                            ).use { it.moveToFirst() }
-                        }
+                        (resumableGeneration(runId) != null ||
+                            !repository.inSyncGenerationTransaction { db ->
+                                db.rawQuery(
+                                    "SELECT 1 FROM sync_generations WHERE run_id=? LIMIT 1",
+                                    arrayOf(runId),
+                                ).use { it.moveToFirst() }
+                            })
                 }
             val request = JSONObject(requestRaw.toString(Charsets.UTF_8))
             if (request.getString("android_peer_id") != peer)
@@ -176,8 +202,18 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                 peer,
                 request.getString("desktop_peer_id"),
             )
+            /* WHY: transport can fail after immutable generation publication.
+             * CONTRACT: an explicit retry for the same run republishes that
+             * exact generation and resumes ACK handling; it never recaptures
+             * mutable application state under an existing identity.
+             * INVARIANT: only an active generation for the correlated desktop
+             * consumer is resumable; acknowledged or archived runs remain
+             * excluded from new foreground work. */
             val captured =
-                service.capture(
+                resumableGeneration(
+                    request.getString("run_id"),
+                    request.getString("desktop_peer_id"),
+                ) ?: service.capture(
                     directory,
                     request.getString("desktop_peer_id"),
                     request.getString("run_id"),
