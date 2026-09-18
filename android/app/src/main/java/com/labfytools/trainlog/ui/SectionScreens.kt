@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -68,6 +69,7 @@ fun SessionsHub(
         }
         TrainlogButton(strings.getString(R.string.route_completed_sessions), onHistory,
             Modifier.fillMaxWidth().testTag("sessions-history-action"))
+        Spacer(Modifier.height(16.dp).testTag("sessions-programs-spacing"))
         TrainlogButton(strings.getString(R.string.route_programs), onPrograms,
             Modifier.fillMaxWidth().testTag("sessions-programs-action"))
     }

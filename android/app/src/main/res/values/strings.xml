@@ -25,6 +25,15 @@
     <string name="program_target_reps">%1$d répétitions</string>
     <string name="program_target_duration">%1$d s</string>
     <string name="program_target_weight">%1$.1f kg</string>
+    <string name="program_session_todo">À faire</string>
+    <string name="program_session_in_progress">En cours</string>
+    <string name="program_session_completed">Effectuée</string>
+    <string name="program_session_start">Démarrer</string>
+    <string name="program_session_resume">Reprendre la séance</string>
+    <string name="program_session_completed_detail">Cette séance a déjà été effectuée.</string>
+    <string name="program_session_unavailable">Cette séance ne peut plus être démarrée.</string>
+    <string name="program_session_show_occurrences">Voir les exercices</string>
+    <string name="program_session_hide_occurrences">Masquer les exercices</string>
     <plurals name="program_session_count"><item quantity="one">%d séance</item><item quantity="other">%d séances</item></plurals>
     <string name="route_session_detail">Détail de la séance</string>
     <string name="route_session_correction">Modifier la séance</string>

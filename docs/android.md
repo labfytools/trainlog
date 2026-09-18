@@ -23,6 +23,13 @@ Sessions without offering import, archive, delete, preparation, or other
 program mutation actions. The projection is separate from capture data, AI
 proposals, manual preparations, and the active-session singleton.
 
+Android schema v25 adds paired nullable Program provenance to the active draft
+and completed session. Starting a Program session allocates one ordinary stable
+execution identity, copies targets without fabricating performed values, and
+respects the existing singleton. Replay resumes the matching draft, refuses an
+unrelated draft, and refuses a second execution after completion. Finalization
+copies the same Program identities into completed history transactionally.
+
 ## 1. Purpose
 
 The Android application is Trainlog's low-friction capture client.
@@ -84,6 +91,12 @@ tombstones. Both peers advertise the `programs-v1` capability; Android applies
 the projection and deletion state durably, and desktop records the correlated
 ACK before marking the tombstone acknowledged. It changes neither
 `TRAINLOG_FORMAT_V1`, mobile V3, catalog exchange, nor preparation exchange.
+
+Android publishes the separate optional `trainlog-program-executions` V1
+companion in full generations. It contains only stable Program/session/execution
+identities, `in_progress` or `completed`, and an observation timestamp. It does
+not publish Program definitions and therefore does not transfer Program
+ownership to Android. Older consumers may ignore this optional companion.
 
 Completed session occurrences persist an `entry_id`; it is never regenerated
 for exchange. Android schema v14 added feedback roots and completion `ended_at`

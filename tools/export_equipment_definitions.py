@@ -24,7 +24,7 @@ def main(complete_causal_envelope=False):
     connection = connect_database(args.database)
     connection.row_factory = sqlite3.Row
     try:
-        supported_versions = tuple(range(8, 27))
+        supported_versions = tuple(range(8, 28))
         if connection.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
             raise ValueError("schema desktop v8 à v16 requis")
         if not complete_causal_envelope and connection.execute("PRAGMA user_version").fetchone()[0] >= 20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='custom_equipment' AND deleted=1 LIMIT 1").fetchone():

@@ -39,6 +39,7 @@ RUNTIME_TOOLS = [
     "export_ai_session_drafts.py",
     "export_session_preparations.py",
     "export_programs.py",
+    "program_execution_exchange.py",
 ]
 
 
@@ -97,8 +98,8 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.2",
-        "desktop_schema": 26,
-        "android_schema": 24,
+        "desktop_schema": 27,
+        "android_schema": 25,
         "protocols": [
             "mobile-export-v3",
             "mobile-history-v4",
@@ -110,6 +111,7 @@ def main() -> int:
             "session-preparations-v2",
             "ai-session-drafts-v2",
             "programs-v1",
+            "program-executions-v1",
         ],
         "entry_points": [
             "bin/trainlog",

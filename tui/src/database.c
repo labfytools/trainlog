@@ -1230,6 +1230,25 @@ static const char *const MIGRATE_V25_TO_V26_SQL =
     "generation_id,deleted_at,request_id) WHERE acknowledged_at IS NULL;"
     "PRAGMA user_version=26;COMMIT;";
 
+/* WHY: Android can execute a desktop-owned program session offline, so the
+ * canonical desktop needs a durable stable-identity link after import.
+ * CONTRACT: rows describe execution provenance only and never own or mutate
+ * program definitions or completed-session history. INVARIANT: one program
+ * session has at most one execution and replaying the same fact is idempotent. */
+static const char *const MIGRATE_V26_TO_V27_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS program_session_executions("
+    "program_session_id TEXT PRIMARY KEY REFERENCES program_sessions(program_session_id) "
+    "ON DELETE RESTRICT,"
+    "program_id TEXT NOT NULL REFERENCES programs(program_id) ON DELETE RESTRICT,"
+    "session_id TEXT NOT NULL UNIQUE,"
+    "state TEXT NOT NULL CHECK(state IN('in_progress','completed')) ,"
+    "observed_at TEXT NOT NULL,"
+    "CHECK(length(program_id)>0 AND length(session_id)>0));"
+    "CREATE INDEX IF NOT EXISTS program_session_executions_program "
+    "ON program_session_executions(program_id,state);"
+    "PRAGMA user_version=27;COMMIT;";
+
 /* CONTRACT: migration fixtures may retain additive v25 columns while
  * deliberately lowering user_version. Add each provenance column only when
  * absent; a genuine v24 database still receives both before opening returns. */
@@ -2019,7 +2038,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     } else if (version == 11 || version == 12 || version == 13 || version == 14 || version == 15 ||
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
-               version == 26) {
+               version == 26 || version == 27) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2155,6 +2174,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 26) {
         status = execute_sql(database, MIGRATE_V25_TO_V26_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 27) {
+        status = execute_sql(database, MIGRATE_V26_TO_V27_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2174,7 +2196,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v26" : "migrate database to schema v26",
+                            version == 0 ? "create schema v27" : "migrate database to schema v27",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

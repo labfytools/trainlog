@@ -74,6 +74,21 @@ delete_program(TrainlogDatabase *database, const char *expected_revision, const 
     return 0;
 }
 
+static int print_program_detail(TrainlogDatabase *database) {
+    char *response = NULL;
+    size_t response_size = 0U;
+    TrainlogStatus status = trainlog_web_programs_detail_json(
+        database, "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", &response, &response_size);
+
+    if (status != TRAINLOG_STATUS_OK) {
+        free(response);
+        return 6;
+    }
+    (void)printf("PROGRAM_DETAIL=%s\n", response);
+    free(response);
+    return 0;
+}
+
 static int create_session_fixture(TrainlogDatabase *database) {
     TrainlogSetInput set = {.reps = 9, .has_weight = true, .weight_kg = 32.5};
     TrainlogSessionExerciseInput exercise;
@@ -212,6 +227,8 @@ int main(int argc, char **argv) {
         result = create_session_fixture(database);
     } else if (argc == 3 && strcmp(argv[2], "program-create") == 0) {
         result = create_program(database);
+    } else if (argc == 3 && strcmp(argv[2], "program-detail") == 0) {
+        result = print_program_detail(database);
     } else if (argc == 5 && strcmp(argv[2], "program-delete") == 0) {
         result = delete_program(database, argv[3], argv[4]);
     } else {

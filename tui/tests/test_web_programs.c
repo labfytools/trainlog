@@ -193,7 +193,7 @@ static bool import_archive_and_prepare(void) {
     char *second_entry;
 
     CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
-    CHECK(scalar(database, "PRAGMA user_version") == 26);
+    CHECK(scalar(database, "PRAGMA user_version") == 27);
     CHECK(scalar(database,
                  "SELECT COUNT(*) FROM pragma_table_info('program_deletions') WHERE "
                  "name IN('generation_id','acknowledged_at')") == 2);
@@ -268,6 +268,7 @@ static bool import_archive_and_prepare(void) {
           TRAINLOG_STATUS_OK);
     CHECK(extract_string(response, "revision_id", revision, sizeof(revision)));
     CHECK(strstr(response, "Exercise fixture") == NULL);
+    CHECK(strstr(response, "\"execution_state\":\"todo\"") != NULL);
     free(response);
     response = NULL;
 
@@ -281,6 +282,12 @@ static bool import_archive_and_prepare(void) {
     CHECK(scalar(database,
                  "SELECT COUNT(*) FROM session_preparations "
                  "WHERE source_program_id='pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'") == 1);
+    free(response);
+    response = NULL;
+    CHECK(trainlog_web_programs_detail_json(
+              database, "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", &response, &response_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(response, "\"execution_state\":\"prepared\"") != NULL);
     free(response);
     response = NULL;
 

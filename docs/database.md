@@ -1,5 +1,15 @@
 # Desktop database
 
+## Schema v27: durable Program execution provenance
+
+Schema v27 adds `program_session_executions`, the stable link from one
+desktop-owned Program session to its Android execution `session_id`. The state
+advances only from `in_progress` to `completed`; a Program session and an
+execution session are each unique. Completed links are accepted only after the
+referenced completed session has been imported. The migration is additive,
+transactional, creates no execution row, and preserves Program definitions,
+preparations and history unchanged.
+
 ## Schema v26: Programs presentation, Android projection, and logical deletion
 
 Schema v26 adds nullable `programs.deleted_at` and the terminal
@@ -65,8 +75,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=26
-DATABASE_SCHEMA_V26=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=27
+DATABASE_SCHEMA_V27=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -85,7 +95,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-26
+27
 ```
 
 The independent actual-set loads documented in the current desktop, Android

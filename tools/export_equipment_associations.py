@@ -28,7 +28,7 @@ def main():
     args = parser.parse_args()
     connection = connect_database(args.database)
     try:
-        supported_versions = tuple(range(8, 27))
+        supported_versions = tuple(range(8, 28))
         if connection.execute("PRAGMA user_version;").fetchone()[0] not in supported_versions:
             raise ValueError("schema desktop v8 à v16 requis")
         known_equipment = load_supplied_equipment_ids(args.catalog)

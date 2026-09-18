@@ -151,7 +151,7 @@ def replace(connection, row_id, primary, secondary):
 
 def apply_body_zones(connection, parsed, mobile_proof, complete_causal_envelope=False):
     """Apply validated zone rows without owning transaction boundaries."""
-    supported_versions = range(11, 27)
+    supported_versions = range(11, 28)
     if connection.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         raise ImportFailure("schema desktop v11-v25 requis")
     if not complete_causal_envelope and connection.execute("PRAGMA user_version").fetchone()[0]>=20 and connection.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='body_zone_relation' AND deleted=1 LIMIT 1").fetchone(): raise ImportFailure("causal BODY ZONES protection requires the staged artifact")

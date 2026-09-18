@@ -145,6 +145,7 @@ does not publish to it or let it override an artifact in the new endpoint.
 | PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
 | PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1/v2 companion; v2 adds proposal withdrawals |
 | PC -> Android | `programs-v1.json` | optional staged `trainlog-programs` v1 companion: full nondeleted snapshot plus unacknowledged deletion tombstones |
+| Android -> PC | `program-executions-v1.json` | optional `trainlog-program-executions` v1 companion: stable in-progress/completed provenance |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
@@ -164,6 +165,17 @@ This companion is independent of `trainlog-program` V1 import, mobile export
 V3, `trainlog-pc-catalog` V1, and `trainlog-session-preparations` V2. It does
 not change `TRAINLOG_FORMAT_V1`, active default V3 transport, or preparation
 semantics.
+
+## Optional Program executions companion V1
+
+`trainlog-program-executions` V1 is an Android-to-desktop full-generation
+companion. Android schema v25 emits at most one stable execution fact per
+Program session. Desktop schema v27 validates that the Program/session pair
+exists, imports completed history before accepting a completed fact, and
+permits only the monotonic `in_progress` to `completed` transition. Exact replay
+is idempotent; identity reuse or regression is a hard conflict. Because the
+descriptor is optional, peers predating this companion keep exchanging all
+existing required domains without a capability failure.
 
 `trainlog-exercise-aliases` v1 is the separate EXERCISE_MERGE_V1 identity
 companion. Its root contains exactly `format`, `version`, and `aliases`; every

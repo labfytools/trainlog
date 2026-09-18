@@ -66,6 +66,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 "feedback" to Kind("trainlog-training-feedback", 2, "feedback-v2.json"),
                 "causal-deletions" to
                     Kind("trainlog-causal-deletions", 1, "causal-deletions-v1.json"),
+                "program-executions" to
+                    Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
             )
         private val SUPPORTED =
             (ANDROID_KINDS.values +
@@ -581,7 +583,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
             if (total > MAX_GENERATION_BYTES)
                 throw SyncGenerationException("generation exceeds bound")
         }
-        if (!ANDROID_KINDS.keys.all { it in names })
+        if (!ANDROID_KINDS.filterValues { it.required }.keys.all { it in names })
             throw SyncGenerationException("missing required domain")
         return root
     }

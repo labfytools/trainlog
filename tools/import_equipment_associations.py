@@ -187,7 +187,7 @@ def main():
     payload = json.loads(args.artifact.read_text(encoding="utf-8"))
     connection = connect_database(args.database)
     try:
-        supported_versions = range(8, 27)
+        supported_versions = range(8, 28)
         if connection.execute("PRAGMA user_version;").fetchone()[0] not in supported_versions:
             fail("schema desktop v8 à v21 requis")
         proof_path = args.mobile_export

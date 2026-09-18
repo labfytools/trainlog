@@ -286,6 +286,8 @@ static bool build_v25_fixture(const char *path) {
                  "PRAGMA foreign_keys=OFF;"
                  "DROP INDEX program_deletions_pending;"
                  "DROP TABLE program_deletions;"
+                 "DROP INDEX program_session_executions_program;"
+                 "DROP TABLE program_session_executions;"
                  "ALTER TABLE programs DROP COLUMN deleted_at;"
                  "PRAGMA user_version=25;"
                  "PRAGMA foreign_keys=ON;") ||
@@ -388,7 +390,8 @@ static int run_test(void) {
     static const ProjectionSpec UNCHANGED_SCHEMA[] = {
         {"schema",
          "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' "
-         "AND name NOT IN('programs','program_deletions','program_deletions_pending') "
+         "AND name NOT IN('programs','program_deletions','program_deletions_pending',"
+         "'program_session_executions','program_session_executions_program') "
          "ORDER BY type,name"},
     };
     char path[] = "/tmp/trainlog-v26-populated-XXXXXX";
@@ -429,12 +432,12 @@ static int run_test(void) {
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic, sizeof(diagnostic)) ==
           TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(database, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 26);
+    CHECK(version == 27);
     trainlog_database_close(database);
     database = NULL;
 
     CHECK(sqlite3_open_v2(path, &raw, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 26);
+    CHECK(scalar(raw, "PRAGMA user_version") == 27);
     CHECK(capture_projection(raw,
                              BUSINESS_PROJECTIONS,
                              sizeof(BUSINESS_PROJECTIONS) / sizeof(BUSINESS_PROJECTIONS[0]),
@@ -449,6 +452,7 @@ static int run_test(void) {
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM programs WHERE deleted_at IS NOT NULL") == 0);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM program_deletions") == 0);
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM program_session_executions") == 0);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM pragma_table_info('programs') WHERE name='deleted_at' AND "
                  "type='TEXT' AND \"notnull\"=0") == 1);
@@ -458,7 +462,7 @@ static int run_test(void) {
                  "name='program_deletions_pending')") == 2);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_table_info('programs')") == 13);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'") ==
-          schema_object_count_before + 2);
+          schema_object_count_before + 4);
     ok = true;
 cleanup:
     if (!ok && diagnostic[0] != '\0') {

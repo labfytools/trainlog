@@ -38,7 +38,7 @@ def digest(value) -> str:
 
 def require_schema(db: sqlite3.Connection) -> None:
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version not in (20, 21, 22, 23, 24, 25, 26):
+    if version not in (20, 21, 22, 23, 24, 25, 26, 27):
         raise CausalError(f"desktop schema v20-v25 required, found v{version}")
 
 

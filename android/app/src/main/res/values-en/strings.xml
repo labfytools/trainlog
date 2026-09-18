@@ -25,6 +25,15 @@
     <string name="program_target_reps">%1$d repetitions</string>
     <string name="program_target_duration">%1$d s</string>
     <string name="program_target_weight">%1$.1f kg</string>
+    <string name="program_session_todo">To do</string>
+    <string name="program_session_in_progress">In progress</string>
+    <string name="program_session_completed">Completed</string>
+    <string name="program_session_start">Start</string>
+    <string name="program_session_resume">Resume session</string>
+    <string name="program_session_completed_detail">This session has already been completed.</string>
+    <string name="program_session_unavailable">This session can no longer be started.</string>
+    <string name="program_session_show_occurrences">Show exercises</string>
+    <string name="program_session_hide_occurrences">Hide exercises</string>
     <plurals name="program_session_count"><item quantity="one">%d session</item><item quantity="other">%d sessions</item></plurals>
     <string name="route_session_detail">Session details</string>
     <string name="route_session_correction">Edit session</string>

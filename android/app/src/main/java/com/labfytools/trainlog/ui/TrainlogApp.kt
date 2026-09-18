@@ -125,7 +125,10 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             )
             AppRoute.CompletedSessions -> HistoryScreen(repository, { back() }) { open(AppRoute.SessionDetail(it)) }
             AppRoute.Programs -> ProgramsScreen(repository) { open(AppRoute.ProgramDetail(it)) }
-            is AppRoute.ProgramDetail -> ProgramDetailScreen(repository, route.programId)
+            is AppRoute.ProgramDetail -> ProgramDetailScreen(repository, route.programId) {
+                draftRevision++
+                open(AppRoute.SessionEditor)
+            }
             is AppRoute.SessionDetail -> SessionDetailScreen(repository, route.sessionId, { back() }, { open(AppRoute.SessionCorrection(route.sessionId)) }) { draftRevision++; open(AppRoute.SessionEditor) }
             is AppRoute.SessionCorrection -> CompletedSessionCorrectionScreen(repository, route.sessionId) { saved ->
                 if (saved) exportSnapshot()

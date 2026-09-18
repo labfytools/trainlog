@@ -2,6 +2,16 @@
 
 ## Unreleased — 0.1.2
 
+- Added the Program execution flow. Android schema v25 can start or resume one
+  Program session through the existing durable singleton, preserves stable
+  Program provenance on completion, and presents explicit `À faire`, `En cours`
+  and `Effectuée` states. Desktop schema v27 stores the corresponding unique
+  execution link. The optional `trainlog-program-executions` V1 full-generation
+  companion advances Web Program sessions from persisted facts without changing
+  mobile export V3, `programs-v1`, or `TRAINLOG_FORMAT_V1`. Web also exposes
+  `À faire`, `Préparée`, `En cours`, and `Effectuée` session states, while the
+  existing logical Program deletion and confirmation semantics remain intact.
+
 - Completed the private coordinated deployment of
   `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1`. Desktop schema v26 adds
   terminal logical Program deletion with

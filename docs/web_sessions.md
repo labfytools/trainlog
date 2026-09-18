@@ -79,6 +79,12 @@ a preparation from one active program session copies targets and provenance
 into a new manual preparation but creates no delivery, execution or performed
 data. Archived or deleted programs cannot be prepared.
 
+Desktop schema v27 enriches each Program session with a persisted execution
+state. Web displays `À faire`, `Préparée`, `En cours`, or `Effectuée`; completed
+and in-progress states come from stable Android execution provenance, while
+prepared comes from a live derived preparation. No title, date, position or
+content heuristic is used.
+
 The discrete right-edge Program trash action is accessible and opens a
 confirmation dialog that names the program and its consequence. Focus moves
 into that dialog, Escape and Cancel perform no mutation, and focus returns to

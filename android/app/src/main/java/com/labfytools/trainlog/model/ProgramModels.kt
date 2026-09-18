@@ -26,8 +26,16 @@ data class SyncedProgramSession(
     val sessionType: String,
     val plannedFor: String?,
     val note: String?,
+    val executionState: ProgramSessionExecutionState,
+    val executionSessionId: String?,
     val occurrences: List<SyncedProgramOccurrence>,
 )
+
+enum class ProgramSessionExecutionState {
+    TODO,
+    IN_PROGRESS,
+    COMPLETED,
+}
 
 data class SyncedProgramOccurrence(
     val entryId: String,

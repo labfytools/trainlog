@@ -57,8 +57,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v26 |
-| Android SQLite | schema v24 |
+| Desktop SQLite | schema v27 |
+| Android SQLite | schema v25 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -82,6 +82,7 @@ parallel implementation of its rules.
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
+| Program execution flow | `TRAINLOG_PROGRAM_EXECUTION_FLOW_V1=IMPLEMENTED_VALIDATED_AWAITING_ROLLOUT` |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
@@ -271,6 +272,14 @@ program mutation actions. The optional staged controlled-generation
 snapshot plus unacknowledged tombstones under capability `programs-v1`; a
 durable correlated ACK records acknowledgment. It changes neither
 `TRAINLOG_FORMAT_V1`, mobile V3, catalog exchange, nor preparations.
+
+Android schema v25 makes those projected sessions executable through the
+existing durable singleton. Stable paired Program provenance survives draft
+restart and completion. The optional Android-to-desktop
+`trainlog-program-executions` V1 companion records `in_progress` or `completed`
+against desktop schema v27 without transferring ownership of Program
+definitions. Web and Android derive their session state from these persisted
+identities; no display-field heuristic is used.
 
 The private Programs rollout migrated desktop schema v25 to v26 and Android
 schema v23 to v24 after verified backups, then installed the signed

@@ -366,6 +366,8 @@ static TrainlogStatus add_program_session_json(TrainlogDatabase *database,
         !add_column_text(document, session, "session_type", statement, 3) ||
         !add_column_text(document, session, "planned_for", statement, 4) ||
         !add_column_text(document, session, "note", statement, 5) ||
+        !add_column_text(document, session, "execution_state", statement, 6) ||
+        !add_column_text(document, session, "execution_session_id", statement, 7) ||
         !yyjson_mut_obj_add_val(document, session, "occurrences", entries) ||
         !yyjson_mut_arr_add_val(sessions, session)) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
@@ -379,8 +381,15 @@ static TrainlogStatus add_program_sessions(TrainlogDatabase *database,
                                            yyjson_mut_doc *document,
                                            yyjson_mut_val *sessions) {
     static const char SESSION_SQL[] =
-        "SELECT program_session_id,position,title,session_type,planned_for,note FROM "
-        "program_sessions WHERE program_id=?1 ORDER BY position,program_session_id";
+        "SELECT ps.program_session_id,ps.position,ps.title,ps.session_type,ps.planned_for,"
+        "ps.note,CASE WHEN pe.state='completed' THEN 'completed' "
+        "WHEN pe.state='in_progress' THEN 'in_progress' "
+        "WHEN EXISTS(SELECT 1 FROM session_preparations sp WHERE "
+        "sp.source_program_session_id=ps.program_session_id AND sp.withdrawn_at IS NULL) "
+        "THEN 'prepared' ELSE 'todo' END,pe.session_id "
+        "FROM program_sessions ps LEFT JOIN program_session_executions pe "
+        "ON pe.program_session_id=ps.program_session_id "
+        "WHERE ps.program_id=?1 ORDER BY ps.position,ps.program_session_id";
     sqlite3_stmt *session_statement = NULL;
     int step;
 

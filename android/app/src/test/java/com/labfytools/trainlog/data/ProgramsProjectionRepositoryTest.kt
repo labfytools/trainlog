@@ -3,6 +3,8 @@ package com.labfytools.trainlog.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import java.util.UUID
+import com.labfytools.trainlog.model.ProgramSessionExecutionState
+import com.labfytools.trainlog.model.SessionSetDraft
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -119,6 +121,74 @@ class ProgramsProjectionRepositoryTest {
             val result = repository.applyProgramsV1Json(artifact(JSONArray().put(malformed), JSONArray().put(deletion())))
             assertTrue(result is ProgramsImportResult.Invalid)
             assertEquals(1, repository.listSyncedPrograms().size)
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun programSessionStartsResumesCompletesAndKeepsProvenanceAcrossRestart() {
+        val name = "program-execution-${UUID.randomUUID()}.db"
+        var repository = TrainlogRepository(context, name)
+        try {
+            val catalog = JSONObject()
+                .put("format", "trainlog-pc-catalog")
+                .put("version", 1)
+                .put("exercises", JSONArray().put(
+                    JSONObject()
+                        .put("exercise_id", "ex_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+                        .put("name", "Exercise fixture")
+                        .put("recording_mode", "sets")
+                        .put("tracking_mode", "reps")
+                        .put("data_fields", 0),
+                ))
+                .toString()
+            assertTrue(repository.applyPcCatalogJson(catalog) is PcCatalogImportResult.Applied)
+            repository.applyProgramsV1Json(artifact(JSONArray().put(program())))
+            val programId = "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+            val programSessionId = "pgs_cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+
+            assertEquals(
+                StartProgramSessionResult.Started,
+                repository.startSyncedProgramSession(programId, programSessionId),
+            )
+            assertEquals(
+                StartProgramSessionResult.AlreadyActive,
+                repository.startSyncedProgramSession(programId, programSessionId),
+            )
+            val active = (repository.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded).draft
+            assertEquals(programId, active.sourceProgramId)
+            assertEquals(programSessionId, active.sourceProgramSessionId)
+            val performed = active.copy(
+                exercises = active.exercises.map { occurrence ->
+                    occurrence.copy(sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0)))
+                },
+            )
+            assertEquals(ActiveDraftMutationResult.Saved, repository.saveActiveSessionDraft(performed))
+            assertTrue(repository.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+            assertEquals(
+                ProgramSessionExecutionState.COMPLETED,
+                repository.getSyncedProgram(programId)!!.sessions.single().executionState,
+            )
+            assertEquals(
+                StartProgramSessionResult.AlreadyCompleted,
+                repository.startSyncedProgramSession(programId, programSessionId),
+            )
+            val exported = JSONObject(repository.buildProgramExecutionsV1Json())
+            val execution = exported.getJSONArray("executions").getJSONObject(0)
+            assertEquals("completed", execution.getString("state"))
+            assertEquals(programSessionId, execution.getString("program_session_id"))
+        } finally {
+            repository.close()
+        }
+
+        repository = TrainlogRepository(context, name)
+        try {
+            val detail = repository.listSyncedPrograms().single()
+            assertEquals(1, detail.sessionCount)
+            assertTrue(repository.loadActiveSessionDraft() is ActiveDraftLoadResult.None)
+            assertEquals(1, repository.listSessions().size)
         } finally {
             repository.close()
             context.deleteDatabase(name)

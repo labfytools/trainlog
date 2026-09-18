@@ -63,6 +63,12 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
       setError(reason instanceof Error ? reason.message : 'Création impossible')
     }
   }
+  const executionLabel = (state: ProgramDetail['sessions'][number]['execution_state']) => ({
+    todo: 'À faire',
+    prepared: 'Préparée',
+    in_progress: 'En cours',
+    completed: 'Effectuée',
+  })[state]
   return <article className="session-detail program-detail">
     <div className="sessions-toolbar">
       <button type="button" className="quiet-action" onClick={onBack}>
@@ -97,6 +103,9 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
       {program.sessions.map((session) => <li key={session.program_session_id}>
         <div>
           <strong>{session.position + 1}. {session.title}</strong>
+          <span className={`program-execution-state state-${session.execution_state}`}>
+            {executionLabel(session.execution_state)}
+          </span>
           <p>
             {session.session_type === 'max_test'
               ? 'Test MAX planifié' : 'Entraînement planifié'}
@@ -118,11 +127,14 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
             </li>)}
           </ol>
         </div>
-        <button
+        {session.execution_state === 'todo' && <button
           type="button"
           className="primary-action"
           onClick={() => void prepare(session.program_session_id)}
-        >Créer une préparation</button>
+        >Créer une préparation</button>}
+        {session.execution_state === 'prepared' && <span>Préparation disponible</span>}
+        {session.execution_state === 'in_progress' && <span>Séance en cours sur Android</span>}
+        {session.execution_state === 'completed' && <span>✓ Séance effectuée</span>}
       </li>)}
     </ol>
   </article>

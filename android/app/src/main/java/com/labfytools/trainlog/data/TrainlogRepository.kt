@@ -42,6 +42,7 @@ import com.labfytools.trainlog.model.SyncedProgramDetail
 import com.labfytools.trainlog.model.SyncedProgramOccurrence
 import com.labfytools.trainlog.model.SyncedProgramSession
 import com.labfytools.trainlog.model.SyncedProgramSummary
+import com.labfytools.trainlog.model.ProgramSessionExecutionState
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
@@ -226,6 +227,15 @@ sealed interface ProgramsImportResult {
     data class Applied(val imported: Int, val deleted: Int, val skipped: Int) : ProgramsImportResult
     data class Invalid(val message: String) : ProgramsImportResult
     data object DatabaseError : ProgramsImportResult
+}
+
+sealed interface StartProgramSessionResult {
+    data object Started : StartProgramSessionResult
+    data object AlreadyActive : StartProgramSessionResult
+    data object AlreadyCompleted : StartProgramSessionResult
+    data object ExistingUnrelatedDraft : StartProgramSessionResult
+    data object NotAvailable : StartProgramSessionResult
+    data class Error(val message: String) : StartProgramSessionResult
 }
 
 private class SyncLifecycleConflict(val ownerId: String) : RuntimeException()
@@ -486,16 +496,59 @@ class TrainlogRepository(
         jsonHasUniqueObjectKeys(json)
 
     /** Captures Android-owned generation artifacts from one read snapshot. */
-    internal fun captureSyncGenerationArtifacts(afterFirstArtifact: (() -> Unit)? = null): Map<String, String> =
-        inSyncGenerationTransaction {
-            val artifacts=linkedMapOf("catalog" to buildPcCatalogJson())
-            afterFirstArtifact?.invoke()
-            artifacts["history"]=buildMobileExport(4, true);artifacts["execution-drafts"]=buildExecutionDraftExportV1Json()
-            artifacts["exercise-aliases"]=buildExerciseAliasesJson();artifacts["exercise-profile-state"]=buildExerciseProfileStateJson()
-            artifacts["equipment-definitions"]=buildEquipmentDefinitionsJson(true);artifacts["equipment-associations"]=buildEquipmentAssociationsJson()
-            artifacts["body-zones"]=buildExerciseBodyZonesJson(true);artifacts["feedback"]=buildTrainingFeedbackJson(true)
-            artifacts["causal-deletions"]=buildCausalDeletionExportV1Json();artifacts
+    internal fun captureSyncGenerationArtifacts(
+        afterFirstArtifact: (() -> Unit)? = null,
+    ): Map<String, String> = inSyncGenerationTransaction {
+        val artifacts = linkedMapOf("catalog" to buildPcCatalogJson())
+        afterFirstArtifact?.invoke()
+        artifacts["history"] = buildMobileExport(4, true)
+        artifacts["execution-drafts"] = buildExecutionDraftExportV1Json()
+        artifacts["exercise-aliases"] = buildExerciseAliasesJson()
+        artifacts["exercise-profile-state"] = buildExerciseProfileStateJson()
+        artifacts["equipment-definitions"] = buildEquipmentDefinitionsJson(true)
+        artifacts["equipment-associations"] = buildEquipmentAssociationsJson()
+        artifacts["body-zones"] = buildExerciseBodyZonesJson(true)
+        artifacts["feedback"] = buildTrainingFeedbackJson(true)
+        artifacts["causal-deletions"] = buildCausalDeletionExportV1Json()
+        artifacts["program-executions"] = buildProgramExecutionsV1Json()
+        artifacts
+    }
+
+    /**
+     * Publishes only stable provenance facts; program definitions remain
+     * desktop-owned and are never reconstructed from Android session content.
+     */
+    internal fun buildProgramExecutionsV1Json(): String {
+        val executions = JSONArray()
+        val db = database.readableDatabase
+        db.rawQuery(
+            "SELECT source_program_id,source_program_session_id,session_id,'completed'," +
+                "COALESCE(ended_at,started_at) FROM sessions " +
+                "WHERE source_program_id IS NOT NULL " +
+                "UNION ALL " +
+                "SELECT source_program_id,source_program_session_id,session_id,'in_progress'," +
+                "updated_at FROM active_session_draft WHERE source_program_id IS NOT NULL " +
+                "ORDER BY 1,2",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                executions.put(
+                    JSONObject()
+                        .put("program_id", cursor.getString(0))
+                        .put("program_session_id", cursor.getString(1))
+                        .put("session_id", cursor.getString(2))
+                        .put("state", cursor.getString(3))
+                        .put("observed_at", cursor.getString(4)),
+                )
+            }
         }
+        return JSONObject()
+            .put("format", "trainlog-program-executions")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("executions", executions)
+            .toString()
+    }
 
     /** Direction-neutral stable-identity catalogue used before generation history. */
     internal fun buildPcCatalogJson(): String {
@@ -2305,6 +2358,9 @@ class TrainlogRepository(
             } ||
             (draft.sourceSessionId != null &&
                 (draft.sourceSessionId.isBlank() || draft.sessionType != SessionType.MAX_TEST)) ||
+            (draft.sourceProgramId == null) != (draft.sourceProgramSessionId == null) ||
+            draft.sourceProgramId?.isBlank() == true ||
+            draft.sourceProgramSessionId?.isBlank() == true ||
             /* exercise_id identifies the catalogue movement. Repeated passages
              * are valid; only their stable occurrence IDs must be unique. */
             draft.exercises
@@ -2455,6 +2511,18 @@ class TrainlogRepository(
                     forcedSessionId = lifecycleSessionId,
                     forcedStartedAt = active.draft.startedAt,
                 )
+
+            /* INVARIANT: completion moves the exact Program provenance from
+             * the singleton draft to history in the same transaction. */
+            db.execSQL(
+                "UPDATE sessions SET source_program_id=?," +
+                    "source_program_session_id=? WHERE session_id=?",
+                arrayOf(
+                    active.draft.sourceProgramId,
+                    active.draft.sourceProgramSessionId,
+                    sessionId,
+                ),
+            )
 
             /* CONTRACT: lifecycle transition changes table ownership, not the
              * stable note owner. Copy caches while causal state remains keyed
@@ -7095,7 +7163,9 @@ class TrainlogRepository(
                     d.session_id,
                     d.revision_id,
                     d.parent_revision_id,
-                    d.started_at
+                    d.started_at,
+                    d.source_program_id,
+                    d.source_program_session_id
                 FROM active_session_draft AS d
                 LEFT JOIN exercises AS e
                     ON e.id = d.selected_exercise_row_id
@@ -7140,6 +7210,8 @@ class TrainlogRepository(
                         revisionId = cursor.getString(19),
                         parentRevisionId = if (cursor.isNull(20)) null else cursor.getString(20),
                         startedAt = if (cursor.isNull(21)) null else cursor.getString(21),
+                        sourceProgramId = if (cursor.isNull(22)) null else cursor.getString(22),
+                        sourceProgramSessionId = if (cursor.isNull(23)) null else cursor.getString(23),
                         updatedAt =
                             cursor.getString(6),
                         warning =
@@ -7323,6 +7395,8 @@ class TrainlogRepository(
                 exercises = exercises,
                 sessionType = header.sessionType,
                 sourceSessionId = header.sourceSessionId,
+                sourceProgramId = header.sourceProgramId,
+                sourceProgramSessionId = header.sourceProgramSessionId,
                 form = header.form,
                 updatedAt = header.updatedAt,
             ),
@@ -7351,6 +7425,8 @@ class TrainlogRepository(
                 put("revision_id", draft.revisionId)
                 putOptionalString("parent_revision_id", draft.parentRevisionId)
                 putOptionalString("source_session_id", draft.sourceSessionId)
+                putOptionalString("source_program_id", draft.sourceProgramId)
+                putOptionalString("source_program_session_id", draft.sourceProgramSessionId)
                 putOptionalString("selected_equipment_id", draft.form.selectedEquipmentId)
                 put("weight_text", draft.form.weightText)
                 put("max_weight_text", draft.form.maxWeightText)
@@ -7852,6 +7928,8 @@ class TrainlogRepository(
         val sessionType: SessionType,
         val form: SessionDraftForm,
         val sourceSessionId: String?,
+        val sourceProgramId: String?,
+        val sourceProgramSessionId: String?,
         val sessionId: String?,
         val revisionId: String,
         val parentRevisionId: String?,
@@ -8339,12 +8417,15 @@ class TrainlogRepository(
                         )
                     }
                 }
+                val execution = programSessionExecution(db, programId, sessionId)
                 sessions += SyncedProgramSession(
                     sessionId,
                     sessionCursor.getString(1),
                     sessionCursor.getString(2),
                     if (sessionCursor.isNull(3)) null else sessionCursor.getString(3),
                     if (sessionCursor.isNull(4)) null else sessionCursor.getString(4),
+                    execution.first,
+                    execution.second,
                     entries,
                 )
             }
@@ -8358,6 +8439,141 @@ class TrainlogRepository(
             header.endDate,
             sessions,
         )
+    }
+
+    private fun programSessionExecution(
+        db: SQLiteDatabase,
+        programId: String,
+        programSessionId: String,
+    ): Pair<ProgramSessionExecutionState, String?> {
+        val completed = db.rawQuery(
+            "SELECT session_id FROM sessions WHERE source_program_id=? AND " +
+                "source_program_session_id=? LIMIT 2",
+            arrayOf(programId, programSessionId),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else cursor.getString(0).also {
+                check(!cursor.moveToNext()) { "Duplicate Program session execution." }
+            }
+        }
+        if (completed != null) {
+            return ProgramSessionExecutionState.COMPLETED to completed
+        }
+        val active = db.rawQuery(
+            "SELECT session_id FROM active_session_draft WHERE id=1 AND " +
+                "source_program_id=? AND source_program_session_id=?",
+            arrayOf(programId, programSessionId),
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        return if (active == null) {
+            ProgramSessionExecutionState.TODO to null
+        } else {
+            ProgramSessionExecutionState.IN_PROGRESS to active
+        }
+    }
+
+    /**
+     * Starts exactly one Program session from stable provenance.
+     *
+     * The singleton draft and provenance lookup share one transaction. Replay
+     * returns the existing draft, completed provenance is terminal, and an
+     * unrelated draft is never overwritten.
+     */
+    fun startSyncedProgramSession(
+        programId: String,
+        programSessionId: String,
+    ): StartProgramSessionResult {
+        val db = database.writableDatabase
+        return try {
+            db.beginTransaction()
+            try {
+                val available = db.rawQuery(
+                    "SELECT s.session_type FROM synced_program_sessions s " +
+                        "JOIN synced_programs p ON p.program_id=s.program_id " +
+                        "WHERE p.program_id=? AND s.program_session_id=? AND p.state='active'",
+                    arrayOf(programId, programSessionId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                    ?: return StartProgramSessionResult.NotAvailable
+
+                val execution = programSessionExecution(db, programId, programSessionId)
+                if (execution.first == ProgramSessionExecutionState.COMPLETED) {
+                    return StartProgramSessionResult.AlreadyCompleted
+                }
+                if (execution.first == ProgramSessionExecutionState.IN_PROGRESS) {
+                    return StartProgramSessionResult.AlreadyActive
+                }
+                val occupied = db.rawQuery(
+                    "SELECT 1 FROM active_session_draft WHERE id=1",
+                    null,
+                ).use { it.moveToFirst() }
+                if (occupied) {
+                    return StartProgramSessionResult.ExistingUnrelatedDraft
+                }
+
+                val occurrences = readSyncedProgramOccurrences(db, programSessionId)
+                check(occurrences.isNotEmpty()) { "Program session has no executable occurrence." }
+                val type = if (available == SessionType.MAX_TEST.wireValue) {
+                    SessionType.MAX_TEST
+                } else {
+                    SessionType.TRAINING
+                }
+                persistActiveSessionDraft(
+                    db,
+                    ActiveSessionDraft(
+                        sessionId = "se_${UUID.randomUUID()}",
+                        revisionId = "dr_${UUID.randomUUID()}",
+                        startedAt = OffsetDateTime.now().toString(),
+                        exercises = occurrences,
+                        sessionType = type,
+                        sourceProgramId = programId,
+                        sourceProgramSessionId = programSessionId,
+                    ),
+                )
+                db.setTransactionSuccessful()
+                StartProgramSessionResult.Started
+            } finally {
+                db.endTransaction()
+            }
+        } catch (error: Exception) {
+            StartProgramSessionResult.Error(
+                error.message ?: "Program session could not be started.",
+            )
+        }
+    }
+
+    private fun readSyncedProgramOccurrences(
+        db: SQLiteDatabase,
+        programSessionId: String,
+    ): List<SessionExerciseDraft> = buildList {
+        db.rawQuery(
+            "SELECT pe.entry_id,pe.exercise_id,pe.equipment_id,pe.load_mode," +
+                "pe.rest_seconds,pe.target_sets,pe.target_reps," +
+                "pe.target_duration_seconds,pe.target_weight_kg " +
+                "FROM synced_program_entries pe WHERE pe.program_session_id=? " +
+                "ORDER BY pe.position,pe.entry_id",
+            arrayOf(programSessionId),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val exercise = readExerciseProfileExact(db, resolveExerciseId(db, cursor.getString(1)))
+                    ?: error("Program exercise is unavailable: ${cursor.getString(1)}")
+                val equipmentId = if (cursor.isNull(2)) null else cursor.getString(2)
+                check(equipmentId == null || lookupEquipmentRowIdOrNull(db, equipmentId) != null) {
+                    "Program equipment is unavailable: $equipmentId"
+                }
+                add(
+                    SessionExerciseDraft(
+                        exercise = exercise,
+                        equipmentId = equipmentId,
+                        plan = SessionExercisePlan(
+                            sets = if (cursor.isNull(5)) 0 else cursor.getInt(5),
+                            reps = if (cursor.isNull(6)) null else cursor.getInt(6),
+                            durationSeconds = if (cursor.isNull(7)) null else cursor.getInt(7),
+                            weightKg = if (cursor.isNull(8)) null else cursor.getDouble(8),
+                            loadMode = SessionLoadMode.fromWire(cursor.getString(3)),
+                            restSeconds = cursor.getInt(4),
+                        ),
+                    ),
+                )
+            }
+        }
     }
 
     private fun normalizeName(
@@ -8538,7 +8754,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    24,
+    25,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -8587,6 +8803,7 @@ private class TrainlogDatabaseHelper(
         createSessionPreparationTables(db)
         createSessionPreparationWithdrawalTable(db)
         createSyncedProgramTables(db)
+        createProgramExecutionProvenance(db)
         seedEquipment(db)
     }
 
@@ -8784,6 +9001,14 @@ private class TrainlogDatabaseHelper(
             createSyncedProgramTables(db)
             version = 24
         }
+        if (version < 25 && newVersion >= 25) {
+            /* WHY: completion state must follow durable provenance, never a
+             * title, date, position, or content heuristic. CONTRACT: v25 adds
+             * nullable paired identities to the singleton draft and completed
+             * session. INVARIANT: migration creates no draft or workout. */
+            createProgramExecutionProvenance(db)
+            version = 25
+        }
 
         if (version != newVersion) {
             error(
@@ -8830,6 +9055,23 @@ private class TrainlogDatabaseHelper(
                 predecessor_revision_id TEXT NOT NULL, revision_id TEXT NOT NULL,
                 requested_at TEXT NOT NULL
             )""".trimIndent(),
+        )
+    }
+
+    private fun createProgramExecutionProvenance(db: SQLiteDatabase) {
+        fun addColumn(table: String, name: String) {
+            if (!tableHasColumn(db, table, name)) {
+                db.execSQL("ALTER TABLE $table ADD COLUMN $name TEXT")
+            }
+        }
+        addColumn("active_session_draft", "source_program_id")
+        addColumn("active_session_draft", "source_program_session_id")
+        addColumn("sessions", "source_program_id")
+        addColumn("sessions", "source_program_session_id")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS sessions_program_execution_v25 " +
+                "ON sessions(source_program_id,source_program_session_id) " +
+                "WHERE source_program_id IS NOT NULL",
         )
     }
 
@@ -9560,7 +9802,13 @@ private class TrainlogDatabaseHelper(
                             'training',
                             'max_test'
                         )
-                    )
+                    ),
+                source_program_id TEXT,
+                source_program_session_id TEXT,
+                CHECK(
+                    (source_program_id IS NULL) =
+                    (source_program_session_id IS NULL)
+                )
             );
             """.trimIndent()
         )
@@ -9794,6 +10042,8 @@ private class TrainlogDatabaseHelper(
                 session_id TEXT UNIQUE,
                 revision_id TEXT NOT NULL DEFAULT 'dr_legacy_v1',
                 parent_revision_id TEXT,
+                source_program_id TEXT,
+                source_program_session_id TEXT,
                 notes TEXT CHECK(notes IS NULL OR length(CAST(notes AS BLOB)) <= 4096)
             );
             """.trimIndent()

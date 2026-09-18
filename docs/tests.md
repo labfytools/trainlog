@@ -75,6 +75,16 @@ no duplication. Python Programs/synchronization suites cover the staged
 companion's full snapshot, unacknowledged tombstone publication, and ACK-driven
 acknowledgment without changing mobile V3, catalog, or preparation artifacts.
 
+Program execution regressions additionally cover Android schema v24 to v25,
+start/replay/singleton protection, target-only draft creation, completion,
+restart persistence and companion serialization. The integrated generation
+test uses the production desktop and Android producers/consumers to import a
+Program, execute one session, import completed history and its V1 provenance,
+acknowledge the correlated generation, expose Web `completed`, then continue
+through Program deletion, restart and old-generation replay without duplication
+or resurrection. The desktop populated migration test now continues through
+schema v27 and proves the new execution ledger starts empty.
+
 `test_web_sessions_browser.py` runs headless Firefox against the embedded
 production assets and C HTTP server with private temporary XDG roots. It creates
 only a synthetic ready preparation and delivery, verifies French then persisted

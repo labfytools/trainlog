@@ -112,6 +112,9 @@ data class ActiveSessionDraft(
     val sessionType: SessionType = SessionType.TRAINING,
     /** Existing max_test session updated atomically on finalization, if any. */
     val sourceSessionId: String? = null,
+    /** Stable desktop-owned Program provenance; both values are present or absent. */
+    val sourceProgramId: String? = null,
+    val sourceProgramSessionId: String? = null,
     val form: SessionDraftForm = SessionDraftForm(),
     val updatedAt: String = "",
 )

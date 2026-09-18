@@ -39,6 +39,8 @@ export interface ProgramSession {
   session_type: 'training' | 'max_test'
   planned_for: string | null
   note: string | null
+  execution_state: 'todo' | 'prepared' | 'in_progress' | 'completed'
+  execution_session_id: string | null
   occurrences: ProgramOccurrence[]
 }
 

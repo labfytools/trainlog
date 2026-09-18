@@ -149,6 +149,63 @@ class SyncGenerationServiceTest {
                 acceptAndroidAck(liveGenerationId, liveAck).contains("ACK_ACCEPT=acknowledged")
             )
 
+            val programSessionId =
+                "pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+            assertEquals(
+                StartProgramSessionResult.Started,
+                android.startSyncedProgramSession(programId, programSessionId),
+            )
+            val active =
+                (android.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded).draft
+            val performed = active.copy(
+                exercises = active.exercises.map { occurrence ->
+                    occurrence.copy(
+                        sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0)),
+                    )
+                },
+            )
+            assertEquals(
+                ActiveDraftMutationResult.Saved,
+                android.saveActiveSessionDraft(performed),
+            )
+            assertTrue(android.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+            val completedSessionId = android.listSessions().single().sessionId
+            val androidGeneration = service.capture(root, desktopPeer)
+            val androidPublished = service.publish(
+                androidGeneration,
+                java.io.File(root, "android-objects"),
+            )
+            val desktopAck = java.io.File(root, "android-program-execution-ack.json")
+            run(
+                "python3",
+                generationTool,
+                "consume-desktop",
+                androidPublished.absolutePath,
+                "--database",
+                desktopDb.absolutePath,
+                "--ack-output",
+                desktopAck.absolutePath,
+            )
+            assertEquals(
+                "acknowledged",
+                service.acceptAcknowledgement(desktopAck.readBytes()),
+            )
+            assertEquals(
+                "$programSessionId|$completedSessionId|completed",
+                run(
+                    "sqlite3",
+                    desktopDb.absolutePath,
+                    "SELECT program_session_id || '|' || session_id || '|' || state " +
+                        "FROM program_session_executions;",
+                ).trim(),
+            )
+            val completedDetail = run(
+                fixture.absolutePath,
+                desktopDb.absolutePath,
+                "program-detail",
+            )
+            assertTrue(completedDetail.contains("\"execution_state\":\"completed\""))
+
             val deleted =
                 run(
                     fixture.absolutePath,
@@ -329,7 +386,7 @@ class SyncGenerationServiceTest {
                 .use { db ->
                     db.rawQuery("PRAGMA user_version", null).use {
                         assertTrue(it.moveToFirst())
-                        assertEquals(24, it.getInt(0))
+                        assertEquals(25, it.getInt(0))
                     }
                     db.rawQuery("SELECT COUNT(*) FROM exercises", null).use {
                         assertTrue(it.moveToFirst())

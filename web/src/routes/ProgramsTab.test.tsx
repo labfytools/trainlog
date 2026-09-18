@@ -165,6 +165,8 @@ describe('Programs tab', () => {
             session_type: 'training',
             planned_for: null,
             note: null,
+            execution_state: 'todo',
+            execution_session_id: null,
             occurrences: [{
               entry_id: 'pge_test',
               position: 0,

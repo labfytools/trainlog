@@ -185,6 +185,7 @@ class BrowserSessionsTest(unittest.TestCase):
                 detail = driver.find_element(By.CSS_SELECTOR, "main").text
                 self.assertIn("PROGRAMME · ACTIF", detail)
                 self.assertIn("Import trainlog-program v1", detail)
+                self.assertIn("À faire", detail)
                 self.assertLess(detail.index("1. Séance A ordonnée"), detail.index("2. Séance B ordonnée"))
 
                 driver.find_element(

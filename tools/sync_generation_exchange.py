@@ -28,6 +28,7 @@ import import_exercise_body_zones
 import import_exercise_profile_state
 import import_mobile_export
 import import_training_feedback
+import program_execution_exchange
 import export_equipment_definitions
 import export_exercise_body_zones
 import export_pc_mobile
@@ -75,7 +76,9 @@ ARTIFACTS = (
     ("programs-v1", "trainlog-programs", 1, "programs-v1.json", False,
      "export_programs.py", ()),
 )
-SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS}
+SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS} | {
+    ("trainlog-program-executions", 1),
+}
 
 
 class GenerationError(RuntimeError):
@@ -203,9 +206,9 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25, 26)
+    supported_versions = (24, 25, 26, 27)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        raise GenerationError("desktop schema v24, v25 or v26 required")
+        raise GenerationError("desktop schema v24, v25, v26 or v27 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -602,6 +605,10 @@ def consume_desktop(database: Path, directory: Path) -> dict:
     zones_payload = strict_json(required("body-zones").read_bytes(), MAX_ARTIFACT)
     parsed_zones = import_exercise_body_zones.parse_payload(zones_payload)
     feedback = import_training_feedback.load(required("feedback"))
+    program_executions = (
+        program_execution_exchange.load(listed["program-executions"])
+        if "program-executions" in listed else None
+    )
     mobile_occurrences = import_equipment_associations.load_mobile_occurrences(required("history"))
 
     with closing(connect_database(database)) as db:
@@ -633,6 +640,8 @@ def consume_desktop(database: Path, directory: Path) -> dict:
             import_exercise_body_zones.apply_body_zones(db, parsed_zones, {}, complete_causal_envelope=True)
             import_training_feedback.apply_feedback(db, feedback, complete_causal_envelope=True)
             execution_draft_exchange.import_document(db, drafts, own_transaction=False)
+            if program_executions is not None:
+                program_execution_exchange.apply_executions(db, program_executions)
             ack = record_consumed(db, manifest, manifest_digest)
             db.commit()
             return ack

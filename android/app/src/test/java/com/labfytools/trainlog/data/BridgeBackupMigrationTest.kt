@@ -43,7 +43,7 @@ class BridgeBackupMigrationTest {
                     null,
                     android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
                 )
-                .use { assertEquals(24, it.version) }
+                .use { assertEquals(25, it.version) }
         } finally {
             repository.close()
             context.deleteDatabase(name)
