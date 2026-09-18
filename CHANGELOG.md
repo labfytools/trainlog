@@ -7,6 +7,12 @@
   explicit proposal derivation, desktop schema v23, Android schema v22 and the
   separate `trainlog-session-preparations` V1 generation participant.
 
+- Completed the controlled Sessions V1 deployment and delivered a six-entry
+  validation preparation to Android without starting it or replacing an active
+  draft. Foreground generation retries now emit a fresh daemon request and
+  resume the exact interrupted generation until both peer halves are durable,
+  preventing false transport timeouts and duplicate recapture.
+
 - Added compatible non-destructive generation archival on desktop schema v22
   and Android schema v21. Only exactly acknowledged generations older than the
   two active recovery tips leave admission after a verified durable payload

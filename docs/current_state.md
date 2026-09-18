@@ -72,7 +72,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
-| Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (isolated software validation; controlled deployment pending) |
+| Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
@@ -227,6 +227,13 @@ occurrences, persistent HTTP idempotency keys and delivery-to-execution identity
 Android schema v22 stores received preparations separately from AI proposals
 and the active singleton. An exact correlated ACK is required before delivery
 is shown as acknowledged.
+
+The controlled deployment preserved the installed Android signing identity and
+advanced its private `versionCode` without uninstalling or clearing data. The
+validation preparation derived from the six-occurrence proposal remained a
+separate pending Android preparation across application and service restart.
+Two correlated generation conversations completed without a duplicate,
+performed fact, or active-draft replacement.
 
 The Next Session tile no longer treats the frozen Dashboard
 `next_session.available` placeholder as a durable inventory. A separate bounded

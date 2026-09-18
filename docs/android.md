@@ -972,3 +972,11 @@ ledger without changing any domain identity. Its full-generation foreground
 coordinator waits for correlated objects, tolerates stale objects left by
 interrupted runs, strictly revalidates desktop-retained historical ACKs, and
 shows completion only after both durable peer acknowledgements.
+
+Each explicit foreground generation attempt publishes the Android peer before
+emitting one fresh legacy request signal for `trainlog-syncd`. If transport is
+interrupted after generation publication, a later attempt resumes the exact
+stored generation instead of recapturing mutable data. An acknowledged Android
+generation remains resumable only until the desktop generation for that run is
+durably consumed; a fully completed run is then excluded from foreground
+selection. This preserves late-ACK recovery without replaying completed runs.

@@ -817,6 +817,14 @@ for its ACK). Objects retained from an interrupted conversation are ignored
 until atomically replaced by matching objects. After both peer ACKs, Android
 reports completion directly; it does not enter the legacy receipt wait state.
 
+The peer publication precedes one fresh `trainlog-sync-request-v1` signal on
+every explicit Android attempt. This wakes the existing user-session daemon;
+it is not an ACK and does not alter generation identity. A retry may resume an
+exact `captured`, `published`, or `waiting_acknowledgement` generation. It may
+also finish the inbound half of an acknowledged outbound generation when no
+terminal consumed/rejected inbound ledger row exists for the run. It never
+recaptures state under that run identity.
+
 The 2026-09-17 private rollout exercised this path with the production libmtp
 adapter on one paired Samsung phone. Three complete bidirectional conversations
 passed, including service/application restart and an idempotent replay whose

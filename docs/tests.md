@@ -10,7 +10,11 @@ built into the canonical Meson binary.
 singleton refusal, explicit start, reserved execution identity and absence of
 performed facts. `SyncGenerationServiceTest` and
 `SyncDeploymentConversationTest` exercise the real optional artifact through
-generation validation and 24 bidirectional conversations.
+generation validation and 24 bidirectional conversations. It also asserts that
+every foreground conversation emits exactly one fresh daemon request signal;
+the coordinator's production resume predicate preserves an interrupted
+generation identity until the counterpart generation has a durable terminal
+consumption row.
 
 `SyncDeploymentConversationTest` executes both production generation services
 and reopens Android storage. `test_web_sync_browser.py` adds a real Firefox click
