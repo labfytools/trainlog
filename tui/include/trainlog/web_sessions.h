@@ -25,6 +25,12 @@ typedef struct TrainlogWebSessionsPageQuery {
 } TrainlogWebSessionsPageQuery;
 
 /*
+ * CONTRACT: every successful JSON-producing function below transfers one
+ * heap allocation through output_json; the caller owns it and releases it
+ * with free(). Borrowed input strings need only remain valid for the call.
+ */
+
+/*
  * CONTRACT: database and query strings are borrowed for the call. On success,
  * output_json is heap-owned by the caller and must be released with free().
  * A page contains at most TRAINLOG_WEB_SESSIONS_PAGE_MAX rows plus a `more`

@@ -143,6 +143,9 @@ static bool creation_replay_revision_and_pagination(void) {
                                           &updated_size) == TRAINLOG_STATUS_OK);
     CHECK(updated_size > 0U);
     CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_revisions") == 2);
+    free(detail);
+    detail = NULL;
+    detail_size = 0U;
     CHECK(trainlog_web_sessions_save_json(database,
                                           NULL,
                                           "",
