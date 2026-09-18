@@ -117,14 +117,33 @@ def load_mobile_occurrences(path):
     return occurrences
 
 
-def apply_associations(connection, payload, known, mobile_occurrences):
+def session_is_causally_deleted(connection, session_id):
+    """Return whether durable causal state dominates one historical session."""
+    row = connection.execute(
+        "SELECT deleted FROM sync_causal_state "
+        "WHERE target_kind='session' AND target_id=?",
+        (session_id,),
+    ).fetchone()
+    return row is not None and row[0] == 1
+
+
+def apply_associations(connection, payload, known, mobile_occurrences,
+                       complete_causal_envelope=False):
     if payload.get("format") != FORMAT or payload.get("version") != VERSION or set(payload) != {"format", "version", "generated_at", "associations"}:
         fail("extension équipement non supportée")
     known = set(known); known.update(row[0] for row in connection.execute("SELECT equipment_id FROM custom_equipment"))
     associations = validate_associations(payload["associations"], known)
     for session_id, entry_id, exercise_id, equipment_id in associations:
         exists = connection.execute("SELECT e.exercise_id,se.equipment_id FROM session_exercises se JOIN sessions s ON s.id=se.session_row_id JOIN exercises e ON e.id=se.exercise_row_id WHERE s.session_id=? AND se.entry_id=?", (session_id, entry_id)).fetchone()
-        if exists is None: fail(f"entrée séance inconnue: {session_id}/{entry_id}")
+        if exists is None:
+            # INVARIANT: a complete generation applies its causal operations
+            # before snapshot companions. An association owned by a deleted
+            # session is therefore an older live fact and cannot resurrect or
+            # invalidate that tombstone. Standalone imports remain strict.
+            if complete_causal_envelope and session_is_causally_deleted(
+                    connection, session_id):
+                continue
+            fail(f"entrée séance inconnue: {session_id}/{entry_id}")
         stored_canonical = canonical_exercise_id(connection, exists[0]); incoming_canonical = canonical_exercise_id(connection, exercise_id)
         if stored_canonical != incoming_canonical:
             proof = mobile_occurrences.get((session_id, entry_id))

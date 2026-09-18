@@ -230,11 +230,12 @@ class GenerationTest(unittest.TestCase):
              mock.patch.object(generation.import_equipment_definitions,"apply_definitions"), \
              mock.patch.object(generation.import_mobile_export,"apply_payload",side_effect=write_fact), \
              mock.patch.object(generation.import_exercise_aliases,"apply_aliases"), \
-             mock.patch.object(generation.import_equipment_associations,"apply_associations"), \
+             mock.patch.object(generation.import_equipment_associations,"apply_associations") as apply_associations, \
              mock.patch.object(generation.import_exercise_body_zones,"apply_body_zones"), \
              mock.patch.object(generation.import_training_feedback,"apply_feedback",side_effect=ValueError("late semantic failure")):
             rejected=generation.consume_desktop(self.database,directory)
             self.assertEqual("rejected",rejected["result"]);self.assertIn("late semantic",rejected["diagnostic"])
+            self.assertTrue(apply_associations.call_args.kwargs["complete_causal_envelope"])
         with closing(sqlite3.connect(self.database)) as db:
             self.assertEqual(0,db.execute("SELECT COUNT(*) FROM facts WHERE id='partial'").fetchone()[0])
             self.assertEqual(1,db.execute("SELECT COUNT(*) FROM sync_consumed_generations WHERE result='rejected'").fetchone()[0])

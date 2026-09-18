@@ -1,4 +1,5 @@
 """Exercise the real desktop companion exporter/importer on temporary DBs."""
+import importlib.util
 import json
 import sqlite3
 import subprocess
@@ -7,6 +8,14 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+SPEC = importlib.util.spec_from_file_location(
+    "import_equipment_associations",
+    ROOT / "tools/import_equipment_associations.py",
+)
+ASSOCIATIONS = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(ASSOCIATIONS)
 SOURCE_ID = "ex_43c7375f-934c-4650-930c-45807d2f2929"
 CANONICAL_ID = "ex_2d488c08-194c-4051-a3c9-34471646c1d3"
 
@@ -236,6 +245,67 @@ def main():
         )
         assert exported.returncode == 0, exported.stdout + exported.stderr
         assert json.loads(custom_artifact.read_text())['associations'][0]['equipment_id'] == 'custom_rack'
+
+        # A complete causal envelope may contain an older association snapshot
+        # for a session whose tombstone was applied earlier in the transaction.
+        # The same companion remains invalid as a standalone import.
+        deleted_session = 'se_deleted'
+        deleted_entry = 'sxe_deleted'
+        dominated_payload = {
+            'format': 'trainlog-equipment-associations',
+            'version': 2,
+            'generated_at': '2026-01-01T00:00:00+00:00',
+            'associations': [{
+                'session_id': deleted_session,
+                'entry_id': deleted_entry,
+                'exercise_id': 'ex_fixture',
+                'state': 'set',
+                'equipment_id': 'leg_press',
+            }],
+        }
+        causal_db = sqlite3.connect(':memory:')
+        causal_db.executescript("""
+            CREATE TABLE exercises(id INTEGER PRIMARY KEY, exercise_id TEXT UNIQUE);
+            CREATE TABLE sessions(id INTEGER PRIMARY KEY, session_id TEXT UNIQUE);
+            CREATE TABLE session_exercises(
+                id INTEGER PRIMARY KEY,
+                entry_id TEXT UNIQUE,
+                session_row_id INTEGER,
+                exercise_row_id INTEGER,
+                equipment_id TEXT
+            );
+            CREATE TABLE custom_equipment(equipment_id TEXT PRIMARY KEY);
+            CREATE TABLE sync_causal_state(
+                target_kind TEXT,
+                target_id TEXT,
+                current_revision_id TEXT,
+                deleted INTEGER,
+                operation_id TEXT,
+                PRIMARY KEY(target_kind, target_id)
+            );
+        """)
+        causal_db.execute(
+            "INSERT INTO sync_causal_state VALUES('session',?,'del_fixture',1,'del_fixture')",
+            (deleted_session,),
+        )
+        try:
+            ASSOCIATIONS.apply_associations(
+                causal_db,
+                dominated_payload,
+                {'leg_press'},
+                {(deleted_session, deleted_entry): 'ex_fixture'},
+            )
+            raise AssertionError('standalone missing association was accepted')
+        except ValueError as error:
+            assert 'entrée séance inconnue' in str(error)
+        assert ASSOCIATIONS.apply_associations(
+            causal_db,
+            dominated_payload,
+            {'leg_press'},
+            {(deleted_session, deleted_entry): 'ex_fixture'},
+            complete_causal_envelope=True,
+        ) == 1
+        causal_db.close()
     print('PASS equipment association exchange')
 
 

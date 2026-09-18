@@ -641,7 +641,13 @@ def consume_desktop(database: Path, directory: Path) -> dict:
             import_mobile_export.apply_payload(db, history, complete_causal_envelope=True)
             import_exercise_profile_state.apply_profile_state(db, profile)
             import_exercise_aliases.apply_aliases(db, aliases)
-            import_equipment_associations.apply_associations(db, association_payload, reserved, mobile_occurrences)
+            import_equipment_associations.apply_associations(
+                db,
+                association_payload,
+                reserved,
+                mobile_occurrences,
+                complete_causal_envelope=True,
+            )
             import_exercise_body_zones.apply_body_zones(db, parsed_zones, {}, complete_causal_envelope=True)
             import_training_feedback.apply_feedback(db, feedback, complete_causal_envelope=True)
             execution_draft_exchange.import_document(db, drafts, own_transaction=False)
