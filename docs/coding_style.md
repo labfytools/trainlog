@@ -102,23 +102,20 @@ explicit control-flow braces, vertical long parameter lists, and no short
 function or control body on one line. Contract literals may exceed the target
 when splitting them would make the protocol less reviewable.
 
-Do not apply the formatter blindly to the entire historical tree. A change
-normalizes the files it owns and checks that explicit scope. The reproducible,
-non-mutating check for the currently normalized C readability scope is:
+Readable source is a blocking acceptance criterion. Do not compress source to
+save lines or model tokens. Tests and fixtures follow the same standard.
+
+Do not apply the formatter blindly to the entire historical tree. Format the
+new or modified regions, then use the reproducible, non-mutating changed-file
+gate with the branch base revision:
 
 ```bash
-clang-format --dry-run --Werror \
-  tui/src/dashboard_layout.c \
-  tui/src/generation_mtp.c \
-  tui/src/json_writer.c \
-  tui/src/web_dashboard.c \
-  tui/src/web_dashboard_json.c \
-  tui/include/trainlog/generation_mtp.h \
-  tui/tools/generation_mtp_adapter.c \
-  tui/tests/generation_mtp_adapter_double.c \
-  tui/tests/test_generation_mtp.c \
-  tui/tests/test_web_server.c
+tools/check_changed_c_format.sh main
 ```
+
+The helper derives the merge-base, includes changed and untracked C/H files,
+and invokes `clang-format --dry-run --Werror` without modifying them. A
+different base revision may be supplied for stacked work.
 
 Formatting changes should not be mixed with unrelated semantic changes when
 avoidable. Review readability explicitly before the final commit, including

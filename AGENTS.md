@@ -294,6 +294,11 @@ flow, declarations, assertions, or cleanup onto one line to reduce line or
 token count. Grouped missions may and should use small comprehensible commits.
 Perform an explicit readability review before the final commit.
 
+Readable source is a blocking acceptance criterion. Every new or modified C/H
+file must pass the changed-file `clang-format` check; tests and fixtures follow
+the same rule. Run `tools/check_changed_c_format.sh <base-revision>` without
+formatting unrelated historical files.
+
 Canonical documents:
 
 - `README.md`;
