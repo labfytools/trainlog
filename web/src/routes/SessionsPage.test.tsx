@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { SessionsPage } from './SessionsPage'
+import { commandOccurrence, SessionsPage } from './SessionsPage'
 
 function page(kind: string, items: unknown[]) {
   return { api_version: 1, kind, offset: 0, more: false, next_offset: items.length, items }
@@ -11,6 +11,19 @@ function response(value: unknown) {
 }
 
 describe('Sessions page', () => {
+  it('removes presentation-only fields from a preparation command', () => {
+    const command = commandOccurrence({
+      exercise_id: 'ex_one', exercise_name: 'Visible name', equipment_id: null,
+      recording_mode: 'sets', tracking_mode: 'reps', load_mode: 'external', rest_seconds: 90,
+      target_sets: 3, target_reps: 8, target_duration_seconds: null, target_weight_kg: 42,
+      notes: null,
+    })
+    expect(command).not.toHaveProperty('exercise_name')
+    expect(command).not.toHaveProperty('recording_mode')
+    expect(command).not.toHaveProperty('tracking_mode')
+    expect(command).toMatchObject({ exercise_id: 'ex_one', target_sets: 3, rest_seconds: 90 })
+  })
+
   it('keeps proposals distinct and opens a stable deep link', async () => {
     window.history.replaceState(null, '', '/seances')
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {

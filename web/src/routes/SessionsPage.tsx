@@ -31,6 +31,42 @@ function emptyInput(): PreparationInput {
     editing_state: 'draft', occurrences: [] }
 }
 
+function editableOccurrence(
+  value: PreparationOccurrence,
+  preserveIdentity: boolean,
+): PreparationOccurrence {
+  return {
+    ...(preserveIdentity ? { entry_id: value.entry_id } : {}),
+    exercise_id: value.exercise_id,
+    exercise_name: value.exercise_name,
+    equipment_id: value.equipment_id,
+    recording_mode: value.recording_mode,
+    tracking_mode: value.tracking_mode,
+    load_mode: value.load_mode,
+    rest_seconds: value.rest_seconds,
+    target_sets: value.target_sets,
+    target_reps: value.target_reps,
+    target_duration_seconds: value.target_duration_seconds,
+    target_weight_kg: value.target_weight_kg,
+    notes: value.notes,
+  }
+}
+
+export function commandOccurrence(value: PreparationOccurrence): PreparationOccurrence {
+  return {
+    ...(value.entry_id ? { entry_id: value.entry_id } : {}),
+    exercise_id: value.exercise_id,
+    equipment_id: value.equipment_id,
+    load_mode: value.load_mode,
+    rest_seconds: value.rest_seconds,
+    target_sets: value.target_sets,
+    target_reps: value.target_reps,
+    target_duration_seconds: value.target_duration_seconds,
+    target_weight_kg: value.target_weight_kg,
+    notes: value.notes,
+  }
+}
+
 function Editor({ initial, onSaved, onCancel }: {
   initial?: SessionDetail
   onSaved: (identity: string) => void
@@ -38,9 +74,8 @@ function Editor({ initial, onSaved, onCancel }: {
 }) {
   const [input, setInput] = useState<PreparationInput>(() => initial ? {
     title: initial.title, session_type: initial.session_type, planned_for: initial.planned_for,
-    notes: initial.notes, editing_state: 'draft', occurrences: initial.occurrences.map((value) => ({
-      ...value, entry_id: initial.kind === 'proposal' ? undefined : value.entry_id,
-    })),
+    notes: initial.notes, editing_state: 'draft', occurrences: initial.occurrences.map((value) =>
+      editableOccurrence(value, initial.kind === 'preparation')),
     ...(initial.kind === 'proposal' ? {
       source_proposal_id: initial.identity,
       source_payload_sha256: initial.source_fingerprint ?? undefined,
@@ -78,7 +113,8 @@ function Editor({ initial, onSaved, onCancel }: {
   const submit = async (ready: boolean) => {
     setSaving(true); setError('')
     try {
-      const result = await savePreparation({ ...input, editing_state: ready ? 'ready' : 'draft' },
+      const result = await savePreparation({ ...input, editing_state: ready ? 'ready' : 'draft',
+        occurrences: input.occurrences.map(commandOccurrence) },
         initial?.kind === 'preparation' ? initial.identity : undefined,
         initial?.kind === 'preparation' ? initial.revision_id : undefined)
       if (ready) await prepareForAndroid(result.preparation_id, result.revision_id)
