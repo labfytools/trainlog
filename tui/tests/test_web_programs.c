@@ -193,6 +193,13 @@ static bool import_archive_and_prepare(void) {
     char *second_entry;
 
     CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(scalar(database, "PRAGMA user_version") == 26);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM pragma_table_info('program_deletions') WHERE "
+                 "name IN('generation_id','acknowledged_at')") == 2);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND "
+                 "name='program_deletions_pending'") == 1);
     CHECK(trainlog_database_insert_exercise_profiled(database,
                                                      "ex_dddddddd-dddd-4ddd-8ddd-dddddddddddd",
                                                      "Exercise fixture",
@@ -284,8 +291,15 @@ static bool import_archive_and_prepare(void) {
                                              &response,
                                              &response_size) == TRAINLOG_STATUS_OK);
     CHECK(strstr(response, "\"state\":\"archived\"") != NULL);
+    CHECK(extract_string(response, "revision_id", revision, sizeof(revision)));
     free(response);
     response = NULL;
+    CHECK(trainlog_web_programs_prepare_json(database,
+                                             "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                             "pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                                             "request-prepare-after-archive",
+                                             &response,
+                                             &response_size) == TRAINLOG_STATUS_CONFLICT);
 
     CHECK(trainlog_web_programs_archive_json(database,
                                              "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -294,6 +308,59 @@ static bool import_archive_and_prepare(void) {
                                              &response,
                                              &response_size) == TRAINLOG_STATUS_OK);
     CHECK(strstr(response, "\"state\":\"archived\"") != NULL);
+    free(response);
+    response = NULL;
+
+    CHECK(trainlog_web_programs_delete_json(database,
+                                            "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                            revision,
+                                            "request-delete-readable",
+                                            &response,
+                                            &response_size) == TRAINLOG_STATUS_OK);
+    CHECK(strstr(response, "\"deleted_at\":") != NULL);
+    free(response);
+    response = NULL;
+    CHECK(trainlog_web_programs_delete_json(database,
+                                            "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                            revision,
+                                            "request-delete-readable",
+                                            &response,
+                                            &response_size) == TRAINLOG_STATUS_OK);
+    free(response);
+    response = NULL;
+    CHECK(trainlog_web_programs_delete_json(database,
+                                            "pg_11111111-1111-4111-8111-111111111111",
+                                            revision,
+                                            "request-delete-readable",
+                                            &response,
+                                            &response_size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM programs") == 2);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_sessions") == 2);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_session_entries") == 2);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparations") == 1);
+    CHECK(trainlog_web_programs_list_json(database, "", "", 0U, 24U, &response, &response_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(response, "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") == NULL);
+    CHECK(strstr(response, "\"preparation_count\":0") != NULL);
+    free(response);
+    response = NULL;
+    CHECK(trainlog_web_programs_detail_json(
+              database, "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", &response, &response_size) ==
+          TRAINLOG_STATUS_CONFLICT);
+    CHECK(trainlog_web_programs_prepare_json(database,
+                                             "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                                             "pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                                             "request-prepare-after-delete",
+                                             &response,
+                                             &response_size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(trainlog_web_programs_import_json(
+              database, PROGRAM_JSON, strlen(PROGRAM_JSON), true, &response, &response_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(response, "\"imported\":false") != NULL);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM programs WHERE deleted_at IS NOT NULL") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_deletions WHERE request_id LIKE "
+                 "'request-delete-%' AND generation_id IS NULL AND acknowledged_at IS NULL") == 1);
     free(response);
     trainlog_database_close(database);
     return true;

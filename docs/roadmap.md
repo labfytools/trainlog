@@ -24,7 +24,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v25, Android schema v23, Notcurses, direct
+Desktop schema v26, Android schema v24, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
@@ -59,7 +59,9 @@ explicit trusted opt-in. The authorized private direct-MTP rollout passed on
 real hardware; automatic V3 selection remains unchanged without that opt-in.
 The next separately contracted Web surface is Exercises. Sessions deletion and
 its Programs subtab are complete in software and are not reopened by that
-future contract.
+future contract. `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1` is
+implemented and validated in automated and real Firefox Programs presentation
+checks, but is not deployed. It must not be reopened by the Exercises contract.
 
 `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
 defines the complete-sync target and its bounded dependency order.

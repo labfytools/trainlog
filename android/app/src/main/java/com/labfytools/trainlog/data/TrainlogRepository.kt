@@ -38,6 +38,10 @@ import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.model.TrackingMode
+import com.labfytools.trainlog.model.SyncedProgramDetail
+import com.labfytools.trainlog.model.SyncedProgramOccurrence
+import com.labfytools.trainlog.model.SyncedProgramSession
+import com.labfytools.trainlog.model.SyncedProgramSummary
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
@@ -218,7 +222,14 @@ sealed interface MobileSessionImportResult {
     data object DatabaseError : MobileSessionImportResult
 }
 
+sealed interface ProgramsImportResult {
+    data class Applied(val imported: Int, val deleted: Int, val skipped: Int) : ProgramsImportResult
+    data class Invalid(val message: String) : ProgramsImportResult
+    data object DatabaseError : ProgramsImportResult
+}
+
 private class SyncLifecycleConflict(val ownerId: String) : RuntimeException()
+private class ProgramsImportInvalid(message: String) : RuntimeException(message)
 
 sealed interface CreateEquipmentResult {
     data class Created(val equipment: EquipmentCatalogEntry) : CreateEquipmentResult
@@ -8056,6 +8067,299 @@ class TrainlogRepository(
         secondaryZoneIds.forEach { insert(it, "secondary") }
     }
 
+    /**
+     * Applies the desktop-owned read-only program projection.
+     *
+     * WHY: snapshot omission is not proof of deletion on an intermittently connected phone.
+     * CONTRACT: the complete document is validated before one transactional replacement pass;
+     * explicit tombstones are applied before live rows. INVARIANT: a durable tombstone always
+     * wins over a later stale snapshot and never touches drafts, preparations, history or catalog.
+     */
+    fun applyProgramsV1Json(json: String): ProgramsImportResult {
+        if (json.toByteArray(StandardCharsets.UTF_8).size > 8 * 1024 * 1024 ||
+            !jsonHasUniqueObjectKeys(json)) return ProgramsImportResult.Invalid("Invalid Programs JSON.")
+        val root = try { JSONObject(json) } catch (_: Exception) {
+            return ProgramsImportResult.Invalid("Invalid Programs JSON.")
+        }
+        fun JSONObject.exact(vararg names: String): Boolean =
+            keys().asSequence().toSet() == names.toSet()
+        fun bounded(value: Any?, maximum: Int, nullable: Boolean = false): Boolean {
+            if (value == null || value == JSONObject.NULL) return nullable
+            val text = value as? String ?: return false
+            return text.isNotBlank() && text.toByteArray(StandardCharsets.UTF_8).size <= maximum
+        }
+        fun nullableBounded(value: Any?, maximum: Int): Boolean =
+            value == JSONObject.NULL || bounded(value, maximum)
+        fun date(value: Any?): Boolean = value == JSONObject.NULL ||
+            (value is String && try { LocalDate.parse(value); true } catch (_: Exception) { false })
+        fun timestamp(value: Any?): Boolean = value is String &&
+            try { OffsetDateTime.parse(value); true } catch (_: Exception) { false }
+        fun integer(value: Any?, minimum: Int, maximum: Int): Boolean =
+            (value is Int || value is Long) && (value as Number).toLong() in minimum.toLong()..maximum.toLong()
+        fun optionalInteger(value: Any?, minimum: Int, maximum: Int): Boolean =
+            value == JSONObject.NULL || integer(value, minimum, maximum)
+        fun optionalWeight(value: Any?): Boolean = value == JSONObject.NULL ||
+            (value is Number && value.toDouble().isFinite() && value.toDouble() >= 0.0)
+        try {
+            if (!root.exact("format", "version", "generated_at", "programs", "deletions") ||
+                root.optString("format") != "trainlog-programs" || root.opt("version") !is Int ||
+                root.getInt("version") != 1 || !timestamp(root.opt("generated_at")) ||
+                root.opt("programs") !is JSONArray || root.opt("deletions") !is JSONArray)
+                throw ProgramsImportInvalid("Unsupported Programs document.")
+            val programs = root.getJSONArray("programs")
+            val deletions = root.getJSONArray("deletions")
+            if (programs.length() > 256 || deletions.length() > 4096)
+                throw ProgramsImportInvalid("Programs document exceeds its item bound.")
+            val programIds = mutableSetOf<String>()
+            val sessionIds = mutableSetOf<String>()
+            val deletionIds = mutableSetOf<String>()
+            val deletedProgramIds = mutableSetOf<String>()
+            for (index in 0 until deletions.length()) {
+                val deletion = deletions.optJSONObject(index)
+                    ?: throw ProgramsImportInvalid("Invalid program deletion.")
+                if (!deletion.exact("deletion_id", "program_id", "predecessor_revision_id", "revision_id", "requested_at") ||
+                    !bounded(deletion.opt("deletion_id"), 128) ||
+                    !bounded(deletion.opt("program_id"), 128) ||
+                    !bounded(deletion.opt("predecessor_revision_id"), 128) ||
+                    !bounded(deletion.opt("revision_id"), 128) ||
+                    !timestamp(deletion.opt("requested_at")) ||
+                    !deletionIds.add(deletion.getString("deletion_id")) ||
+                    !deletedProgramIds.add(deletion.getString("program_id")))
+                    throw ProgramsImportInvalid("Invalid or duplicate program deletion.")
+            }
+            for (programIndex in 0 until programs.length()) {
+                val program = programs.optJSONObject(programIndex)
+                    ?: throw ProgramsImportInvalid("Invalid program.")
+                if (!program.exact(
+                        "program_id", "revision_id", "title", "note", "state", "start_date",
+                        "end_date", "created_at", "updated_at", "source_format", "source_version",
+                        "source_payload_sha256", "sessions",
+                    ) ||
+                    !bounded(program.opt("program_id"), 128) || !programIds.add(program.getString("program_id")) ||
+                    !bounded(program.opt("revision_id"), 128) || !bounded(program.opt("title"), 200) ||
+                    !nullableBounded(program.opt("note"), 4000) || program.optString("state") !in setOf("active", "archived") ||
+                    !date(program.opt("start_date")) || !date(program.opt("end_date")) ||
+                    !timestamp(program.opt("created_at")) || !timestamp(program.opt("updated_at")) ||
+                    !bounded(program.opt("source_format"), 64) || !integer(program.opt("source_version"), 1, Int.MAX_VALUE) ||
+                    (program.opt("source_payload_sha256") as? String)?.matches(Regex("^[0-9a-f]{64}$")) != true ||
+                    program.opt("sessions") !is JSONArray)
+                    throw ProgramsImportInvalid("Invalid program metadata.")
+                val sessions = program.getJSONArray("sessions")
+                if (sessions.length() !in 1..64) throw ProgramsImportInvalid("Invalid program session count.")
+                for (sessionIndex in 0 until sessions.length()) {
+                    val session = sessions.optJSONObject(sessionIndex)
+                        ?: throw ProgramsImportInvalid("Invalid program session.")
+                    if (!session.exact("program_session_id", "title", "session_type", "planned_for", "note", "occurrences") ||
+                        !bounded(session.opt("program_session_id"), 128) || !sessionIds.add(session.getString("program_session_id")) ||
+                        !bounded(session.opt("title"), 200) || session.optString("session_type") !in setOf("training", "max_test") ||
+                        !date(session.opt("planned_for")) || !nullableBounded(session.opt("note"), 4000) ||
+                        session.opt("occurrences") !is JSONArray)
+                        throw ProgramsImportInvalid("Invalid program session metadata.")
+                    val occurrences = session.getJSONArray("occurrences")
+                    if (occurrences.length() !in 1..64) throw ProgramsImportInvalid("Invalid program occurrence count.")
+                    val entryIds = mutableSetOf<String>()
+                    for (entryIndex in 0 until occurrences.length()) {
+                        val entry = occurrences.optJSONObject(entryIndex)
+                            ?: throw ProgramsImportInvalid("Invalid program occurrence.")
+                        if (!entry.exact(
+                                "entry_id", "exercise_id", "equipment_id", "load_mode",
+                                "rest_seconds", "target_sets", "target_reps",
+                                "target_duration_seconds", "target_weight_kg", "notes",
+                            ) ||
+                            !bounded(entry.opt("entry_id"), 128) || !entryIds.add(entry.getString("entry_id")) ||
+                            !bounded(entry.opt("exercise_id"), 128) || !nullableBounded(entry.opt("equipment_id"), 128) ||
+                            entry.optString("load_mode") !in setOf("none", "external", "assistance") ||
+                            !integer(entry.opt("rest_seconds"), 0, 86400) ||
+                            !optionalInteger(entry.opt("target_sets"), 1, 99) ||
+                            !optionalInteger(entry.opt("target_reps"), 1, 10000) ||
+                            !optionalInteger(entry.opt("target_duration_seconds"), 1, 604800) ||
+                            !optionalWeight(entry.opt("target_weight_kg")) || !nullableBounded(entry.opt("notes"), 4000) ||
+                            (entry.isNull("target_reps") == entry.isNull("target_duration_seconds")))
+                            throw ProgramsImportInvalid("Invalid program occurrence values.")
+                    }
+                }
+            }
+
+            val db = database.writableDatabase
+            db.beginTransaction()
+            try {
+                var deleted = 0
+                var imported = 0
+                var skipped = 0
+                for (index in 0 until deletions.length()) {
+                    val deletion = deletions.getJSONObject(index)
+                    val values = arrayOf(
+                        deletion.getString("deletion_id"), deletion.getString("program_id"),
+                        deletion.getString("predecessor_revision_id"), deletion.getString("revision_id"),
+                        deletion.getString("requested_at"),
+                    )
+                    val existing = db.rawQuery(
+                        "SELECT deletion_id,predecessor_revision_id,revision_id,requested_at FROM synced_program_deletions WHERE program_id=?",
+                        arrayOf(values[1]),
+                    ).use { cursor -> if (!cursor.moveToFirst()) null else List(4) { cursor.getString(it) } }
+                    if (existing != null && existing != listOf(values[0], values[2], values[3], values[4]))
+                        throw ProgramsImportInvalid("Program deletion identity conflict.")
+                    if (existing == null) {
+                        db.execSQL("INSERT INTO synced_program_deletions VALUES(?,?,?,?,?)", values)
+                        deleted++
+                    } else skipped++
+                    db.delete("synced_programs", "program_id=?", arrayOf(values[1]))
+                }
+                for (programIndex in 0 until programs.length()) {
+                    val program = programs.getJSONObject(programIndex)
+                    val id = program.getString("program_id")
+                    val tombstoned = db.rawQuery("SELECT 1 FROM synced_program_deletions WHERE program_id=?", arrayOf(id))
+                        .use { it.moveToFirst() }
+                    if (tombstoned) { skipped++; continue }
+                    val digest = causalDigest(program)
+                    val existing = db.rawQuery("SELECT revision_id,snapshot_sha256 FROM synced_programs WHERE program_id=?", arrayOf(id))
+                        .use { cursor -> if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getString(1) }
+                    if (existing?.first == program.getString("revision_id")) {
+                        if (existing.second != digest) throw ProgramsImportInvalid("Program revision identity conflict.")
+                        skipped++
+                        continue
+                    }
+                    db.delete("synced_programs", "program_id=?", arrayOf(id))
+                    db.execSQL(
+                        "INSERT INTO synced_programs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        arrayOf<Any?>(id, program.getString("revision_id"), program.getString("title"), program.optStringOrNull("note"),
+                            program.getString("state"), program.optStringOrNull("start_date"), program.optStringOrNull("end_date"),
+                            program.getString("created_at"), program.getString("updated_at"), program.getString("source_format"),
+                            program.getInt("source_version"), program.getString("source_payload_sha256"), digest),
+                    )
+                    val sessions = program.getJSONArray("sessions")
+                    for (sessionIndex in 0 until sessions.length()) {
+                        val session = sessions.getJSONObject(sessionIndex)
+                        val sessionId = session.getString("program_session_id")
+                        db.execSQL("INSERT INTO synced_program_sessions VALUES(?,?,?,?,?,?,?)", arrayOf<Any?>(
+                            sessionId, id, sessionIndex, session.getString("title"), session.getString("session_type"),
+                            session.optStringOrNull("planned_for"), session.optStringOrNull("note")))
+                        val entries = session.getJSONArray("occurrences")
+                        for (entryIndex in 0 until entries.length()) {
+                            val entry = entries.getJSONObject(entryIndex)
+                            db.execSQL("INSERT INTO synced_program_entries VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", arrayOf<Any?>(
+                                sessionId, entry.getString("entry_id"), entryIndex, entry.getString("exercise_id"),
+                                entry.optStringOrNull("equipment_id"), entry.getString("load_mode"), entry.getInt("rest_seconds"),
+                                entry.optIntOrNull("target_sets"), entry.optIntOrNull("target_reps"),
+                                entry.optIntOrNull("target_duration_seconds"), entry.optDoubleOrNull("target_weight_kg"),
+                                entry.optStringOrNull("notes"), id))
+                        }
+                    }
+                    imported++
+                }
+                db.setTransactionSuccessful()
+                return ProgramsImportResult.Applied(imported, deleted, skipped)
+            } finally { db.endTransaction() }
+        } catch (error: ProgramsImportInvalid) {
+            return ProgramsImportResult.Invalid(error.message ?: "Invalid Programs document.")
+        } catch (_: Exception) {
+            return ProgramsImportResult.DatabaseError
+        }
+    }
+
+    fun listSyncedPrograms(): List<SyncedProgramSummary> = database.readableDatabase.rawQuery(
+        "SELECT p.program_id,p.title,p.state,p.start_date,p.end_date,COUNT(s.program_session_id) " +
+            "FROM synced_programs p LEFT JOIN synced_program_sessions s ON s.program_id=p.program_id " +
+            "GROUP BY p.program_id ORDER BY CASE p.state WHEN 'active' THEN 0 ELSE 1 END,p.title COLLATE NOCASE,p.program_id",
+        null,
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) {
+                add(
+                    SyncedProgramSummary(
+                        cursor.getString(0),
+                        cursor.getString(1),
+                        cursor.getString(2),
+                        if (cursor.isNull(3)) null else cursor.getString(3),
+                        if (cursor.isNull(4)) null else cursor.getString(4),
+                        cursor.getInt(5),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun getSyncedProgram(programId: String): SyncedProgramDetail? {
+        val db = database.readableDatabase
+        data class Header(
+            val title: String,
+            val note: String?,
+            val state: String,
+            val startDate: String?,
+            val endDate: String?,
+        )
+        val header = db.rawQuery(
+            "SELECT title,note,state,start_date,end_date FROM synced_programs WHERE program_id=?",
+            arrayOf(programId),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else Header(
+                cursor.getString(0),
+                if (cursor.isNull(1)) null else cursor.getString(1),
+                cursor.getString(2),
+                if (cursor.isNull(3)) null else cursor.getString(3),
+                if (cursor.isNull(4)) null else cursor.getString(4),
+            )
+        } ?: return null
+        val sessions = mutableListOf<SyncedProgramSession>()
+        db.rawQuery(
+            "SELECT program_session_id,title,session_type,planned_for,note " +
+                "FROM synced_program_sessions WHERE program_id=? " +
+                "ORDER BY position,program_session_id",
+            arrayOf(programId),
+        ).use { sessionCursor ->
+            while (sessionCursor.moveToNext()) {
+                val sessionId = sessionCursor.getString(0)
+                val entries = mutableListOf<SyncedProgramOccurrence>()
+                db.rawQuery(
+                    "SELECT pe.entry_id,pe.exercise_id," +
+                        "COALESCE(e.name,canonical.name,pe.exercise_id),pe.equipment_id," +
+                        "pe.load_mode,pe.rest_seconds,pe.target_sets,pe.target_reps," +
+                        "pe.target_duration_seconds,pe.target_weight_kg,pe.notes " +
+                        "FROM synced_program_entries pe " +
+                        "LEFT JOIN exercises e ON e.exercise_id=pe.exercise_id " +
+                        "LEFT JOIN exercise_aliases alias ON alias.source_exercise_id=pe.exercise_id " +
+                        "LEFT JOIN exercises canonical " +
+                        "ON canonical.exercise_id=alias.canonical_exercise_id " +
+                        "WHERE pe.program_session_id=? ORDER BY pe.position,pe.entry_id",
+                    arrayOf(sessionId),
+                ).use { entry ->
+                    while (entry.moveToNext()) {
+                        entries += SyncedProgramOccurrence(
+                            entry.getString(0),
+                            entry.getString(1),
+                            entry.getString(2),
+                            if (entry.isNull(3)) null else entry.getString(3),
+                            entry.getString(4),
+                            entry.getInt(5),
+                            if (entry.isNull(6)) null else entry.getInt(6),
+                            if (entry.isNull(7)) null else entry.getInt(7),
+                            if (entry.isNull(8)) null else entry.getInt(8),
+                            if (entry.isNull(9)) null else entry.getDouble(9),
+                            if (entry.isNull(10)) null else entry.getString(10),
+                        )
+                    }
+                }
+                sessions += SyncedProgramSession(
+                    sessionId,
+                    sessionCursor.getString(1),
+                    sessionCursor.getString(2),
+                    if (sessionCursor.isNull(3)) null else sessionCursor.getString(3),
+                    if (sessionCursor.isNull(4)) null else sessionCursor.getString(4),
+                    entries,
+                )
+            }
+        }
+        return SyncedProgramDetail(
+            programId,
+            header.title,
+            header.note,
+            header.state,
+            header.startDate,
+            header.endDate,
+            sessions,
+        )
+    }
+
     private fun normalizeName(
         value: String,
     ): String {
@@ -8142,6 +8446,9 @@ private fun JSONObject.optDoubleOrNull(key: String): Double? =
 
 private fun JSONObject.optIntOrNull(key: String): Int? =
     if (has(key) && !isNull(key)) getInt(key) else null
+
+private fun JSONObject.optStringOrNull(key: String): String? =
+    if (has(key) && !isNull(key)) getString(key) else null
 
 private fun jsonHasUniqueObjectKeys(json: String): Boolean = try {
     JsonReader(StringReader(json)).use { reader ->
@@ -8231,7 +8538,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    23,
+    24,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -8279,6 +8586,7 @@ private class TrainlogDatabaseHelper(
         createSyncGenerationArchiveTable(db)
         createSessionPreparationTables(db)
         createSessionPreparationWithdrawalTable(db)
+        createSyncedProgramTables(db)
         seedEquipment(db)
     }
 
@@ -8468,6 +8776,14 @@ private class TrainlogDatabaseHelper(
             createSessionPreparationWithdrawalTable(db)
             version = 23
         }
+        if (version < 24 && newVersion >= 24) {
+            /* WHY: reusable Programs remain desktop-owned planning definitions.
+             * CONTRACT: v24 adds only a read-only projection and durable deletion
+             * tombstones. INVARIANT: no draft, preparation, history, catalog or
+             * body row is rewritten, inferred or removed by this migration. */
+            createSyncedProgramTables(db)
+            version = 24
+        }
 
         if (version != newVersion) {
             error(
@@ -8475,6 +8791,46 @@ private class TrainlogDatabaseHelper(
                     "$oldVersion -> $newVersion"
             )
         }
+    }
+
+    private fun createSyncedProgramTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS synced_programs(
+                program_id TEXT PRIMARY KEY, revision_id TEXT NOT NULL, title TEXT NOT NULL,
+                note TEXT, state TEXT NOT NULL CHECK(state IN('active','archived')),
+                start_date TEXT, end_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                source_format TEXT NOT NULL, source_version INTEGER NOT NULL,
+                source_payload_sha256 TEXT NOT NULL, snapshot_sha256 TEXT NOT NULL
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS synced_program_sessions(
+                program_session_id TEXT PRIMARY KEY,
+                program_id TEXT NOT NULL REFERENCES synced_programs(program_id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK(position>=0), title TEXT NOT NULL,
+                session_type TEXT NOT NULL CHECK(session_type IN('training','max_test')),
+                planned_for TEXT, note TEXT, UNIQUE(program_id,position)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS synced_program_entries(
+                program_session_id TEXT NOT NULL REFERENCES synced_program_sessions(program_session_id) ON DELETE CASCADE,
+                entry_id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0), exercise_id TEXT NOT NULL,
+                equipment_id TEXT, load_mode TEXT NOT NULL CHECK(load_mode IN('none','external','assistance')),
+                rest_seconds INTEGER NOT NULL CHECK(rest_seconds BETWEEN 0 AND 86400),
+                target_sets INTEGER, target_reps INTEGER, target_duration_seconds INTEGER,
+                target_weight_kg REAL, notes TEXT, program_id TEXT NOT NULL,
+                PRIMARY KEY(program_session_id,entry_id), UNIQUE(program_session_id,position)
+            )""".trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS synced_program_entries_exercise ON synced_program_entries(exercise_id)")
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS synced_program_deletions(
+                deletion_id TEXT PRIMARY KEY, program_id TEXT NOT NULL UNIQUE,
+                predecessor_revision_id TEXT NOT NULL, revision_id TEXT NOT NULL,
+                requested_at TEXT NOT NULL
+            )""".trimIndent(),
+        )
     }
 
     private fun createSyncDataLifecycleTables(db: SQLiteDatabase) {

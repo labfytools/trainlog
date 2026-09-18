@@ -72,6 +72,8 @@ ARTIFACTS = (
      "export_ai_session_drafts.py", ()),
     ("session-preparations", "trainlog-session-preparations", 2,
      "session-preparations-v2.json", False, "export_session_preparations.py", ()),
+    ("programs-v1", "trainlog-programs", 1, "programs-v1.json", False,
+     "export_programs.py", ()),
 )
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS}
 
@@ -201,9 +203,9 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25)
+    supported_versions = (24, 25, 26)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        raise GenerationError("desktop schema v24 or v25 required")
+        raise GenerationError("desktop schema v24, v25 or v26 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -436,6 +438,17 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                     existed = db.execute("SELECT 1 FROM sync_causal_publications WHERE operation_id=?", (operation["operation_id"],)).fetchone()
                     db.execute("INSERT INTO sync_causal_publications VALUES(?,?,?)",
                                (operation["operation_id"], generation, 0 if existed else 1))
+            programs_path = stage / "programs-v1.json"
+            if programs_path.is_file():
+                captured_programs = strict_json(programs_path.read_bytes(), MAX_ARTIFACT)
+                for deletion in captured_programs["deletions"]:
+                    cursor = db.execute(
+                        "UPDATE program_deletions SET generation_id=? WHERE request_id=? "
+                        "AND deleted_revision=? AND generation_id IS NULL",
+                        (generation, deletion["deletion_id"], deletion["revision_id"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise GenerationError("program deletion changed during capture")
             db.commit()
         return stage, manifest, checksum
     except Exception:
@@ -699,6 +712,12 @@ def accept_ack(database: Path, path: Path) -> str:
                 "WHERE generation_id=? AND acknowledged_at IS NULL",
                 (ack["consumed_at"], ack["generation_id"]),
             )
+            if db.execute("PRAGMA user_version").fetchone()[0] >= 26:
+                db.execute(
+                    "UPDATE program_deletions SET acknowledged_at=? WHERE generation_id=? "
+                    "AND acknowledged_at IS NULL",
+                    (ack["consumed_at"], ack["generation_id"]),
+                )
             db.execute(
                 "UPDATE session_preparations SET delivery_state='acknowledged' WHERE EXISTS("
                 "SELECT 1 FROM session_preparation_deliveries d WHERE "

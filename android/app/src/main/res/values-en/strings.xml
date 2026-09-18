@@ -12,6 +12,20 @@
     <string name="route_session_generator">Plan a session</string>
     <string name="route_ai_drafts">Drafts</string>
     <string name="route_completed_sessions">Completed sessions</string>
+    <string name="route_programs">Programs</string>
+    <string name="route_program_detail">Program details</string>
+    <string name="programs_none">No synchronized programs.</string>
+    <string name="program_active">ACTIVE</string>
+    <string name="program_archived">ARCHIVED</string>
+    <string name="program_start_date">Start: %1$s</string>
+    <string name="program_end_date">End: %1$s</string>
+    <string name="program_open">View program</string>
+    <string name="program_not_found">Program not found.</string>
+    <string name="program_target_sets">%1$d sets</string>
+    <string name="program_target_reps">%1$d repetitions</string>
+    <string name="program_target_duration">%1$d s</string>
+    <string name="program_target_weight">%1$.1f kg</string>
+    <plurals name="program_session_count"><item quantity="one">%d session</item><item quantity="other">%d sessions</item></plurals>
     <string name="route_session_detail">Session details</string>
     <string name="route_session_correction">Edit session</string>
     <string name="route_exercise_detail">Exercise details</string>

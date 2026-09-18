@@ -66,6 +66,7 @@ fun AndroidAppShell(
         AppRoute.Home -> R.string.nav_home; AppRoute.Sessions -> R.string.nav_sessions
         AppRoute.SessionEditor -> R.string.route_session_editor; AppRoute.SessionGenerator -> R.string.route_session_generator
         AppRoute.AiSessionDrafts -> R.string.route_ai_drafts; AppRoute.CompletedSessions -> R.string.route_completed_sessions
+        AppRoute.Programs -> R.string.route_programs; is AppRoute.ProgramDetail -> R.string.route_program_detail
         is AppRoute.SessionDetail -> R.string.route_session_detail; is AppRoute.SessionCorrection -> R.string.route_session_correction
         AppRoute.Exercises -> R.string.nav_exercises; is AppRoute.ExerciseDetail -> R.string.route_exercise_detail
         is AppRoute.ExerciseEdit -> R.string.route_exercise_edit; is AppRoute.ExerciseCreate -> R.string.route_exercise_create

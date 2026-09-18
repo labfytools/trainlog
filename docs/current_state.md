@@ -57,8 +57,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v25 |
-| Android SQLite | schema v23 |
+| Desktop SQLite | schema v26 |
+| Android SQLite | schema v24 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
@@ -81,6 +81,7 @@ parallel implementation of its rules.
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
+| Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=IMPLEMENTED_VALIDATED` (not deployed; real Firefox Programs screenshots recorded) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
@@ -231,9 +232,9 @@ explicit proposal derivation and generation-backed Android delivery. Programmes
 is implemented as the fourth Sessions subtab; Analyse and Exercises remain
 explicit placeholders, and no standalone Programs route exists.
 
-Desktop schema v25 owns immutable manual-preparation revisions, stable ordered
+Desktop schema v26 owns immutable manual-preparation revisions, stable ordered
 occurrences, persistent HTTP idempotency keys, delivery-to-execution identity,
-and durable revision-bound withdrawal records. Android schema v23 stores
+and durable revision-bound withdrawal records. Android schema v24 stores
 received preparations and permanent withdrawal results separately from AI
 proposals and the active singleton. Pending deliveries are cancelled by an
 exact V2 withdrawal; started executions are preserved. An exact correlated ACK
@@ -254,12 +255,22 @@ preparations and is propagated by `trainlog-ai-session-drafts` V2; inactive
 execution drafts and completed sessions use revision-guarded causal deletion.
 Active or concurrently changed drafts conflict instead of being erased.
 
-Program V1 is desktop-owned planning data in schema v25. The Sessions Programs
-subtab lists, searches, filters, deep-links and archives programs. Local JSON
-import is strict and bounded, previews through Core before committing, and has
-deterministic replay/conflict behavior. One explicit program-session action
-creates a provenance-bearing manual preparation without Android delivery or
-performed work.
+Program V1 is desktop-owned planning data in schema v26. The responsive
+Sessions Programs subtab provides cards and timeline detail backed by real
+imported definitions, sessions, usage, and provenance; it keeps strict bounded
+preview/commit import and deterministic replay/conflict behavior. A discrete,
+accessible trash action uses confirmation, focus restoration, and Escape-safe
+cancel semantics. Active and archived programs may be terminally logically
+deleted; sources and derived preparations remain, while deleted programs cannot
+resurrect or reprepare and archived programs cannot prepare.
+
+Android schema v24 contains a read-only synchronized Programs projection with
+program, session, entry, and deletion tables. Its Sessions list/detail has no
+program mutation actions. The optional staged controlled-generation
+`trainlog-programs` V1 companion publishes a PC-to-Android full nondeleted
+snapshot plus unacknowledged tombstones under capability `programs-v1`; a
+durable correlated ACK records acknowledgment. It changes neither
+`TRAINLOG_FORMAT_V1`, mobile V3, catalog exchange, nor preparations.
 
 The controlled deployment preserved the installed Android signing identity and
 advanced its private `versionCode` from 13 to 14 without uninstalling or

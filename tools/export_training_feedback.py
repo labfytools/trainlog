@@ -10,7 +10,7 @@ def main(complete_causal_envelope=False):
     parser=argparse.ArgumentParser(); parser.add_argument("output",type=Path); parser.add_argument("--database",type=Path,required=True); args=parser.parse_args()
     db=connect_database(args.database)
     try:
-        supported_versions = range(15, 26)
+        supported_versions = range(15, 27)
         if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
             raise ValueError("schema desktop v15-v25 requis")
         if not complete_causal_envelope and db.execute("PRAGMA user_version").fetchone()[0] >= 20 and db.execute("SELECT 1 FROM sync_causal_state WHERE target_kind='feedback' AND deleted=1 LIMIT 1").fetchone(): raise ValueError("causal feedback protection requires the staged artifact")

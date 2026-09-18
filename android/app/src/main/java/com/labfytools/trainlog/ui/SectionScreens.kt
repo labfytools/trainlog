@@ -46,6 +46,7 @@ fun SessionsHub(
     onManual: () -> Unit,
     onDrafts: () -> Unit,
     onHistory: () -> Unit,
+    onPrograms: () -> Unit = {},
 ) {
     val colors = LocalTrainlogColors.current
     val strings = localizedContext()
@@ -67,6 +68,8 @@ fun SessionsHub(
         }
         TrainlogButton(strings.getString(R.string.route_completed_sessions), onHistory,
             Modifier.fillMaxWidth().testTag("sessions-history-action"))
+        TrainlogButton(strings.getString(R.string.route_programs), onPrograms,
+            Modifier.fillMaxWidth().testTag("sessions-programs-action"))
     }
 }
 

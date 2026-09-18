@@ -12,6 +12,20 @@
     <string name="route_session_generator">Programmer une séance</string>
     <string name="route_ai_drafts">Brouillons</string>
     <string name="route_completed_sessions">Séances effectuées</string>
+    <string name="route_programs">Programmes</string>
+    <string name="route_program_detail">Détail du programme</string>
+    <string name="programs_none">Aucun programme synchronisé.</string>
+    <string name="program_active">ACTIF</string>
+    <string name="program_archived">ARCHIVÉ</string>
+    <string name="program_start_date">Début : %1$s</string>
+    <string name="program_end_date">Fin : %1$s</string>
+    <string name="program_open">Afficher le programme</string>
+    <string name="program_not_found">Programme introuvable.</string>
+    <string name="program_target_sets">%1$d séries</string>
+    <string name="program_target_reps">%1$d répétitions</string>
+    <string name="program_target_duration">%1$d s</string>
+    <string name="program_target_weight">%1$.1f kg</string>
+    <plurals name="program_session_count"><item quantity="one">%d séance</item><item quantity="other">%d séances</item></plurals>
     <string name="route_session_detail">Détail de la séance</string>
     <string name="route_session_correction">Modifier la séance</string>
     <string name="route_exercise_detail">Fiche exercice</string>

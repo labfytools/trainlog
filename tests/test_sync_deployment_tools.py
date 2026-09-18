@@ -1,11 +1,15 @@
 import json
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import sync_generation_exchange as generation
 
 
 class DeploymentToolsTest(unittest.TestCase):
@@ -62,7 +66,9 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             inventory = json.loads((output / "candidate-inventory.json").read_text())
             self.assertEqual(inventory["product_version"], "0.1.2")
+            self.assertEqual(inventory["desktop_schema"], 26)
             self.assertIn("session-preparations-v2", inventory["protocols"])
+            self.assertIn("programs-v1", inventory["protocols"])
             self.assertTrue((output / "bin/trainlog").is_file())
             self.assertTrue((output / "bin/trainlog-sync-once").is_file())
             self.assertTrue((output / "bin/trainlog-syncd").is_file())
@@ -91,6 +97,16 @@ class DeploymentToolsTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(imported.returncode, 0, imported.stderr)
+            packaged_tools = {
+                row["path"].removeprefix("tools/")
+                for row in inventory["files"]
+                if row["path"].startswith("tools/")
+            }
+            exporters = {
+                row[5]
+                for row in generation.ARTIFACTS
+            }
+            self.assertTrue(exporters <= packaged_tools)
             self.assertTrue(
                 any(
                     row["path"] == "tools/trainlog_syncd.py"

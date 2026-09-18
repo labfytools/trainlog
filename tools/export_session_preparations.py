@@ -17,9 +17,9 @@ MAX_WITHDRAWALS = 128
 
 
 def build_export(connection: sqlite3.Connection) -> dict:
-    supported_versions = (24, 25)
+    supported_versions = (24, 25, 26)
     if connection.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        raise ValueError("desktop schema v24 or v25 required")
+        raise ValueError("desktop schema v24, v25 or v26 required")
     deliveries = []
     rows = connection.execute(
         "SELECT d.delivery_id,d.preparation_id,d.revision_id,d.execution_session_id,d.state,"

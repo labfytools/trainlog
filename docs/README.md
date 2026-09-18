@@ -17,7 +17,7 @@ evidence and chronology.
 - [Web Sessions V1](web_sessions.md) owns the implemented preparation, resume,
   history and Android-delivery workflow.
 - [Program format V1](program_format_v1.md) owns the strict desktop planning
-  import contract used by the Sessions Programs subtab.
+  import contract and program lifecycle used by the Sessions Programs subtab.
 
 - [Android](android.md) owns field-companion capture, local persistence,
   glanceable summaries, permissions, and Android interaction rules.
@@ -77,6 +77,9 @@ evidence and chronology.
 
 - [Review records](reviews/) retain historical audits, incidents, checkpoints,
   and validation evidence. Their status and paths are historical.
+- [Programs presentation / Android delete evidence](reviews/programs_presentation_android_delete_v1_evidence.md)
+  records the implemented, not-deployed validation checkpoint and real-browser
+  screenshot evidence.
 - [Changelog](../CHANGELOG.md) owns chronological change history.
 - [Release notes](releases/) retain reusable, tag-scoped English source text
   for public GitHub and Forgejo releases.

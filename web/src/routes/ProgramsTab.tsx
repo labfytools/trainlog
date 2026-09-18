@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   archiveProgram,
   createPreparationFromProgram,
+  deleteProgram,
   fetchAllPrograms,
   fetchProgram,
   importProgram,
@@ -10,6 +11,7 @@ import {
   type ProgramImportPreview,
   type ProgramListItem,
 } from '../api/programs'
+import { DeleteConfirmationDialog } from '../components/DeleteConfirmationDialog'
 import { useDatePreferences } from '../presentation/DatePreferences'
 import { formatCivilDate, formatDateTime } from '../presentation/dateFormat'
 
@@ -98,6 +100,8 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
           <p>
             {session.session_type === 'max_test'
               ? 'Test MAX planifié' : 'Entraînement planifié'}
+            {session.planned_for
+              ? ` · ${formatCivilDate(session.planned_for, dateFormat)}` : ''}
             {' · '}{session.occurrences.length} exercice
             {session.occurrences.length > 1 ? 's' : ''}
           </p>
@@ -131,6 +135,7 @@ export function ProgramsTab({ detailProgramId, onOpen, onBack }: {
 }) {
   const { dateFormat } = useDatePreferences()
   const fileInput = useRef<HTMLInputElement>(null)
+  const deleteReturnFocus = useRef<HTMLElement>(null)
   const [items, setItems] = useState<ProgramListItem[]>([])
   const [search, setSearch] = useState('')
   const [state, setState] = useState('')
@@ -139,6 +144,9 @@ export function ProgramsTab({ detailProgramId, onOpen, onBack }: {
   const [rawImport, setRawImport] = useState('')
   const [preview, setPreview] = useState<ProgramImportPreview | null>(null)
   const [fileName, setFileName] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<ProgramListItem | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const reload = () => {
     setPending(true)
     setError('')
@@ -198,6 +206,22 @@ export function ProgramsTab({ detailProgramId, onOpen, onBack }: {
   const cancelImport = () => {
     setPreview(null)
     setRawImport('')
+  }
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    try {
+      await deleteProgram(deleteTarget.program_id, deleteTarget.revision_id)
+      setItems((current) => current.filter(
+        (candidate) => candidate.program_id !== deleteTarget.program_id,
+      ))
+      setDeleteTarget(null)
+    } catch (reason) {
+      setDeleteError(reason instanceof Error ? reason.message : 'Suppression impossible')
+    } finally {
+      setDeleteBusy(false)
+    }
   }
   return <section className="programs-tab">
     <div className="sessions-toolbar">
@@ -264,27 +288,57 @@ export function ProgramsTab({ detailProgramId, onOpen, onBack }: {
     {!pending && !error && items.length === 0 &&
       <p className="empty-inline">Aucun programme.</p>}
     <div className="program-list">
-      {items.map((program) => <button
-        type="button"
+      {items.map((program) => <article
         key={program.program_id}
         className="session-row program-row"
-        onClick={() => onOpen(program.program_id)}
       >
-        <span>
-          <small>{program.state === 'active' ? 'Programme actif' : 'Programme archivé'}</small>
-          <strong>{program.title}</strong>
-        </span>
-        <span>
-          {program.start_date
-            ? formatCivilDate(program.start_date, dateFormat) : 'Dates libres'}
-        </span>
-        <span>
-          {program.session_count} séance{program.session_count > 1 ? 's' : ''}
-        </span>
-        <span>
-          {program.provenance} · {formatDateTime(program.updated_at, dateFormat)}
-        </span>
-      </button>)}
+        <button
+          type="button"
+          className="session-row-main"
+          onClick={() => onOpen(program.program_id)}
+        >
+          <span>
+            <small>{program.state === 'active' ? 'Programme actif' : 'Programme archivé'}</small>
+            <strong>{program.title}</strong>
+          </span>
+          <span>
+            {program.start_date
+              ? formatCivilDate(program.start_date, dateFormat) : 'Dates libres'}
+          </span>
+          <span>
+            {program.session_count} séance{program.session_count > 1 ? 's' : ''}
+            {program.preparation_count > 0
+              ? ` · ${program.preparation_count} préparation${program.preparation_count > 1 ? 's' : ''}`
+              : ' · jamais utilisé'}
+          </span>
+          <span>
+            {program.provenance} · importé {formatDateTime(program.imported_at, dateFormat)}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="trash-action"
+          aria-label={`Supprimer le programme ${program.title}`}
+          title="Supprimer le programme"
+          onClick={(event) => {
+            deleteReturnFocus.current = event.currentTarget
+            setDeleteError('')
+            setDeleteTarget(program)
+          }}
+        >🗑</button>
+      </article>)}
     </div>
+    {deleteTarget && <DeleteConfirmationDialog
+      title={deleteTarget.title}
+      itemType={deleteTarget.state === 'active' ? 'Programme actif' : 'Programme archivé'}
+      consequence="Le programme disparaîtra définitivement de cette liste. Ses séances sources, ses exercices et toutes les préparations déjà créées seront conservés."
+      cancelLabel="Conserver"
+      confirmLabel="Supprimer le programme"
+      busy={deleteBusy}
+      error={deleteError}
+      returnFocus={deleteReturnFocus}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => void confirmDelete()}
+    />}
   </section>
 }

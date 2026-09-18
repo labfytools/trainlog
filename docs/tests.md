@@ -51,12 +51,22 @@ withdrawal without the proposal and that Android's tombstone rejects later V1
 replay.
 
 `web_programs` exercises validation preview without writes, transactional
-import, exact replay, detail serialization, archive replay, preparation
-creation, provenance and absence of delivery. Schema migration coverage checks
-all v25 tables and columns. Programs Vitest covers preview before the only
-importing mutation and explicit preparation creation/navigation. The full HTTP,
+import, exact replay, responsive detail serialization, archive replay,
+revision-guarded terminal deletion, response replay, preparation creation,
+usage/provenance and absence of delivery. Schema migration coverage checks all
+v26 tables and columns. Programs Vitest covers preview before the only importing
+mutation, explicit preparation creation/navigation, discrete trash confirmation,
+focus restoration, and Escape/Cancel zero-mutation behavior. The full HTTP,
 pagination, strict-parser and Core suites retain malformed, duplicate-key,
 bounds, catalog/profile/equipment, conflict and rollback coverage.
+
+Android Programs projection tests cover schema-v23 to v24 migration, full
+nondeleted `trainlog-programs` V1 snapshot import, durable deletion tombstones,
+read-only Sessions list/detail data, exact replay, capability gating, and
+correlated ACK behavior. Python Programs/synchronization suites cover the
+staged companion's full snapshot, unacknowledged tombstone publication, and
+ACK-driven acknowledgment without changing mobile V3, catalog, or preparation
+artifacts.
 
 `test_web_sessions_browser.py` runs headless Firefox against the embedded
 production assets and C HTTP server with private temporary XDG roots. It creates

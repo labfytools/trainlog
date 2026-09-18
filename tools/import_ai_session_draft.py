@@ -193,7 +193,7 @@ def import_payload(connection, payload, imported_at=None):
     INVARIANT: validation and every child insert share one IMMEDIATE transaction;
     any failure leaves no draft, child, or import-identity row behind.
     """
-    supported_versions = range(18, 26)
+    supported_versions = range(18, 27)
     if connection.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         raise ImportFailure("schema desktop v18-v25 requis")
     draft, entries = validate(payload, connection)

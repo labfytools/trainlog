@@ -16,6 +16,13 @@ and their active or completed execution data is untouched. The stored result is
 Withdrawal replay is idempotent, and an older preparation delivery is skipped
 once the withdrawal identity for that preparation exists.
 
+Android schema v24 adds a read-only synchronized Programs projection:
+`synced_programs`, `synced_program_sessions`, `synced_program_entries`, and
+`synced_program_deletions`. It presents received program and session detail in
+Sessions without offering import, archive, delete, preparation, or other
+program mutation actions. The projection is separate from capture data, AI
+proposals, manual preparations, and the active-session singleton.
+
 ## 1. Purpose
 
 The Android application is Trainlog's low-friction capture client.
@@ -68,7 +75,15 @@ including intermediate forms such as `0.`, `0,`, `.3`, and `,3`. Commit replaces
 existing positive/non-negative domain rule. Distance remains explicitly km; no
 unit guessing or automatic correction occurs.
 
-## Session exchange V3
+## Session exchange V3 and optional Programs companion V1
+
+`trainlog-programs` V1 is an optional staged controlled-generation companion,
+not a replacement for mobile export V3. The PC publishes `programs-v1.json` as
+a full snapshot of nondeleted programs plus unacknowledged program-deletion
+tombstones. Both peers advertise the `programs-v1` capability; Android applies
+the projection and deletion state durably, and desktop records the correlated
+ACK before marking the tombstone acknowledged. It changes neither
+`TRAINLOG_FORMAT_V1`, mobile V3, catalog exchange, nor preparation exchange.
 
 Completed session occurrences persist an `entry_id`; it is never regenerated
 for exchange. Android schema v14 added feedback roots and completion `ended_at`

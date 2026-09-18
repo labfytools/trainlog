@@ -13,7 +13,7 @@ identities remain opaque. Display titles are not identities. A program is not a
 reusable session template, AI proposal, manual preparation, execution draft or
 completed session.
 
-Desktop schema v25 owns the imported program and its exact source SHA-256.
+Desktop schema v26 owns the imported program and its exact source SHA-256.
 Exact same-ID content replay is idempotent. The same ID with a different byte
 payload is an explicit conflict. A different ID may reuse a title because titles
 have no identity semantics.
@@ -60,3 +60,11 @@ session is a separate idempotent command that copies the ordered plan and stores
 program/session provenance on a new `sp_<uuid-v4>` manual preparation. It does
 not create a delivery, Android object, execution draft, completed session or
 performed measurement.
+
+Deletion is a separate terminal logical lifecycle transition. It is allowed
+from active or archived state, records request/deleted revisions and durable
+response replay in the desktop `program_deletions` ledger, and retains the
+source definition and derived preparations. A deleted program cannot be
+resurrected or prepared; an archived program cannot be prepared. The optional
+`trainlog-programs` V1 synchronization companion is a separate PC-to-Android
+projection and does not alter this import format.

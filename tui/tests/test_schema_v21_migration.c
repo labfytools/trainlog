@@ -30,6 +30,7 @@ static int scalar(sqlite3 *database, const char *sql) {
 int main(void) {
     static const char DOWNGRADE_TO_V20[] = "PRAGMA foreign_keys=OFF;"
                                            "DROP TABLE web_session_deletion_requests;"
+                                           "DROP TABLE program_deletions;"
                                            "DROP TABLE program_requests;"
                                            "DROP TABLE program_session_entries;"
                                            "DROP TABLE program_sessions;"
@@ -53,6 +54,7 @@ int main(void) {
     TrainlogDatabase *database = NULL;
     sqlite3 *raw = NULL;
     size_t exercises = 0U;
+    char diagnostic[256];
 
     CHECK(file_descriptor >= 0);
     CHECK(close(file_descriptor) == 0);
@@ -70,7 +72,11 @@ int main(void) {
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(sqlite3_exec(raw, DOWNGRADE_TO_V20, NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
-    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    if (trainlog_database_open_with_diagnostic(path, &database, diagnostic, sizeof(diagnostic)) !=
+        TRAINLOG_STATUS_OK) {
+        (void)fprintf(stderr, "migration diagnostic: %s\n", diagnostic);
+        return 1;
+    }
     CHECK(trainlog_database_exercise_count(database, &exercises) == TRAINLOG_STATUS_OK);
     CHECK(exercises > 0U);
     trainlog_database_close(database);

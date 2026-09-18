@@ -69,13 +69,23 @@ Inactive execution drafts and completed sessions use the existing causal
 operation/state boundary. Active or stale drafts conflict, and completed-session
 deletion records a finalization so older snapshots cannot recreate the session.
 
-Programs are planning data owned by desktop schema v25. Import first runs the
+Programs are planning data owned by desktop schema v26. The Programs subtab
+uses responsive cards and a timeline detail view backed by real imported
+definitions, sessions, usage, and provenance data. Import first runs the
 same strict Core validator in preview mode, then commits only after explicit
 confirmation. Exact content replay is idempotent; same-ID divergent content is
 a conflict. Archiving preserves definitions and derived preparations. Creating
-a preparation from one program session copies targets and provenance into a
-new manual preparation but creates no delivery, execution or performed data.
-See [Program format V1](program_format_v1.md).
+a preparation from one active program session copies targets and provenance
+into a new manual preparation but creates no delivery, execution or performed
+data. Archived or deleted programs cannot be prepared.
+
+The discrete right-edge Program trash action is accessible and opens a
+confirmation dialog that names the program and its consequence. Focus moves
+into that dialog, Escape and Cancel perform no mutation, and focus returns to
+the initiating action. Deletion is terminal logical deletion: it is allowed for
+active and archived programs, retains source and derived-preparation evidence,
+and prevents resurrection and re-preparation. See
+[Program format V1](program_format_v1.md).
 
 This V1 does not provide live Web capture, historical correction, automatic
 training generation, Analysis or the standalone Exercises route.

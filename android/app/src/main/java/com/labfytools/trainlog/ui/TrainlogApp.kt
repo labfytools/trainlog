@@ -106,7 +106,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 { open(AppRoute.BodyMeasurements) }, { open(AppRoute.SessionDetail(it)) }, { open(AppRoute.Sync) },
             )
             AppRoute.Sessions -> SessionsHub(activeDraft, pendingAiDraftCount, { open(AppRoute.SessionEditor) }, ::openManualSession,
-                { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) })
+                { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) }, { open(AppRoute.Programs) })
             AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exportSnapshot(); draftRevision++ })
             AppRoute.SessionGenerator -> SessionGeneratorScreen(repository, generatorState, { back() }, { generatorState.abandon(); draftRevision++; open(AppRoute.SessionEditor) }, {
                 draftMessage = strings.getString(R.string.existing_draft_warning)
@@ -124,6 +124,8 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 onStarted = { open(AppRoute.SessionEditor) },
             )
             AppRoute.CompletedSessions -> HistoryScreen(repository, { back() }) { open(AppRoute.SessionDetail(it)) }
+            AppRoute.Programs -> ProgramsScreen(repository) { open(AppRoute.ProgramDetail(it)) }
+            is AppRoute.ProgramDetail -> ProgramDetailScreen(repository, route.programId)
             is AppRoute.SessionDetail -> SessionDetailScreen(repository, route.sessionId, { back() }, { open(AppRoute.SessionCorrection(route.sessionId)) }) { draftRevision++; open(AppRoute.SessionEditor) }
             is AppRoute.SessionCorrection -> CompletedSessionCorrectionScreen(repository, route.sessionId) { saved ->
                 if (saved) exportSnapshot()
@@ -164,6 +166,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
 private fun AppRoute.stateKey(): String = when (this) {
     is AppRoute.SessionDetail -> "session:${sessionId}"
     is AppRoute.SessionCorrection -> "session-correction:${sessionId}"
+    is AppRoute.ProgramDetail -> "program:${programId}"
     is AppRoute.ExerciseDetail -> "exercise:${exerciseId}"
     is AppRoute.ExerciseEdit -> "exercise-edit:${exerciseId}:${caller.section}"
     is AppRoute.ExerciseCreate -> "exercise-create:${caller.section}"

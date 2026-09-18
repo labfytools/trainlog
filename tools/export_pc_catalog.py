@@ -71,7 +71,7 @@ def main():
         # CONTRACT: v8 adds only desktop-local custom equipment.  The PC
         # catalogue artifact is unchanged, but it must read the current
         # canonical desktop schema rather than accept a stale pre-v8 database.
-        if version not in range(8, 26):
+        if version not in range(8, 27):
             raise SystemExit(
                 "PC_CATALOG_EXPORT=FAIL "
                 f"schema={version}"

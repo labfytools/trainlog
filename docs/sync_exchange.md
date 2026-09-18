@@ -40,7 +40,7 @@ available because availability is independently guarded by causal state.
 
 ## Machine-exercise Phase 1 compatibility
 
-Desktop schema v25 and Android schema v23 retain mobile export V3, readable V1/V2 imports,
+Desktop schema v26 and Android schema v24 retain mobile export V3, readable V1/V2 imports,
 equipment definitions V1, equipment associations V2, exercise aliases V1, and
 the BODY ZONES companion without wire-format changes. Machine metadata is not
 silently added to a frozen artifact: stable exercise IDs and canonical names
@@ -144,10 +144,26 @@ does not publish to it or let it override an artifact in the new endpoint.
 | PC -> Android | `trainlog-exercise-body-zones-v1.json` | `trainlog-exercise-body-zones` v1 |
 | PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
 | PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1/v2 companion; v2 adds proposal withdrawals |
+| PC -> Android | `programs-v1.json` | optional staged `trainlog-programs` v1 companion: full nondeleted snapshot plus unacknowledged deletion tombstones |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
 No SQLite file is transferred.
+
+## Optional Programs companion V1
+
+`trainlog-programs` V1 is a staged controlled-generation companion. It is
+selected only when the peer capability set includes `programs-v1`. Its snapshot
+contains the current nondeleted desktop programs, their planning definitions,
+sessions and entries, and the unacknowledged terminal program-deletion
+tombstones. Android schema v24 stores a read-only synchronized projection and
+returns a durable correlated ACK. Desktop schema v26 records the exact
+generation and only then sets `program_deletions.acknowledged_at`.
+
+This companion is independent of `trainlog-program` V1 import, mobile export
+V3, `trainlog-pc-catalog` V1, and `trainlog-session-preparations` V2. It does
+not change `TRAINLOG_FORMAT_V1`, active default V3 transport, or preparation
+semantics.
 
 `trainlog-exercise-aliases` v1 is the separate EXERCISE_MERGE_V1 identity
 companion. Its root contains exactly `format`, `version`, and `aliases`; every

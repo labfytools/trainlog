@@ -1214,6 +1214,22 @@ static const char *const MIGRATE_V24_TO_V25_SQL =
     "UNIQUE(resource_kind,target_id));"
     "PRAGMA user_version=25;COMMIT;";
 
+/* WHY: deleting a reusable plan must not erase imported definitions, source
+ * sessions, or preparations already derived from them. CONTRACT: v26 adds a
+ * terminal logical marker and a durable command ledger. INVARIANT: migration
+ * deletes nothing and marks no existing program as deleted. */
+static const char *const MIGRATE_V25_TO_V26_SQL =
+    "BEGIN IMMEDIATE;"
+    "ALTER TABLE programs ADD COLUMN deleted_at TEXT;"
+    "CREATE TABLE program_deletions("
+    "program_id TEXT PRIMARY KEY REFERENCES programs(program_id) ON DELETE RESTRICT,"
+    "request_id TEXT NOT NULL UNIQUE,expected_revision TEXT NOT NULL,"
+    "deleted_revision TEXT NOT NULL,deleted_at TEXT NOT NULL,response_json TEXT NOT NULL,"
+    "generation_id TEXT,acknowledged_at TEXT);"
+    "CREATE INDEX program_deletions_pending ON program_deletions("
+    "generation_id,deleted_at,request_id) WHERE acknowledged_at IS NULL;"
+    "PRAGMA user_version=26;COMMIT;";
+
 /* CONTRACT: migration fixtures may retain additive v25 columns while
  * deliberately lowering user_version. Add each provenance column only when
  * absent; a genuine v24 database still receives both before opening returns. */
@@ -2002,7 +2018,8 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
         status = TRAINLOG_STATUS_OK;
     } else if (version == 11 || version == 12 || version == 13 || version == 14 || version == 15 ||
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
-               version == 21 || version == 22 || version == 23 || version == 24 || version == 25) {
+               version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
+               version == 26) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2135,6 +2152,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v25_web_deletion_requests(database);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 26) {
+        status = execute_sql(database, MIGRATE_V25_TO_V26_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2154,7 +2174,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v25" : "migrate database to schema v25",
+                            version == 0 ? "create schema v26" : "migrate database to schema v26",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

@@ -732,7 +732,8 @@ static bool program_session_exists(TrainlogDatabase *database,
     result = sqlite3_prepare_v2(database->connection,
                                 "SELECT 1 FROM program_sessions s JOIN programs p ON "
                                 "p.program_id=s.program_id WHERE p.program_id=?1 AND "
-                                "s.program_session_id=?2",
+                                "s.program_session_id=?2 AND p.state='active' AND "
+                                "p.deleted_at IS NULL",
                                 -1,
                                 &statement,
                                 NULL);

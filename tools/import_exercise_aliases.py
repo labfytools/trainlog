@@ -56,7 +56,7 @@ def load(path):
 
 def apply_aliases(con, aliases):
     """Apply parsed aliases inside the caller-owned transaction."""
-    supported_versions = range(12, 26)
+    supported_versions = range(12, 27)
     if con.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         fail("schema desktop v12-v21 requis")
     for source, canonical in aliases:

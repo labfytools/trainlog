@@ -12,7 +12,7 @@ from pathlib import Path
 from trainlog_sqlite import configure_connection
 
 
-SUPPORTED_SCHEMA_VERSIONS = (15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25)
+SUPPORTED_SCHEMA_VERSIONS = (15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)
 MEASUREMENT_FIELDS = (
     "body_weight_kg", "neck_cm", "shoulders_cm", "chest_cm", "waist_cm",
     "hips_cm", "left_arm_cm", "right_arm_cm", "left_forearm_cm",
@@ -125,7 +125,7 @@ def build_export(connection, generated_at):
     """Build the raw export using only explicitly ordered SELECT statements."""
     schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
-        raise ValueError("schema desktop v15-v18 requis")
+        raise ValueError("schema desktop v15-v26 requis")
 
     root = {
         "format": "TRAINLOG_AI_EXPORT",

@@ -23,6 +23,8 @@ sealed interface AppRoute {
     data object SessionGenerator : AppRoute { override val section = AppSection.SESSIONS }
     data object AiSessionDrafts : AppRoute { override val section = AppSection.SESSIONS }
     data object CompletedSessions : AppRoute { override val section = AppSection.SESSIONS }
+    data object Programs : AppRoute { override val section = AppSection.SESSIONS }
+    data class ProgramDetail(val programId: String) : AppRoute { override val section = AppSection.SESSIONS }
     data class SessionDetail(val sessionId: String) : AppRoute { override val section = AppSection.SESSIONS }
     data class SessionCorrection(val sessionId: String) : AppRoute { override val section = AppSection.SESSIONS }
     data object Exercises : AppRoute { override val section = AppSection.EXERCISES }

@@ -493,9 +493,15 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v24 is canonical long-term history. Its additive v23 ->
-v24 migration adds durable manual-preparation withdrawal identity without
-deleting revisions, deliveries or workout facts. Its additive v18 ->
+Desktop SQLite schema v26 is canonical long-term history. Its additive v25 ->
+v26 migration adds terminal Program logical deletion and its durable replay,
+generation, and acknowledgement ledger without deleting imported definitions,
+derived preparations, or workout facts. Android schema v24 maintains the
+separate read-only synchronized Programs projection; the optional staged
+`trainlog-programs` V1 companion does not replace mobile V3 or change
+`TRAINLOG_FORMAT_V1`. Its additive desktop v23 -> v24 migration adds durable
+manual-preparation withdrawal identity without deleting revisions, deliveries
+or workout facts. Its additive v18 ->
 v19 migration stores causal notes and execution-draft lifecycle state without
 activating a new transport. Its v15 -> v16
 transactional rebuild adds the occurrence-owned `tracking_mode` snapshot; the

@@ -164,6 +164,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                                 "execution-draft-v1",
                                 "generation-archive-v1",
                                 "session-preparations-v2",
+                                "programs-v1",
                             )
                         ),
                     )

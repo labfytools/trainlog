@@ -197,6 +197,14 @@ add_program_list_item(yyjson_mut_doc *document, yyjson_mut_val *items, sqlite3_s
                document, item, "session_count", sqlite3_column_int64(statement, 5)) &&
            add_column_text(document, item, "provenance", statement, 6) &&
            add_column_text(document, item, "updated_at", statement, 7) &&
+           add_column_text(document, item, "imported_at", statement, 8) &&
+           add_column_text(document, item, "revision_id", statement, 9) &&
+           yyjson_mut_obj_add_sint(
+               document, item, "preparation_count", sqlite3_column_int64(statement, 10)) &&
+           yyjson_mut_obj_add_strcpy(document,
+                                     item,
+                                     "usage",
+                                     sqlite3_column_int64(statement, 10) > 0 ? "used" : "unused") &&
            yyjson_mut_arr_add_val(items, item);
 }
 
@@ -208,9 +216,14 @@ TrainlogStatus trainlog_web_programs_list_json(TrainlogDatabase *database,
                                                char **output_json,
                                                size_t *output_size) {
     static const char SQL[] =
-        "SELECT p.program_id,p.title,p.state,p.start_date,p.end_date,COUNT(s.program_session_id),"
-        "p.source_format,p.updated_at FROM programs p LEFT JOIN program_sessions s ON "
-        "s.program_id=p.program_id WHERE (?1='' OR p.title LIKE '%'||?1||'%' COLLATE NOCASE) "
+        "SELECT p.program_id,p.title,p.state,p.start_date,p.end_date,"
+        "COUNT(DISTINCT s.program_session_id),p.source_format,p.updated_at,p.created_at,"
+        "p.revision_id,COUNT(DISTINCT sp.preparation_id) "
+        "FROM programs p "
+        "LEFT JOIN program_sessions s ON s.program_id=p.program_id "
+        "LEFT JOIN session_preparations sp ON sp.source_program_id=p.program_id "
+        "WHERE p.deleted_at IS NULL AND "
+        "(?1='' OR p.title LIKE '%'||?1||'%' COLLATE NOCASE) "
         "AND (?2='' OR p.state=?2) GROUP BY p.program_id ORDER BY CASE p.state WHEN 'active' "
         "THEN 0 ELSE 1 END,p.title COLLATE NOCASE,p.program_id LIMIT ?3 OFFSET ?4";
     sqlite3_stmt *statement = NULL;
@@ -419,7 +432,7 @@ TrainlogStatus trainlog_web_programs_detail_json(TrainlogDatabase *database,
     if (sqlite3_prepare_v2(
             database->connection,
             "SELECT program_id,title,note,state,start_date,end_date,created_at,updated_at,"
-            "revision_id,source_format,source_version,source_payload_sha256 "
+            "revision_id,source_format,source_version,source_payload_sha256,deleted_at "
             "FROM programs WHERE program_id=?1",
             -1,
             &statement,
@@ -436,6 +449,11 @@ TrainlogStatus trainlog_web_programs_detail_json(TrainlogDatabase *database,
         (void)sqlite3_finalize(statement);
         yyjson_mut_doc_free(document);
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
+    if (sqlite3_column_type(statement, 12) != SQLITE_NULL) {
+        (void)sqlite3_finalize(statement);
+        yyjson_mut_doc_free(document);
+        return TRAINLOG_STATUS_CONFLICT;
     }
     yyjson_mut_doc_set_root(document, root);
     (void)yyjson_mut_obj_add_uint(document, root, "api_version", 1U);
@@ -682,8 +700,10 @@ static TrainlogStatus program_insert_header(TrainlogDatabase *database,
                                             const char *digest,
                                             const char *now,
                                             const char *revision) {
-    static const char SQL[] = "INSERT INTO programs "
-                              "VALUES(?1,?2,?3,?4,?5,?6,?7,?7,?8,'trainlog-program',1,?9)";
+    static const char SQL[] =
+        "INSERT INTO programs(program_id,title,note,state,start_date,end_date,created_at,"
+        "updated_at,revision_id,source_format,source_version,source_payload_sha256) "
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?7,?8,'trainlog-program',1,?9)";
     sqlite3_stmt *statement = NULL;
     int result;
 
@@ -1138,7 +1158,8 @@ static TrainlogStatus program_apply_archive(TrainlogDatabase *database,
 
     result = sqlite3_prepare_v2(database->connection,
                                 "UPDATE programs SET state='archived',updated_at=?1,revision_id=?2 "
-                                "WHERE program_id=?3 AND revision_id=?4 AND state='active'",
+                                "WHERE program_id=?3 AND revision_id=?4 AND state='active' AND "
+                                "deleted_at IS NULL",
                                 -1,
                                 &statement,
                                 NULL);
@@ -1189,7 +1210,9 @@ static TrainlogStatus program_store_archive_replay(TrainlogDatabase *database,
                                                    const char *now) {
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(database->connection,
-                                    "INSERT INTO program_requests VALUES(?1,'archive',?2,?3,?4)",
+                                    "INSERT INTO program_requests("
+                                    "request_id,command,program_id,response_json,created_at) "
+                                    "VALUES(?1,'archive',?2,?3,?4)",
                                     -1,
                                     &statement,
                                     NULL);
@@ -1248,6 +1271,213 @@ TrainlogStatus trainlog_web_programs_archive_json(TrainlogDatabase *database,
     }
     if (status == TRAINLOG_STATUS_OK) {
         status = program_store_archive_replay(database, request_id, program_id, *output_json, now);
+    }
+    if (status != TRAINLOG_STATUS_OK ||
+        sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) != SQLITE_OK) {
+        (void)sqlite3_exec(database->connection, "ROLLBACK", NULL, NULL, NULL);
+        free(*output_json);
+        *output_json = NULL;
+        *output_size = 0U;
+        return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_DATABASE_ERROR : status;
+    }
+    return TRAINLOG_STATUS_OK;
+}
+
+typedef enum ProgramDeleteReplay {
+    PROGRAM_DELETE_REPLAY_NONE = 0,
+    PROGRAM_DELETE_REPLAY_EXACT,
+    PROGRAM_DELETE_REPLAY_CONFLICT,
+    PROGRAM_DELETE_REPLAY_ERROR
+} ProgramDeleteReplay;
+
+static ProgramDeleteReplay program_replay_delete(TrainlogDatabase *database,
+                                                 const char *program_id,
+                                                 const char *expected_revision,
+                                                 const char *request_id,
+                                                 char **output_json,
+                                                 size_t *output_size) {
+    sqlite3_stmt *statement = NULL;
+    ProgramDeleteReplay replay = PROGRAM_DELETE_REPLAY_ERROR;
+    int result;
+
+    result = sqlite3_prepare_v2(database->connection,
+                                "SELECT program_id,expected_revision,response_json FROM "
+                                "program_deletions WHERE request_id=?1",
+                                -1,
+                                &statement,
+                                NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    if (result == SQLITE_ROW) {
+        const char *known_program = (const char *)sqlite3_column_text(statement, 0);
+        const char *known_revision = (const char *)sqlite3_column_text(statement, 1);
+        const char *saved = (const char *)sqlite3_column_text(statement, 2);
+
+        if (known_program == NULL || known_revision == NULL || saved == NULL) {
+            replay = PROGRAM_DELETE_REPLAY_ERROR;
+        } else if (strcmp(known_program, program_id) != 0 ||
+                   strcmp(known_revision, expected_revision) != 0) {
+            replay = PROGRAM_DELETE_REPLAY_CONFLICT;
+        } else {
+            *output_size = strlen(saved);
+            *output_json = strdup(saved);
+            replay =
+                *output_json == NULL ? PROGRAM_DELETE_REPLAY_ERROR : PROGRAM_DELETE_REPLAY_EXACT;
+        }
+    } else if (result == SQLITE_DONE) {
+        replay = PROGRAM_DELETE_REPLAY_NONE;
+    }
+    (void)sqlite3_finalize(statement);
+    if (replay != PROGRAM_DELETE_REPLAY_NONE) {
+        return replay;
+    }
+
+    result = sqlite3_prepare_v2(database->connection,
+                                "SELECT 1 FROM program_requests WHERE request_id=?1",
+                                -1,
+                                &statement,
+                                NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    (void)sqlite3_finalize(statement);
+    if (result == SQLITE_ROW) {
+        return PROGRAM_DELETE_REPLAY_CONFLICT;
+    }
+    return result == SQLITE_DONE ? PROGRAM_DELETE_REPLAY_NONE : PROGRAM_DELETE_REPLAY_ERROR;
+}
+
+static TrainlogStatus program_build_delete_response(const char *program_id,
+                                                    const char *revision,
+                                                    const char *deleted_at,
+                                                    char **output_json,
+                                                    size_t *output_size) {
+    yyjson_mut_doc *response = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = response == NULL ? NULL : yyjson_mut_obj(response);
+
+    if (response == NULL || root == NULL) {
+        yyjson_mut_doc_free(response);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    yyjson_mut_doc_set_root(response, root);
+    (void)yyjson_mut_obj_add_uint(response, root, "api_version", 1U);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "program_id", program_id);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "deleted_at", deleted_at);
+    (void)yyjson_mut_obj_add_strcpy(response, root, "revision_id", revision);
+    return write_document(response, output_json, output_size);
+}
+
+TrainlogStatus trainlog_web_programs_delete_json(TrainlogDatabase *database,
+                                                 const char *program_id,
+                                                 const char *expected_revision,
+                                                 const char *request_id,
+                                                 char **output_json,
+                                                 size_t *output_size) {
+    sqlite3_stmt *statement = NULL;
+    ProgramDeleteReplay replay;
+    char revision[80];
+    char now[32];
+    TrainlogStatus status = TRAINLOG_STATUS_OK;
+    int result;
+
+    if (database == NULL || program_id == NULL || program_id[0] == '\0' ||
+        expected_revision == NULL || expected_revision[0] == '\0' || request_id == NULL ||
+        request_id[0] == '\0' || strlen(request_id) > 128U || output_json == NULL ||
+        output_size == NULL || !timestamp_now(now) ||
+        trainlog_id_generate("pgr", revision, sizeof(revision)) != TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    *output_json = NULL;
+    *output_size = 0U;
+    if (sqlite3_exec(database->connection, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    replay = program_replay_delete(
+        database, program_id, expected_revision, request_id, output_json, output_size);
+    if (replay == PROGRAM_DELETE_REPLAY_EXACT) {
+        (void)sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL);
+        return TRAINLOG_STATUS_OK;
+    }
+    if (replay == PROGRAM_DELETE_REPLAY_CONFLICT) {
+        status = TRAINLOG_STATUS_CONFLICT;
+    } else if (replay == PROGRAM_DELETE_REPLAY_ERROR) {
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        result =
+            sqlite3_prepare_v2(database->connection,
+                               "UPDATE programs SET deleted_at=?1,updated_at=?1,revision_id=?2 "
+                               "WHERE program_id=?3 AND revision_id=?4 AND deleted_at IS NULL",
+                               -1,
+                               &statement,
+                               NULL);
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 1, now, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 2, revision, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 3, program_id, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 4, expected_revision, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK : SQLITE_ERROR;
+        }
+        if (result == SQLITE_OK && sqlite3_changes(database->connection) != 1) {
+            status = TRAINLOG_STATUS_CONFLICT;
+        } else if (result != SQLITE_OK) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        (void)sqlite3_finalize(statement);
+        statement = NULL;
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = program_build_delete_response(program_id, revision, now, output_json, output_size);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        result = sqlite3_prepare_v2(
+            database->connection,
+            "INSERT INTO program_deletions("
+            "program_id,request_id,expected_revision,deleted_revision,deleted_at,response_json) "
+            "VALUES(?1,?2,?3,?4,?5,?6)",
+            -1,
+            &statement,
+            NULL);
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 1, program_id, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 2, request_id, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 4, revision, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 5, now, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 6, *output_json, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK : SQLITE_ERROR;
+        }
+        if (result != SQLITE_OK) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+        (void)sqlite3_finalize(statement);
     }
     if (status != TRAINLOG_STATUS_OK ||
         sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) != SQLITE_OK) {
@@ -1375,6 +1605,10 @@ TrainlogStatus trainlog_web_programs_prepare_json(TrainlogDatabase *database,
     document = yyjson_read(detail, detail_size, YYJSON_READ_NOFLAG);
     free(detail);
     root = document == NULL ? NULL : yyjson_doc_get_root(document);
+    if (root == NULL || !yyjson_equals_str(yyjson_obj_get(root, "state"), "active")) {
+        yyjson_doc_free(document);
+        return TRAINLOG_STATUS_CONFLICT;
+    }
     session = root == NULL ? NULL : program_find_session(root, program_session_id);
     if (session == NULL) {
         yyjson_doc_free(document);

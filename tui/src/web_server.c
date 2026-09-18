@@ -712,6 +712,46 @@ static enum MHD_Result handle_program_archive(TrainlogWebContext *context,
     return queue_owned_programs_json(connection, status, json, json_size);
 }
 
+static enum MHD_Result handle_program_delete(TrainlogWebContext *context,
+                                             struct MHD_Connection *connection,
+                                             const char *identity,
+                                             size_t identity_length,
+                                             const char *method) {
+    static const char SUFFIX[] = "/delete";
+    const char *request_id =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+    const char *if_match =
+        MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+    char program_id[TRAINLOG_ID_MAX + 1U];
+    char revision[TRAINLOG_ID_MAX + 1U];
+    char *json = NULL;
+    size_t json_size = 0U;
+    size_t program_length = identity_length - strlen(SUFFIX);
+    TrainlogStatus status;
+
+    if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+        return queue_json(connection,
+                          MHD_HTTP_METHOD_NOT_ALLOWED,
+                          "{\"error\":\"method_not_allowed\"}\n",
+                          "POST");
+    }
+    if (!program_mutation_allowed(context, connection)) {
+        return queue_json(
+            connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+    }
+    if (request_id == NULL || request_id[0] == '\0' || strlen(request_id) > 128U ||
+        !copy_path_component(program_id, sizeof(program_id), identity, program_length) ||
+        !parse_quoted_revision(if_match, revision, sizeof(revision))) {
+        return queue_json(connection,
+                          MHD_HTTP_PRECONDITION_REQUIRED,
+                          "{\"error\":\"precondition_required\"}\n",
+                          NULL);
+    }
+    status = trainlog_web_programs_delete_json(
+        context->database, program_id, revision, request_id, &json, &json_size);
+    return queue_owned_programs_json(connection, status, json, json_size);
+}
+
 static enum MHD_Result handle_program_prepare(TrainlogWebContext *context,
                                               struct MHD_Connection *connection,
                                               const char *identity,
@@ -759,6 +799,7 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
                                               TrainlogHttpRequestState *request) {
     static const char PREFIX[] = "/api/v1/sessions/program/";
     static const char ARCHIVE_SUFFIX[] = "/archive";
+    static const char DELETE_SUFFIX[] = "/delete";
     const char *identity;
     const char *sessions_marker;
     char *json = NULL;
@@ -783,6 +824,10 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
         strcmp(identity + identity_length - strlen(ARCHIVE_SUFFIX), ARCHIVE_SUFFIX) == 0) {
         return handle_program_archive(context, connection, identity, identity_length, method);
     }
+    if (identity_length > strlen(DELETE_SUFFIX) &&
+        strcmp(identity + identity_length - strlen(DELETE_SUFFIX), DELETE_SUFFIX) == 0) {
+        return handle_program_delete(context, connection, identity, identity_length, method);
+    }
     if (sessions_marker != NULL) {
         return handle_program_prepare(context, connection, identity, sessions_marker, method);
     }
@@ -791,6 +836,10 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
             connection, MHD_HTTP_METHOD_NOT_ALLOWED, "{\"error\":\"method_not_allowed\"}\n", "GET");
     }
     status = trainlog_web_programs_detail_json(context->database, identity, &json, &json_size);
+    if (status == TRAINLOG_STATUS_CONFLICT) {
+        free(json);
+        return queue_json(connection, MHD_HTTP_GONE, "{\"error\":\"program_deleted\"}\n", NULL);
+    }
     return queue_owned_programs_json(connection, status, json, json_size);
 }
 

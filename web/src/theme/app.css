@@ -167,12 +167,17 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .trash-action:hover,
 .trash-action:focus-visible { background: rgb(243 139 168 / 12%); }
 .program-list, .program-session-list { display: grid; gap: .75rem; }
+.program-row { box-shadow: 0 .45rem 1.4rem rgb(0 0 0 / 10%); }
+.program-row .session-row-main { grid-template-columns: minmax(13rem, 2fr) repeat(3, minmax(8rem, 1fr)); }
 .program-session-list { padding: 0; list-style: none; }
 .program-session-list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--surface-1); border-radius: .7rem; }
 .program-session-list p { margin: .35rem 0 0; color: var(--subtext-0); }
 .import-preview { margin: 1rem 0; padding: 1rem; border: 1px solid var(--blue); border-radius: .75rem; background: var(--mantle); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 600px) { .program-session-list li { align-items: stretch; flex-direction: column; } }
+@media (max-width: 600px) {
+  .program-session-list li { align-items: stretch; flex-direction: column; }
+  .program-row .session-row-main { grid-template-columns: 1fr; }
+}
 .detail-summary, .detail-tile { margin-bottom: 1rem; padding: 1.1rem; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--base); }
 .detail-occurrences li { display: grid; gap: .35rem; }
 .detail-occurrences span, .detail-occurrences small { color: var(--subtext-0); }

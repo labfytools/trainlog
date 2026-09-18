@@ -44,6 +44,16 @@ TrainlogStatus trainlog_web_programs_archive_json(TrainlogDatabase *database,
                                                   char **output_json,
                                                   size_t *output_size);
 
+/* CONTRACT: deletion is a terminal logical transition. Exact retries replay
+ * the durable response; reusing a request ID for another semantic command is
+ * a conflict. Source definitions and derived preparations remain untouched. */
+TrainlogStatus trainlog_web_programs_delete_json(TrainlogDatabase *database,
+                                                 const char *program_id,
+                                                 const char *expected_revision,
+                                                 const char *request_id,
+                                                 char **output_json,
+                                                 size_t *output_size);
+
 /* Creates a separate draft preparation and never changes or delivers the
  * source program. request_id is forwarded to the preparation service. */
 TrainlogStatus trainlog_web_programs_prepare_json(TrainlogDatabase *database,

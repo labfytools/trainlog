@@ -37,6 +37,62 @@ function preview(imported: boolean) {
 }
 
 describe('Programs tab', () => {
+  it('deletes a program through a separate guarded action and restores focus on cancel', async () => {
+    const item = {
+      program_id: 'pg_test',
+      title: 'Cycle à retirer',
+      state: 'archived',
+      start_date: null,
+      end_date: null,
+      session_count: 4,
+      provenance: 'trainlog-program',
+      updated_at: '2026-09-18T12:00:00Z',
+      imported_at: '2026-09-17T12:00:00Z',
+      revision_id: 'pgr_revision',
+      preparation_count: 2,
+      usage: 'used',
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/v1/sessions/programs?')) {
+        return jsonResponse({ ...programPage(), items: [item] })
+      }
+      if (url === '/api/v1/sync/status') {
+        return jsonResponse(
+          { phase: 'idle', result: 'ok' },
+          { 'X-Trainlog-CSRF-Token': 'a'.repeat(64) },
+        )
+      }
+      if (url === '/api/v1/sessions/program/pg_test/delete') {
+        expect(init?.method).toBe('POST')
+        expect((init?.headers as Record<string, string>)['If-Match']).toBe('"pgr_revision"')
+        expect((init?.headers as Record<string, string>)['X-Trainlog-Request-ID'])
+          .toMatch(/^pd_[0-9a-f]{32}$/)
+        return jsonResponse({ api_version: 1, program_id: 'pg_test' })
+      }
+      throw new Error(`unexpected request ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ProgramsTab detailProgramId={null} onOpen={vi.fn()} onBack={vi.fn()} />)
+
+    const trash = await screen.findByRole('button', {
+      name: 'Supprimer le programme Cycle à retirer',
+    })
+    fireEvent.click(trash)
+    let dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent(/toutes les préparations.*conserv/)
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(trash)
+
+    fireEvent.click(trash)
+    dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer le programme' }))
+    await waitFor(() => expect(screen.queryByText('Cycle à retirer')).not.toBeInTheDocument())
+    expect(fetchMock.mock.calls.filter(([url]) =>
+      String(url) === '/api/v1/sessions/program/pg_test/delete')).toHaveLength(1)
+  })
+
   it('shows a server preview before the only importing mutation', async () => {
     const onOpen = vi.fn()
     const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {

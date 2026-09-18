@@ -9,6 +9,10 @@ export interface ProgramListItem {
   session_count: number
   provenance: string
   updated_at: string
+  imported_at: string
+  revision_id: string
+  preparation_count: number
+  usage: 'used' | 'unused'
 }
 
 export interface ProgramOccurrence {
@@ -93,10 +97,10 @@ async function errorReason(response: Response): Promise<string> {
   return object(value) && typeof value.error === 'string' ? value.error : `HTTP ${response.status}`
 }
 
-function requestId(): string {
+function requestId(prefix = 'web'): string {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
-  return `web-${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`
+  return `${prefix}_${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`
 }
 
 export async function fetchAllPrograms(
@@ -127,6 +131,10 @@ export async function fetchAllPrograms(
       if (!object(candidate) || typeof candidate.program_id !== 'string' ||
           typeof candidate.title !== 'string' ||
           (candidate.state !== 'active' && candidate.state !== 'archived') ||
+          typeof candidate.imported_at !== 'string' ||
+          typeof candidate.revision_id !== 'string' ||
+          !Number.isSafeInteger(candidate.preparation_count) ||
+          (candidate.usage !== 'used' && candidate.usage !== 'unused') ||
           identities.has(candidate.program_id)) {
         throw new TypeError('pagination de programmes incohérente')
       }
@@ -156,13 +164,20 @@ export async function fetchProgram(programId: string, signal?: AbortSignal): Pro
   return value as unknown as ProgramDetail
 }
 
-async function programMutation(path: string, body: string, extraHeaders = {}): Promise<Response> {
+async function programMutation(
+  path: string,
+  body: string,
+  extraHeaders = {},
+  requestPrefix = 'web',
+): Promise<Response> {
   const csrf = await mutationCsrfToken()
   return fetch(path, {
     method: 'POST',
     headers: {
       Accept: 'application/json', 'Content-Type': 'application/json',
-      'X-Trainlog-CSRF-Token': csrf, 'X-Trainlog-Request-ID': requestId(), ...extraHeaders,
+      'X-Trainlog-CSRF-Token': csrf,
+      'X-Trainlog-Request-ID': requestId(requestPrefix),
+      ...extraHeaders,
     },
     body,
   })
@@ -188,6 +203,17 @@ export async function archiveProgram(programId: string, revision: string): Promi
   const response = await programMutation(
     `/api/v1/sessions/program/${encodeURIComponent(programId)}/archive`, '{}',
     { 'If-Match': `"${revision}"` },
+  )
+  if (!response.ok) {
+    throw new Error(await errorReason(response))
+  }
+}
+
+export async function deleteProgram(programId: string, revision: string): Promise<void> {
+  const response = await programMutation(
+    `/api/v1/sessions/program/${encodeURIComponent(programId)}/delete`, '{}',
+    { 'If-Match': `"${revision}"` },
+    'pd',
   )
   if (!response.ok) {
     throw new Error(await errorReason(response))

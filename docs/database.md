@@ -1,5 +1,19 @@
 # Desktop database
 
+## Schema v26: Programs presentation, Android projection, and logical deletion
+
+Schema v26 adds nullable `programs.deleted_at` and the terminal
+`program_deletions` logical-deletion ledger. A ledger row binds the stable
+program identity to the request revision, deleted revision, response replay,
+generation identity, and nullable `acknowledged_at`. Deletion is available for
+active and archived programs. It retains the imported source definition and
+all derived preparations, but a deleted program cannot be resurrected or used
+to create another preparation. An archived program cannot be prepared.
+
+The related Programs presentation reads imported definitions, their sessions,
+usage, and provenance as real desktop data; it does not make planning targets
+performed work. The v26 migration is additive and transactional.
+
 ## Schema v25: Web deletion requests and Program V1
 
 Schema v25 adds durable Program V1 definitions, their ordered session and
@@ -51,8 +65,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=25
-DATABASE_SCHEMA_V25=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=26
+DATABASE_SCHEMA_V26=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -71,7 +85,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-25
+26
 ```
 
 The independent actual-set loads documented in the current desktop, Android

@@ -70,7 +70,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
         private val SUPPORTED =
             (ANDROID_KINDS.values +
                     Kind("trainlog-ai-session-drafts", 2, "ai-proposals-v2.json", false) +
-                    Kind("trainlog-session-preparations", 2, "session-preparations-v2.json", false))
+                    Kind("trainlog-session-preparations", 2, "session-preparations-v2.json", false) +
+                    Kind("trainlog-programs", 1, "programs-v1.json", false))
                 .map { it.format to it.version }
                 .toSet()
 
@@ -658,6 +659,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
             is ExerciseAliasImportResult.Applied,
             is ExecutionDraftImportResult.Applied,
             is AiSessionDraftImportResult.Applied,
+            is ProgramsImportResult.Applied,
             is CausalDeleteResult.Applied,
             is CausalDeleteResult.Unchanged -> null
             else -> result.toString()
@@ -799,6 +801,10 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 apply("causal-deletions") {
                     repository.applyCausalDeletionExportV1Json(checkNotNull(a["causal-deletions"]))
                 }
+                if ("programs-v1" in a)
+                    apply("programs-v1") {
+                        repository.applyProgramsV1Json(checkNotNull(a["programs-v1"]))
+                    }
                 apply("catalog") { repository.applyPcCatalogJson(checkNotNull(a["catalog"])) }
                 apply("exercise-profile-state") {
                     repository.applyExerciseProfileStateJson(
