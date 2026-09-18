@@ -21,10 +21,21 @@ import {
   validDateSortValue,
   validTimestampValue,
 } from '../presentation/dateFormat'
+import { ProgramsTab } from './ProgramsTab'
 
-type View = 'preparation' | 'resume' | 'history'
-const collections: Record<View, SessionCollection[]> = {
+type View = 'preparation' | 'resume' | 'history' | 'programs'
+const collections: Record<Exclude<View, 'programs'>, SessionCollection[]> = {
   preparation: ['preparations', 'proposals'], resume: ['drafts'], history: ['history'],
+}
+
+function viewLabel(view: View): string {
+  const labels: Record<View, string> = {
+    preparation: 'Préparation',
+    resume: 'À reprendre',
+    history: 'Historique',
+    programs: 'Programmes',
+  }
+  return labels[view]
 }
 
 export type SessionListEntry = SessionListItem & { collection: SessionCollection }
@@ -394,10 +405,20 @@ export function SessionsPage() {
   const [detailPath, setDetailPath] = useState(() => window.location.pathname)
   const loadRevision = useRef(0)
   const detailMatch = useMemo(() => detailPath.match(/^\/seances\/(preparation|proposal|draft|history)\/([^/]+)$/), [detailPath])
-  const load = () => { const controller = new AbortController(); const revision = ++loadRevision.current
-    setPending(true); setFailed(false)
-    Promise.all(collections[view].map((collection) => fetchAllSessionPages(collection, search, controller.signal)
-      .then((pageItems) => pageItems.map((item) => ({ ...item, collection })))))
+  const load = () => {
+    const controller = new AbortController()
+    const revision = ++loadRevision.current
+    setPending(true)
+    setFailed(false)
+    if (view === 'programs') {
+      setItems([])
+      setPending(false)
+      return controller
+    }
+    const pageRequests = collections[view].map((collection) =>
+      fetchAllSessionPages(collection, search, controller.signal).then((pageItems) =>
+        pageItems.map((item) => ({ ...item, collection }))))
+    Promise.all(pageRequests)
       .then((pages) => {
         if (revision === loadRevision.current) setItems(sortSessionItems(pages.flat(), view))
       }).catch((reason) => {
@@ -418,6 +439,13 @@ export function SessionsPage() {
     window.history.pushState(null, '', path); setDetailPath(path)
   }
   const back = () => { window.history.pushState(null, '', '/seances'); setDetailPath('/seances'); setEditor(null) }
+  const programMatch = useMemo(() => detailPath.match(/^\/seances\/program\/([^/]+)$/), [detailPath])
+  const openProgram = (identity: string) => {
+    const path = `/seances/program/${encodeURIComponent(identity)}`
+    window.history.pushState(null, '', path)
+    setDetailPath(path)
+    setView('programs')
+  }
   const visibleItems = useMemo(() => sortSessionItems(items.filter((item) => {
     if (stateFilter && item.state !== stateFilter) return false
     if (dateFrom && (!item.date || item.date < dateFrom)) return false
@@ -439,14 +467,34 @@ export function SessionsPage() {
   if (detailMatch) return <section className="page"><ReadonlyDetail
     kind={detailMatch[1] as 'draft' | 'history'} identity={decodeURIComponent(detailMatch[2])}
     onBack={back} /></section>
+  if (programMatch) {
+    return <section className="page">
+      <ProgramsTab
+        detailProgramId={decodeURIComponent(programMatch[1])}
+        onOpen={openProgram}
+        onBack={back}
+      />
+    </section>
+  }
   return <section className="page sessions-page" aria-labelledby="page-title"><div className="page-heading">
     <div><p className="eyebrow">ORGANISER</p><h1 id="page-title">Séances</h1></div>
     <p className="page-intro">Préparez sans confondre proposition, brouillon d’exécution et séance réalisée.</p></div>
     <div className="sessions-toolbar"><div className="session-tabs" role="tablist">
-      {(['preparation', 'resume', 'history'] as const).map((candidate) => <button type="button" role="tab"
-        aria-selected={view === candidate} key={candidate} onClick={() => setView(candidate)}>
-        {candidate === 'preparation' ? 'Préparation' : candidate === 'resume' ? 'À reprendre' : 'Historique'}</button>)}</div>
+      {(['preparation', 'resume', 'history', 'programs'] as const).map((candidate) =>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === candidate}
+          key={candidate}
+          onClick={() => setView(candidate)}
+        >{viewLabel(candidate)}</button>)}</div>
       {view === 'preparation' && <button type="button" className="primary-action" onClick={() => setEditor('new')}>Nouvelle séance</button>}</div>
+    {view === 'programs' && <ProgramsTab
+      detailProgramId={null}
+      onOpen={openProgram}
+      onBack={back}
+    />}
+    {view !== 'programs' && <>
     <label className="session-search"><span>Rechercher par titre ou exercice</span><input type="search" value={search}
       onChange={(event) => setSearch(event.target.value)} /></label>
     <div className="session-filters" aria-label="Filtres de séances">
@@ -467,6 +515,6 @@ export function SessionsPage() {
         ? item.collection === 'preparations' || item.collection === 'proposals' ? 'Non planifiée' : 'Date inconnue'
         : <time dateTime={item.date}>{formatCivilDate(item.date, dateFormat)}</time>}</span>
       <span>{item.occurrence_count} exercice{item.occurrence_count > 1 ? 's' : ''}</span>
-      <span>{sessionStateLabel(item.collection, item.state)}</span></button>)}</div>
+      <span>{sessionStateLabel(item.collection, item.state)}</span></button>)}</div></>}
   </section>
 }
