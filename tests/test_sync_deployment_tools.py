@@ -62,6 +62,7 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             inventory = json.loads((output / "candidate-inventory.json").read_text())
             self.assertEqual(inventory["product_version"], "0.1.2")
+            self.assertIn("session-preparations-v1", inventory["protocols"])
             self.assertTrue((output / "bin/trainlog").is_file())
             self.assertTrue((output / "bin/trainlog-sync-once").is_file())
             self.assertTrue((output / "bin/trainlog-syncd").is_file())

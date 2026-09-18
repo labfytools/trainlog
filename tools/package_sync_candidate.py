@@ -106,6 +106,7 @@ def main() -> int:
             "generation-manifest-v1",
             "generation-ack-v1",
             "generation-archive-v1",
+            "session-preparations-v1",
         ],
         "entry_points": [
             "bin/trainlog",
