@@ -803,7 +803,10 @@ bind_optional_number(sqlite3_stmt *statement, int parameter, yyjson_val *value, 
         return sqlite3_bind_null(statement, parameter);
     }
     if (real_value) {
-        return sqlite3_bind_double(statement, parameter, yyjson_get_real(value));
+        /* CONTRACT: Program V1 accepts both integer and real JSON spellings
+         * for a weight. yyjson_get_num() preserves either representation;
+         * yyjson_get_real() would silently turn an integer spelling into 0. */
+        return sqlite3_bind_double(statement, parameter, yyjson_get_num(value));
     }
     return sqlite3_bind_int64(statement, parameter, yyjson_get_sint(value));
 }
@@ -1518,6 +1521,24 @@ static yyjson_val *program_find_session(yyjson_val *root, const char *program_se
     return NULL;
 }
 
+static yyjson_mut_val *program_copy_preparation_value(yyjson_mut_doc *document,
+                                                      yyjson_val *source_occurrence,
+                                                      const char *key) {
+    yyjson_val *source_value = yyjson_obj_get(source_occurrence, key);
+
+    /* WHY: older imports accepted integer target weights but persisted them
+     * as 0.0. Program V1 forbids zero, so it cannot be a legitimate target.
+     * A preparation is an editable draft and may represent the irrecoverable
+     * legacy target as unspecified without rewriting the imported program.
+     * INVARIANT: every valid positive target, including integer spellings
+     * fixed at import, is copied exactly. */
+    if (strcmp(key, "target_weight_kg") == 0 && yyjson_is_num(source_value) &&
+        yyjson_get_num(source_value) == 0.0) {
+        return yyjson_mut_null(document);
+    }
+    return yyjson_val_mut_copy(document, source_value);
+}
+
 static yyjson_mut_val *program_copy_preparation_occurrences(yyjson_mut_doc *document,
                                                             yyjson_val *session) {
     static const char *const KEYS[] = {"exercise_id",
@@ -1546,7 +1567,7 @@ static yyjson_mut_val *program_copy_preparation_occurrences(yyjson_mut_doc *docu
         }
         for (key_index = 0U; key_index < sizeof(KEYS) / sizeof(KEYS[0]); ++key_index) {
             yyjson_mut_val *value =
-                yyjson_val_mut_copy(document, yyjson_obj_get(source_occurrence, KEYS[key_index]));
+                program_copy_preparation_value(document, source_occurrence, KEYS[key_index]);
             if (value == NULL ||
                 !yyjson_mut_obj_add_val(document, destination_occurrence, KEYS[key_index], value)) {
                 return NULL;

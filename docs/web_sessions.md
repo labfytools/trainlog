@@ -77,7 +77,11 @@ confirmation. Exact content replay is idempotent; same-ID divergent content is
 a conflict. Archiving preserves definitions and derived preparations. Creating
 a preparation from one active program session copies targets and provenance
 into a new manual preparation but creates no delivery, execution or performed
-data. Archived or deleted programs cannot be prepared.
+data. Program imports preserve target weights expressed as either integer or
+real JSON numbers. A Program row affected by the former integer-weight import
+defect can still create an editable draft: its impossible zero weight becomes
+an unspecified draft target without rewriting the imported Program. Archived
+or deleted programs cannot be prepared.
 
 Desktop schema v27 enriches each Program session with a persisted execution
 state. Web displays `À faire`, `Préparée`, `En cours`, or `Effectuée`; completed

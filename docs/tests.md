@@ -58,8 +58,14 @@ replay.
 `web_programs` exercises validation preview without writes, transactional
 import, exact replay, responsive detail serialization, archive replay,
 revision-guarded terminal deletion, response replay, preparation creation,
-usage/provenance and absence of delivery. Schema migration coverage checks all
-v26 tables and columns. `schema_v26_migration` additionally migrates a
+usage/provenance and absence of delivery. Mixed-profile preparation coverage
+combines continuous duration, externally loaded reps with an integer JSON
+weight, and unloaded reps; it verifies preserved order and targets, generated
+entry identities, readable detail, request replay, and zero execution or
+delivery creation. A separate compatibility fixture retains an affected source
+Program's impossible zero weight while deriving an editable preparation with an
+unspecified target. Schema migration coverage checks all v26 tables and
+columns. `schema_v26_migration` additionally migrates a
 deterministically populated v25 fixture containing 24 sessions and 48 entries,
 with preparation provenance and history, and verifies exact typed projections
 after migration. Programs Vitest covers preview before the only importing

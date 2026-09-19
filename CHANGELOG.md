@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.2
 
+- Fixed Program-to-preparation creation for Program V1 target weights written
+  as integer JSON numbers. Imports now preserve both integer and real number
+  spellings instead of persisting integer weights as zero. Existing affected
+  Programs remain unchanged; when deriving an editable draft, an impossible
+  legacy zero weight is represented as an unspecified target rather than
+  blocking the entire preparation. Mixed continuous-duration, unloaded-reps,
+  and externally loaded reps coverage verifies order, targets, provenance,
+  zero delivery/execution side effects, readable detail, and request replay.
+
 - Fixed the Web history deletion failure for Program-origin completed
   sessions. The history detail query now reads explicit MAX results from
   `max_results`; mobile history import seeds a deterministic causal live
