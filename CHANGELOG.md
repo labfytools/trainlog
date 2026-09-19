@@ -10,7 +10,11 @@
   revision-guarded, atomic and replay-safe. Retained Program-execution
   generations cannot resurrect a causally deleted session, and Web errors now
   distinguish stale, absent, invalid and internal failures without exposing
-  database details.
+  database details. The private rollout additionally fixed complete-generation
+  dominance for occurrence equipment companions and made bounded ACK recovery
+  prioritize recent terminal evidence. Two correlated direct-MTP exchanges,
+  component restart and exact replay of a retained pre-deletion generation
+  preserved the single tombstone without duplication or resurrection.
 
 - Added the Program execution flow. Android schema v25 can start or resume one
   Program session through the existing durable singleton, preserves stable

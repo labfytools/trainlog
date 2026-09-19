@@ -83,7 +83,7 @@ parallel implementation of its rules.
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
 | Program execution flow | `TRAINLOG_PROGRAM_EXECUTION_FLOW_V1=PASS` (private coordinated deployment, real execution, correlated ACK, restart, replay, and deletion validated) |
-| Web history deletion incident | `TRAINLOG_HISTORY_DELETE_HTTP500_FIX_V1=IMPLEMENTED` (Program-origin completed sessions use causal deletion and terminal execution provenance) |
+| Web history deletion incident | `TRAINLOG_HISTORY_DELETE_HTTP500_FIX_V1=PASS` (private rollout, correlated full-generation exchanges, restart, retained-generation replay, and non-resurrection validated) |
 | Sync orchestrator/report V1 | `TRAINLOG_SYNC_ORCHESTRATOR_REPORT_V1=PASS/FROZEN` |
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |

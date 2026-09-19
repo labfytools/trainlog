@@ -830,13 +830,21 @@ than fabricating an ACK or discarding evidence.
 Before Android captures for a negotiated `generation-archive-v1` conversation,
 the desktop consumer publishes
 `desktop-archive-acknowledgements-v1.json`. Its strictly correlated envelope
-contains at most 32 exact consumed ACK documents already retained in the
-desktop consumption ledger. This repairs the evidence gap left by older
+contains at most 32 exact terminal consumed or rejected ACK documents already
+retained in the desktop consumption ledger. The bounded window selects the
+newest terminal evidence first, because older acknowledged generations are
+normally already archived and must not starve interrupted recent
+conversations. This repairs the evidence gap left by older
 Android producers that advanced generation status without retaining the
 received ACK. Android revalidates every document against its immutable local
-generation and manifest before storing it; missing, mismatched, rejected, or
-ambiguous evidence cannot make a generation archivable. The object is a
-bounded coordination artifact, not a new ACK source.
+generation and manifest before storing it. A consumed ACK makes its exact
+generation archive-eligible; a rejected ACK closes the exact producer row but
+does not make it an acknowledged archive candidate. Missing, mismatched, or
+ambiguous evidence cannot advance any generation. Rejected ACKs created before
+the cross-platform diagnostic canonicalization fix remain durable desktop
+evidence but are omitted from the recovery envelope when Android cannot verify
+their digest. The object is a bounded coordination artifact, not a new ACK
+source.
 
 If Android still cannot admit a generation, it durably publishes the
 run-correlated `android-generation-error-v1.json` with
@@ -852,6 +860,10 @@ helpers and the Android repository's outer transaction apply every business
 row, causal state and the consumption/ACK record together. A late semantic
 failure rolls back earlier writes and commits a separate bounded `rejected`
 ACK; missing/incomplete transport input remains retryable and produces no ACK.
+Within a complete causal envelope, a history occurrence and its equipment
+association companion are both dominated when their owning session already has
+a durable deletion state. Standalone history and association imports remain
+strict and still reject unknown sessions or occurrences.
 
 Lineage is scoped to the producer/consumer pair. Exact replay returns the
 stored result; an accepted successor must name the last consumed generation as

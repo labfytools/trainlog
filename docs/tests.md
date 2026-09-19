@@ -170,6 +170,15 @@ npm run build
 Release-oriented Meson builds must use `-Dweb=enabled`; Meson never provisions
 or downloads npm dependencies.
 
+The history-deletion regression suite also exercises a real Program-origin
+completed session through the Core and HTTP command paths, including stale
+revision, cancellation, injected transaction failure, exact request replay and
+terminal execution provenance. Full-generation tests apply causal deletions
+before older history and equipment-association companions, prove that
+standalone imports remain strict, recover recent consumed and rejected ACKs
+without letting an older bounded window starve active producer capacity, and
+replay an already consumed generation without mutation.
+
 `WEB_DASHBOARD_DATA_CONTRACT_V1` adds a standalone bounded Core test for empty
 history, explicit unavailable domains, two observable sessions on one local
 day, an unfinished session, continuous activity, MAX-only sessions, primary
