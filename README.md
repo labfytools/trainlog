@@ -24,7 +24,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.3 development) | Display the Dashboard, the operational Programmes calendar, Sessions administration, and the desktop exercise catalogue through typed Trainlog Core/API boundaries. Exercises supports search/filter, detail, creation, editing and causal retirement; equipment is read-only. Analyse remains a placeholder. |
+| Local Web (0.1.4 development) | Display the Dashboard, the operational Programmes calendar, Sessions administration, and the desktop exercise catalogue through typed Trainlog Core/API boundaries. Exercises supports search/filter, detail, creation, editing and causal retirement; equipment is read-only. Analyse is the current implementation cursor. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -34,8 +34,8 @@ make the remaining placeholder routes functional.
 The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
-Web Exercises administration is implemented for 0.1.3 development. The next
-separately contracted priority is the Android UX redesign.
+Web Exercises administration is implemented. The 0.1.4 development cursor is
+the Web Dashboard and Analyse V1 read-model workspace.
 
 ## Releases
 

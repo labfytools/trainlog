@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — 0.1.4
+
+Development opened after stable v0.1.3 release.
+
 ## 0.1.3 — 2026-09-20
 
 - Decoupled the Android full-generation request from the strict legacy V3

@@ -43,7 +43,7 @@ val trainlogVersionCode =
     providers.environmentVariable("TRAINLOG_ANDROID_VERSION_CODE").orNull?.let { raw ->
         raw.toIntOrNull()?.takeIf { it in 1..Int.MAX_VALUE }
             ?: throw GradleException("TRAINLOG_ANDROID_VERSION_CODE must be a positive integer")
-    } ?: 4
+    } ?: 5
 
 android {
     namespace = "com.labfytools.trainlog"
@@ -55,7 +55,7 @@ android {
         targetSdk = 36
 
         versionCode = trainlogVersionCode
-        versionName = "0.1.3"
+        versionName = "0.1.4"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }
