@@ -323,6 +323,21 @@ against desktop schema v27 without transferring ownership of Program
 definitions. Web and Android derive their session state from these persisted
 identities; no display-field heuristic is used.
 
+Android is capture-first: its drawer no longer exposes Statistics, and Home is
+limited to capture, recent BODY ZONES exposure, synchronization, and body
+measurements. A shared compact card/button system covers Sessions, Programs,
+drafts, exercise catalog/detail/editing, synchronization, Settings, and MAX
+presentation. Program list/detail surfaces show completed counts and explicit
+todo/in-progress/completed states; the active editor uses exclusive side-by-
+side session-type controls and compact two-column set cards. These are
+presentation changes only and do not alter schemas or exchange artifacts.
+Web Program administration retains revision-guarded deletion and now presents
+adaptive cards plus an explicit completed-session progress indicator.
+The full Android lint comparison against an isolated clean `main` worktree is
+unchanged at ten pre-existing errors: one `NewApi`, one
+`LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
+diagnostics. This UI tranche adds no lint error and changes no lint policy.
+
 The private Program execution rollout installed desktop schema v27 and the
 signed nondebuggable Android versionCode 17/schema v25 update without
 uninstalling or clearing application data. A strictly disposable Program was

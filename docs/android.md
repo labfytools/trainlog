@@ -57,6 +57,30 @@ It is a native Kotlin/Jetpack Compose application with local SQLite persistence.
 
 The desktop remains the canonical long-term history and analytics store.
 
+## Capture-first interface
+
+The Android interface uses one compact dark design system for cards, action
+tiles, buttons, selection states, and destructive actions. Controls share a
+restrained corner radius instead of screen-specific pill shapes. The Home
+screen is limited to starting or resuming capture, recent BODY ZONES exposure,
+synchronization, and body measurements. Analytics and Statistics are not
+mobile navigation destinations; the desktop remains their owner. The local
+statistics-compatible data and exchange contracts are unchanged.
+
+Sessions exposes manual capture, prepared drafts, completed history, and
+Programs as structured actions. Program cards show status, dates, session
+count, and completed progress. Program detail shows each planned session as
+`todo`, `in progress`, or `completed`, with type, date, exercise count, and a
+start/resume action. Starting continues to use the schema-v25 durable singleton
+and stable Program provenance described below.
+
+The active editor uses side-by-side Training/MAX selection and compact set
+cards. Repetitions and load share one row when space permits; the per-set
+delete action stays inside the card and retains its confirmation contract.
+Exercise filters use wrapping selection tiles, while catalog rows, drafts,
+exercise actions, synchronization actions, Settings actions, and latest MAX
+entries use the same card/button vocabulary.
+
 ## Interface language (`TRAINLOG_I18N_V0_1_1`)
 
 Trainlog version 0.1.2 is synchronized with the desktop TUI as one product

@@ -4,6 +4,22 @@
 
 Development opened after the stable v0.1.2 release.
 
+- Unified the Android capture interface around compact dark cards, action
+  tiles, restrained-radius button variants, wrapping selection grids, and
+  two-column performed-set entry. Home now focuses on session capture, recent
+  BODY ZONES exposure, synchronization, and measurements; mobile Statistics
+  navigation was removed without changing stored data or exchange contracts.
+  Programs now show compact session metadata, completed progress, and explicit
+  start/resume/completed states using the existing schema-v25 durable Program
+  execution provenance. Web Program administration gained adaptive cards, a
+  visible progress bar, and green completed-session treatment while retaining
+  its revision-guarded trash confirmation and causal deletion behavior.
+  Android full lint remains at the exact ten-error `main` baseline (one
+  `NewApi`, one `LocalContextConfigurationRead`, and eight bilingual
+  `StringFormatMatches` diagnostics); this lot adds no lint error and disables
+  no rule. Private candidates may override numeric `versionName` and increasing
+  `versionCode` at build time without changing development defaults.
+
 - Added the loopback-only `/exercices` desktop catalogue administration
   surface with bounded search/profile/BODY ZONES filtering, detail and
   read-only equipment presentation, Core-owned creation and editing, complete
