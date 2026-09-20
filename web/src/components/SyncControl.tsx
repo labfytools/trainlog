@@ -28,7 +28,7 @@ const committedPhases = new Set([
 
 function statusAction(status: SyncStatus | null): string {
   if (status?.phase === 'waiting_android_publication') {
-    return 'Ouvrez l’écran de synchronisation Android et laissez le téléphone déverrouillé.'
+    return 'Demande envoyée ; Trainlog Android doit être joignable par le service de fond ou Drive.'
   }
   if (status?.phase === 'failed' && status.error_code === 'device_unavailable') {
     return 'Connectez et déverrouillez le téléphone, puis réessayez.'
@@ -135,6 +135,19 @@ export function SyncControl({ onCommitted }: { onCommitted: () => void }) {
         {action && <p>{action}</p>}
         {status?.error_code && <p>Code : {status.error_code}</p>}
         {status?.diagnostic && <p>{status.diagnostic}</p>}
+        {status?.usb_state && <p>Android USB : {{
+          unavailable: 'non disponible', skipped: 'ignoré', running: 'en cours',
+          success: '✓ synchronisé', failed: '⚠ non traité',
+        }[status.usb_state]}</p>}
+        {status?.drive_state && <p>Google Drive : {{
+          disabled: 'désactivé', unavailable: 'non disponible', running: 'en cours',
+          mirrored: '✓ miroir à jour', success: '✓ synchronisé', failed: '⚠ miroir non mis à jour',
+        }[status.drive_state]}</p>}
+        {status?.drive_diagnostic && <p>{status.drive_diagnostic}</p>}
+        {status?.phase === 'waiting_android_publication' && <p>Demande : envoyée · Android : génération attendue</p>}
+        {status?.inbound_generation_id && <p>PC : import terminé · <code>{status.inbound_generation_id}</code></p>}
+        {status?.outbound_generation_id && <p>PC : génération publiée · <code>{status.outbound_generation_id}</code></p>}
+        {status?.phase === 'completed' && <p>Android : import terminé · ACK : reçu · Résultat : terminé</p>}
         {status?.sessions_reconciled !== null && status?.sessions_reconciled !== undefined && (
           <p>Séances rapprochées : {status.sessions_reconciled}</p>
         )}

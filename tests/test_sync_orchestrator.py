@@ -134,6 +134,42 @@ class OrchestratorTest(unittest.TestCase):
                     os.kill(pid, 0)
             self.assertEqual(json.loads(state.read_text())["phase"], "interrupted")
 
+    def test_committed_primary_run_survives_drive_mirror_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sandbox = root / "program"
+            sandbox.mkdir()
+            (sandbox / "sync_orchestrator.py").write_bytes(ORCHESTRATOR.read_bytes())
+            (sandbox / "sync_drive_transport.py").write_text(
+                "import sys\nprint('injected Drive failure',file=sys.stderr)\nraise SystemExit(1)\n"
+            )
+            peer, desktop = identity("peer_"), identity("peer_")
+            inbound, outbound = identity("gen_"), identity("gen_")
+            report = {
+                "format": "trainlog-sync-worker-report", "version": 1,
+                "run_id": "RUN", "producer_peer_id": peer, "consumer_peer_id": desktop,
+                "inbound_generation_id": inbound, "outbound_generation_id": outbound,
+                "manifest_sha256": "a" * 64, "result": "completed",
+                "sessions_reconciled": 1, "domains": {"history-v4": True}, "drafts": [],
+                "ai_midpoint": {"result": "not_configured"},
+                "ai_post_sync": {"result": "not_configured"},
+            }
+            (sandbox / "sync_peer_worker.py").write_text(
+                "import json,sys\nv=" + repr(report) + "\nv['run_id']=sys.argv[sys.argv.index('--run-id')+1]\nprint(json.dumps(v))\n"
+            )
+            values = self.fixture(
+                root,
+                version=2,
+                drive_enabled=True,
+                drive_remote="fake:Trainlog/Sync/v1",
+            )
+            result = self.invoke(sandbox / "sync_orchestrator.py", values)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            final = json.loads(values[1].read_text())
+            self.assertEqual(final["phase"], "completed")
+            self.assertEqual(final["drive_state"], "failed")
+            self.assertIn("injected Drive failure", final["drive_diagnostic"])
+
 
 if __name__ == "__main__":
     unittest.main()

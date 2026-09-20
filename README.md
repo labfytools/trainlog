@@ -1,5 +1,12 @@
 # Trainlog
 
+Synchronization uses one generation/ACK engine over USB/MTP first and an
+optional private Google Drive mirror/fallback. Drive contains only versioned
+Trainlog artifacts under its separate Sync namespace; desktop and Android
+SQLite databases always remain local. Android can process PC USB requests from
+an explicitly enabled, visibly notified background service, while Drive checks
+follow Android's bounded background scheduling.
+
 Trainlog is a local-first workout and body-data system. Trainlog Core owns
 business truth and canonical desktop persistence. Its native Android app is the
 field companion, its C17/Notcurses desktop TUI is the administration and

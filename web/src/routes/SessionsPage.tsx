@@ -498,6 +498,7 @@ export function SessionsPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [statusMessage, setStatusMessage] = useState('')
+  const [sendingPreparation, setSendingPreparation] = useState<string | null>(null)
   const deleteReturnFocus = useRef<HTMLElement | null>(null)
   const [detailPath, setDetailPath] = useState(() => window.location.pathname)
   const loadRevision = useRef(0)
@@ -583,6 +584,36 @@ export function SessionsPage() {
       setDeleting(false)
     }
   }
+  const sendPreparation = async (item: SessionListEntry) => {
+    if (sendingPreparation !== null || item.collection !== 'preparations' ||
+        item.delivery_state !== 'local') return
+    setSendingPreparation(item.identity)
+    setStatusMessage('')
+    try {
+      const detail = await fetchSessionDetail('preparation', item.identity)
+      let revision = detail.revision_id
+      if (detail.editing_state === 'draft') {
+        const saved = await savePreparation({
+          title: detail.title,
+          session_type: detail.session_type,
+          planned_for: detail.planned_for,
+          notes: detail.notes,
+          editing_state: 'ready',
+          occurrences: detail.occurrences.map(commandOccurrence),
+        }, detail.identity, detail.revision_id)
+        revision = saved.revision_id
+      }
+      await prepareForAndroid(detail.identity, revision)
+      setStatusMessage('Préparation à synchroniser vers Android.')
+    } catch (reason) {
+      setStatusMessage(reason instanceof Error
+        ? `Envoi Android impossible : ${reason.message}`
+        : 'Envoi Android impossible.')
+    } finally {
+      setSendingPreparation(null)
+      load()
+    }
+  }
   if (editor) return <section className="page"><Editor initial={editor === 'new' ? undefined : editor}
     onCancel={() => setEditor(null)} onSaved={(identity) => { setEditor(null); open('preparations', identity) }} /></section>
   if (detailMatch && (detailMatch[1] === 'preparation' || detailMatch[1] === 'proposal')) {
@@ -636,6 +667,15 @@ export function SessionsPage() {
     {!pending && !failed && visibleItems.length === 0 && <p className="empty-inline">Aucun résultat pour cette vue.</p>}
     <div className="session-list">{visibleItems.map((item) => {
       const kind = deletionKind(item.collection)
+      const deliveryLabel = item.collection !== 'preparations' ? null
+        : item.delivery_state === 'pending' ? 'À synchroniser'
+        : item.delivery_state === 'acknowledged' ? 'Reçue sur Android'
+        : item.delivery_state === 'remote_unknown' ? 'État Android inconnu'
+        : item.delivery_state === 'cancelled' ? 'Livraison annulée'
+        : 'Locale'
+      const sendLabel = item.editing_state === 'draft'
+        ? 'Marquer prête et envoyer vers Android'
+        : 'Envoyer vers Android'
       return <div className="session-row" key={`${item.collection}-${item.identity}`}>
         <button
           type="button"
@@ -649,8 +689,21 @@ export function SessionsPage() {
               : 'Date inconnue'
             : <time dateTime={item.date}>{formatCivilDate(item.date, dateFormat)}</time>}</span>
           <span>{item.occurrence_count} exercice{item.occurrence_count > 1 ? 's' : ''}</span>
-          <span>{sessionStateLabel(item.collection, item.state)}</span>
+          <span>{item.collection === 'preparations'
+            ? `${sessionStateLabel(item.collection, item.editing_state ?? item.state)} · ${deliveryLabel}`
+            : sessionStateLabel(item.collection, item.state)}</span>
         </button>
+        {item.collection === 'preparations' && item.delivery_state === 'local' && <button
+          type="button"
+          className="android-send-action"
+          aria-label={sendLabel}
+          title={sendLabel}
+          disabled={sendingPreparation !== null}
+          onClick={() => void sendPreparation(item)}
+        ><span aria-hidden="true">⇥</span></button>}
+        {item.collection === 'preparations' && item.delivery_state !== 'local' && <span
+          className={`android-delivery-state state-${item.delivery_state}`}
+        >{deliveryLabel}</span>}
         <button
           type="button"
           className="trash-action"

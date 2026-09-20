@@ -1,5 +1,22 @@
 # Architecture
 
+## Synchronization transport boundary
+
+Generation capture, validation, causal import, publication and ACK acceptance
+are transport-neutral. `sync_peer_worker.py` owns that conversation; direct MTP
+and `sync_drive_transport.py` only move its bounded bytes. Automatic selection
+probes the expected MTP peer before preferring USB. A successful USB run is
+committed independently, then mirrored to Drive best-effort; Drive failure can
+never reopen its SQLite transactions. If MTP is unavailable, the same worker
+runs over the Drive byte adapter.
+
+Android mirrors that ownership: one `SyncGenerationCoordinator` is called by
+SyncScreen, the visible USB foreground service, and the private-folder Drive
+worker. One process guard prevents overlap, while generation and ACK tables
+remain the restart authority. Transport staging and network/provider waits are
+outside SQLite transactions. Neither transport can select or traverse an
+application database.
+
 Full-generation synchronization uses the common admission lock and a fixed
 coordinator worker. Browser input cannot select commands, paths, timeouts or
 capabilities. Peer identity/capabilities come from Android advertisement;

@@ -3,7 +3,10 @@
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated
 ACKs, restart, and idempotent replay passed. Generation mode remains an
-explicit per-installation opt-in; Drive is still unconfigured and unvalidated.
+explicit per-installation opt-in. The additive private Drive transport and
+Android background software are implemented and fake-transport validated;
+private live Drive and post-reboot/manual device validation remain explicit
+deployment gates.
 
 This document owns future work. The implemented baseline is summarized in
 [current_state.md](current_state.md); completed narratives and evidence belong

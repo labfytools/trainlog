@@ -1,5 +1,41 @@
 # Synchronization exchange
 
+## USB-priority and private Drive transport
+
+Full-generation synchronization has one business engine and two byte
+transports. Automatic desktop admission acquires the existing global lock,
+probes the configured Android MTP peer, selects USB when that peer is actually
+usable, and otherwise selects the configured private Drive namespace. A cable
+or retained peer advertisement is not availability evidence.
+
+After a successful USB conversation, desktop attempts to mirror the exact
+current coordination objects and referenced immutable generations to the
+separate configured `Trainlog/Sync/v1` namespace. Artifacts are uploaded and
+read back for size/SHA-256 verification; a generation manifest is uploaded
+after its artifacts and its mutable reference last. Mirror failure is reported
+but never rolls back the already committed USB import or ACK. With Drive
+disabled, historical USB behavior remains independent of rclone.
+
+Drive carries only existing versioned artifacts, manifests, references and
+ACKs. Desktop and Android SQLite files are never eligible transport objects.
+`Trainlog/Sync` is independent from `Trainlog/AI`; the rclone remote is trusted
+installation configuration, not a product constant or an HTTP parameter.
+
+Android uses the system document provider: the user explicitly selects the
+private `Trainlog/Sync/v1` folder, Trainlog persists access to that folder only,
+and Disconnect revokes it. No rclone password, OAuth token or authorization
+header is stored or logged by Trainlog. WorkManager checks Drive immediately
+after connection and then under Android scheduling constraints; periodic work
+has a 15-minute minimum and is not an instant push channel.
+
+The separately enabled USB background mode uses a visible `dataSync`
+foreground-service notification and the same `SyncGenerationCoordinator` as
+SyncScreen. A process-wide guard rejects concurrent UI/service conversations.
+Android 15+ limits `dataSync` foreground-service time and forbids starting it
+from `BOOT_COMPLETED`; after reboot the user must reopen Trainlog and reactivate
+the listener. A filesystem/provider event is only a prompt to validate the
+full run, generation, peer, hash and ACK envelope and never starts a workout.
+
 ## Manual session preparations V2
 
 `trainlog-session-preparations` V2 is a separate optional desktop-to-Android

@@ -1,5 +1,14 @@
 # Tests and validation
 
+`test_sync_drive_transport` proves Drive artifact-before-manifest and
+manifest-before-reference publication, rejects unsafe/AI namespaces, and keeps
+a partial generation invisible. Orchestrator coverage proves that Drive mirror
+failure cannot undo a completed primary transport. `web_sessions` additionally
+proves duplicate-delivery rejection and stable-identity active-list removal
+after the reserved execution session appears in completed history. Android's
+normal unit suite builds the shared generation coordinator, foreground service
+and WorkManager transport rather than a test-only protocol copy.
+
 `web_sessions` exercises production preparation creation, durable request
 replay, immutable successor revisions, stale-revision conflict, duplicate
 exercise occurrences, list search, persisted detail serialization, revision-

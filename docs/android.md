@@ -1,5 +1,24 @@
 # Android application
 
+## Background USB and private Drive synchronization
+
+SyncScreen and the explicitly enabled background service invoke one
+`SyncGenerationCoordinator` above `SyncGenerationService`. The shared guard
+permits one device conversation at a time. The USB listener is a real
+`dataSync` foreground service with a dedicated visible notification; disabling
+the setting stops it. It validates a request and generation before any domain
+mutation and never starts a prepared workout.
+
+Private Drive access uses a user-selected system document-provider folder and
+persisted folder-only permission. Disconnect revokes that permission and
+cancels periodic work. WorkManager performs a connected-network check at
+connection and periodic checks thereafter; Android's minimum periodic interval
+is 15 minutes and OEM scheduling can add latency. Drive therefore provides
+durable fallback, not an undocumented instant push promise. Android 15+ does
+not permit a `dataSync` foreground service to be launched from
+`BOOT_COMPLETED`, so the USB listener requires user activation again after
+reboot. Local data remains usable offline and no SQLite file enters Drive.
+
 Android schema v22 adds a pending manual-preparation store which is separate
 from AI proposals and the exactly-one active-session singleton. A received
 preparation is inert until explicit start; an occupied singleton is never

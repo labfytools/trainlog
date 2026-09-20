@@ -19,11 +19,15 @@ typedef struct ListDefinition {
 
 static const ListDefinition LISTS[] = {
     {"preparation",
-     "SELECT p.preparation_id,r.title,r.planned_for,p.editing_state,COUNT(e.entry_id),p.updated_at "
+     "SELECT p.preparation_id,r.title,r.planned_for,p.editing_state,COUNT(e.entry_id),p.updated_at,"
+     "p.editing_state,p.delivery_state "
      "FROM session_preparations p JOIN session_preparation_revisions r ON "
      "r.revision_id=p.current_revision_id "
      "LEFT JOIN session_preparation_entries e ON e.revision_id=r.revision_id "
-     "WHERE p.withdrawn_at IS NULL AND (?1='' OR r.title LIKE '%'||?1||'%' COLLATE NOCASE OR "
+     "WHERE p.withdrawn_at IS NULL AND NOT EXISTS(SELECT 1 FROM "
+     "session_preparation_deliveries d JOIN sessions completed ON "
+     "completed.session_id=d.execution_session_id WHERE d.preparation_id=p.preparation_id) "
+     "AND (?1='' OR r.title LIKE '%'||?1||'%' COLLATE NOCASE OR "
      "EXISTS(SELECT 1 FROM "
      "session_preparation_entries pe JOIN exercises x ON x.exercise_id=pe.exercise_id WHERE "
      "pe.revision_id=r.revision_id AND x.name LIKE '%'||?1||'%' COLLATE NOCASE)) "
@@ -31,7 +35,7 @@ static const ListDefinition LISTS[] = {
      "COALESCE(r.planned_for,'9999-12-31'),p.updated_at,p.preparation_id LIMIT ?2 OFFSET ?3"},
     {"proposal",
      "SELECT d.draft_id,COALESCE(d.title,''),d.planned_for,CASE WHEN d.published_at IS NULL THEN "
-     "'local' ELSE 'published' END,COUNT(e.entry_id),d.created_at "
+     "'local' ELSE 'published' END,COUNT(e.entry_id),d.created_at,NULL,NULL "
      "FROM ai_session_drafts d LEFT JOIN ai_session_draft_entries e ON e.draft_row_id=d.id "
      "WHERE d.withdrawn_at IS NULL AND (?1='' OR d.title LIKE '%'||?1||'%' COLLATE NOCASE OR "
      "EXISTS(SELECT 1 FROM "
@@ -42,7 +46,7 @@ static const ListDefinition LISTS[] = {
     {"draft",
      "SELECT "
      "d.session_id,d.session_type,substr(d.started_at,1,10),d.state,COALESCE(json_array_length(d."
-     "payload_json,'$.exercises'),0),COALESCE(d.started_at,'') "
+     "payload_json,'$.exercises'),0),COALESCE(d.started_at,''),NULL,NULL "
      "FROM execution_drafts d WHERE NOT EXISTS(SELECT 1 FROM execution_draft_finalizations f WHERE "
      "f.session_id=d.session_id) "
      "AND NOT EXISTS(SELECT 1 FROM sync_causal_state c WHERE c.target_kind='execution_draft' AND "
@@ -52,7 +56,7 @@ static const ListDefinition LISTS[] = {
     {"history",
      "SELECT "
      "s.session_id,s.session_type,substr(s.started_at,1,10),'completed',COUNT(se.entry_id),s."
-     "started_at "
+     "started_at,NULL,NULL "
      "FROM sessions s LEFT JOIN session_exercises se ON se.session_row_id=s.id "
      "WHERE (?1='' OR s.session_type LIKE '%'||?1||'%' COLLATE NOCASE OR EXISTS(SELECT 1 FROM "
      "session_exercises he JOIN exercises x ON x.id=he.exercise_row_id WHERE "
@@ -158,6 +162,8 @@ TrainlogStatus trainlog_web_sessions_list_json(TrainlogDatabase *database,
             !add_nullable_text(document, item, "state", statement, 3) ||
             !yyjson_mut_obj_add_sint(document, item, "occurrence_count", occurrence_count) ||
             !add_nullable_text(document, item, "sort_timestamp", statement, 5) ||
+            !add_nullable_text(document, item, "editing_state", statement, 6) ||
+            !add_nullable_text(document, item, "delivery_state", statement, 7) ||
             !yyjson_mut_arr_add_val(items, item)) {
             status = TRAINLOG_STATUS_DATABASE_ERROR;
             goto finish;
@@ -208,6 +214,7 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
                    "p.preparation_id,r.title,r.planned_for,r.session_type,r.notes,"
                    "COALESCE(p.source_payload_sha256,''),p.current_revision_id,"
                    "CASE WHEN p.withdrawn_at IS NULL THEN p.delivery_state ELSE 'withdrawn' END,"
+                   "p.editing_state,p.delivery_state,"
                    "p.source_proposal_id,source.title,p.withdrawn_at,w.withdrawal_id,"
                    "w.acknowledged_at FROM session_preparations p JOIN "
                    "session_preparation_revisions r ON r.revision_id=p.current_revision_id "
@@ -257,6 +264,11 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
         }
     }
     if (!proposal) {
+        if (!add_nullable_text(document, root, "editing_state", statement, 8) ||
+            !add_nullable_text(document, root, "delivery_state", statement, 9)) {
+            (void)sqlite3_finalize(statement);
+            return TRAINLOG_STATUS_DATABASE_ERROR;
+        }
         static const char *const provenance_keys[] = {"source_proposal_id",
                                                       "source_proposal_title",
                                                       "withdrawn_at",
@@ -264,7 +276,7 @@ static TrainlogStatus detail_for_revision(TrainlogDatabase *database,
                                                       "withdrawal_acknowledged_at"};
         for (column = 0; column < 5; ++column) {
             if (!add_nullable_text(
-                    document, root, provenance_keys[column], statement, column + 8)) {
+                    document, root, provenance_keys[column], statement, column + 10)) {
                 (void)sqlite3_finalize(statement);
                 return TRAINLOG_STATUS_DATABASE_ERROR;
             }
@@ -1274,6 +1286,9 @@ TrainlogStatus trainlog_web_sessions_deliver_json(TrainlogDatabase *database,
             database->connection,
             "SELECT 1 FROM session_preparations p WHERE p.preparation_id=?1 AND "
             "p.current_revision_id=?2 AND p.withdrawn_at IS NULL AND p.editing_state='ready' "
+            "AND p.delivery_state='local' AND NOT EXISTS(SELECT 1 FROM "
+            "session_preparation_deliveries d WHERE d.preparation_id=p.preparation_id AND "
+            "d.state IN('pending','acknowledged','remote_unknown')) "
             "AND EXISTS(SELECT 1 FROM "
             "session_preparation_entries e WHERE e.revision_id=p.current_revision_id)",
             -1,

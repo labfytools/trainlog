@@ -1,5 +1,20 @@
 # Current implementation state
 
+Full-generation Web synchronization now selects an actually usable MTP peer
+before USB, falls back to a separately configured private Drive generation
+namespace, and mirrors successful USB conversations to Drive on a best-effort
+basis without rolling back USB. Both transports move the same generation/ACK
+bytes; neither transports SQLite. Android has an explicitly enabled foreground
+USB listener with mandatory notification and a private-folder Drive grant with
+bounded WorkManager checks. Both use the same concurrency-guarded generation
+coordinator as SyncScreen.
+
+Existing preparation rows expose separate editing and Android-delivery states
+and an accessible send action. Draft/local advances the same preparation to a
+ready revision before delivery; ready/local delivers the current revision.
+Completed history hides the active preparation exclusively through the
+delivery's stable execution-session identity and retains all provenance.
+
 The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and

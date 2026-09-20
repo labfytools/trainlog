@@ -227,8 +227,7 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
         "\"target_sets\":1,\"target_reps\":1,\"target_duration_seconds\":null,"
         "\"target_weight_kg\":null,\"notes\":null}]}";
     TrainlogDatabase *database = NULL;
-    TrainlogWebSessionsPageQuery query = {
-        TRAINLOG_WEB_SESSION_PREPARATIONS, 0U, 64U, ""};
+    TrainlogWebSessionsPageQuery query = {TRAINLOG_WEB_SESSION_PREPARATIONS, 0U, 64U, ""};
     char *created = NULL;
     char *delivery = NULL;
     char *withdrawal = NULL;
@@ -245,6 +244,7 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
     char revision_id[128];
     char local_preparation_id[128];
     char local_revision_id[128];
+    char execution_session_id[128];
 
     CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_insert_exercise_profiled(database,
@@ -289,6 +289,14 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
                                              "request-withdraw-deliver",
                                              &delivery,
                                              &delivery_size) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_web_sessions_deliver_json(database,
+                                             preparation_id,
+                                             revision_id,
+                                             "request-withdraw-deliver-duplicate",
+                                             &replayed,
+                                             &replayed_size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(replayed == NULL && replayed_size == 0U);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_deliveries") == 1);
     CHECK(trainlog_web_sessions_withdraw_json(database,
                                               preparation_id,
                                               revision_id,
@@ -317,8 +325,7 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
     CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_revisions") == 1);
     CHECK(scalar(database, "SELECT COUNT(*) FROM ai_session_drafts") == 1);
     CHECK(scalar(database,
-                 "SELECT COUNT(*) FROM session_preparation_deliveries WHERE state='pending'") ==
-          1);
+                 "SELECT COUNT(*) FROM session_preparation_deliveries WHERE state='pending'") == 1);
     CHECK(trainlog_web_sessions_list_json(database, &query, &page, &page_size) ==
           TRAINLOG_STATUS_OK);
     CHECK(strstr(page, preparation_id) == NULL);
@@ -353,10 +360,8 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
                                           strlen(LOCAL_READY_BODY),
                                           &replayed,
                                           &replayed_size) == TRAINLOG_STATUS_OK);
-    CHECK(json_string(replayed,
-                      "preparation_id",
-                      local_preparation_id,
-                      sizeof(local_preparation_id)));
+    CHECK(json_string(
+        replayed, "preparation_id", local_preparation_id, sizeof(local_preparation_id)));
     CHECK(json_string(replayed, "revision_id", local_revision_id, sizeof(local_revision_id)));
     free(replayed);
     replayed = NULL;
@@ -371,6 +376,57 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
     CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_withdrawals") == 2);
     CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_deliveries") == 1);
     CHECK(scalar(database, "SELECT COUNT(*) FROM ai_session_drafts") == 1);
+
+    /* A completed occurrence hides the preparation by its reserved stable
+     * execution identity while retaining every preparation/delivery row. */
+    free(replayed);
+    replayed = NULL;
+    replayed_size = 0U;
+    CHECK(trainlog_web_sessions_save_json(database,
+                                          NULL,
+                                          "",
+                                          "request-completed-create",
+                                          LOCAL_READY_BODY,
+                                          strlen(LOCAL_READY_BODY),
+                                          &replayed,
+                                          &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(json_string(
+        replayed, "preparation_id", local_preparation_id, sizeof(local_preparation_id)));
+    CHECK(json_string(replayed, "revision_id", local_revision_id, sizeof(local_revision_id)));
+    free(replayed);
+    replayed = NULL;
+    replayed_size = 0U;
+    CHECK(trainlog_web_sessions_deliver_json(database,
+                                             local_preparation_id,
+                                             local_revision_id,
+                                             "request-completed-deliver",
+                                             &replayed,
+                                             &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(json_string(
+        replayed, "execution_session_id", execution_session_id, sizeof(execution_session_id)));
+    free(page);
+    page = NULL;
+    page_size = 0U;
+    CHECK(trainlog_web_sessions_list_json(database, &query, &page, &page_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(page, local_preparation_id) != NULL);
+    {
+        char *sql =
+            sqlite3_mprintf("INSERT INTO sessions(session_id,started_at,ended_at,session_type) "
+                            "VALUES(%Q,'2026-09-20T10:00:00Z','2026-09-20T11:00:00Z','training')",
+                            execution_session_id);
+        CHECK(sql != NULL);
+        CHECK(sqlite3_exec(database->connection, sql, NULL, NULL, NULL) == SQLITE_OK);
+        sqlite3_free(sql);
+    }
+    free(page);
+    page = NULL;
+    page_size = 0U;
+    CHECK(trainlog_web_sessions_list_json(database, &query, &page, &page_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(page, local_preparation_id) == NULL);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparation_deliveries") == 2);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM session_preparations") == 3);
 
     free(created);
     free(delivery);

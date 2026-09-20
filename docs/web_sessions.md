@@ -1,5 +1,20 @@
 # Web Sessions V1
 
+Preparation list rows expose independent `editing_state` and `delivery_state`.
+A local draft action saves one new ready revision on the same preparation and
+then creates its delivery; a local ready revision is delivered directly.
+Pending, acknowledged and remote-unknown preparations never create a second
+delivery. The action is disabled while its request is running and every state
+has visible text in addition to color.
+
+Successful delivery admission immediately starts the configured common sync
+orchestrator. If transport is unavailable, the durable pending delivery remains
+retryable; the preparation is not reverted or recreated. When completed
+history contains the delivery's exact `execution_session_id`, the preparation
+leaves the active list while all preparation revisions, entries and delivery
+provenance remain stored. Program completion continues to derive from the Core
+`execution_state`, never from list disappearance.
+
 The Sessions route implements four distinct views:
 
 - Preparation: manual preparations and immutable AI proposals;

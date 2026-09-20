@@ -8,6 +8,8 @@ package com.labfytools.trainlog.ui
 /* TRAINLOG_ANDROID_TRIGGERED_SYNC_V1 */
 
 import android.content.Context
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +30,9 @@ import com.labfytools.trainlog.data.SyncRequestResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.ForegroundGenerationResult
 import com.labfytools.trainlog.data.SyncGenerationForegroundCoordinator
+import com.labfytools.trainlog.data.BackgroundSyncSettings
+import com.labfytools.trainlog.data.SyncBackgroundService
+import com.labfytools.trainlog.data.DriveSyncSettings
 import com.labfytools.trainlog.data.canonicalExchangeDirectory
 import com.labfytools.trainlog.data.logDirectExchange
 import com.labfytools.trainlog.data.directStoragePermissionIntent
@@ -164,6 +169,34 @@ fun SyncScreen(
         }
 
     var syncRunning by remember { mutableStateOf(false) }
+    val backgroundSettings = remember { BackgroundSyncSettings(context) }
+    var backgroundEnabled by remember { mutableStateOf(backgroundSettings.enabled) }
+    val driveSettings = remember { DriveSyncSettings(context) }
+    var driveConnected by remember { mutableStateOf(driveSettings.connected) }
+
+    val driveFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching { driveSettings.connect(uri) }
+                .onSuccess {
+                    driveConnected = true
+                    status = strings.getString(R.string.drive_sync_connected)
+                }
+                .onFailure { status = strings.getString(R.string.drive_sync_connection_failed) }
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            SyncBackgroundService.start(context)
+            backgroundEnabled = true
+        } else {
+            status = strings.getString(R.string.background_sync_notification_required)
+        }
+    }
 
     LaunchedEffect(
         pendingRequestId
@@ -448,6 +481,58 @@ fun SyncScreen(
                                 result.message
                         }
                     }
+                    }
+                },
+            )
+        }
+
+        TrainlogFrame(title = strings.getString(R.string.background_sync_title)) {
+            TrainlogInfo(
+                text = strings.getString(R.string.background_sync_description),
+                color = if (backgroundEnabled) colors.success else colors.warning,
+            )
+            TrainlogAction(
+                label = strings.getString(
+                    if (backgroundEnabled) R.string.background_sync_disable
+                    else R.string.background_sync_enable,
+                ),
+                description = strings.getString(R.string.background_sync_description),
+                accent = if (backgroundEnabled) colors.warning else colors.success,
+                onClick = {
+                    if (backgroundEnabled) {
+                        SyncBackgroundService.stop(context)
+                        backgroundEnabled = false
+                    } else if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        SyncBackgroundService.start(context)
+                        backgroundEnabled = true
+                    }
+                },
+            )
+        }
+
+        TrainlogFrame(title = strings.getString(R.string.drive_sync_title)) {
+            TrainlogInfo(
+                text = strings.getString(R.string.drive_sync_description),
+                color = if (driveConnected) colors.success else colors.warning,
+            )
+            TrainlogAction(
+                label = strings.getString(
+                    if (driveConnected) R.string.drive_sync_disconnect else R.string.drive_sync_connect,
+                ),
+                description = strings.getString(R.string.drive_sync_latency),
+                accent = if (driveConnected) colors.warning else colors.success,
+                onClick = {
+                    if (driveConnected) {
+                        driveSettings.disconnect()
+                        driveConnected = false
+                    } else {
+                        driveFolderLauncher.launch(null)
                     }
                 },
             )

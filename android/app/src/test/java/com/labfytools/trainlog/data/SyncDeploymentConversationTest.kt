@@ -104,6 +104,7 @@ class SyncDeploymentConversationTest {
                 val coordinator = SyncGenerationForegroundCoordinator(repository)
                 val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
                 var requestSignals = 0
+                var refreshedAfterDesktopReference = false
                 val result =
                     executor.submit<ForegroundGenerationResult> {
                         coordinator.run(
@@ -111,6 +112,14 @@ class SyncDeploymentConversationTest {
                             Duration.ofSeconds(30),
                             afterPeerPublication = { requestSignals += 1 },
                             afterPublication = { release?.let { awaitFile(File(it)) } },
+                            pollTransport = {
+                                refreshedAfterDesktopReference =
+                                    runCatching {
+                                        JSONObject(File(transport, "desktop-generation-v1.json").readText())
+                                            .optString("format") ==
+                                            "trainlog-sync-generation-reference"
+                                    }.getOrDefault(false)
+                            },
                         )
                     }
                 val peer = JSONObject(awaitFile(File(transport, "android-peer-v1.json")).readText())
@@ -143,6 +152,10 @@ class SyncDeploymentConversationTest {
                     completed is ForegroundGenerationResult.Completed,
                 )
                 assertEquals("one fresh request signal per conversation", 1, requestSignals)
+                assertTrue(
+                    "transport is refreshed after the correlated desktop reference",
+                    refreshedAfterDesktopReference,
+                )
                 var workerOutput = ""
                 localWorker?.let { worker ->
                     workerOutput = worker.inputStream.bufferedReader().readText()

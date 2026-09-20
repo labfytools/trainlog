@@ -37,6 +37,10 @@ export interface SyncStatus {
   drafts?: SyncDraftSummary[]
   started_at?: string | null
   finished_at?: string | null
+  transport?: 'directory' | 'mtp' | 'drive'
+  usb_state?: 'unavailable' | 'skipped' | 'running' | 'success' | 'failed'
+  drive_state?: 'disabled' | 'unavailable' | 'running' | 'mirrored' | 'success' | 'failed'
+  drive_diagnostic?: string
 }
 
 let csrfToken = ''
@@ -85,6 +89,10 @@ function parse(value: unknown): SyncStatus {
       !optionalString(status.error_code) ||
       !optionalString(status.started_at) ||
       !optionalString(status.finished_at) ||
+      !optionalString(status.drive_diagnostic) ||
+      (status.transport !== undefined && !['directory', 'mtp', 'drive'].includes(status.transport)) ||
+      (status.usb_state !== undefined && !['unavailable', 'skipped', 'running', 'success', 'failed'].includes(status.usb_state)) ||
+      (status.drive_state !== undefined && !['disabled', 'unavailable', 'running', 'mirrored', 'success', 'failed'].includes(status.drive_state)) ||
       (status.progress_revision !== undefined &&
         (!Number.isSafeInteger(status.progress_revision) || status.progress_revision < 0))) {
     throw new Error('statut sync invalide')

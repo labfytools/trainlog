@@ -192,6 +192,62 @@ def push_desktop_generation(
     )
 
 
+def run_drive_adapter(
+    adapter: Path,
+    operation: str,
+    remote: str,
+    root: Path,
+    deadline: float,
+) -> None:
+    """Run the fixed Drive byte adapter without exposing configuration to HTTP."""
+    remaining = max(1, int(deadline - time.monotonic()))
+    try:
+        result = subprocess.run(
+            [sys.executable, str(adapter), operation, remote, str(root)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            # CONTRACT: the trusted configuration already bounds the complete
+            # conversation to at most 900 seconds.  A full verified Drive pull
+            # may legitimately need more than 60 seconds because every object
+            # is downloaded and hashed before the generation becomes visible.
+            timeout=remaining,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("transport_timeout: Drive adapter timed out") from error
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.decode("utf-8", "replace")[:1024].strip()
+            or "Drive adapter failed"
+        )
+
+
+def push_drive(
+    adapter: Path,
+    remote: str,
+    root: Path,
+    relative_paths: list[str],
+    deadline: float,
+) -> None:
+    """Publish a phase-owned outbox through the shared Drive byte adapter."""
+    with tempfile.TemporaryDirectory(prefix="trainlog-drive-outbox-", dir=root.parent) as directory:
+        outbox = Path(directory)
+        os.chmod(outbox, 0o700)
+        for relative in relative_paths:
+            source = root / relative
+            destination = outbox / relative
+            if source.is_symlink() or not source.exists() or not source.resolve().is_relative_to(root.resolve()):
+                raise RuntimeError(f"invalid Drive outbox source: {relative}")
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if source.is_dir():
+                if any(path.is_symlink() for path in source.rglob("*")):
+                    raise RuntimeError(f"Drive outbox contains a symbolic link: {relative}")
+                shutil.copytree(source, destination, copy_function=shutil.copy2)
+            else:
+                shutil.copy2(source, destination)
+        run_drive_adapter(adapter, "push", remote, outbox, deadline)
+
+
 def wait_file(path: Path, deadline: float, pump=None) -> None:
     while not path.is_file():
         if time.monotonic() >= deadline:
@@ -294,8 +350,10 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--expected-peer", required=True)
     parser.add_argument("--timeout", required=True, type=int)
-    parser.add_argument("--mode", choices=("directory", "mtp"), default="directory")
+    parser.add_argument("--mode", choices=("directory", "mtp", "drive"), default="directory")
     parser.add_argument("--mtp-adapter", type=Path)
+    parser.add_argument("--drive-adapter", type=Path)
+    parser.add_argument("--drive-remote")
     args = parser.parse_args()
     deadline = time.monotonic() + args.timeout
     pump = None
@@ -316,6 +374,27 @@ def main() -> int:
             args.transport_root,
             deadline,
         )
+    elif args.mode == "drive":
+        if args.drive_adapter is None or not args.drive_remote:
+            raise RuntimeError("Drive adapter and remote are required")
+        last_drive_pull = 0.0
+
+        def pump_drive(force: bool = False) -> None:
+            nonlocal last_drive_pull
+            now = time.monotonic()
+            if not force and now - last_drive_pull < 5.0:
+                return
+            run_drive_adapter(
+                args.drive_adapter,
+                "pull",
+                args.drive_remote,
+                args.transport_root,
+                deadline,
+            )
+            last_drive_pull = time.monotonic()
+
+        pump = pump_drive
+        pump_drive(True)
     peer = load_peer(args.transport_root, args.expected_peer)
     with closing(generation.connect_database(args.database)) as db:
         generation.require_schema(db)
@@ -351,6 +430,14 @@ def main() -> int:
             ["request-v1.json", "desktop-archive-acknowledgements-v1.json"],
             deadline,
         )
+    elif args.mode == "drive":
+        push_drive(
+            args.drive_adapter,
+            args.drive_remote,
+            args.transport_root,
+            ["request-v1.json", "desktop-archive-acknowledgements-v1.json"],
+            deadline,
+        )
     emit(
         args.run_id,
         "waiting_android_publication",
@@ -374,6 +461,14 @@ def main() -> int:
         push_adapter(
             args.mtp_adapter,
             args.expected_peer,
+            args.transport_root,
+            ["request-v1.json", "desktop-archive-acknowledgements-v1.json", "desktop-consumption-ack-v1.json"],
+            deadline,
+        )
+    elif args.mode == "drive":
+        push_drive(
+            args.drive_adapter,
+            args.drive_remote,
             args.transport_root,
             ["request-v1.json", "desktop-archive-acknowledgements-v1.json", "desktop-consumption-ack-v1.json"],
             deadline,
@@ -417,6 +512,26 @@ def main() -> int:
             args.expected_peer,
             args.transport_root,
             ref["relative_path"],
+            deadline,
+        )
+    elif args.mode == "drive":
+        push_drive(
+            args.drive_adapter,
+            args.drive_remote,
+            args.transport_root,
+            [ref["relative_path"]],
+            deadline,
+        )
+        push_drive(
+            args.drive_adapter,
+            args.drive_remote,
+            args.transport_root,
+            [
+                "request-v1.json",
+                "desktop-archive-acknowledgements-v1.json",
+                "desktop-consumption-ack-v1.json",
+                "desktop-generation-v1.json",
+            ],
             deadline,
         )
     emit(

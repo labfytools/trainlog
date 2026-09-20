@@ -146,6 +146,9 @@ dependencies {
     implementation(
         "androidx.activity:activity-compose:1.13.0"
     )
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.documentfile:documentfile:1.1.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.5")
 
     implementation(
         "androidx.compose.foundation:foundation"

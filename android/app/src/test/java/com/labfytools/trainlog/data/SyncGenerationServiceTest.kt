@@ -9,6 +9,7 @@ import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.TrackingMode
+import java.io.File
 import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -345,6 +346,113 @@ class SyncGenerationServiceTest {
             destination.close()
             context.deleteDatabase(sourceName)
             context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun coordinatorOnlyTreatsCorrelatedFreshRequestAsActionable() {
+        val databaseName = "generation-actionable-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-generation-actionable-").toFile()
+        val repository = TrainlogRepository(context, databaseName)
+        try {
+            val coordinator = SyncGenerationCoordinator(repository)
+            assertEquals(false, coordinator.hasActionableRequest(root))
+            File(root, "request-v1.json").writeText("not-json")
+            assertEquals(false, coordinator.hasActionableRequest(root))
+
+            val peer = SyncGenerationService(repository).peerId()
+            val request =
+                JSONObject()
+                    .put("format", "trainlog-sync-generation-request")
+                    .put("version", 1)
+                    .put("run_id", "sy_${UUID.randomUUID()}")
+                    .put("android_peer_id", "peer_${UUID.randomUUID()}")
+                    .put("desktop_peer_id", "peer_${UUID.randomUUID()}")
+            File(root, "request-v1.json").writeText(request.toString())
+            assertEquals(false, coordinator.hasActionableRequest(root))
+
+            request.put("android_peer_id", peer)
+            File(root, "request-v1.json").writeText(request.toString())
+            assertEquals(true, coordinator.hasActionableRequest(root))
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun repeatedPeerPublicationLeavesIdenticalCanonicalFileUntouched() {
+        val databaseName = "generation-peer-publication-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-generation-peer-publication-").toFile()
+        val repository = TrainlogRepository(context, databaseName)
+        try {
+            val coordinator = SyncGenerationCoordinator(repository)
+            val peer = coordinator.publishPeer(root)
+            val descriptor = File(root, "android-peer-v1.json")
+            val retainedTimestamp = 1_234_000L
+            assertTrue(descriptor.setLastModified(retainedTimestamp))
+
+            assertEquals(peer, coordinator.publishPeer(root))
+            assertEquals(retainedTimestamp, descriptor.lastModified())
+            assertEquals(peer, JSONObject(descriptor.readText()).getString("peer_id"))
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun coordinatorReplaysOnlyStrictlyCorrelatedDurableAcknowledgement() {
+        val databaseName = "generation-ack-replay-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-generation-ack-replay-").toFile()
+        val repository = TrainlogRepository(context, databaseName)
+        try {
+            val coordinator = SyncGenerationCoordinator(repository)
+            val androidPeer = SyncGenerationService(repository).peerId()
+            val desktopPeer = "peer_${UUID.randomUUID()}"
+            val runId = "sy_${UUID.randomUUID()}"
+            val generationId = "gen_${UUID.randomUUID()}"
+            val digest = "a".repeat(64)
+            File(root, "request-v1.json").writeText(
+                JSONObject()
+                    .put("format", "trainlog-sync-generation-request")
+                    .put("version", 1)
+                    .put("run_id", runId)
+                    .put("android_peer_id", androidPeer)
+                    .put("desktop_peer_id", desktopPeer)
+                    .toString()
+            )
+            File(root, "desktop-generation-v1.json").writeText(
+                JSONObject()
+                    .put("format", "trainlog-sync-generation-reference")
+                    .put("version", 1)
+                    .put("run_id", runId)
+                    .put("generation_id", generationId)
+                    .put("manifest_sha256", digest)
+                    .toString()
+            )
+            val acknowledgement =
+                JSONObject()
+                    .put("format", "trainlog-sync-ack")
+                    .put("version", 1)
+                    .put("run_id", runId)
+                    .put("generation_id", generationId)
+                    .put("manifest_sha256", digest)
+                    .put("producer_peer_id", desktopPeer)
+                    .put("consumer_peer_id", androidPeer)
+                    .put("result", "consumed")
+            File(root, "android-consumption-ack-v1.json").writeText(acknowledgement.toString())
+            assertEquals(true, coordinator.hasReplayableAcknowledgement(root))
+
+            acknowledgement.put("generation_id", "gen_${UUID.randomUUID()}")
+            File(root, "android-consumption-ack-v1.json").writeText(acknowledgement.toString())
+            assertEquals(false, coordinator.hasReplayableAcknowledgement(root))
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
             root.deleteRecursively()
         }
     }

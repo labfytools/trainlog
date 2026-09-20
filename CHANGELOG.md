@@ -2,6 +2,26 @@
 
 ## Unreleased — 0.1.2
 
+- Added USB-priority full-generation synchronization with a separately
+  configured private Drive mirror/fallback transport, verified manifest-last
+  publication, shared multi-transport identities/ACKs, and explicit per-
+  transport Web status without ever transporting SQLite.
+- Added an Android user-enabled foreground USB listener, private Drive folder
+  connection with bounded WorkManager checks, and one shared concurrency-
+  guarded generation coordinator for UI and background triggers.
+- Added an accessible preparation-list send action with separate editing and
+  delivery states, durable retry behavior, duplicate-delivery prevention and
+  stable execution-identity transition from Preparation to History/Program
+  completion.
+
+- Implemented `TRAINLOG_PROGRAM_CALENDAR_V1` as the operational top-level
+  `/programmes` daily active-Program calendar. It consumes typed Core reads and
+  preparation creation, derives Monday–Sunday weeks from Program bounds and
+  real planned dates without inventing rest days, keeps undated sessions
+  separate, and rereads Core state after Prepare. Sessions → Programmes remains
+  the administration/import/list/detail/archive/delete surface; this adds no
+  Core, API, schema, format, synchronization, or Android changes.
+
 - Fixed Program-to-preparation creation for Program V1 target weights written
   as integer JSON numbers. Imports now preserve both integer and real number
   spellings instead of persisting integer weights as zero. Existing affected

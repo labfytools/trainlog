@@ -2,6 +2,9 @@ package com.labfytools.trainlog.data
 
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Duration
 import java.util.UUID
 import org.json.JSONArray
@@ -14,8 +17,16 @@ internal sealed interface ForegroundGenerationResult {
 }
 
 /** Owns the bounded, user-initiated Android side of a generation conversation. */
-internal class SyncGenerationForegroundCoordinator(private val repository: TrainlogRepository) {
+internal class SyncGenerationCoordinator(private val repository: TrainlogRepository) {
     private val service = SyncGenerationService(repository)
+
+    companion object {
+        /* WHY: UI and background triggers share one repository protocol and
+         * must never create concurrent runs. CONTRACT: this process-wide lock
+         * guards only one bounded conversation; SQLite remains the durable
+         * replay authority after process restart. */
+        private val conversationLock = java.util.concurrent.locks.ReentrantLock()
+    }
 
     internal fun resumableGeneration(runId: String, consumerPeerId: String? = null): CapturedSyncGeneration? =
         repository.inSyncGenerationTransaction { db ->
@@ -44,6 +55,59 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                 }
             }
         }
+
+    internal fun hasActionableRequest(directory: File): Boolean {
+        val path = File(directory, "request-v1.json")
+        if (!path.isFile || path.length() !in 1..64 * 1024) return false
+        val request = runCatching { JSONObject(path.readText()) }.getOrNull() ?: return false
+        val runId = request.optString("run_id")
+        val desktopPeerId = request.optString("desktop_peer_id")
+        if (
+            request.optString("format") != "trainlog-sync-generation-request" ||
+                request.optInt("version", -1) != 1 ||
+                !runId.matches(Regex("^sy_[0-9a-f-]{36}$")) ||
+                !desktopPeerId.matches(Regex("^peer_[0-9a-f-]{36}$")) ||
+                request.optString("android_peer_id") != service.peerId()
+        ) return false
+        if (resumableGeneration(runId, desktopPeerId) != null) return true
+        return !repository.inSyncGenerationTransaction { db ->
+            db.rawQuery(
+                "SELECT 1 FROM sync_generations WHERE run_id=? LIMIT 1",
+                arrayOf(runId),
+            ).use { it.moveToFirst() }
+        }
+    }
+
+    internal fun hasReplayableAcknowledgement(directory: File): Boolean {
+        val request =
+            runCatching { JSONObject(File(directory, "request-v1.json").readText()) }.getOrNull()
+                ?: return false
+        val reference =
+            runCatching { JSONObject(File(directory, "desktop-generation-v1.json").readText()) }
+                .getOrNull() ?: return false
+        val acknowledgement =
+            runCatching { JSONObject(File(directory, "android-consumption-ack-v1.json").readText()) }
+                .getOrNull() ?: return false
+        /* WHY: a network failure may occur after Core commits consumption but
+         * before Drive receives its ACK. CONTRACT: only the exact durable ACK
+         * correlated to the current request and desktop reference is replayed.
+         * INVARIANT: replay transports existing evidence and never recaptures
+         * a generation or repeats a domain mutation. */
+        return request.optString("format") == "trainlog-sync-generation-request" &&
+            request.optInt("version", -1) == 1 &&
+            request.optString("android_peer_id") == service.peerId() &&
+            reference.optString("format") == "trainlog-sync-generation-reference" &&
+            reference.optInt("version", -1) == 1 &&
+            acknowledgement.optString("format") == "trainlog-sync-ack" &&
+            acknowledgement.optInt("version", -1) == 1 &&
+            acknowledgement.optString("run_id") == request.optString("run_id") &&
+            reference.optString("run_id") == request.optString("run_id") &&
+            acknowledgement.optString("generation_id") == reference.optString("generation_id") &&
+            acknowledgement.optString("manifest_sha256") == reference.optString("manifest_sha256") &&
+            acknowledgement.optString("producer_peer_id") == request.optString("desktop_peer_id") &&
+            acknowledgement.optString("consumer_peer_id") == service.peerId() &&
+            acknowledgement.optString("result") in setOf("consumed", "rejected")
+    }
 
     private fun requireExactKeys(value: JSONObject, expected: Set<String>, label: String) {
         val actual = value.keys().asSequence().toSet()
@@ -104,13 +168,78 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
             stream.flush()
             stream.fd.sync()
         }
-        if (!temporary.renameTo(path)) throw SyncGenerationException("cannot publish ${path.name}")
+        /* WHY: Drive conversations reuse coordination filenames, and
+         * File.renameTo() does not reliably replace an existing destination
+         * on Android private storage. CONTRACT: readers observe either the
+         * previous complete JSON document or its complete replacement.
+         * INVARIANT: the temporary file is in the destination directory, so
+         * the preferred move is same-filesystem and atomic when supported. */
+        try {
+            Files.move(
+                temporary.toPath(),
+                path.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(
+                temporary.toPath(),
+                path.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: Exception) {
+            temporary.delete()
+            throw SyncGenerationException("cannot publish ${path.name}")
+        }
     }
 
-    private fun await(path: File, deadline: Long): File {
+    /* WHY: transports must advertise a stable installation before a desktop
+     * can address its first request. CONTRACT: discovery publishes no domain
+     * facts and does not acquire the conversation lock. INVARIANT: run() uses
+     * this exact descriptor, so idle discovery cannot fork capabilities. */
+    internal fun publishPeer(directory: File): String {
+        if (!directory.isDirectory)
+            throw SyncGenerationException("exchange directory is unavailable")
+        val peer = service.peerId()
+        val path = File(directory, "android-peer-v1.json")
+        val descriptor =
+            JSONObject()
+                .put("format", "trainlog-sync-peer")
+                .put("version", 1)
+                .put("peer_id", peer)
+                .put(
+                    "capabilities",
+                    JSONArray(
+                        listOf(
+                            "generation-manifest-v1",
+                            "generation-ack-v1",
+                            "causal-delete-v1",
+                            "mobile-history-v4",
+                            "execution-draft-v1",
+                            "generation-archive-v1",
+                            "session-preparations-v2",
+                            "programs-v1",
+                        )
+                    ),
+                )
+                .toString()
+        /* WHY: the foreground listener probes every five seconds, while some
+         * Android MediaProvider implementations cannot atomically replace an
+         * unchanged file that is simultaneously exposed over MTP. CONTRACT:
+         * an identical canonical descriptor is already a complete durable
+         * publication. INVARIANT: changed or unreadable bytes still use the
+         * crash-safe replacement path above. */
+        if (runCatching { path.isFile && path.readText() == descriptor }.getOrDefault(false))
+            return peer
+        publish(path, descriptor)
+        return peer
+    }
+
+    private fun await(path: File, deadline: Long, pump: (() -> Unit)? = null): File {
         while (!path.isFile) {
             if (System.nanoTime() >= deadline)
                 throw SyncGenerationException("timeout waiting for ${path.name}")
+            pump?.invoke()
             Thread.sleep(50)
         }
         return path
@@ -120,6 +249,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
         path: File,
         deadline: Long,
         predicate: (JSONObject) -> Boolean,
+        pump: (() -> Unit)? = null,
     ): ByteArray {
         while (true) {
             if (path.isFile && path.length() <= 64 * 1024) {
@@ -133,6 +263,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
             }
             if (System.nanoTime() >= deadline)
                 throw SyncGenerationException("timeout waiting for correlated ${path.name}")
+            pump?.invoke()
             Thread.sleep(50)
         }
     }
@@ -142,34 +273,14 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
         timeout: Duration = Duration.ofMinutes(5),
         afterPeerPublication: (() -> Unit)? = null,
         afterPublication: (() -> Unit)? = null,
-    ): ForegroundGenerationResult =
-        try {
-            if (!directory.isDirectory)
-                throw SyncGenerationException("exchange directory is unavailable")
-            val peer = service.peerId()
-            publish(
-                File(directory, "android-peer-v1.json"),
-                JSONObject()
-                    .put("format", "trainlog-sync-peer")
-                    .put("version", 1)
-                    .put("peer_id", peer)
-                    .put(
-                        "capabilities",
-                        JSONArray(
-                            listOf(
-                                "generation-manifest-v1",
-                                "generation-ack-v1",
-                                "causal-delete-v1",
-                                "mobile-history-v4",
-                                "execution-draft-v1",
-                                "generation-archive-v1",
-                                "session-preparations-v2",
-                                "programs-v1",
-                            )
-                        ),
-                    )
-                    .toString(),
-            )
+        pollTransport: (() -> Unit)? = null,
+        afterAcknowledgement: (() -> Unit)? = null,
+    ): ForegroundGenerationResult {
+        if (!conversationLock.tryLock()) {
+            return ForegroundGenerationResult.Error("Synchronization already in progress.")
+        }
+        return try {
+            val peer = publishPeer(directory)
             /* WHY: trainlog-syncd is intentionally driven by the established
              * Android request artifact, not by polling generation internals.
              * CONTRACT: each explicit foreground attempt publishes the peer
@@ -179,7 +290,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
             afterPeerPublication?.invoke()
             val deadline = System.nanoTime() + timeout.toNanos()
             val requestRaw =
-                awaitCorrelated(File(directory, "request-v1.json"), deadline) { candidate ->
+                awaitCorrelated(File(directory, "request-v1.json"), deadline, { candidate ->
                     val runId = candidate.optString("run_id")
                     runId.startsWith("sy_") &&
                         (resumableGeneration(runId) != null ||
@@ -189,7 +300,7 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                                     arrayOf(runId),
                                 ).use { it.moveToFirst() }
                             })
-                }
+                }, pollTransport)
             val request = JSONObject(requestRaw.toString(Charsets.UTF_8))
             if (request.getString("android_peer_id") != peer)
                 throw SyncGenerationException("request targets another Android peer")
@@ -197,10 +308,12 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                 awaitCorrelated(
                     File(directory, "desktop-archive-acknowledgements-v1.json"),
                     deadline,
-                ) {
-                    it.optString("run_id") == request.getString("run_id") &&
-                        it.optString("android_peer_id") == peer
-                }
+                    {
+                        it.optString("run_id") == request.getString("run_id") &&
+                            it.optString("android_peer_id") == peer
+                    },
+                    pollTransport,
+                )
             reconcileArchiveAcknowledgements(
                 archiveAckRaw,
                 request.getString("run_id"),
@@ -240,19 +353,28 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
             // the exchange directory. Only this run's exact generation ACK
             // can advance its lineage; stale bytes are retained and ignored.
             val desktopAck =
-                awaitCorrelated(File(directory, "desktop-consumption-ack-v1.json"), deadline) {
+                awaitCorrelated(File(directory, "desktop-consumption-ack-v1.json"), deadline, {
                     it.optString("run_id") == captured.runId &&
                         it.optString("generation_id") == captured.generationId
-                }
+                }, pollTransport)
             service.acceptAcknowledgement(desktopAck)
             val referenceRaw =
-                awaitCorrelated(File(directory, "desktop-generation-v1.json"), deadline) {
+                awaitCorrelated(File(directory, "desktop-generation-v1.json"), deadline, {
                     it.optString("run_id") == captured.runId
-                }
+                }, pollTransport)
             val reference = JSONObject(referenceRaw.toString(Charsets.UTF_8))
+            /* WHY: non-atomic transports can expose a newly downloaded
+             * reference locally before the corresponding immutable objects
+             * have reached this process. CONTRACT: correlation validates the
+             * reference first, then one transport refresh stages its committed
+             * generation before Core validates hashes and imports it.
+             * INVARIANT: the refresh moves bytes only; service.consume remains
+             * the sole validation and mutation authority. */
+            pollTransport?.invoke()
             val acknowledgement =
                 service.consume(File(directory, reference.getString("relative_path")))
             publish(File(directory, "android-consumption-ack-v1.json"), acknowledgement)
+            afterAcknowledgement?.invoke()
             ForegroundGenerationResult.Completed(captured.runId)
         } catch (error: Exception) {
             if (error.message == "generation retention capacity exhausted") {
@@ -275,5 +397,12 @@ internal class SyncGenerationForegroundCoordinator(private val repository: Train
                 }
             }
             ForegroundGenerationResult.Error(error.message ?: "generation synchronization failed")
+        } finally {
+            conversationLock.unlock()
         }
+    }
 }
+
+/* Compatibility name for focused tests and callers outside the coordinator
+ * migration. New triggers should depend on SyncGenerationCoordinator. */
+internal typealias SyncGenerationForegroundCoordinator = SyncGenerationCoordinator

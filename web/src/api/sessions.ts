@@ -1,4 +1,4 @@
-import { mutationCsrfToken } from './sync'
+import { mutationCsrfToken, newRequestId, startSync } from './sync'
 
 export type SessionCollection = 'preparations' | 'proposals' | 'drafts' | 'history'
 
@@ -9,6 +9,8 @@ export interface SessionListItem {
   state: string
   occurrence_count: number
   sort_timestamp: string
+  editing_state?: 'draft' | 'ready' | null
+  delivery_state?: 'local' | 'pending' | 'acknowledged' | 'remote_unknown' | 'cancelled' | null
 }
 
 export interface SessionPage {
@@ -52,6 +54,8 @@ export interface SessionDetail {
   withdrawal_id?: string | null
   withdrawal_acknowledged_at?: string | null
   state: string
+  editing_state?: 'draft' | 'ready'
+  delivery_state?: 'local' | 'pending' | 'acknowledged' | 'remote_unknown' | 'cancelled'
   occurrences: PreparationOccurrence[]
 }
 
@@ -83,7 +87,9 @@ function validListItem(value: unknown): value is SessionListItem {
   return typeof value.identity === 'string' && typeof value.title === 'string' &&
     (value.date === null || typeof value.date === 'string') && typeof value.state === 'string' &&
     Number.isSafeInteger(value.occurrence_count) && Number(value.occurrence_count) >= 0 &&
-    typeof value.sort_timestamp === 'string'
+    typeof value.sort_timestamp === 'string' &&
+    (value.editing_state === undefined || value.editing_state === null || value.editing_state === 'draft' || value.editing_state === 'ready') &&
+    (value.delivery_state === undefined || value.delivery_state === null || ['local', 'pending', 'acknowledged', 'remote_unknown', 'cancelled'].includes(String(value.delivery_state)))
 }
 
 export async function fetchSessionPage(
@@ -236,6 +242,11 @@ export async function prepareForAndroid(identity: string, revision: string): Pro
     const reason = object(value) && typeof value.error === 'string' ? value.error : `HTTP ${response.status}`
     throw new Error(reason)
   }
+  /* WHY: a durable delivery must become reachable before the desktop can be
+   * powered down. CONTRACT: admission reuses the one sync orchestrator and
+   * its global lock; failure never removes or duplicates the pending delivery.
+   * INVARIANT: the transport is not part of delivery identity. */
+  await startSync(newRequestId())
 }
 
 export interface PreparationWithdrawalResult {

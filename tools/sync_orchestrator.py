@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import ctypes
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -182,6 +183,57 @@ def validate_result(value: dict, run_id: str) -> dict:
     return value
 
 
+def drive_adapter_path() -> Path:
+    return Path(__file__).with_name("sync_drive_transport.py")
+
+
+def mirror_current_exchange(transport_root: Path, remote: str, timeout: int) -> None:
+    """Mirror only current protocol objects; never traverse application data."""
+    coordination = (
+        "android-peer-v1.json",
+        "android-generation-v1.json",
+        "android-consumption-ack-v1.json",
+        "android-generation-error-v1.json",
+        "request-v1.json",
+        "desktop-archive-acknowledgements-v1.json",
+        "desktop-consumption-ack-v1.json",
+        "desktop-generation-v1.json",
+    )
+    with tempfile.TemporaryDirectory(prefix="trainlog-drive-mirror-", dir=transport_root.parent) as raw:
+        outbox = Path(raw)
+        for name in coordination:
+            source = transport_root / name
+            if source.is_file() and not source.is_symlink():
+                shutil.copy2(source, outbox / name)
+        for name in ("android-generation-v1.json", "desktop-generation-v1.json"):
+            reference = outbox / name
+            if not reference.is_file():
+                continue
+            value = load_json(reference, MAX_REPORT)
+            relative = value.get("relative_path")
+            if not isinstance(relative, str):
+                raise RuntimeError("invalid generation reference during Drive mirror")
+            source = (transport_root / relative).resolve()
+            if not source.is_relative_to(transport_root.resolve()) or not source.is_dir():
+                raise RuntimeError("generation reference escapes transport root")
+            destination = outbox / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, destination, copy_function=shutil.copy2)
+        result = subprocess.run(
+            [sys.executable, str(drive_adapter_path()), "push", remote, str(outbox)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.decode("utf-8", "replace")[:MAX_DIAGNOSTIC].strip()
+                or "Drive mirror failed"
+            )
+
+
 def read_worker(
     child: subprocess.Popen[bytes], state_path: Path, state: dict, run_id: str, timeout: int
 ) -> tuple[dict, bytes]:
@@ -276,7 +328,7 @@ def run(args: argparse.Namespace) -> int:
     config = load_json(config_path, MAX_CONFIG)
     if state.get("run_id") != args.run_id or state.get("request_id") != args.request_id:
         raise RuntimeError("admission identity mismatch")
-    if set(config) != {
+    base_keys = {
         "format",
         "version",
         "enabled",
@@ -285,16 +337,24 @@ def run(args: argparse.Namespace) -> int:
         "transport_root",
         "owned_root",
         "timeout_seconds",
-    }:
+    }
+    drive_keys = {"drive_enabled", "drive_remote"}
+    if set(config) not in (base_keys, base_keys | drive_keys):
         raise RuntimeError("invalid trusted sync configuration")
     if (
         config["format"] != "trainlog-sync-orchestrator-config"
-        or config["version"] != 1
+        or config["version"] not in (1, 2)
         or config["enabled"] is not True
     ):
         raise RuntimeError("full-generation synchronization is disabled")
-    if config["mode"] not in ("directory", "mtp"):
+    if config["mode"] not in ("directory", "mtp", "drive", "auto"):
         raise RuntimeError("invalid transport mode")
+    drive_enabled = config.get("drive_enabled", False)
+    drive_remote = config.get("drive_remote", "")
+    if type(drive_enabled) is not bool or (drive_enabled and (not isinstance(drive_remote, str) or not drive_remote)):
+        raise RuntimeError("invalid Drive configuration")
+    if config["mode"] in ("drive", "auto") and not drive_enabled:
+        raise RuntimeError("Drive transport is not configured")
     for key in ("transport_root", "owned_root"):
         if not isinstance(config[key], str) or not Path(config[key]).is_absolute():
             raise RuntimeError("trusted paths must be absolute")
@@ -333,6 +393,28 @@ def run(args: argparse.Namespace) -> int:
                 "TRAINLOG_SYNC_DATABASE": args.database,
             }
         )
+        selected_mode = config["mode"]
+        adapter = Path(
+            os.environ.get(
+                "TRAINLOG_SYNC_MTP_ADAPTER",
+                str(Path(__file__).resolve().parents[1] / "build/tui/trainlog-generation-mtp-adapter"),
+            )
+        )
+        if selected_mode == "auto":
+            # WHY: cable presence is not peer availability. A successful pull
+            # is the bounded proof that the configured Trainlog peer is usable.
+            try:
+                probe = subprocess.run(
+                    [str(adapter), "pull", config["expected_peer_id"], config["transport_root"]],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=min(timeout, 30),
+                    check=False,
+                ) if adapter.is_absolute() and os.access(adapter, os.X_OK) else None
+            except (OSError, subprocess.TimeoutExpired):
+                probe = None
+            selected_mode = "mtp" if probe is not None and probe.returncode == 0 else "drive"
         command = [
             sys.executable,
             str(Path(__file__).with_name("sync_peer_worker.py")),
@@ -349,19 +431,16 @@ def run(args: argparse.Namespace) -> int:
             "--timeout",
             str(timeout),
             "--mode",
-            config["mode"],
+            selected_mode,
         ]
-        if config["mode"] == "mtp":
-            adapter = os.environ.get(
-                "TRAINLOG_SYNC_MTP_ADAPTER",
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / "build/tui/trainlog-generation-mtp-adapter"
-                ),
-            )
-            if not Path(adapter).is_absolute() or not os.access(adapter, os.X_OK):
+        if selected_mode == "mtp":
+            if not adapter.is_absolute() or not os.access(adapter, os.X_OK):
                 raise RuntimeError("fixed MTP adapter executable is unavailable")
-            command.extend(["--mtp-adapter", adapter])
+            command.extend(["--mtp-adapter", str(adapter)])
+        elif selected_mode == "drive":
+            command.extend(
+                ["--drive-adapter", str(drive_adapter_path()), "--drive-remote", drive_remote]
+            )
         child = subprocess.Popen(
             command,
             stdin=subprocess.DEVNULL,
@@ -384,6 +463,20 @@ def run(args: argparse.Namespace) -> int:
             raise
         finally:
             _owned_process_group = None
+        drive_state = "disabled"
+        drive_diagnostic = ""
+        if drive_enabled:
+            if selected_mode == "drive":
+                drive_state = "success"
+            else:
+                try:
+                    mirror_current_exchange(Path(config["transport_root"]), drive_remote, timeout)
+                    drive_state = "mirrored"
+                except Exception as error:
+                    # CONTRACT: committed USB synchronization is never rolled
+                    # back because its additive safety mirror is unavailable.
+                    drive_state = "failed"
+                    drive_diagnostic = str(error)[:MAX_DIAGNOSTIC]
         update(
             state_path,
             state,
@@ -400,6 +493,10 @@ def run(args: argparse.Namespace) -> int:
             manifest_sha256=result["manifest_sha256"],
             ai_midpoint=result["ai_midpoint"],
             ai_post_sync=result["ai_post_sync"],
+            usb_state="success" if selected_mode == "mtp" else "unavailable",
+            drive_state=drive_state,
+            drive_diagnostic=drive_diagnostic,
+            transport=selected_mode,
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
         return 0
