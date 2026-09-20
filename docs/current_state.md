@@ -337,6 +337,10 @@ The full Android lint comparison against an isolated clean `main` worktree is
 unchanged at ten pre-existing errors: one `NewApi`, one
 `LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
 diagnostics. This UI tranche adds no lint error and changes no lint policy.
+The next private daily Android candidate remains on development
+`versionName=0.1.3`; only its strictly increasing `versionCode` may be supplied
+as a build-time override. No public tag or release is created by that private
+candidate process.
 
 The private Program execution rollout installed desktop schema v27 and the
 signed nondebuggable Android versionCode 17/schema v25 update without

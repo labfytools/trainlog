@@ -45,16 +45,6 @@ val trainlogVersionCode =
             ?: throw GradleException("TRAINLOG_ANDROID_VERSION_CODE must be a positive integer")
     } ?: 4
 
-/* WHY: private in-place candidates can remain on the installed stable product
- * line while development continues on the next version. CONTRACT: the build-
- * only override accepts a numeric semantic version and leaves the repository
- * default untouched. */
-val trainlogVersionName =
-    providers.environmentVariable("TRAINLOG_ANDROID_VERSION_NAME").orNull?.let { raw ->
-        raw.takeIf { it.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+")) }
-            ?: throw GradleException("TRAINLOG_ANDROID_VERSION_NAME must be numeric x.y.z")
-    } ?: "0.1.3"
-
 android {
     namespace = "com.labfytools.trainlog"
     compileSdk = 37
@@ -65,7 +55,7 @@ android {
         targetSdk = 36
 
         versionCode = trainlogVersionCode
-        versionName = trainlogVersionName
+        versionName = "0.1.3"
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }

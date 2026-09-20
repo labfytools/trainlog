@@ -656,11 +656,10 @@ tagged source state, and the tag, Android `versionName`, Meson project version,
 TUI product version, asset names, and release title must agree.
 
 Private update rollout may set `TRAINLOG_ANDROID_VERSION_CODE` to a positive
-integer and `TRAINLOG_ANDROID_VERSION_NAME=0.1.2` to remain on the installed
-stable product line. Both are build-only overrides; the repository development
-defaults remain unchanged. They are used only to maintain a strictly increasing
-installed → backup bridge → current APK chain and do not change any schema or
-exchange-format version.
+integer above the installed package while retaining the current development
+`versionName=0.1.3`. The version-code override is build-only and does not change
+any schema or exchange-format version. Private daily candidates must not
+downgrade the logical product version to the earlier 0.1.2 stable line.
 
 For `TRAINLOG_UI_ANDROID_WEB_UNIFICATION_V1`, `lintDebug` was also run from a
 detached clean worktree at the exact `main` baseline and from the mission

@@ -17,8 +17,8 @@ Development opened after the stable v0.1.2 release.
   Android full lint remains at the exact ten-error `main` baseline (one
   `NewApi`, one `LocalContextConfigurationRead`, and eight bilingual
   `StringFormatMatches` diagnostics); this lot adds no lint error and disables
-  no rule. Private candidates may override numeric `versionName` and increasing
-  `versionCode` at build time without changing development defaults.
+  no rule. Private daily candidates retain development `versionName=0.1.3` and
+  may override only an increasing `versionCode` at build time.
 
 - Added the loopback-only `/exercices` desktop catalogue administration
   surface with bounded search/profile/BODY ZONES filtering, detail and
