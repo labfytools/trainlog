@@ -141,7 +141,7 @@ parallel implementation of its rules.
 | Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (direct MTP, one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
-| Current operational cursor | `TRAINLOG_WEB_ANALYSIS_V1` (implemented, visual review pending) |
+| Current operational cursor | `TRAINLOG_WEB_ANALYSIS_V1` (implemented and visually refined, user review pending) |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

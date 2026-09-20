@@ -13,6 +13,14 @@ Development opened after stable v0.1.3 release.
   links, safe query fallbacks, null/empty states, French/English presentation,
   keyboard focus, and responsive charts are covered without estimating 1RM,
   readiness, fatigue, recovery, body fat, or performance.
+- Refined the Analyse V1 and Dashboard presentation without changing their
+  read models or API contracts. Period controls now share the section toolbar;
+  durations use the shared human-readable formatter; incompatible exercise
+  metrics remain hidden; activity, exercise, and measurement charts expose
+  chronological dates, units, and factual tooltips; BODY ZONE silhouettes and
+  exposure comparisons are more legible; and active-Program summaries use a
+  compact structured progression layout. Persisted Dashboard tile identities
+  and layout behavior remain unchanged.
 
 ## 0.1.3 — 2026-09-20
 
