@@ -456,10 +456,11 @@ manifest is published after its member objects. The helper runs inside the
 orchestrator-owned process group and cannot be selected or parameterized by an
 HTTP request.
 
-It polls for a new Android request and invokes the same shared C synchronization
-engine used by the TUI.
-
-It does not implement a second synchronization algorithm.
+It polls for a new Android request. With trusted full-generation configuration
+it admits that request to the existing application orchestrator and peer
+worker; without that configuration it retains the shared C/V3 compatibility
+engine used by the TUI. It does not implement a second synchronization
+algorithm.
 
 ## 3. Exercise model
 

@@ -152,15 +152,20 @@ Android inbox/outbox still select V3 and do not move the draft artifact.
   boundaries, not active storage choices.
 - Desktop synchronization uses direct libudev/libmtp discovery and object
   access. No GVFS/FUSE mount is required.
-- `trainlog_sync_run()` is shared by the TUI and `trainlog-syncd`.
+- `trainlog_sync_run()` remains the strict legacy V3 engine shared with the
+  TUI and compatibility tooling. When the trusted full-generation
+  configuration is present, `trainlog-syncd` admits the Android request into
+  the existing `sync_orchestrator.py`/`sync_peer_worker.py` conversation;
+  configuration absence retains the legacy fallback.
 - The desktop imports Android snapshots, publishes catalog/profile/feedback/AI
   companions, and returns a receipt. Stable IDs, artifact idempotence and the
   few domain-specific explicit states make defined replay paths idempotent.
   Explicit staged generation services now provide coherent V4/companion
   capture, immutable manifests, whole-generation SQLite consumption and
-  durable peer ACKs. A trusted opt-in configuration may select the bounded
+  durable peer ACKs. The Android foreground trigger now publishes a complete
+  generation by default. A trusted desktop configuration selects the bounded
   production generation MTP adapter; absent configuration leaves V3 as the
-  default.
+  compatibility fallback.
 - SQLite database files are never synchronized.
 - The desktop AI flow uses external `rclone` for Drive inbox/archive and
   read-only history export. Android owns no Drive credentials.

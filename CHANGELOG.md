@@ -4,6 +4,15 @@
 
 Development opened after the stable v0.1.2 release.
 
+- Routed Android foreground and daemon-triggered daily synchronization through
+  the existing full-generation orchestrator whenever its trusted local
+  configuration is present. The standalone mobile V3 importer remains strict
+  and still rejects causally protected live replay; complete generations apply
+  tombstones before filtering dominated snapshot facts. No schema, exchange
+  format, causal rule, or synchronization protocol changed. Android backup
+  manifests now obtain `product_version` from installed package metadata
+  instead of retaining the historical `0.1.2` literal.
+
 - Unified the Android capture interface around compact dark cards, action
   tiles, restrained-radius button variants, wrapping selection grids, and
   two-column performed-set entry. Home now focuses on session capture, recent

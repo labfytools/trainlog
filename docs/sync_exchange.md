@@ -135,9 +135,11 @@ Synchronization artifacts are separate from the frozen Trainlog session JSON
 v1 format.
 
 V4 history and execution-draft V1 are staged codecs with explicit repository
-and command-line entry points. They are deliberately absent from
-`trainlog_sync_run()`, request/receipt publication and the Android automatic
-inbox/outbox. Deployment must stop the old user worker, replace the installed
+and command-line entry points. They remain deliberately absent from
+`trainlog_sync_run()`: configured Android/daemon requests now route around that
+strict legacy V3 engine into the existing full-generation orchestrator. The
+request artifact remains only a correlated admission signal. Deployment must
+stop the old user worker, replace the installed
 binary/scripts as one unit, migrate only through the new binary, and restart
 only after compatibility checks; this ticket performs none of those steps.
 

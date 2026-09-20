@@ -1512,6 +1512,18 @@ the `trainlog-syncd` launcher and daemon source, and the generation worker.
 This prevents a user unit from silently executing a helper from a different
 checkout than the installed desktop candidate.
 
+`syncd_routing` proves that both Android-labelled and daemon-labelled
+admissions invoke the packaged `sync_orchestrator.py` full-generation owner
+when trusted configuration is present, and never invoke the legacy
+`trainlog-sync-once` command in that mode. The generation-MTP boundary test
+proves that polling copies the Android request signal without acknowledging or
+deleting it. Session-exchange characterization keeps standalone V3 rejection
+strict while its complete-envelope case filters a tombstone-dominated live
+fact; the causal Android/Desktop round-trip and generation replay/ACK tests
+cover restart, idempotence and non-resurrection. `AndroidBackupServiceTest`
+injects a product version and verifies that exact value in the ZIP manifest,
+preventing a return to a hard-coded release string.
+
 The isolated JDK 17 harness reports **220 Android tests: 215 passed, five
 skipped, zero failures/errors**. The skips are optional, externally supplied
 copy gates: `BridgeBackupMigrationTest.verifiedSchemaSeventeenBridgeBackupMigratesThroughCurrentOwner`,

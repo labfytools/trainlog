@@ -1056,10 +1056,17 @@ coordinator waits for correlated objects, tolerates stale objects left by
 interrupted runs, strictly revalidates desktop-retained historical ACKs, and
 shows completion only after both durable peer acknowledgements.
 
-Each explicit foreground generation attempt publishes the Android peer before
-emitting one fresh legacy request signal for `trainlog-syncd`. If transport is
+Each explicit foreground synchronization attempt publishes the Android peer
+and enters the full-generation coordinator before emitting one fresh request
+signal for `trainlog-syncd`. The signal is only admission/correlation; a
+configured daemon routes it to the existing desktop orchestrator rather than
+the standalone V3 importer. If transport is
 interrupted after generation publication, a later attempt resumes the exact
 stored generation instead of recapturing mutable data. An acknowledged Android
 generation remains resumable only until the desktop generation for that run is
 durably consumed; a fully completed run is then excluded from foreground
 selection. This preserves late-ACK recovery without replaying completed runs.
+
+Backup manifests retain format version 1 and the current Android schema. Their
+`product_version` is read from installed package metadata, so development
+builds record `0.1.3` without a second hard-coded product-version source.
