@@ -959,6 +959,19 @@ It reads the peer advertisement, current Android generation reference and
 current Android consumption ACK, then downloads only the generation directory
 named by that validated reference. It does not recursively mirror retained
 Android generations, desktop publications, or unrelated exchange history.
+Local correlation is checked every 50 ms without USB work; complete MTP pulls
+are throttled to a three-second cadence. Each MTP operation has its own
+30-second ceiling while the conversation retains its configured global
+deadline. Exhausting the global deadline while waiting for a correlated
+reference reports `timeout waiting for correlated android-generation-v1.json`;
+only an adapter that exceeds its independent operation budget reports
+`transport_timeout`.
+
+Android direct-file publication has a separate MediaProvider visibility
+barrier. Immutable generation files, including the manifest, become visible
+before `android-generation-v1.json` is committed. The reference therefore
+cannot advertise a generation whose files have not completed the Android MTP
+visibility callbacks. No remote object is removed during polling or scanning.
 
 `GET /api/v1/prepared-items` is a separate read-only Web projection. It does not
 change the frozen Dashboard `next_session.available` field or any exchange

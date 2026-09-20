@@ -4,6 +4,19 @@
 
 Development opened after the stable v0.1.2 release.
 
+- Hardened direct-MTP full-generation conversations after a private Android
+  run was frozen before generation capture. Android now emits bounded
+  run/phase metadata, refreshes the user-enabled background listener before a
+  foreground request, and confirms MediaProvider/MTP visibility for immutable
+  generation objects before publishing their reference. Desktop MTP pulls are
+  throttled to one complete refresh every three seconds, keep a separate
+  30-second operation budget, and report expiration of the conversation as a
+  correlated protocol timeout instead of a misleading final one-second
+  transport timeout. Explicit requests continue to receive fresh UUIDs.
+  Mensurations now retains two compact columns at the deployed phone's 312 dp
+  content width, with a narrow/large-font fallback. Schemas, causal semantics,
+  generation formats, ACK formats and standalone V3 strictness are unchanged.
+
 - Routed Android foreground and daemon-triggered daily synchronization through
   the existing full-generation orchestrator whenever its trusted local
   configuration is present. The standalone mobile V3 importer remains strict

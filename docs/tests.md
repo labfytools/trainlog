@@ -1544,6 +1544,26 @@ fixture's sample draft.
 
 ## Private full-generation rollout validation
 
+The MTP visibility regression suite uses injected clocks and transport
+callbacks, with no multi-second sleeps. It covers delayed Android publication,
+multiple throttled polls, stale run references, a never-visible generation,
+an independently blocked adapter, and exact protocol-versus-transport timeout
+classification. Android tests prove fresh request UUIDs, foreground/background
+lock ownership, objects-visible-before-reference ordering, bounded phase
+tracing, and a completed full-generation conversation. Compose tests exercise
+the measured 312 dp phone content width as two columns, a true 280 dp narrow
+layout as one column, 1.5 font-scale fallback, long French labels and `kg`/`cm`
+suffixes.
+
+Read-only forensics for failed run
+`sy_9639f06e-58ba-4bc0-ab1b-1488aefe011c` found the correlated desktop request
+and archive acknowledgements on Android, but no correlated generation
+reference, immutable directory or error record. The direct filesystem and MTP
+views contained identical bytes for the retained older Android reference.
+Logcat showed Android moving Trainlog behind the file-access settings surface
+and freezing it before capture. The post-v19 backup predates this run and is
+not presented as SQLite evidence for it.
+
 The authorized 2026-09-17 rollout added regression coverage for production
 failures found only after installation: feedback import under `sqlite3.Row`,
 the complete exporter inventory of the relocatable package, stale Android ACK

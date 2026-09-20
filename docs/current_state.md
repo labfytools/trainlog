@@ -9,6 +9,25 @@ USB listener with mandatory notification and a private-folder Drive grant with
 bounded WorkManager checks. Both use the same concurrency-guarded generation
 coordinator as SyncScreen.
 
+Direct-MTP publication now has an explicit Android visibility boundary.
+Durable immutable generation files are submitted to MediaProvider and all scan
+callbacks complete before the mutable generation reference is published; the
+reference and Android ACK use the same confirmation. Bounded diagnostic logs
+contain only run/generation identities, artifact names, phases and results.
+The desktop worker performs lightweight local correlation checks continuously
+but opens a full MTP pull no more than once every three seconds. A 30-second
+individual adapter budget is distinct from the overall conversation deadline,
+so an absent correlated generation reports a protocol wait timeout while an
+actually blocked adapter reports `transport_timeout`.
+
+The failed private run `sy_9639f06e-58ba-4bc0-ab1b-1488aefe011c` received its
+desktop request and archive-ACK files on the Android filesystem, but created no
+Android generation row/reference/object. System evidence shows the activity
+was moved to Android's file-access settings and frozen before capture. The
+retained Android generation reference and MTP bytes both belonged to an older
+run; no hidden new generation was found. No causal or business mutation
+occurred.
+
 Existing preparation rows expose separate editing and Android-delivery states
 and an accessible send action. Draft/local advances the same preparation to a
 ready revision before delivery; ready/local delivers the current revision.

@@ -1067,6 +1067,28 @@ generation remains resumable only until the desktop generation for that run is
 durably consumed; a fully completed run is then excluded from foreground
 selection. This preserves late-ACK recovery without replaying completed runs.
 
+The direct-MTP path confirms transport visibility independently from ordinary
+`File.exists()` checks. Android fsyncs and atomically commits every immutable
+generation artifact, asks MediaProvider to scan those files, waits for all
+bounded callbacks, and only then atomically publishes and scans
+`android-generation-v1.json`. The same boundary covers the peer advertisement,
+explicit request signal, Android consumption ACK and bounded error reference.
+Manifest/reference remain the commit markers; scanning does not change their
+bytes or protocol meaning. Production logging records only `run_id`, phase,
+artifact name, generation ID and result.
+
+When background synchronization is enabled, an explicit UI request refreshes
+the foreground listener before starting the UI-owned conversation. The shared
+process lock prevents a second run while the UI coordinator is alive; if the
+activity is frozen or destroyed, the listener can validate and resume the
+durable request without inventing another generation.
+
+The Mensurations grid uses two 140 dp compact fields plus a 10 dp gutter at
+normal phone widths. The deployed 1080 px/480 dpi phone supplies approximately
+312 dp inside the screen frame and therefore receives two columns. Layouts
+below 290 dp, or font scales of 1.5 and above, retain the readable one-column
+fallback.
+
 Backup manifests retain format version 1 and the current Android schema. Their
 `product_version` is read from installed package metadata, so development
 builds record `0.1.3` without a second hard-coded product-version source.
