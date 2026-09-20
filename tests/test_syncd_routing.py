@@ -81,7 +81,8 @@ class SyncdRoutingTest(unittest.TestCase):
         )[0]
         self.assertIn("SyncGenerationForegroundCoordinator(repository).run", production)
         self.assertNotIn("generation-opt-in", production)
-        self.assertNotIn("exportMobileBundle", production)
+        self.assertIn("exportMobileBundle", production)
+        self.assertIn("generation below", production)
 
 
 if __name__ == "__main__":

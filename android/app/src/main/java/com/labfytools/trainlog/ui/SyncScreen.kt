@@ -55,6 +55,16 @@ internal suspend fun publishBundleAndRequest(
         return@withContext SyncRequestResult.Error("prepare:${opened.message}")
     }
     val snapshot = (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
+    /* CONTRACT: the request signal remains compatible with an unconfigured
+     * desktop, so publish the strict standalone V3 snapshot before admission.
+     * A configured daemon still routes the signal exclusively to the complete
+     * generation below; this compatibility publication never selects V3. */
+    when (val publication = exporter.exportMobileBundle(snapshot)) {
+        SyncExportResult.Unsupported -> return@withContext SyncRequestResult.Unsupported
+        is SyncExportResult.Error ->
+            return@withContext SyncRequestResult.Error("prepare:${publication.message}")
+        is SyncExportResult.Exported -> Unit
+    }
     return@withContext when (
         val result = SyncGenerationForegroundCoordinator(repository).run(
             canonicalExchangeDirectory(),
