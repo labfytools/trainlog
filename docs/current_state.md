@@ -105,8 +105,8 @@ parallel implementation of its rules.
 | Sync Web end-to-end wrapper | `TRAINLOG_SYNC_WEB_END_TO_END_V1=PASS/FROZEN` (isolated) |
 | Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (direct MTP, one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
+| Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
 | Current operational cursor | `TRAINLOG_ANDROID_UI_REDESIGN_V1_CONTRACT` |
-| Next after Android redesign | `TRAINLOG_WEB_EXERCISES_V1` |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
@@ -250,8 +250,18 @@ resume and history views, stable details, optimistic manual-preparation writes,
 explicit proposal derivation and generation-backed Android delivery. The
 top-level `/programmes` route is an operational daily active-Program calendar;
 Sessions → Programmes remains the technical administration/import, list,
-detail, archive, and delete surface. Analyse and Exercises remain explicit
-placeholders.
+detail, archive, and delete surface. `/exercices` is the operational desktop
+catalogue administration surface; Analyse remains an explicit placeholder.
+
+Exercises uses bounded Core-owned list/detail reads, canonical name
+normalization, BODY ZONES taxonomy, profiled creation/update commands and
+causal retirement. Its deterministic optimistic token covers all editable
+catalogue state. Built-in identities cannot be retired, equipment associations
+are presented read-only, and profile edits affect future use only: occurrence
+snapshots, performed sets, feedback and MAX history are never rewritten. A
+successful mutation changes only the canonical desktop database; the existing
+USB-priority, Drive mirror/fallback synchronization later carries the existing
+catalogue/profile/BODY ZONES/causal artifacts. No Web mutation invokes sync.
 
 The calendar uses the existing typed Core services `fetchAllPrograms(active)`,
 `fetchProgram`, and `createPreparationFromProgram`; it derives no local program
@@ -518,10 +528,9 @@ tests, Android debug assembly, and 211 Android tests (207 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
-- The next planned work is `TRAINLOG_ANDROID_UI_REDESIGN_V1`; it is not yet
-  implemented. `TRAINLOG_WEB_EXERCISES_V1` follows it and will replace the
-  current `/exercices` placeholder only after a separate Core/read/command
-  contract. Analyse remains a placeholder and is not a v0.1.3 priority.
+- `TRAINLOG_WEB_EXERCISES_V1=PASS`. The next planned work is
+  `TRAINLOG_ANDROID_UI_REDESIGN_V1`; it remains unimplemented. Analyse remains
+  a placeholder and is not a v0.1.3 priority.
 - `APP_SHELL_V1` retains a recorded legacy visual/accessibility review gate; its
   observations are inputs to, not decisions for, the new 0.1.3 Android contract.
 - Session Generator V1 is hidden while V2 planning semantics are developed.

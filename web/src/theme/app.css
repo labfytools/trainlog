@@ -218,6 +218,39 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .program-calendar-legend { margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; list-style: none; }
 .program-calendar-legend li, .program-calendar-state-label { padding: .3rem .55rem; border: 1px solid currentColor; border-radius: 999px; font-size: var(--font-size-xs); font-weight: 700; }
 .program-calendar-state-todo { color: var(--lavender); background: color-mix(in srgb, var(--lavender) 7%, transparent); }
+
+.exercise-toolbar { display: grid; grid-template-columns: minmax(14rem, 2fr) repeat(2, minmax(11rem, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.exercise-toolbar label, .exercise-form > label { display: grid; gap: .4rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
+.exercise-toolbar input, .exercise-toolbar select, .exercise-form input[type="text"], .exercise-form > label > input, .exercise-form select { width: 100%; min-height: 2.7rem; padding: .65rem .75rem; color: var(--text); background: var(--base); border: 1px solid var(--surface-2); border-radius: .5rem; }
+.exercise-list { display: grid; gap: .65rem; }
+.exercise-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; overflow: hidden; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); }
+.exercise-card:hover { border-color: var(--lavender); }
+.exercise-card-main { display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(8rem, 1fr)); gap: 1rem; align-items: center; padding: 1rem 1.1rem; color: var(--text); background: transparent; border: 0; text-align: left; cursor: pointer; }
+.exercise-card-main span { color: var(--subtext-0); font-size: var(--font-size-sm); }
+.exercise-card > .quiet-action { margin: .65rem; }
+.exercise-pagination { display: flex; justify-content: flex-end; gap: .65rem; margin-top: 1rem; }
+.exercise-detail { width: min(100%, 70rem); margin: 0 auto; }
+.exercise-detail-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 2rem 0; }
+.exercise-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.exercise-facts div { padding: 1rem; border: 1px solid var(--surface-1); border-radius: .7rem; background: var(--mantle); }
+.exercise-facts dt { margin-bottom: .4rem; color: var(--subtext-0); font-size: var(--font-size-xs); text-transform: uppercase; }
+.exercise-facts dd { margin: 0; overflow-wrap: anywhere; }
+.protected-identity { align-self: center; color: var(--yellow); font-size: var(--font-size-sm); }
+.exercise-form { width: min(100%, 54rem); display: grid; gap: 1rem; margin-top: 2rem; padding: clamp(1rem, 3vw, 2rem); border: 1px solid var(--surface-1); border-radius: var(--radius); background: var(--mantle); }
+.exercise-form fieldset { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; padding: 1rem; border: 1px solid var(--surface-1); border-radius: .65rem; }
+.exercise-form legend { padding: 0 .35rem; color: var(--subtext-0); }
+.exercise-form fieldset label { display: flex; align-items: center; gap: .45rem; }
+.exercise-zone-options { display: grid; grid-template-columns: repeat(2, minmax(12rem, 1fr)); gap: .65rem; width: 100%; }
+.profile-confirmation { padding: 1rem; border: 1px solid var(--yellow); border-radius: .65rem; color: var(--yellow); background: rgb(249 226 175 / 7%); }
+
+@media (max-width: 50rem) {
+  .exercise-toolbar, .exercise-facts { grid-template-columns: 1fr; }
+  .exercise-card { grid-template-columns: 1fr; }
+  .exercise-card-main { grid-template-columns: 1fr; gap: .35rem; }
+  .exercise-card > .quiet-action { justify-self: start; }
+  .exercise-detail-heading { align-items: start; flex-direction: column; }
+  .exercise-zone-options { grid-template-columns: 1fr; }
+}
 .program-calendar-state-prepared { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 8%, transparent); }
 .program-calendar-state-in_progress { color: var(--sapphire); background: color-mix(in srgb, var(--sapphire) 9%, transparent); }
 .program-calendar-state-completed { color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }

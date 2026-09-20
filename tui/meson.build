@@ -76,9 +76,13 @@ if web_assets_enabled
     '../web/src/routes/PlaceholderPage.tsx',
     '../web/src/routes/SessionsPage.tsx',
     '../web/src/api/sessions.ts',
+    '../web/src/api/exercises.ts',
+    '../web/src/api/exercises.test.ts',
     '../web/src/api/programs.ts',
     '../web/src/routes/ProgramsTab.tsx',
     '../web/src/routes/ProgramsCalendarPage.tsx',
+    '../web/src/routes/ExercisesPage.tsx',
+    '../web/src/routes/ExercisesPage.test.tsx',
     '../web/src/theme/app.css',
     '../web/src/theme/tokens.css',
   )
@@ -209,6 +213,7 @@ trainlog_core_sources = files(
   'src/web_sessions.c',
   'src/web_session_deletions.c',
   'src/web_programs.c',
+  'src/web_exercises.c',
   'src/duration.c',
   'src/id.c',
   'src/timeutil.c',
@@ -381,6 +386,15 @@ test_web_programs = executable(
   c_args: strict_c_args,
 )
 test('web_programs', test_web_programs)
+
+test_web_exercises = executable(
+  'test_web_exercises',
+  'tests/test_web_exercises.c',
+  dependencies: trainlog_core_dep,
+  include_directories: trainlog_private_include,
+  c_args: strict_c_args,
+)
+test('web_exercises', test_web_exercises)
 
 test_web_session_deletions = executable(
   'test_web_session_deletions',

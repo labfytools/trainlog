@@ -77,6 +77,15 @@ def main():
                 f"schema={version}"
             )
 
+        active_filter = "" if version < 20 else '''
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM sync_causal_state AS causal
+                WHERE causal.target_kind = 'exercise'
+                  AND causal.target_id = exercises.exercise_id
+                  AND causal.deleted = 1
+            )
+        '''
         rows = connection.execute(
             '''
             SELECT
@@ -86,6 +95,7 @@ def main():
                 tracking_mode,
                 data_fields
             FROM exercises
+            ''' + active_filter + '''
             ORDER BY
                 name COLLATE NOCASE,
                 exercise_id;

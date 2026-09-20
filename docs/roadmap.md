@@ -43,9 +43,9 @@ tile rendering exist. The Dashboard's bounded progression and BODY ZONES
 visualizations and Sessions V1 are implemented. The top-level `/programmes`
 route is an operational daily active-Program calendar, while
 Sessions → Programmes remains the technical administration/import, list,
-detail, archive, and delete surface. Analyse and Exercises remain placeholders.
-Exercises is now the second ordered v0.1.3 priority; Analyse remains outside
-this cycle unless a later explicit decision changes that order.
+detail, archive, and delete surface. Web Exercises V1 is implemented; Analyse
+remains a placeholder outside this cycle unless a later explicit decision
+changes that order.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -60,7 +60,6 @@ causal-deletion contracts without reopening those completed gates.
 
 ```text
 CURRENT_OPERATIONAL_CURSOR=TRAINLOG_ANDROID_UI_REDESIGN_V1_CONTRACT
-NEXT_AFTER_ANDROID_UI_REDESIGN=TRAINLOG_WEB_EXERCISES_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
@@ -166,20 +165,21 @@ not authorize implementation and it did not select Analyse.
 
 ## Trainlog v0.1.3
 
-Trainlog v0.1.3 has two ordered priorities:
+Trainlog v0.1.3 retains two priorities. Web Exercises was completed first; the
+cursor now returns to the Android redesign:
 
-1. the global Android experience redesign;
-2. the complete Web Exercices surface.
+1. the complete Web Exercices surface;
+2. the global Android experience redesign.
 
 ```text
-TRAINLOG_ANDROID_UI_REDESIGN_V1
-        -> TRAINLOG_WEB_EXERCISES_V1
+TRAINLOG_WEB_EXERCISES_V1
+        -> TRAINLOG_ANDROID_UI_REDESIGN_V1
 ```
 
-Each lot requires its own reviewed contract before implementation. This roadmap
-is documentary ordering, not authorization to implement both lots in one
-ticket. Analyse and every other new Web module remain after these priorities
-unless a later explicit decision changes the order.
+The Web lot is implemented and validated. The Android lot still requires its
+own reviewed contract before implementation. Analyse and every other new Web
+module remain after this priority unless a later explicit decision changes the
+order.
 
 ### TRAINLOG_ANDROID_UI_REDESIGN_V1
 
@@ -222,12 +222,12 @@ will be made screen by screen.
 
 ### TRAINLOG_WEB_EXERCISES_V1
 
-The top-level `/exercices` placeholder will become the desktop catalogue
-administration surface. The first step is an audit of existing Core catalogue
-services and persisted capabilities; implementation is not authorized until a
-separate read/command contract has been reviewed.
+`TRAINLOG_WEB_EXERCISES_V1=PASS`. The top-level `/exercices` route is the
+desktop catalogue administration surface. It uses bounded Core read/command
+services and a deterministic optimistic token; it does not put business rules
+in React.
 
-The future lot includes:
+The delivered lot includes:
 
 - **Catalogue:** a complete or paged list according to the Core contract,
   search, relevant filters, available/retired state when the model supports it,
@@ -239,7 +239,8 @@ The future lot includes:
   business truth.
 - **Creation:** create through a real transactional Core command service, with
   name, profile, tracking, `data_fields`, primary and secondary zones, and
-  equipment/associations only where the Core contract permits them.
+  equipment associations remain read-only because no bounded association
+  command is part of this contract.
 - **Modification:** expose only Core-authorized changes. The contract must
   distinguish mutable and immutable fields, compatible changes, changes that
   require a new identity, and exercises already referenced by history.
@@ -260,36 +261,37 @@ with Drive as mirror/fallback. React must not introduce an Exercises-specific
 synchronization path. The future contract must first audit the existing
 catalogue, profile, BODY ZONES, and equipment artifacts to determine whether
 the planned changes are representable. Frozen formats remain frozen; if a new
-datum cannot be transported, the contract must state that explicitly before
-any protocol change.
+datum cannot be transported, a future contract must state that explicitly
+before any protocol change. No automatic synchronization is initiated by this
+surface.
 
 ### Bounded v0.1.3 order
 
 ```text
 0.1.3
 |
-+-- ANDROID_UI_REDESIGN_V1
-|   |
-|   +-- current-state audit
-|   +-- UX/navigation contract
-|   +-- shell / buttons / components
-|   +-- active-session workflow
-|   +-- exercise-entry workflow
-|   +-- real visual review
-|   +-- accessibility validation
-|
 +-- WEB_EXERCISES_V1
+|   |
+|   +-- Core/catalogue characterization
+|   +-- read-model contract
+|   +-- command-service contract
+|   +-- Web catalogue
+|   +-- exercise detail
+|   +-- creation
+|   +-- modification
+|   +-- causal retirement
+|   +-- Android synchronization
+|   +-- real validation
+|
++-- ANDROID_UI_REDESIGN_V1
     |
-    +-- Core/catalogue characterization
-    +-- read-model contract
-    +-- command-service contract
-    +-- Web catalogue
-    +-- exercise detail
-    +-- creation
-    +-- modification
-    +-- causal retirement
-    +-- Android synchronization
-    +-- real validation
+    +-- current-state audit
+    +-- UX/navigation contract
+    +-- shell / buttons / components
+    +-- active-session workflow
+    +-- exercise-entry workflow
+    +-- real visual review
+    +-- accessibility validation
 ```
 
 ## Next
@@ -352,8 +354,8 @@ normal capture.
 ## Canonical order
 
 ```text
-TRAINLOG_ANDROID_UI_REDESIGN_V1
-        -> TRAINLOG_WEB_EXERCISES_V1
+TRAINLOG_WEB_EXERCISES_V1
+        -> TRAINLOG_ANDROID_UI_REDESIGN_V1
         -> GYM_CATALOG_V1
         -> EXERCISE_METADATA_V1
         -> SESSION_GENERATOR_V2

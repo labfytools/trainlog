@@ -4,6 +4,7 @@
 import importlib.util
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -105,6 +106,22 @@ class CausalDeleteTest(unittest.TestCase):
         self.db.commit()
         with self.assertRaisesRegex(causal.CausalError, "built-in"):
             causal.local_delete(self.db, "exercise", built_in, "peer")
+
+    def test_retired_exercise_is_omitted_from_next_pc_catalog(self):
+        self.delete("exercise", "ex_user")
+        output = Path(self.tmp.name) / "pc-catalog.json"
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools/export_pc_catalog.py"),
+             "--database", str(self.path), str(output)],
+            check=False, capture_output=True, text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        catalog = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual([], catalog["exercises"])
+        self.assertEqual(1, self.db.execute(
+            "SELECT count(*) FROM exercises WHERE exercise_id='ex_user'").fetchone()[0])
+        self.assertEqual(1, self.db.execute(
+            "SELECT count(*) FROM session_exercises WHERE exercise_row_id=1").fetchone()[0])
 
     def hostile_operation(self, kind, target):
         operation = {"operation_id": "del_" + "a" * 36, "target_kind": kind,

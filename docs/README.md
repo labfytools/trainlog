@@ -14,6 +14,9 @@ evidence and chronology.
 
 ## Interfaces
 
+- [Web Exercises V1](web_exercises.md) owns desktop catalogue administration,
+  optimistic editing, historical preservation, causal retirement, and its
+  existing-artifact synchronization boundary.
 - [Web Sessions V1](web_sessions.md) owns the implemented preparation, resume,
   history and Android-delivery workflow.
 - [Program format V1](program_format_v1.md) owns the strict desktop planning

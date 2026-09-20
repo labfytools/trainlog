@@ -2817,6 +2817,7 @@ TrainlogStatus trainlog_database_update_exercise_profiled(TrainlogDatabase *data
     sqlite3_stmt *statement = NULL;
     sqlite3_int64 row_id;
     TrainlogStatus status;
+    bool owns_transaction;
     int rc;
     const char *tracking;
     const char *recording;
@@ -2832,7 +2833,8 @@ TrainlogStatus trainlog_database_update_exercise_profiled(TrainlogDatabase *data
     if (status != TRAINLOG_STATUS_OK) {
         return status;
     }
-    if (execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK) {
+    owns_transaction = sqlite3_get_autocommit(database->connection) != 0;
+    if (owns_transaction && execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
 
@@ -2872,6 +2874,9 @@ TrainlogStatus trainlog_database_update_exercise_profiled(TrainlogDatabase *data
     if (status != TRAINLOG_STATUS_OK) {
         goto rollback;
     }
+    if (!owns_transaction) {
+        return TRAINLOG_STATUS_OK;
+    }
     if (execute_sql(database, "COMMIT;") != TRAINLOG_STATUS_OK) {
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
         return TRAINLOG_STATUS_DATABASE_ERROR;
@@ -2882,7 +2887,9 @@ rollback:
     if (statement != NULL) {
         (void)sqlite3_finalize(statement);
     }
-    (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+    if (owns_transaction) {
+        (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
+    }
     return status;
 }
 

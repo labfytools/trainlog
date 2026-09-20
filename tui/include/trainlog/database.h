@@ -250,11 +250,13 @@ TrainlogStatus trainlog_database_list_exercises_filtered(TrainlogDatabase *datab
                                                          size_t *output_count);
 
 /* CONTRACT: name/profile/direct zones are one transaction and all string/list
- * inputs are borrowed only for the duration of the call. A profile change is
- * rejected once completed history references the exercise; a same-profile
- * rename or zone replacement preserves exercise_id and history. Zone rules
- * match replace_exercise_body_zones(). Unknown exercise IDs return NOT_FOUND;
- * invalid metadata and name collisions remain explicit errors. */
+ * inputs are borrowed only for the duration of the call. Profile changes affect
+ * future occurrences only because schema v16 snapshots the complete profile on
+ * every occurrence. Existing sessions and drafts are never rewritten. The
+ * function owns a transaction when called in autocommit mode and participates
+ * in an already-open caller transaction otherwise. Zone rules match
+ * replace_exercise_body_zones(). Unknown exercise IDs return NOT_FOUND; invalid
+ * metadata and name collisions remain explicit errors. */
 TrainlogStatus trainlog_database_update_exercise_profiled(TrainlogDatabase *database,
                                                           const char *exercise_id,
                                                           const char *name,

@@ -15,6 +15,11 @@ export const routes: readonly AppRoute[] = [
 ]
 
 export function routeFromPath(pathname: string): AppRoute {
-  if (pathname === '/seances' || pathname.startsWith('/seances/')) return routes[3]
+  if (pathname === '/seances' || pathname.startsWith('/seances/')) {
+    return { ...routes[3], path: pathname }
+  }
+  if (pathname === '/exercices' || pathname.startsWith('/exercices/')) {
+    return { ...routes[4], path: pathname }
+  }
   return routes.find((route) => route.path === pathname) ?? routes[0]
 }

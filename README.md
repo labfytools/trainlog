@@ -11,8 +11,8 @@ Trainlog is a local-first workout and body-data system. Trainlog Core owns
 business truth and canonical desktop persistence. Its native Android app is the
 field companion, its C17/Notcurses desktop TUI is the administration and
 technical surface, and its local browser Web sibling provides the implemented
-Dashboard, Sessions, and Programmes surfaces while reserving Analyse and
-Exercises for separately contracted work.
+Dashboard, Sessions, Programmes, and Exercises surfaces while reserving Analyse
+for separately contracted work.
 
 Android and desktop each own a local SQLite database. The desktop database is
 the canonical long-term history. Trainlog synchronizes versioned JSON artifacts
@@ -24,7 +24,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.3 development) | Display the Dashboard, the operational top-level Programmes daily active-program calendar, and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and Programs administration workflow through typed Trainlog Core/API boundaries. Programs has responsive detail, terminal logical deletion, and a privately deployed read-only Android projection. Analyse and Exercises remain placeholders. |
+| Local Web (0.1.3 development) | Display the Dashboard, the operational Programmes calendar, Sessions administration, and the desktop exercise catalogue through typed Trainlog Core/API boundaries. Exercises supports search/filter, detail, creation, editing and causal retirement; equipment is read-only. Analyse remains a placeholder. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -34,8 +34,8 @@ make the remaining placeholder routes functional.
 The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
-The ordered 0.1.3 development focus is an Android UX redesign followed by Web
-Exercises administration; both remain planned, separately contracted work.
+Web Exercises administration is implemented for 0.1.3 development. The next
+separately contracted priority is the Android UX redesign.
 
 ## Releases
 
@@ -349,8 +349,8 @@ As of 2026-09-18:
 - `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
   `WEB_DASHBOARD_V1=PASS/FROZEN` and `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN`;
   `/programmes` is an operational active-Program calendar, while
-  Sessions → Programmes remains the administration surface; Analyse and
-  Exercises remain placeholders;
+  Sessions → Programmes remains the administration surface;
+  `TRAINLOG_WEB_EXERCISES_V1=PASS`; Analyse remains a placeholder;
 - `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS`: the coordinated
   private desktop/Android deployment, real Firefox presentation, correlated
   `programs-v1` deletion ACK, restart/replay, and non-resurrection checks pass;

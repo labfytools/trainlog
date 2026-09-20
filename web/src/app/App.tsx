@@ -8,14 +8,14 @@ import { DashboardPage } from '../routes/DashboardPage'
 import { PlaceholderPage } from '../routes/PlaceholderPage'
 import { ProgramsCalendarPage } from '../routes/ProgramsCalendarPage'
 import { SessionsPage } from '../routes/SessionsPage'
+import { ExercisesPage } from '../routes/ExercisesPage'
 import type { RouteId } from './routes'
 import { useRoute } from './useRoute'
 import { DatePreferencesProvider } from '../presentation/DatePreferences'
 
-const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'programs'>, [string, string, string]> = {
+const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'programs' | 'exercises'>, [string, string, string]> = {
   analysis: ['Analyse', 'COMPRENDRE', 'Les analyses détaillées apparaîtront ici lorsque leurs read models Core seront disponibles.'],
   sessions: ['Séances', 'ORGANISER', 'Les séances préparées et terminées seront présentées sans confondre plan et réalisé.'],
-  exercises: ['Exercices', 'EXPLORER', 'Le catalogue canonique des exercices sera consultable depuis cette page.'],
 }
 
 function AppContent() {
@@ -76,6 +76,7 @@ function AppContent() {
     />
   ) : route.id === 'sessions' ? <SessionsPage /> :
     route.id === 'programs' ? <ProgramsCalendarPage onNavigate={navigate} /> :
+    route.id === 'exercises' ? <ExercisesPage path={route.path} onNavigate={navigate} /> :
     <PlaceholderPage title={placeholderContent[route.id][0]}
       eyebrow={placeholderContent[route.id][1]}
       description={placeholderContent[route.id][2]} />

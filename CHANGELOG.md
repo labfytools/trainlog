@@ -4,6 +4,16 @@
 
 Development opened after the stable v0.1.2 release.
 
+- Added the loopback-only `/exercices` desktop catalogue administration
+  surface with bounded search/profile/BODY ZONES filtering, detail and
+  read-only equipment presentation, Core-owned creation and editing, complete
+  optimistic concurrency, and protected causal retirement. Profile changes
+  preserve stable exercise IDs and all historical occurrence snapshots.
+  Mutations remain desktop-local until the existing USB-priority, Drive
+  mirror/fallback synchronization publishes the existing catalogue companions;
+  no Android code, schema, exchange format, or automatic synchronization was
+  added.
+
 ## 0.1.2 — 2026-09-20
 
 - Added USB-priority full-generation synchronization with a separately

@@ -21,6 +21,7 @@
 #include <yyjson.h>
 
 #include "trainlog/web_dashboard.h"
+#include "trainlog/web_exercises.h"
 #include "trainlog/web_prepared_items.h"
 #include "trainlog/web_programs.h"
 #include "trainlog/web_session_deletions.h"
@@ -39,6 +40,7 @@
 #define TRAINLOG_HTTP_BACKLOG 32U
 #define TRAINLOG_HTTP_POLL_MAX_MS 250ULL
 #define TRAINLOG_SYNC_ACCEPTED_JSON_CAPACITY 256U
+#define TRAINLOG_EXERCISE_REVISION_CAPACITY 72U
 
 typedef struct TrainlogWebContext {
     uint16_t port;
@@ -843,6 +845,188 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
     return queue_owned_programs_json(connection, status, json, json_size);
 }
 
+static enum MHD_Result queue_owned_exercises_json(struct MHD_Connection *connection,
+                                                  TrainlogStatus status,
+                                                  char *json,
+                                                  size_t json_size,
+                                                  const char *conflict_error) {
+    if (status == TRAINLOG_STATUS_NOT_FOUND) {
+        free(json);
+        return queue_json(
+            connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"exercise_not_found\"}\n", NULL);
+    }
+    if (status == TRAINLOG_STATUS_CONFLICT) {
+        free(json);
+        return queue_json(connection,
+                          MHD_HTTP_CONFLICT,
+                          conflict_error == NULL ? "{\"error\":\"exercise_conflict\"}\n"
+                                                 : conflict_error,
+                          NULL);
+    }
+    if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+        free(json);
+        return queue_json(
+            connection, MHD_HTTP_UNPROCESSABLE_CONTENT, "{\"error\":\"invalid_exercise\"}\n", NULL);
+    }
+    if (status != TRAINLOG_STATUS_OK || json == NULL || json_size == 0U) {
+        free(json);
+        return queue_json(connection,
+                          MHD_HTTP_INTERNAL_SERVER_ERROR,
+                          "{\"error\":\"exercises_unavailable\"}\n",
+                          NULL);
+    }
+    (void)json_size;
+    {
+        enum MHD_Result result = queue_json(connection, MHD_HTTP_OK, json, NULL);
+        free(json);
+        return result;
+    }
+}
+
+static enum MHD_Result handle_exercises_request(TrainlogWebContext *context,
+                                                struct MHD_Connection *connection,
+                                                const char *url,
+                                                const char *method,
+                                                bool is_get,
+                                                TrainlogHttpRequestState *request) {
+    static const char COLLECTION[] = "/api/v1/exercises";
+    static const char DETAIL_PREFIX[] = "/api/v1/exercise/";
+    char *json = NULL;
+    size_t json_size = 0U;
+    const char *request_id;
+    TrainlogStatus status;
+
+    if (strcmp(url, "/api/v1/exercise-zones") == 0) {
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
+        status = trainlog_web_exercises_zones_json(&json, &json_size);
+        return queue_owned_exercises_json(connection, status, json, json_size, NULL);
+    }
+    if (strcmp(url, COLLECTION) == 0) {
+        if (is_get) {
+            TrainlogWebExercisesQuery query;
+            const char *unclassified;
+            if (!parse_page_number(
+                    MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "offset"),
+                    0U,
+                    1000000U,
+                    &query.offset) ||
+                !parse_page_number(
+                    MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "limit"),
+                    24U,
+                    TRAINLOG_WEB_EXERCISES_PAGE_MAX,
+                    &query.limit) ||
+                query.limit == 0U) {
+                return queue_json(
+                    connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_page\"}\n", NULL);
+            }
+            query.search = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "search");
+            query.profile =
+                MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "profile");
+            query.zone_id =
+                MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "zone_id");
+            unclassified =
+                MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "unclassified");
+            query.unclassified = unclassified != NULL && strcmp(unclassified, "true") == 0;
+            status = trainlog_web_exercises_list_json(context->database, &query, &json, &json_size);
+            return queue_owned_exercises_json(connection, status, json, json_size, NULL);
+        }
+        if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET, POST");
+        }
+        if (!program_mutation_allowed(context, connection)) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        request_id =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+        if (request_id == NULL || request_id[0] == '\0' || strlen(request_id) > 128U) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_request_id\"}\n", NULL);
+        }
+        status = trainlog_web_exercises_create_json(
+            context->database, request->body, request->body_size, &json, &json_size);
+        return queue_owned_exercises_json(connection, status, json, json_size, NULL);
+    }
+    if (strncmp(url, DETAIL_PREFIX, strlen(DETAIL_PREFIX)) == 0) {
+        const char *exercise_id = url + strlen(DETAIL_PREFIX);
+        const char *if_match;
+        char revision[TRAINLOG_EXERCISE_REVISION_CAPACITY];
+        if (exercise_id[0] == '\0' || strlen(exercise_id) > TRAINLOG_ID_MAX ||
+            strchr(exercise_id, '/') != NULL) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_identity\"}\n", NULL);
+        }
+        if (is_get) {
+            status = trainlog_web_exercises_detail_json(
+                context->database, exercise_id, &json, &json_size);
+            return queue_owned_exercises_json(connection, status, json, json_size, NULL);
+        }
+        if (strcmp(method, MHD_HTTP_METHOD_PUT) != 0 &&
+            strcmp(method, MHD_HTTP_METHOD_DELETE) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET, PUT, DELETE");
+        }
+        if (!program_mutation_allowed(context, connection)) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        request_id =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+        if (request_id == NULL || request_id[0] == '\0' || strlen(request_id) > 128U) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_request_id\"}\n", NULL);
+        }
+        if_match =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, MHD_HTTP_HEADER_IF_MATCH);
+        if (!parse_quoted_revision(if_match, revision, sizeof(revision))) {
+            return queue_json(connection,
+                              MHD_HTTP_PRECONDITION_REQUIRED,
+                              "{\"error\":\"precondition_required\"}\n",
+                              NULL);
+        }
+        if (strcmp(method, MHD_HTTP_METHOD_PUT) == 0) {
+            status = trainlog_web_exercises_update_json(context->database,
+                                                        exercise_id,
+                                                        revision,
+                                                        request->body,
+                                                        request->body_size,
+                                                        &json,
+                                                        &json_size);
+            return queue_owned_exercises_json(connection,
+                                              status,
+                                              json,
+                                              json_size,
+                                              "{\"error\":\"exercise_revision_conflict\"}\n");
+        }
+        if (request->body_size != 0U) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"unexpected_body\"}\n", NULL);
+        }
+        status = trainlog_web_exercises_retire_json(
+            context->database, exercise_id, revision, &json, &json_size);
+        if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_CONFLICT,
+                              "{\"error\":\"exercise_retirement_forbidden\"}\n",
+                              NULL);
+        }
+        return queue_owned_exercises_json(
+            connection, status, json, json_size, "{\"error\":\"exercise_revision_conflict\"}\n");
+    }
+    return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
+}
+
 static enum MHD_Result queue_session_deletion_result(struct MHD_Connection *connection,
                                                      TrainlogStatus status,
                                                      char *json,
@@ -1131,6 +1315,9 @@ static enum MHD_Result handle_request(void *closure,
                               NULL);
         }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
+    }
+    if (strncmp(url, "/api/v1/exercise", strlen("/api/v1/exercise")) == 0) {
+        return handle_exercises_request(context, connection, url, method, is_get, state);
     }
     if (strncmp(url, "/api/v1/sessions/program", strlen("/api/v1/sessions/program")) == 0) {
         return handle_program_request(context, connection, url, method, is_get, state);
