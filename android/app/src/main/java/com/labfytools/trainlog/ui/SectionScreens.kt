@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,7 +22,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +41,8 @@ import com.labfytools.trainlog.data.AndroidBackupService
 import com.labfytools.trainlog.data.AndroidBackupResult
 import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.model.ActiveSessionDraft
+import com.labfytools.trainlog.model.SessionExerciseDraft
+import com.labfytools.trainlog.ui.theme.TrainlogTypography
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.R
 
@@ -95,21 +100,14 @@ fun AiSessionDraftsScreen(
         message?.let { TrainlogInfo(it) }
         if (drafts.isEmpty() && preparations.isEmpty()) TrainlogInfo(strings.getString(R.string.draft_none))
         preparations.forEach { preparation ->
-            TrainlogFrame(preparation.title, active = true) {
-                TrainlogInfo(listOfNotNull(
-                    strings.getString(R.string.manual_preparation),
-                    preparation.plannedFor?.let { strings.getString(R.string.planned_for, formatDate(it)) },
-                    strings.resources.getQuantityString(R.plurals.exercise_count, preparation.entries.size, preparation.entries.size),
-                ).joinToString(" · "))
-                preparation.notes?.let { TrainlogInfo(it) }
-                preparation.entries.forEach { entry ->
-                    val plan = checkNotNull(entry.plan)
-                    val metric = plan.reps?.let { strings.resources.getQuantityString(R.plurals.repetition_count, it, it) }
-                        ?: plan.durationSeconds?.let { strings.resources.getQuantityString(R.plurals.seconds_count, it, it) }.orEmpty()
-                    val weight = plan.weightKg?.let { " · $it kg" }.orEmpty()
-                    TrainlogInfo(strings.getString(R.string.plan_draft_summary, entry.exercise.name, plan.sets, metric, weight, plan.restSeconds))
-                }
-                TrainlogPrimaryAction(strings.getString(R.string.start), strings.getString(R.string.start_preparation_description)) {
+            DraftSummaryCard(
+                title = preparation.title,
+                provenance = strings.getString(R.string.manual_preparation),
+                plannedFor = preparation.plannedFor,
+                notes = preparation.notes,
+                entries = preparation.entries,
+                startDescription = strings.getString(R.string.start_preparation_description),
+                onStart = {
                     when (val result = repository.startPreparedSession(preparation.deliveryId)) {
                         StartAiSessionDraftResult.Started -> { onPendingChanged(); onStarted() }
                         StartAiSessionDraftResult.ExistingActiveDraft ->
@@ -117,24 +115,18 @@ fun AiSessionDraftsScreen(
                         StartAiSessionDraftResult.NotPending -> { message = strings.getString(R.string.draft_missing); revision++; onPendingChanged() }
                         is StartAiSessionDraftResult.Error -> message = localizedRepositoryMessage(strings, result.message)
                     }
-                }
-            }
+                },
+            )
         }
         drafts.forEach { draft ->
-            TrainlogFrame(draft.title ?: strings.getString(R.string.session_proposal), active = true) {
-                TrainlogInfo(listOfNotNull(
-                    draft.plannedFor?.let { strings.getString(R.string.planned_for, formatDate(it)) },
-                    strings.resources.getQuantityString(R.plurals.exercise_count, draft.entries.size, draft.entries.size),
-                ).joinToString(" · "))
-                draft.notes?.let { TrainlogInfo(it) }
-                draft.entries.forEach { entry ->
-                    val plan = checkNotNull(entry.plan)
-                    val metric = plan.reps?.let { strings.resources.getQuantityString(R.plurals.repetition_count, it, it) }
-                        ?: plan.durationSeconds?.let { strings.resources.getQuantityString(R.plurals.seconds_count, it, it) }.orEmpty()
-                    val weight = plan.weightKg?.let { " · $it kg" }.orEmpty()
-                    TrainlogInfo(strings.getString(R.string.plan_draft_summary, entry.exercise.name, plan.sets, metric, weight, plan.restSeconds))
-                }
-                TrainlogPrimaryAction(strings.getString(R.string.start), strings.getString(R.string.start_proposal_description)) {
+            DraftSummaryCard(
+                title = draft.title ?: strings.getString(R.string.session_proposal),
+                provenance = strings.getString(R.string.session_proposal),
+                plannedFor = draft.plannedFor,
+                notes = draft.notes,
+                entries = draft.entries,
+                startDescription = strings.getString(R.string.start_proposal_description),
+                onStart = {
                     when (val result = repository.startAiSessionDraft(draft.draftId)) {
                         StartAiSessionDraftResult.Started -> {
                             onPendingChanged()
@@ -149,15 +141,24 @@ fun AiSessionDraftsScreen(
                         }
                         is StartAiSessionDraftResult.Error -> message = localizedRepositoryMessage(strings, result.message)
                     }
-                }
-                TrainlogDeleteButton(
-                    contentDescription = localizedContext().getString(R.string.a11y_delete_draft),
-                    modifier = Modifier.testTag("delete-ai-draft-${draft.draftId}"),
-                    onClick = {
-                        pendingDeletion = draft.draftId to (draft.title ?: strings.getString(R.string.session_proposal))
-                    },
-                )
-            }
+                },
+                footer = {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TrainlogDeleteButton(
+                            contentDescription = localizedContext().getString(R.string.a11y_delete_draft),
+                            modifier = Modifier.testTag("delete-ai-draft-${draft.draftId}"),
+                            fullWidth = false,
+                            onClick = {
+                                pendingDeletion = draft.draftId to
+                                    (draft.title ?: strings.getString(R.string.session_proposal))
+                            },
+                        )
+                    }
+                },
+            )
         }
     }
     pendingDeletion?.let { (draftId, title) ->
@@ -180,6 +181,138 @@ fun AiSessionDraftsScreen(
                         is ActiveDraftMutationResult.Error -> message = localizedRepositoryMessage(strings, result.message)
             }
         }
+    }
+}
+
+/** Compact presentation of an inert preparation; starting remains caller-owned. */
+@Composable
+private fun DraftSummaryCard(
+    title: String,
+    provenance: String,
+    plannedFor: String?,
+    notes: String?,
+    entries: List<SessionExerciseDraft>,
+    startDescription: String,
+    onStart: () -> Unit,
+    footer: (@Composable () -> Unit)? = null,
+) {
+    val colors = LocalTrainlogColors.current
+    val strings = localizedContext()
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        TrainlogCompactCard {
+            androidx.compose.material3.Text(
+                title,
+                color = colors.text,
+                style = TrainlogTypography.section,
+                fontWeight = FontWeight.Bold,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TrainlogMetaBadge(provenance, Modifier.weight(1f))
+                TrainlogMetaBadge(
+                    strings.resources.getQuantityString(
+                        R.plurals.exercise_count,
+                        entries.size,
+                        entries.size,
+                    ),
+                )
+            }
+            plannedFor?.let {
+                androidx.compose.material3.Text(
+                    strings.getString(R.string.planned_for, formatDate(it)),
+                    color = colors.muted,
+                    style = TrainlogTypography.small,
+                )
+            }
+            notes?.takeIf { it.isNotBlank() }?.let {
+                androidx.compose.material3.Text(
+                    it,
+                    color = colors.muted,
+                    style = TrainlogTypography.small,
+                    maxLines = 2,
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                entries.forEach { DraftExerciseRow(it) }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TrainlogButton(
+                    strings.getString(R.string.start),
+                    onStart,
+                    Modifier.widthIn(min = 128.dp),
+                    style = TrainlogButtonStyle.SUCCESS,
+                )
+                androidx.compose.material3.Text(
+                    startDescription,
+                    modifier = Modifier.weight(1f),
+                    color = colors.muted,
+                    style = TrainlogTypography.small,
+                    maxLines = 2,
+                )
+            }
+            footer?.invoke()
+        }
+    }
+}
+
+@Composable
+private fun DraftExerciseRow(entry: SessionExerciseDraft) {
+    val colors = LocalTrainlogColors.current
+    val plan = checkNotNull(entry.plan)
+    Column(
+        Modifier.fillMaxWidth()
+            .background(colors.background, androidx.compose.material3.MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        androidx.compose.material3.Text(
+            entry.exercise.name,
+            color = colors.text,
+            style = TrainlogTypography.small,
+            fontWeight = FontWeight.SemiBold,
+        )
+        androidx.compose.material3.Text(
+            draftPlanSummary(plan.sets, plan.reps, plan.durationSeconds, plan.weightKg, plan.restSeconds),
+            color = colors.muted,
+            style = TrainlogTypography.small,
+        )
+    }
+}
+
+@Composable
+private fun draftPlanSummary(
+    sets: Int,
+    reps: Int?,
+    durationSeconds: Int?,
+    weightKg: Double?,
+    restSeconds: Int,
+): String {
+    val strings = localizedContext()
+    val metric = when {
+        reps != null -> "$sets × $reps"
+        durationSeconds != null && sets > 0 -> "$sets × ${humanDuration(durationSeconds)}"
+        durationSeconds != null -> humanDuration(durationSeconds)
+        else -> "—"
+    }
+    return buildList {
+        add(metric)
+        weightKg?.let { add("${it.toString().trimEnd('0').trimEnd('.')} kg") }
+        if (restSeconds > 0) add(strings.getString(R.string.draft_rest_short, restSeconds))
+    }.joinToString(" · ")
+}
+
+@Composable
+private fun humanDuration(seconds: Int): String {
+    val strings = localizedContext()
+    return if (seconds % 60 == 0) {
+        val minutes = seconds / 60
+        strings.resources.getQuantityString(R.plurals.duration_minutes_value, minutes, minutes)
+    } else {
+        strings.resources.getQuantityString(R.plurals.duration_seconds_value, seconds, seconds)
     }
 }
 

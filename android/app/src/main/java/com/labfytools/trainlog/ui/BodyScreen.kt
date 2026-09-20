@@ -8,6 +8,12 @@ package com.labfytools.trainlog.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -89,148 +95,74 @@ fun BodyScreen(
         TrainlogFrame(
             title = strings.getString(R.string.general)
         ) {
-            BodyMetricField(
-                label = strings.getString(R.string.weight),
-                unit = "kg",
-                value = bodyWeight,
-                onValueChange = {
-                    bodyWeight = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.neck),
-                unit = "cm",
-                value = neck,
-                onValueChange = {
-                    neck = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.shoulders),
-                unit = "cm",
-                value = shoulders,
-                onValueChange = {
-                    shoulders = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.chest),
-                unit = "cm",
-                value = chest,
-                onValueChange = {
-                    chest = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.waist),
-                unit = "cm",
-                value = waist,
-                onValueChange = {
-                    waist = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.hips),
-                unit = "cm",
-                value = hips,
-                onValueChange = {
-                    hips = it
-                    message = null
-                },
+            BodyMetricGrid(
+                listOf(
+                    BodyMetricItem(strings.getString(R.string.weight), "kg", bodyWeight) {
+                        bodyWeight = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.neck), "cm", neck) {
+                        neck = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.shoulders), "cm", shoulders) {
+                        shoulders = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.chest), "cm", chest) {
+                        chest = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.waist), "cm", waist) {
+                        waist = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.hips), "cm", hips) {
+                        hips = it
+                        message = null
+                    },
+                ),
             )
         }
 
         TrainlogFrame(
             title = strings.getString(R.string.limbs)
         ) {
-            BodyMetricField(
-                label = strings.getString(R.string.left_arm),
-                unit = "cm",
-                value = leftArm,
-                onValueChange = {
-                    leftArm = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.right_arm),
-                unit = "cm",
-                value = rightArm,
-                onValueChange = {
-                    rightArm = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.left_forearm),
-                unit = "cm",
-                value = leftForearm,
-                onValueChange = {
-                    leftForearm = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.right_forearm),
-                unit = "cm",
-                value = rightForearm,
-                onValueChange = {
-                    rightForearm = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.left_thigh),
-                unit = "cm",
-                value = leftThigh,
-                onValueChange = {
-                    leftThigh = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.right_thigh),
-                unit = "cm",
-                value = rightThigh,
-                onValueChange = {
-                    rightThigh = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.left_calf),
-                unit = "cm",
-                value = leftCalf,
-                onValueChange = {
-                    leftCalf = it
-                    message = null
-                },
-            )
-
-            BodyMetricField(
-                label = strings.getString(R.string.right_calf),
-                unit = "cm",
-                value = rightCalf,
-                onValueChange = {
-                    rightCalf = it
-                    message = null
-                },
+            BodyMetricGrid(
+                listOf(
+                    BodyMetricItem(strings.getString(R.string.left_arm), "cm", leftArm) {
+                        leftArm = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.right_arm), "cm", rightArm) {
+                        rightArm = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.left_forearm), "cm", leftForearm) {
+                        leftForearm = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.right_forearm), "cm", rightForearm) {
+                        rightForearm = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.left_thigh), "cm", leftThigh) {
+                        leftThigh = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.right_thigh), "cm", rightThigh) {
+                        rightThigh = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.left_calf), "cm", leftCalf) {
+                        leftCalf = it
+                        message = null
+                    },
+                    BodyMetricItem(strings.getString(R.string.right_calf), "cm", rightCalf) {
+                        rightCalf = it
+                        message = null
+                    },
+                ),
             )
         }
 
@@ -426,12 +358,14 @@ private fun BodyMetricField(
     unit: String,
     value: String,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     TrainlogInputField(
-        label = "$label ($unit)",
+        label = label,
         value = value,
         onValueChange =
             onValueChange,
+        modifier = modifier,
         keyboardOptions =
             KeyboardOptions(
                 keyboardType =
@@ -439,7 +373,40 @@ private fun BodyMetricField(
                 imeAction =
                     ImeAction.Next,
             ),
+        suffix = unit,
+        compact = true,
     )
+}
+
+private data class BodyMetricItem(
+    val label: String,
+    val unit: String,
+    val value: String,
+    val onValueChange: (String) -> Unit,
+)
+
+/** Two columns retain scanability; very narrow accessibility layouts stack. */
+@Composable
+private fun ColumnScope.BodyMetricGrid(items: List<BodyMetricItem>) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth < 330.dp) 1 else 2
+        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            items.chunked(columns).forEach { rowItems ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rowItems.forEach { item ->
+                        BodyMetricField(
+                            item.label,
+                            item.unit,
+                            item.value,
+                            item.onValueChange,
+                            Modifier.weight(1f),
+                        )
+                    }
+                    repeat(columns - rowItems.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
 }
 
 private sealed interface MetricParse {

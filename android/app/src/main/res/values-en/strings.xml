@@ -334,7 +334,8 @@
     <plurals name="repetition_count"><item quantity="one">%d repetition</item><item quantity="other">%d repetitions</item></plurals>
     <string name="start">Start</string><string name="start_proposal_description">Copy this proposal into the current session.</string>
     <string name="manual_preparation">Manual preparation</string>
-    <string name="start_preparation_description">Start this preparation without replacing an active session.</string>
+    <string name="start_preparation_description">Creates a protected active session.</string>
+    <string name="draft_rest_short">rest %1$d s</string>
     <string name="draft_already_active">A session is already in progress. The imported draft was preserved.</string>
     <string name="delete_draft_detail">Draft “%1$s” will be deleted.\nThis action cannot be undone.</string>
     <string name="training">Training</string><string name="resume_current_session">Resume current session</string>

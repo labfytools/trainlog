@@ -201,6 +201,44 @@ fun TrainlogAction(
     }
 }
 
+/** Presentation-only surface for dense object summaries and repeated rows. */
+@Composable
+fun TrainlogCompactCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = LocalTrainlogColors.current
+    val interaction = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(colors.surface, MaterialTheme.shapes.medium)
+            .then(interaction)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
+}
+
+/** Small non-interactive metadata token; business state remains caller-owned. */
+@Composable
+fun TrainlogMetaBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    accent: Color? = null,
+) {
+    val colors = LocalTrainlogColors.current
+    Text(
+        text = text,
+        modifier = modifier.background(colors.surfaceAlt, MaterialTheme.shapes.small)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        color = accent ?: colors.text,
+        style = TrainlogTypography.small,
+        maxLines = 1,
+    )
+}
+
 enum class TrainlogButtonStyle { PRIMARY, SECONDARY, SUCCESS, DESTRUCTIVE, GHOST }
 
 /** Compact pictogram action with a mandatory accessible name. */
@@ -229,11 +267,12 @@ fun TrainlogDeleteButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    fullWidth: Boolean = true,
 ) {
     val colors = LocalTrainlogColors.current
     Button(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().heightIn(min = 52.dp),
+        modifier = (if (fullWidth) modifier.fillMaxWidth() else modifier).heightIn(min = 48.dp),
         shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(containerColor = colors.error),
     ) {
@@ -364,6 +403,8 @@ fun TrainlogInputField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    suffix: String? = null,
+    compact: Boolean = false,
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -418,7 +459,7 @@ fun TrainlogInputField(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = if (compact) 44.dp else 48.dp)
                     .onFocusChanged {
                         focused = it.isFocused
                     }
@@ -429,11 +470,22 @@ fun TrainlogInputField(
                             Modifier.testTag(testTag)
                         }
                     )
-                    .background(colors.surface)
+                    .background(colors.surface, MaterialTheme.shapes.medium)
                     .padding(
-                        horizontal = 12.dp,
-                        vertical = 10.dp,
+                        horizontal = if (compact) 10.dp else 12.dp,
+                        vertical = if (compact) 8.dp else 10.dp,
                     ),
+            decorationBox = { innerTextField ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(Modifier.weight(1f)) { innerTextField() }
+                    suffix?.let {
+                        BasicText(it, style = TrainlogTypography.small.copy(color = colors.muted))
+                    }
+                }
+            },
         )
 
         Box(

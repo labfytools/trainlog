@@ -19,6 +19,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -32,6 +33,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.labfytools.trainlog.R
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import kotlinx.coroutines.launch
@@ -105,7 +107,16 @@ fun AndroidAppShell(
                             onOpenSection(section)
                             scope.launch { drawerState.close() }
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = colors.surfaceAlt,
+                            selectedIconColor = colors.accent,
+                            selectedTextColor = colors.text,
+                            unselectedContainerColor = colors.mantle,
+                            unselectedIconColor = colors.muted,
+                            unselectedTextColor = colors.muted,
+                        ),
                     )
                 }
             }

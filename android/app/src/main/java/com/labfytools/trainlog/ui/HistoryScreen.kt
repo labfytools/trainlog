@@ -12,6 +12,7 @@ import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.R
 import java.time.OffsetDateTime
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -133,7 +134,8 @@ internal fun formatStartedAt(
 internal fun formatDate(value: String): String {
     val locale = presentationLocale()
     val pattern = uiString(R.string.date_pattern)
-    return runCatching {
-        OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern(pattern, locale))
-    }.getOrElse { value.take(10) }
+    val formatter = DateTimeFormatter.ofPattern(pattern, locale)
+    return runCatching { LocalDate.parse(value.take(10)).format(formatter) }
+        .recoverCatching { OffsetDateTime.parse(value).format(formatter) }
+        .getOrElse { value.take(10) }
 }

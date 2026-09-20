@@ -139,8 +139,8 @@ class AiSessionDraftUiWiringTest {
         } }
 
         compose.onNodeWithText("Dos + biceps").assertIsDisplayed()
-        compose.onNodeWithText("Tractions supination · 3 × 10 répétitions · repos 90 s")
-            .assertIsDisplayed()
+        compose.onNodeWithText("Tractions supination").assertIsDisplayed()
+        compose.onNodeWithText("3 × 10 · repos 90 s").assertIsDisplayed()
         compose.onNodeWithText("Accent sur le dos et les biceps.").assertIsDisplayed()
     }
 
