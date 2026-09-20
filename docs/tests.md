@@ -1,5 +1,14 @@
 # Tests and validation
 
+`web_analysis` covers empty history, every 7/30/90/all period selector,
+loaded and unloaded repetitions, continuous duration/distance/speed, explicit
+persisted MAX, multiple primary BODY ZONES, partial measurements, one- and
+multiple-point measurement semantics, and active-Program projection. The HTTP
+suite exercises the real bounded endpoint plus invalid and duplicate query
+parameters. Vitest validates the typed parser, null preservation, route and
+section changes, period/exercise/metric selection, invalid deep-link fallback,
+critical French/English labels, and Dashboard layout regressions.
+
 `test_sync_drive_transport` proves Drive artifact-before-manifest and
 manifest-before-reference publication, rejects unsafe/AI namespaces, and keeps
 a partial generation invisible. Orchestrator coverage proves that Drive mirror

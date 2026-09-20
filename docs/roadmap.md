@@ -43,9 +43,9 @@ tile rendering exist. The Dashboard's bounded progression and BODY ZONES
 visualizations and Sessions V1 are implemented. The top-level `/programmes`
 route is an operational daily active-Program calendar, while
 Sessions → Programmes remains the technical administration/import, list,
-detail, archive, and delete surface. Web Exercises V1 is implemented; Analyse
-remains a placeholder outside this cycle unless a later explicit decision
-changes that order.
+detail, archive, and delete surface. Web Exercises V1 is implemented. The
+0.1.4 `TRAINLOG_WEB_ANALYSIS_V1` branch now owns the factual Dashboard/Analyse
+read-model foundation and stops before merge for visual inspection.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -54,12 +54,12 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
 
-The v0.1.3 development cursor proceeds from the closed stable v0.1.2 baseline
-and its validated Web, Program execution, USB/Drive generation, ACK, and
-causal-deletion contracts without reopening those completed gates.
+The v0.1.4 cursor proceeds from stable v0.1.3 and its validated Web, Program
+execution, USB/Drive generation, ACK, and causal-deletion contracts without
+reopening those completed gates.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_ANDROID_UI_REDESIGN_V1_CONTRACT
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_ANALYSIS_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this

@@ -4,6 +4,16 @@
 
 Development opened after stable v0.1.3 release.
 
+- Implemented the loopback-only Web Analyse V1 workspace and shared bounded
+  Core read model. The 7/30/90-day and all-history filters, factual activity,
+  active-Program progress, compatible exercise metrics, explicit persisted
+  MAX results, primary BODY ZONE exposures, and fourteen body measurements are
+  calculated by the C17 backend. Dashboard summaries consume the same model
+  while preserving all existing tile identities and layout behavior. Deep
+  links, safe query fallbacks, null/empty states, French/English presentation,
+  keyboard focus, and responsive charts are covered without estimating 1RM,
+  readiness, fatigue, recovery, body fat, or performance.
+
 ## 0.1.3 — 2026-09-20
 
 - Decoupled the Android full-generation request from the strict legacy V3

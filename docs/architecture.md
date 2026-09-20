@@ -61,6 +61,14 @@ long-term history. Core owns data, persistence, business logic, calculations,
 read models, command services, and versioned contracts. An interface must not
 query tables directly to reconstruct its own business rules.
 
+The Web Dashboard and Analyse workspace share `GET /api/v1/analysis`, backed by
+one C17 read model. Period filtering, active-Program progress, compatible
+exercise metrics, explicit MAX results, primary BODY ZONE exposures, and body
+measurement first/last/delta calculations occur in Core. React validates the
+bounded response and presents it; it does not load raw history or issue SQL.
+Absent values remain null, and the model never estimates physiological or
+performance scores.
+
 Android local SQLite is a capture store, not a synchronization format.
 
 ## 2. Components

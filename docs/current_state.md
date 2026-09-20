@@ -141,7 +141,7 @@ parallel implementation of its rules.
 | Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (direct MTP, one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
-| Current operational cursor | `TRAINLOG_WEB_ANALYSIS_V1` |
+| Current operational cursor | `TRAINLOG_WEB_ANALYSIS_V1` (implemented, visual review pending) |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
@@ -291,7 +291,24 @@ explicit proposal derivation and generation-backed Android delivery. The
 top-level `/programmes` route is an operational daily active-Program calendar;
 Sessions → Programmes remains the technical administration/import, list,
 detail, archive, and delete surface. `/exercices` is the operational desktop
-catalogue administration surface; Analyse remains an explicit placeholder.
+catalogue administration surface. `/analyse` is implemented with Overview,
+Exercises, Distribution, and Measurements sections over one bounded Core read
+model. Its global 7/30/90-day/all filter is applied in the backend; Dashboard
+uses the same 30-day calculations for activity, active-Program progress,
+exercise progression, measurements, and BODY ZONE links.
+
+The Analyse API validates period, exercise identity, measurement metric and
+page, rejects unknown or duplicate parameters, and bounds exercises and chart
+points. Missing facts remain null. Exercise output respects persisted
+tracking/load modes, explicit MAX rows are never estimated, and duration,
+distance, speed, external load, and external volume appear only when their
+source observations support them. BODY ZONES are labelled as recorded primary
+zone exposures/associated sets rather than physiological percentages. All
+fourteen stored body metrics expose period-first, period-last, and an absolute
+delta only with at least two points. The route and Dashboard deep links have
+safe invalid-query fallbacks, French/English labels, keyboard controls, and
+responsive no-overflow layouts. Visual inspection remains pending before any
+freeze marker.
 
 Exercises uses bounded Core-owned list/detail reads, canonical name
 normalization, BODY ZONES taxonomy, profiled creation/update commands and
@@ -587,9 +604,8 @@ tests, Android debug assembly, and 211 Android tests (207 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
-- `TRAINLOG_WEB_EXERCISES_V1=PASS`. The next planned work is
-  `TRAINLOG_ANDROID_UI_REDESIGN_V1`; it remains unimplemented. Analyse remains
-  a placeholder and is not a v0.1.3 priority.
+- `TRAINLOG_WEB_EXERCISES_V1=PASS`. `TRAINLOG_WEB_ANALYSIS_V1` is implemented
+  on the 0.1.4 branch and awaits the requested Dashboard/Analyse visual review.
 - `APP_SHELL_V1` retains a recorded legacy visual/accessibility review gate; its
   observations are inputs to, not decisions for, the new 0.1.3 Android contract.
 - Session Generator V1 is hidden while V2 planning semantics are developed.

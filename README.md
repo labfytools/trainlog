@@ -350,7 +350,8 @@ As of 2026-09-18:
   `WEB_DASHBOARD_V1=PASS/FROZEN` and `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN`;
   `/programmes` is an operational active-Program calendar, while
   Sessions → Programmes remains the administration surface;
-  `TRAINLOG_WEB_EXERCISES_V1=PASS`; Analyse remains a placeholder;
+  `TRAINLOG_WEB_EXERCISES_V1=PASS`; `/analyse` now provides the 0.1.4 factual
+  Dashboard/Analyse read-model foundation pending visual review;
 - `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS`: the coordinated
   private desktop/Android deployment, real Firefox presentation, correlated
   `programs-v1` deletion ACK, restart/replay, and non-resurrection checks pass;
