@@ -24,7 +24,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.2) | Display the Dashboard, the operational top-level Programmes daily active-program calendar, and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and Programs administration workflow through typed Trainlog Core/API boundaries. Programs has responsive detail, terminal logical deletion, and a privately deployed read-only Android projection. Analyse and Exercises remain placeholders. |
+| Local Web (0.1.3 development) | Display the Dashboard, the operational top-level Programmes daily active-program calendar, and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and Programs administration workflow through typed Trainlog Core/API boundaries. Programs has responsive detail, terminal logical deletion, and a privately deployed read-only Android projection. Analyse and Exercises remain placeholders. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -50,9 +50,9 @@ Each published stable release provides:
 - SHA-256 checksums.
 
 Both mirrors publish the same Trainlog product version and release assets. The
-latest stable version is **0.1.2** on Android and desktop; this is one shared
-Trainlog version, not separate interface versions. Version 0.1.1 is the
-previous stable release.
+current development version is **0.1.3** on Android and desktop; this is one
+shared Trainlog version, not separate interface versions. Version 0.1.2 is the
+latest stable release.
 
 Trainlog presents French by default, with English selectable
 from **Settings → Language** on Android and the desktop TUI. The selection is

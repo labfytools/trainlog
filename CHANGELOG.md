@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — 0.1.3
+
+Development opened after the stable v0.1.2 release.
+
 ## 0.1.2 — 2026-09-20
 
 - Added USB-priority full-generation synchronization with a separately

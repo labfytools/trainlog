@@ -28,10 +28,11 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Stable v0.1.2 is the release baseline. Desktop schema v28, Android schema v25, Notcurses, direct
-`Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
-Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
-implemented. Session Generator V1 is hidden pending V2. AI session-draft
+Stable v0.1.2 is the release baseline for the v0.1.3 development cycle.
+Desktop schema v28, Android schema v25, Notcurses, direct `Documents/Trainlog`
+storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
+Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
+Generator V1 is hidden pending V2. AI session-draft
 exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
@@ -50,9 +51,9 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
 
-The stable v0.1.2 baseline is closed; future work proceeds from its validated
-Web, Program execution, USB/Drive generation, ACK, and causal-deletion
-contracts without reopening those completed gates.
+The v0.1.3 development cursor proceeds from the closed stable v0.1.2 baseline
+and its validated Web, Program execution, USB/Drive generation, ACK, and
+causal-deletion contracts without reopening those completed gates.
 
 ```text
 CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_V1_NEXT_CONTRACT
