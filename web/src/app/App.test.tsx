@@ -1,7 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { parseDashboard, type DashboardSnapshot } from '../api/dashboard'
+
+const programsApi = vi.hoisted(() => ({
+  fetchAllPrograms: vi.fn(),
+  fetchProgram: vi.fn(),
+  createPreparationFromProgram: vi.fn(),
+}))
+
+vi.mock('../api/programs', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../api/programs')>(),
+  ...programsApi,
+}))
 
 const health = {
   api_version: 1,
@@ -52,6 +63,13 @@ function mockHealth(value: unknown = health) {
 }
 
 describe('shell Trainlog', () => {
+  beforeEach(() => {
+    programsApi.fetchAllPrograms.mockReset()
+    programsApi.fetchProgram.mockReset()
+    programsApi.createPreparationFromProgram.mockReset()
+    programsApi.fetchAllPrograms.mockResolvedValue([])
+  })
+
   it('rend le shell, les sept états vides et le health sans données fictives', async () => {
     mockHealth()
     render(<App />)
@@ -85,19 +103,29 @@ describe('shell Trainlog', () => {
     const footer = screen.getByRole('contentinfo')
     fireEvent.click(screen.getByRole('link', { name: label }))
     expect(window.location.pathname).toBe(path)
-    expect(screen.getByRole('heading', { level: 1, name: label })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: label })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('banner')).toBe(header)
     expect(screen.getByRole('contentinfo')).toBe(footer)
   })
 
-  it('suit la navigation arrière du navigateur', () => {
+  it('suit la navigation arrière du navigateur', async () => {
     mockHealth()
     render(<App />)
     fireEvent.click(screen.getByRole('link', { name: 'Analyse' }))
     window.history.pushState(null, '', '/programmes')
     fireEvent.popState(window)
-    expect(screen.getByRole('heading', { level: 1, name: 'Programmes' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Programmes' })).toBeInTheDocument()
+  })
+
+  it('route /programmes vers la page calendrier réelle', async () => {
+    window.history.replaceState(null, '', '/programmes')
+    mockHealth()
+    render(<App />)
+
+    expect(await screen.findByText('Aucun programme actif.')).toBeInTheDocument()
+    expect(programsApi.fetchAllPrograms).toHaveBeenCalledWith('', 'active', expect.any(AbortSignal))
+    expect(screen.queryByText(/command services Core explicites/)).not.toBeInTheDocument()
   })
 
   it('présente un échec health discret et accessible', async () => {

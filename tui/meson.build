@@ -78,6 +78,7 @@ if web_assets_enabled
     '../web/src/api/sessions.ts',
     '../web/src/api/programs.ts',
     '../web/src/routes/ProgramsTab.tsx',
+    '../web/src/routes/ProgramsCalendarPage.tsx',
     '../web/src/theme/app.css',
     '../web/src/theme/tokens.css',
   )

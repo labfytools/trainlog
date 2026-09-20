@@ -230,9 +230,23 @@ progression series, an original BODY ZONES SVG, and private versioned layout
 persistence with optimistic conflict and CSRF/Origin protection. It provides no
 automatic browser launch. Sessions provides complete paged preparation,
 resume and history views, stable details, optimistic manual-preparation writes,
-explicit proposal derivation and generation-backed Android delivery. Programmes
-is implemented as the fourth Sessions subtab; Analyse and Exercises remain
-explicit placeholders, and no standalone Programs route exists.
+explicit proposal derivation and generation-backed Android delivery. The
+top-level `/programmes` route is an operational daily active-Program calendar;
+Sessions → Programmes remains the technical administration/import, list,
+detail, archive, and delete surface. Analyse and Exercises remain explicit
+placeholders.
+
+The calendar uses the existing typed Core services `fetchAllPrograms(active)`,
+`fetchProgram`, and `createPreparationFromProgram`; it derives no local program
+or execution state. With no active Program it shows an empty state and
+navigation to Sessions administration; with one it selects it automatically;
+with several it offers a non-persisted selector. Its continuous Monday–Sunday
+weeks derive from Program bounds and real `planned_for` dates, do not invent
+rest-day sessions, and retain undated sessions in a separate section. It shows
+all five Core execution states; only `todo` offers Prepare. Each Prepare result
+is followed by an authoritative Core reread and may expose the returned
+preparation link. This calendar adds no Android delivery, start, or execution
+behavior.
 
 Desktop schema v26 owns immutable manual-preparation revisions, stable ordered
 occurrences, persistent HTTP idempotency keys, delivery-to-execution identity,
@@ -487,8 +501,8 @@ tests, Android debug assembly, and 211 Android tests (207 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
-- `WEB_NEXT_MODULE_SELECTION_V1`: Analyse, Programmes and Exercices remain
-  shell placeholders. Exercises is the next proposed Web module.
+- `WEB_NEXT_MODULE_SELECTION_V1`: Analyse and Exercices remain shell
+  placeholders. Exercises is the next proposed Web module.
 - `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
 - Session Generator V1 is hidden while V2 planning semantics are developed.
 - Hardware MTP validation requires a connected unlocked Android device.

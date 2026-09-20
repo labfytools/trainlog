@@ -6,14 +6,14 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { DashboardPage } from '../routes/DashboardPage'
 import { PlaceholderPage } from '../routes/PlaceholderPage'
+import { ProgramsCalendarPage } from '../routes/ProgramsCalendarPage'
 import { SessionsPage } from '../routes/SessionsPage'
 import type { RouteId } from './routes'
 import { useRoute } from './useRoute'
 import { DatePreferencesProvider } from '../presentation/DatePreferences'
 
-const placeholderContent: Record<Exclude<RouteId, 'dashboard'>, [string, string, string]> = {
+const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'programs'>, [string, string, string]> = {
   analysis: ['Analyse', 'COMPRENDRE', 'Les analyses détaillées apparaîtront ici lorsque leurs read models Core seront disponibles.'],
-  programs: ['Programmes', 'PRÉPARER', 'La préparation des programmes utilisera des command services Core explicites.'],
   sessions: ['Séances', 'ORGANISER', 'Les séances préparées et terminées seront présentées sans confondre plan et réalisé.'],
   exercises: ['Exercices', 'EXPLORER', 'Le catalogue canonique des exercices sera consultable depuis cette page.'],
 }
@@ -75,6 +75,7 @@ function AppContent() {
       preparedItemsFailed={preparedItemsFailed}
     />
   ) : route.id === 'sessions' ? <SessionsPage /> :
+    route.id === 'programs' ? <ProgramsCalendarPage onNavigate={navigate} /> :
     <PlaceholderPage title={placeholderContent[route.id][0]}
       eyebrow={placeholderContent[route.id][1]}
       description={placeholderContent[route.id][2]} />

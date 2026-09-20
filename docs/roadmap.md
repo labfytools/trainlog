@@ -33,9 +33,11 @@ exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
 tile rendering exist. The Dashboard's bounded progression and BODY ZONES
-visualizations and Sessions V1 are implemented. Programs is implemented inside
-Sessions; Analyse, Exercises and the standalone top-level Programs route remain
-placeholders or out of scope.
+visualizations and Sessions V1 are implemented. The top-level `/programmes`
+route is an operational daily active-Program calendar, while
+Sessions → Programmes remains the technical administration/import, list,
+detail, archive, and delete surface. Analyse and Exercises remain placeholders
+or out of scope.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -145,10 +147,10 @@ rendering those metrics. Later Dashboard evolution must preserve those frozen
 boundaries.
 
 `WEB_NEXT_MODULE_SELECTION_V1` remains a future Web documentary cursor. The current
-roadmap does not yet establish a contract order between Analyse, Programmes,
-Séances and Exercices. This cursor must inventory their existing Core services,
-read/write boundaries and dependencies, then select one bounded module contract;
-it does not authorize silently implementing a page.
+roadmap does not yet establish a contract order between the remaining placeholder
+routes, Analyse and Exercices. This cursor must inventory their existing Core
+services, read/write boundaries and dependencies, then select one bounded module
+contract; it does not authorize silently implementing a page.
 
 ## Next
 
