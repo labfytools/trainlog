@@ -1077,11 +1077,24 @@ Manifest/reference remain the commit markers; scanning does not change their
 bytes or protocol meaning. Production logging records only `run_id`, phase,
 artifact name, generation ID and result.
 
-When background synchronization is enabled, an explicit UI request refreshes
-the foreground listener before starting the UI-owned conversation. The shared
-process lock prevents a second run while the UI coordinator is alive; if the
-activity is frozen or destroyed, the listener can validate and resume the
-durable request without inventing another generation.
+When background synchronization is enabled, an explicit UI request announces
+foreground ownership before refreshing the foreground listener. Service
+liveness and conversation ownership are separate: the service may keep the
+process alive, but it cannot acquire automatic ownership while explicit intent
+is pending. The process-wide arbiter gives `NEW_EXPLICIT` priority over
+`RESUME_BACKGROUND`; a background waiter observes cooperative yield, returns a
+typed superseded result, and releases ownership before the foreground emits a
+fresh request UUID. The explicit coordinator baselines the existing desktop
+run and accepts only a different run after that trigger, so it cannot attach
+the click to a stale `request-v1.json`.
+
+An interrupted explicit conversation leaves captured/published generations
+durable. The listener may resume that same run without recapture or a second
+generation. Automatic actionability separately classifies a new request, new
+correlated desktop ACK/reference evidence, a legitimate active handoff, and a
+stale resumable generation. A locally terminal run is suppressed until its
+run ID changes or its correlated remote evidence advances; mere presence of a
+resumable generation does not schedule the same run every five seconds.
 
 The Mensurations grid uses two 140 dp compact fields plus a 10 dp gutter at
 normal phone widths. The deployed 1080 px/480 dpi phone supplies approximately

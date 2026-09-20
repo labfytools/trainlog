@@ -1555,14 +1555,24 @@ the measured 312 dp phone content width as two columns, a true 280 dp narrow
 layout as one column, 1.5 font-scale fallback, long French labels and `kg`/`cm`
 suffixes.
 
-Read-only forensics for failed run
-`sy_9639f06e-58ba-4bc0-ab1b-1488aefe011c` found the correlated desktop request
-and archive acknowledgements on Android, but no correlated generation
-reference, immutable directory or error record. The direct filesystem and MTP
-views contained identical bytes for the retained older Android reference.
-Logcat showed Android moving Trainlog behind the file-access settings surface
-and freezing it before capture. The post-v19 backup predates this run and is
-not presented as SQLite evidence for it.
+Android conversation-ownership regressions reproduce the production race: an
+automatic owner waiting on an old resumable run yields to explicit foreground
+intent, the click publishes a fresh request UUID, the explicit coordinator
+ignores the pre-click desktop run, and exactly one generation is captured for
+the new run. Additional fixtures cover typed cancellation and durable handoff,
+terminal-run suppression across five scheduling cycles, reactivation by new
+correlated desktop evidence, and exclusive ownership. Desktop routing tests
+retain the complementary invariant that an already-consumed Android request
+UUID cannot create a second daemon run.
+
+The resumed run `sy_9639f06e-58ba-4bc0-ab1b-1488aefe011c` subsequently proved
+the MTP publication path: Android captured
+`gen_532da95e-713f-4163-acc1-d838673c33bf`, published the immutable objects and
+reference, and exposed bytes identical to the filesystem through MTP. It
+stopped after `generation_reference_published` because no ACK could be created
+for the daemon-deduplicated old request UUID. This evidence supersedes the
+earlier pre-resume forensic snapshot without rewriting or deleting the
+incomplete generation.
 
 The authorized 2026-09-17 rollout added regression coverage for production
 failures found only after installation: feedback import under `sqlite3.Row`,

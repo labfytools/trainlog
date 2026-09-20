@@ -4,6 +4,17 @@
 
 Development opened after the stable v0.1.2 release.
 
+- Made explicit Android synchronization intent authoritative over automatic
+  background resumption. A process-wide conversation arbiter now yields an
+  older background wait before the foreground publishes its fresh request
+  UUID, and `NEW_EXPLICIT` ignores the request/run that existed before the
+  click. Background USB and Drive workers classify new requests, new
+  correlated remote evidence, legitimate handoff, and stale resumable state;
+  terminal runs are no longer retried every five seconds without new proof.
+  Durable generations are retained across yield and handoff, and desktop
+  request-ID deduplication remains strict. No schema, protocol, causal rule or
+  exchange format changed.
+
 - Hardened direct-MTP full-generation conversations after a private Android
   run was frozen before generation capture. Android now emits bounded
   run/phase metadata, refreshes the user-enabled background listener before a
