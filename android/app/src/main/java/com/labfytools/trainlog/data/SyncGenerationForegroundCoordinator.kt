@@ -1,5 +1,6 @@
 package com.labfytools.trainlog.data
 
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.AtomicMoveNotSupportedException
@@ -16,9 +17,42 @@ internal sealed interface ForegroundGenerationResult {
     data class Error(val message: String) : ForegroundGenerationResult
 }
 
+internal fun interface SyncGenerationTrace {
+    fun record(runId: String?, phase: String, artifact: String?, generationId: String?, result: String?)
+}
+
+internal object AndroidSyncGenerationTrace : SyncGenerationTrace {
+    override fun record(
+        runId: String?, phase: String, artifact: String?, generationId: String?, result: String?
+    ) {
+        Log.i(
+            "TrainlogSyncGeneration",
+            listOfNotNull(
+                "run_id=${runId ?: "pending"}",
+                "phase=$phase",
+                artifact?.let { "artifact=$it" },
+                generationId?.let { "generation_id=$it" },
+                result?.let { "result=$it" },
+            ).joinToString(" "),
+        )
+    }
+}
+
 /** Owns the bounded, user-initiated Android side of a generation conversation. */
-internal class SyncGenerationCoordinator(private val repository: TrainlogRepository) {
+internal class SyncGenerationCoordinator(
+    private val repository: TrainlogRepository,
+    private val visibility: MtpPublicationVisibility = ImmediateMtpPublicationVisibility,
+    private val trace: SyncGenerationTrace = AndroidSyncGenerationTrace,
+) {
     private val service = SyncGenerationService(repository)
+
+    private fun phase(
+        runId: String?,
+        phase: String,
+        artifact: String? = null,
+        generationId: String? = null,
+        result: String? = null,
+    ) = trace.record(runId, phase, artifact, generationId, result)
 
     companion object {
         /* WHY: UI and background triggers share one repository protocol and
@@ -229,9 +263,12 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
          * an identical canonical descriptor is already a complete durable
          * publication. INVARIANT: changed or unreadable bytes still use the
          * crash-safe replacement path above. */
-        if (runCatching { path.isFile && path.readText() == descriptor }.getOrDefault(false))
+        if (runCatching { path.isFile && path.readText() == descriptor }.getOrDefault(false)) {
+            visibility.confirm(listOf(path))
             return peer
+        }
         publish(path, descriptor)
+        visibility.confirm(listOf(path))
         return peer
     }
 
@@ -281,6 +318,7 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
         }
         return try {
             val peer = publishPeer(directory)
+            phase(null, "peer_published", "android-peer-v1.json")
             /* WHY: trainlog-syncd is intentionally driven by the established
              * Android request artifact, not by polling generation internals.
              * CONTRACT: each explicit foreground attempt publishes the peer
@@ -288,6 +326,7 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
              * INVARIANT: a failed attempt's request, run, generations, and
              * ACK evidence remain immutable; retry creates new correlation. */
             afterPeerPublication?.invoke()
+            phase(null, "legacy_trigger_published", "trainlog-sync-request-v1.json")
             val deadline = System.nanoTime() + timeout.toNanos()
             val requestRaw =
                 awaitCorrelated(File(directory, "request-v1.json"), deadline, { candidate ->
@@ -302,6 +341,8 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
                             })
                 }, pollTransport)
             val request = JSONObject(requestRaw.toString(Charsets.UTF_8))
+            val runId = request.getString("run_id")
+            phase(runId, "generation_request_observed", "request-v1.json")
             if (request.getString("android_peer_id") != peer)
                 throw SyncGenerationException("request targets another Android peer")
             val archiveAckRaw =
@@ -320,6 +361,7 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
                 peer,
                 request.getString("desktop_peer_id"),
             )
+            phase(runId, "archive_ack_observed", "desktop-archive-acknowledgements-v1.json")
             /* WHY: transport can fail after immutable generation publication.
              * CONTRACT: an explicit retry for the same run republishes that
              * exact generation and resumes ACK handling; it never recaptures
@@ -327,6 +369,7 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
              * INVARIANT: a completed inbound ledger makes the run ineligible;
              * an acknowledged outbound generation remains resumable only to
              * finish its missing inbound half. */
+            phase(runId, "generation_capture_started")
             val captured =
                 resumableGeneration(
                     request.getString("run_id"),
@@ -336,9 +379,20 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
                     request.getString("desktop_peer_id"),
                     request.getString("run_id"),
                 )
+            phase(runId, "generation_captured", generationId = captured.generationId)
             val published = service.publish(captured, File(directory, "android-objects"))
+            visibility.confirm(
+                published.walkTopDown().filter(File::isFile).sortedBy { it.name == "manifest.json" }.toList()
+            )
+            phase(
+                runId,
+                "generation_objects_published",
+                published.relativeTo(directory).path,
+                captured.generationId,
+            )
+            val generationReference = File(directory, "android-generation-v1.json")
             publish(
-                File(directory, "android-generation-v1.json"),
+                generationReference,
                 JSONObject()
                     .put("format", "trainlog-sync-generation-reference")
                     .put("version", 1)
@@ -347,6 +401,13 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
                     .put("manifest_sha256", captured.manifestSha256)
                     .put("relative_path", published.relativeTo(directory).path)
                     .toString(),
+            )
+            visibility.confirm(listOf(generationReference))
+            phase(
+                runId,
+                "generation_reference_published",
+                generationReference.name,
+                captured.generationId,
             )
             afterPublication?.invoke()
             // CONTRACT: durable objects from earlier conversations remain in
@@ -358,11 +419,18 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
                         it.optString("generation_id") == captured.generationId
                 }, pollTransport)
             service.acceptAcknowledgement(desktopAck)
+            phase(runId, "desktop_ack_observed", "desktop-consumption-ack-v1.json", captured.generationId)
             val referenceRaw =
                 awaitCorrelated(File(directory, "desktop-generation-v1.json"), deadline, {
                     it.optString("run_id") == captured.runId
                 }, pollTransport)
             val reference = JSONObject(referenceRaw.toString(Charsets.UTF_8))
+            phase(
+                runId,
+                "desktop_generation_observed",
+                "desktop-generation-v1.json",
+                reference.optString("generation_id"),
+            )
             /* WHY: non-atomic transports can expose a newly downloaded
              * reference locally before the corresponding immutable objects
              * have reached this process. CONTRACT: correlation validates the
@@ -373,8 +441,22 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
             pollTransport?.invoke()
             val acknowledgement =
                 service.consume(File(directory, reference.getString("relative_path")))
-            publish(File(directory, "android-consumption-ack-v1.json"), acknowledgement)
+            phase(
+                runId,
+                "desktop_generation_consumed",
+                generationId = reference.optString("generation_id"),
+            )
+            val acknowledgementPath = File(directory, "android-consumption-ack-v1.json")
+            publish(acknowledgementPath, acknowledgement)
+            visibility.confirm(listOf(acknowledgementPath))
+            phase(
+                runId,
+                "android_ack_published",
+                acknowledgementPath.name,
+                reference.optString("generation_id"),
+            )
             afterAcknowledgement?.invoke()
+            phase(runId, "completed", result = "completed")
             ForegroundGenerationResult.Completed(captured.runId)
         } catch (error: Exception) {
             if (error.message == "generation retention capacity exhausted") {
@@ -391,11 +473,19 @@ internal class SyncGenerationCoordinator(private val repository: TrainlogReposit
                             .put("action", "Archive acknowledged generations, then retry explicitly.")
                             .toString(),
                     )
+                    visibility.confirm(listOf(File(directory, "android-generation-error-v1.json")))
                 } catch (_: Exception) {
                     // Preserve the original local failure when error reporting
                     // cannot itself be durably published.
                 }
             }
+            phase(
+                runCatching {
+                    JSONObject(File(directory, "request-v1.json").readText()).optString("run_id")
+                }.getOrNull(),
+                "error",
+                result = error.javaClass.simpleName,
+            )
             ForegroundGenerationResult.Error(error.message ?: "generation synchronization failed")
         } finally {
             conversationLock.unlock()

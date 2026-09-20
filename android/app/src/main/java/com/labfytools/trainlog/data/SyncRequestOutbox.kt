@@ -33,13 +33,16 @@ sealed interface SyncRequestResult {
 
 class SyncRequestOutbox private constructor(
     private val publisher: DirectExchangePublisher,
+    private val visibility: MtpPublicationVisibility,
 ) {
     constructor(context: Context) : this(
         DirectExchangePublisher { directExchangeDirectory(context) },
+        AndroidMtpPublicationVisibility(context),
     )
 
     internal constructor(directoryProvider: () -> DirectExchangeDirectoryAccess?) : this(
         DirectExchangePublisher(directoryProvider),
+        ImmediateMtpPublicationVisibility,
     )
 
     suspend fun requestSync(): SyncRequestResult = withContext(Dispatchers.IO) {
@@ -87,7 +90,12 @@ class SyncRequestOutbox private constructor(
             "trainlog-sync-request-v1.json"
         val error = snapshot.writeJson(displayName, payload)
         return if (error == null) {
-            SyncRequestResult.Requested(requestId)
+            try {
+                visibility.confirm(listOf(java.io.File(canonicalExchangeDirectory(), displayName)))
+                SyncRequestResult.Requested(requestId)
+            } catch (error: Exception) {
+                SyncRequestResult.Error(error.message ?: "Publication MTP impossible.")
+            }
         } else {
             SyncRequestResult.Error(error)
         }

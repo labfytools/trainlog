@@ -72,7 +72,10 @@ class SyncBackgroundService : Service() {
         }
         if (!launched.compareAndSet(false, true)) return START_NOT_STICKY
         executor.execute {
-            val coordinator = SyncGenerationCoordinator(requireNotNull(repository))
+            val coordinator = SyncGenerationCoordinator(
+                requireNotNull(repository),
+                AndroidMtpPublicationVisibility(applicationContext),
+            )
             while (!stopped.get() && BackgroundSyncSettings(this).enabled) {
                 val directory = canonicalExchangeDirectory()
                 /* WHY: waiting inside run() owns the process-wide conversation

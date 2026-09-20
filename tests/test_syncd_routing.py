@@ -79,7 +79,9 @@ class SyncdRoutingTest(unittest.TestCase):
         production = source.split("internal suspend fun publishBundleAndRequest", 1)[1].split(
             "internal suspend fun publishLegacyBundleAndRequest", 1
         )[0]
-        self.assertIn("SyncGenerationForegroundCoordinator(repository).run", production)
+        self.assertIn(
+            "SyncGenerationForegroundCoordinator(repository, visibility).run", production
+        )
         self.assertNotIn("generation-opt-in", production)
         self.assertIn("exportMobileBundle", production)
         self.assertIn("generation below", production)

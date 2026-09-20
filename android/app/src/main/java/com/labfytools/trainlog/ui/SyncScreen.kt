@@ -34,6 +34,8 @@ import com.labfytools.trainlog.data.BackgroundSyncSettings
 import com.labfytools.trainlog.data.SyncBackgroundService
 import com.labfytools.trainlog.data.DriveSyncSettings
 import com.labfytools.trainlog.data.canonicalExchangeDirectory
+import com.labfytools.trainlog.data.AndroidMtpPublicationVisibility
+import com.labfytools.trainlog.data.MtpPublicationVisibility
 import com.labfytools.trainlog.data.logDirectExchange
 import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
@@ -49,6 +51,7 @@ internal suspend fun publishBundleAndRequest(
     repository: TrainlogRepository,
     exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
+    visibility: MtpPublicationVisibility = com.labfytools.trainlog.data.ImmediateMtpPublicationVisibility,
 ): SyncRequestResult = withContext(Dispatchers.IO) {
     val opened = exporter.openStorageSnapshot()
     if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
@@ -66,7 +69,7 @@ internal suspend fun publishBundleAndRequest(
         is SyncExportResult.Exported -> Unit
     }
     return@withContext when (
-        val result = SyncGenerationForegroundCoordinator(repository).run(
+        val result = SyncGenerationForegroundCoordinator(repository, visibility).run(
             canonicalExchangeDirectory(),
             afterPeerPublication = {
                 when (val request = requestOutbox.requestSync(snapshot)) {
@@ -390,10 +393,25 @@ fun SyncScreen(
                      * published from one prepared repository snapshot before
                      * that signal becomes visible; otherwise the PC can mix a
                      * fresh V3 file with stale or absent causal companions. */
+                    if (backgroundSettings.enabled) {
+                        /* WHY: Samsung may freeze the activity after USB mode
+                         * changes or a permission surface opens. CONTRACT: a
+                         * user-enabled foreground listener is refreshed before
+                         * the UI-owned conversation begins; the process lock
+                         * prevents it from creating a second generation. */
+                        SyncBackgroundService.start(context)
+                    }
                     syncRunning = true
                     coroutineScope.launch {
                         try {
-                            when (val result = publishBundleAndRequest(repository, exporter, requestOutbox)) {
+                            when (
+                                val result = publishBundleAndRequest(
+                                    repository,
+                                    exporter,
+                                    requestOutbox,
+                                    AndroidMtpPublicationVisibility(context),
+                                )
+                            ) {
                                 is SyncRequestResult.Completed -> {
                                     // The generation coordinator has already consumed the
                                     // desktop return and published its durable ACK. Waiting

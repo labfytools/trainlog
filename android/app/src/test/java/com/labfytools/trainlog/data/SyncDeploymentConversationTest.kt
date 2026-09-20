@@ -101,7 +101,15 @@ class SyncDeploymentConversationTest {
             }
             val conversations = if (suppliedTransport == null) 24 else 1
             repeat(conversations) {
-                val coordinator = SyncGenerationForegroundCoordinator(repository)
+                val visibilityEvents = mutableListOf<List<String>>()
+                val tracePhases = mutableListOf<String>()
+                val coordinator = SyncGenerationForegroundCoordinator(
+                    repository,
+                    MtpPublicationVisibility { files ->
+                        visibilityEvents += files.map(File::getName)
+                    },
+                    SyncGenerationTrace { _, phase, _, _, _ -> tracePhases += phase },
+                )
                 val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
                 var requestSignals = 0
                 var refreshedAfterDesktopReference = false
@@ -155,6 +163,34 @@ class SyncDeploymentConversationTest {
                 assertTrue(
                     "transport is refreshed after the correlated desktop reference",
                     refreshedAfterDesktopReference,
+                )
+                val referenceVisibility = visibilityEvents.indexOfFirst {
+                    it == listOf("android-generation-v1.json")
+                }
+                val objectVisibility = visibilityEvents.indexOfFirst { "manifest.json" in it }
+                assertTrue("generation objects must become visible", objectVisibility >= 0)
+                assertTrue(
+                    "reference must follow complete object visibility",
+                    referenceVisibility > objectVisibility,
+                )
+                assertTrue(
+                    tracePhases.containsAll(
+                        listOf(
+                            "peer_published",
+                            "legacy_trigger_published",
+                            "generation_request_observed",
+                            "archive_ack_observed",
+                            "generation_capture_started",
+                            "generation_captured",
+                            "generation_objects_published",
+                            "generation_reference_published",
+                            "desktop_ack_observed",
+                            "desktop_generation_observed",
+                            "desktop_generation_consumed",
+                            "android_ack_published",
+                            "completed",
+                        )
+                    )
                 )
                 var workerOutput = ""
                 localWorker?.let { worker ->
