@@ -666,7 +666,7 @@ TUI product version, asset names, and release title must agree.
 
 Private update rollout may set `TRAINLOG_ANDROID_VERSION_CODE` to a positive
 integer above the installed package while retaining the current development
-`versionName=0.1.3`. The version-code override is build-only and does not change
+`versionName=0.1.4`. The version-code override is build-only and does not change
 any schema or exchange-format version. Private daily candidates must not
 downgrade the logical product version to the earlier 0.1.2 stable line.
 

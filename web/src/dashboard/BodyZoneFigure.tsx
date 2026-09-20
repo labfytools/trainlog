@@ -24,9 +24,9 @@ export function muscleIntensityLevel(sessionCount: number, maximum: number): 0 |
   return 3
 }
 
-interface BodyZoneFigureProps { zones: WorkedZone[]; views?: 'front' | 'both' }
+interface BodyZoneFigureProps { zones: WorkedZone[]; views?: 'front' | 'both'; language?: 'fr' | 'en' }
 
-export function BodyZoneFigure({ zones, views = 'both' }: BodyZoneFigureProps) {
+export function BodyZoneFigure({ zones, views = 'both', language = 'fr' }: BodyZoneFigureProps) {
   const [focused, setFocused] = useState<WorkedZone | null>(null)
   const byId = new Map(zones.map((zone) => [zone.zone_id, zone]))
   const maximum = Math.max(1, ...zones.map((zone) => zone.session_count))
@@ -37,25 +37,27 @@ export function BodyZoneFigure({ zones, views = 'both' }: BodyZoneFigureProps) {
       className: `body-region intensity-${muscleIntensityLevel(zone.session_count, maximum)}`,
       tabIndex: 0,
       role: 'button',
-      'aria-label': `${zone.label} : ${count(zone.session_count, 'séance')}, ${count(zone.occurrence_count, 'occurrence')}, ${count(zone.set_count, 'série')}.`,
+      'aria-label': language === 'fr'
+        ? `${zone.label} : ${count(zone.session_count, 'séance')}, ${count(zone.occurrence_count, 'occurrence')}, ${count(zone.set_count, 'série')}.`
+        : `${zone.label}: ${zone.session_count} ${zone.session_count === 1 ? 'session' : 'sessions'}, ${zone.occurrence_count} ${zone.occurrence_count === 1 ? 'exposure' : 'exposures'}, ${zone.set_count} ${zone.set_count === 1 ? 'associated set' : 'associated sets'}.`,
       onFocus: () => setFocused(zone), onBlur: () => setFocused(null),
       onMouseEnter: () => setFocused(zone), onMouseLeave: () => setFocused(null),
     }
   }
   return <div className="body-zone-figure">
     <div className="body-views">
-      <BodyView title="Avant" side="front" zoneProps={zoneProps} />
-      {views === 'both' && <BodyView title="Arrière" side="back" zoneProps={zoneProps} />}
+      <BodyView title={language === 'fr' ? 'Avant' : 'Front'} side="front" zoneProps={zoneProps} language={language} />
+      {views === 'both' && <BodyView title={language === 'fr' ? 'Arrière' : 'Back'} side="back" zoneProps={zoneProps} language={language} />}
     </div>
-    <div className="muscle-legend" aria-label="Échelle visuelle des séances sur 30 jours"><span className="intensity-0" />0<span className="intensity-1" />Faible<span className="intensity-2" />Intermédiaire<span className="intensity-3" />Maximum observé</div>
-    {focused && <div className="body-tooltip" role="status"><strong>{focused.label}</strong><span>{count(focused.session_count, 'séance')} · {count(focused.occurrence_count, 'occurrence')} · {count(focused.set_count, 'série')}</span></div>}
+    <div className="muscle-legend" aria-label={language === 'fr' ? 'Échelle visuelle des séances sur 30 jours' : 'Visual scale of sessions over 30 days'}><span className="intensity-0" />0<span className="intensity-1" />{language === 'fr' ? 'Faible' : 'Low'}<span className="intensity-2" />{language === 'fr' ? 'Intermédiaire' : 'Medium'}<span className="intensity-3" />{language === 'fr' ? 'Maximum observé' : 'Observed maximum'}</div>
+    {focused && <div className="body-tooltip" role="status"><strong>{focused.label}</strong><span>{language === 'fr' ? `${count(focused.session_count, 'séance')} · ${count(focused.occurrence_count, 'occurrence')} · ${count(focused.set_count, 'série')}` : `${focused.session_count} sessions · ${focused.occurrence_count} exposures · ${focused.set_count} associated sets`}</span></div>}
   </div>
 }
 
 type RegionProps = (zoneId: MappedBodyZoneId) => Record<string, unknown>
 
-function BodyView({ title, side, zoneProps }: { title: string; side: 'front' | 'back'; zoneProps: RegionProps }) {
-  return <figure><figcaption>{title}</figcaption><svg viewBox="0 0 120 260" role="group" aria-label={`Silhouette, vue ${title.toLowerCase()}`}>
+function BodyView({ title, side, zoneProps, language }: { title: string; side: 'front' | 'back'; zoneProps: RegionProps; language: 'fr' | 'en' }) {
+  return <figure><figcaption>{title}</figcaption><svg viewBox="0 0 120 260" role="group" aria-label={language === 'fr' ? `Silhouette, vue ${title.toLowerCase()}` : `Silhouette, ${title.toLowerCase()} view`}>
     <circle className="body-outline" cx="60" cy="23" r="16" />
     <path className="body-outline" d="M42 43 Q60 36 78 43 L88 116 75 150 70 244H52L45 150 32 116Z" />
     {side === 'front' ? <>

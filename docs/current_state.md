@@ -395,7 +395,7 @@ unchanged at ten pre-existing errors: one `NewApi`, one
 `LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
 diagnostics. This UI tranche adds no lint error and changes no lint policy.
 The next private daily Android candidate remains on development
-`versionName=0.1.3`; only its strictly increasing `versionCode` may be supplied
+`versionName=0.1.4`; only its strictly increasing `versionCode` may be supplied
 as a build-time override. No public tag or release is created by that private
 candidate process.
 
