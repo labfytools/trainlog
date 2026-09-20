@@ -195,17 +195,23 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 }
 .android-delivery-state.state-remote_unknown { color: var(--yellow); }
 .android-delivery-state.state-acknowledged { color: var(--green); }
-.program-list, .program-session-list { display: grid; gap: .75rem; }
-.program-row { box-shadow: 0 .45rem 1.4rem rgb(0 0 0 / 10%); }
+.program-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 1rem; }
+.program-session-list { display: grid; gap: .75rem; }
+.program-row { box-shadow: 0 .45rem 1.4rem rgb(0 0 0 / 10%); grid-template-columns: minmax(0, 1fr) 3rem; }
 .program-row .session-row-main { grid-template-columns: minmax(13rem, 2fr) repeat(3, minmax(8rem, 1fr)); }
 .program-session-list { padding: 0; list-style: none; }
-.program-session-list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--surface-1); border-radius: .7rem; }
+.program-session-list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid var(--surface-1); border-radius: .7rem; background: var(--base); }
+.program-session-list li:has(.state-completed) { border-color: color-mix(in srgb, var(--green) 55%, var(--surface-1)); background: color-mix(in srgb, var(--green) 7%, var(--base)); }
 .program-session-list p { margin: .35rem 0 0; color: var(--subtext-0); }
 .program-execution-state { display: inline-flex; margin-left: .65rem; padding: .2rem .55rem; border-radius: 999px; font-size: .82rem; font-weight: 700; }
 .program-execution-state.state-todo { background: var(--surface-1); color: var(--subtext-1); }
 .program-execution-state.state-prepared, .program-execution-state.state-in_progress { background: color-mix(in srgb, var(--yellow) 18%, transparent); color: var(--yellow); }
 .program-execution-state.state-completed { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
 .program-execution-state.state-deleted { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.program-progress { max-width: 28rem; display: grid; gap: .4rem; }
+.program-progress div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.program-progress span { color: var(--subtext-0); font-size: var(--font-size-sm); }
+.program-progress progress { width: 100%; height: .55rem; accent-color: var(--green); }
 .programs-calendar-page { max-width: 100%; }
 .program-calendar-loading { min-height: 12rem; display: grid; place-items: center; color: var(--subtext-0); }
 .program-calendar-empty { max-width: 40rem; padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid var(--surface-1); border-radius: var(--radius); background: var(--mantle); }

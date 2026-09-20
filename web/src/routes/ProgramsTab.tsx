@@ -70,6 +70,10 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
     completed: 'Effectuée',
     deleted: 'Retirée',
   })[state]
+  const completedCount = program.sessions.filter((session) =>
+    session.execution_state === 'completed').length
+  const progress = program.sessions.length === 0
+    ? 0 : Math.round((completedCount / program.sessions.length) * 100)
   return <article className="session-detail program-detail">
     <div className="sessions-toolbar">
       <button type="button" className="quiet-action" onClick={onBack}>
@@ -99,6 +103,10 @@ function ProgramDetailView({ programId, onBack, onChanged }: {
         Import {program.source_format} v{program.source_version} · modifié le{' '}
         {formatDateTime(program.updated_at, dateFormat)}
       </p>
+      <div className="program-progress" aria-label={`${completedCount} séances effectuées sur ${program.sessions.length}`}>
+        <div><strong>{completedCount}/{program.sessions.length}</strong><span>{progress}% effectué</span></div>
+        <progress value={completedCount} max={Math.max(program.sessions.length, 1)} />
+      </div>
     </header>
     <ol className="program-session-list">
       {program.sessions.map((session) => <li key={session.program_session_id}>
