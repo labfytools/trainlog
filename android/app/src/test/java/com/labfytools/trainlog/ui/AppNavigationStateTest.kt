@@ -36,13 +36,14 @@ class AppNavigationStateTest {
 
     @After fun tearDown() { context.deleteDatabase(databaseName) }
 
-    @Test fun sevenSectionsHaveTypedRootsAndSelectionComesFromRoute() {
-        assertEquals(7, AppSection.entries.size)
+    @Test fun captureSectionsHaveTypedRootsWithoutMobileStatistics() {
+        assertEquals(6, AppSection.entries.size)
+        assertFalse(AppSection.entries.any { it.name == "STATISTICS" })
         AppSection.entries.forEach { assertEquals(it, it.rootRoute().section) }
         assertEquals(AppSection.SESSIONS, AppRoute.SessionDetail("se_1").section)
         assertEquals(AppSection.EXERCISES, AppRoute.ExerciseDetail("ex_1").section)
         assertEquals(AppSection.EQUIPMENT, AppRoute.EquipmentDetail("eq_1").section)
-        assertEquals(AppSection.STATISTICS, AppRoute.LatestMaxima.section)
+        assertEquals(AppSection.EXERCISES, AppRoute.LatestMaxima.section)
     }
 
     @Test fun catalogueDetailsAndCreatorsReturnToTheirDeclaredCaller() {

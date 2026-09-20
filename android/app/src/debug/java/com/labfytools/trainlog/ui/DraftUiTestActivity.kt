@@ -82,8 +82,6 @@ class DraftUiTestActivity : ComponentActivity() {
                                 ?: (loaded as?
                                     ActiveDraftLoadResult.Loaded)
                                     ?.warning,
-                        latestSession = null,
-                        latestMaximum = null,
                         bodyZoneOverview = repository.getBodyZoneHomeOverview(),
                         onSession = {
                             when (
@@ -102,9 +100,7 @@ class DraftUiTestActivity : ComponentActivity() {
                             }
                         },
                         onOpenExercises = {},
-                        onOpenStatistics = {},
                         onBody = {},
-                        onOpenLatestSession = {},
                         onSync = {},
                     )
                 }

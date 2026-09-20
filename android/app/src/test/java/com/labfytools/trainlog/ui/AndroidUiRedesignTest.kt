@@ -36,14 +36,10 @@ class AndroidUiRedesignTest {
                 HomeScreen(
                     activeDraft = null,
                     draftError = null,
-                    latestSession = null,
-                    latestMaximum = null,
                     bodyZoneOverview = BodyZoneHomeOverview(emptyList(), emptyList(), false, false),
                     onSession = {},
                     onOpenExercises = {},
-                    onOpenStatistics = {},
                     onBody = { bodyCalls++ },
-                    onOpenLatestSession = {},
                     onSync = { syncCalls++ },
                 )
             }

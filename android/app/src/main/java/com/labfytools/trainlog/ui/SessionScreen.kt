@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -196,69 +197,34 @@ fun SessionScreen(
         TrainlogFrame(
             title = strings.getString(R.string.session_type)
         ) {
-            TrainlogAction(
-                label =
-                    if (
-                        currentDraft.sessionType ==
-                        SessionType.TRAINING
-                    ) {
-                        strings.getString(R.string.training_selected)
-                    } else {
-                        strings.getString(R.string.training_unselected)
-                    },
-                description =
-                    strings.getString(R.string.normal_session_description),
-                accent =
-                    if (
-                        currentDraft.sessionType ==
-                        SessionType.TRAINING
-                    ) {
-                        colors.success
-                    } else {
-                        colors.muted
-                    },
-                onClick = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val training = currentDraft.sessionType == SessionType.TRAINING
+                TrainlogButton(
+                    label = strings.getString(R.string.training),
+                    modifier = Modifier.weight(1f),
+                    style = if (training) TrainlogButtonStyle.SUCCESS else TrainlogButtonStyle.SECONDARY,
+                    maxLines = 2,
+                    onClick = {
                     persistDraft(
-                        currentDraft.copy(
-                            sessionType =
-                                SessionType.TRAINING
-                        ),
+                        currentDraft.copy(sessionType = SessionType.TRAINING),
                         null,
                     )
-                },
-            )
-
-            TrainlogAction(
-                label =
-                    if (
-                        currentDraft.sessionType ==
-                        SessionType.MAX_TEST
-                    ) {
-                        strings.getString(R.string.max_test_selected)
-                    } else {
-                        strings.getString(R.string.max_test_unselected)
                     },
-                description =
-                    strings.getString(R.string.max_session_description),
-                accent =
-                    if (
-                        currentDraft.sessionType ==
-                        SessionType.MAX_TEST
-                    ) {
-                        colors.warning
-                    } else {
-                        colors.muted
-                    },
-                onClick = {
+                )
+                val maxTest = currentDraft.sessionType == SessionType.MAX_TEST
+                TrainlogButton(
+                    label = strings.getString(R.string.session_max_test),
+                    modifier = Modifier.weight(1f),
+                    style = if (maxTest) TrainlogButtonStyle.SUCCESS else TrainlogButtonStyle.SECONDARY,
+                    maxLines = 2,
+                    onClick = {
                     persistDraft(
-                        currentDraft.copy(
-                            sessionType =
-                                SessionType.MAX_TEST
-                        ),
+                        currentDraft.copy(sessionType = SessionType.MAX_TEST),
                         null,
                     )
-                },
-            )
+                    },
+                )
+            }
         }
 
         ExercisePicker(
@@ -606,7 +572,7 @@ fun SessionScreen(
                             colors.success
                         } else {
                             colors.error
-                        },
+                        }
                 )
             }
         }
@@ -1151,54 +1117,78 @@ private fun SessionExerciseForm(
                         strings.getString(R.string.field_weight)
                     }
                 setRows.forEachIndexed { index, row ->
-                    TrainlogInfo(
-                        text = strings.getString(R.string.set_number, index + 1),
-                        color = colors.accent,
-                    )
-                    SessionNumberField(
-                        label = strings.getString(R.string.set_reps_field, index + 1),
-                        value = row.repsText,
-                        testTag = "session-set-$index-reps",
-                        onValueChange = { value ->
-                            val updated = setRows.replaceAt(index, row.copy(repsText = value))
-                            setRows = updated
-                            repsText = encodeRawReps(updated)
-                            weightText = encodeRawWeights(updated)
-                            error = null
-                            onFormChanged(
-                                currentForm(
-                                    exercise, setCountText, repsText, durationText,
-                                    speedText, distanceText, selectedEquipmentId, weightText,
-                                )
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .background(colors.surface, MaterialTheme.shapes.medium)
+                            .padding(10.dp),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            BasicText(
+                                text = strings.getString(R.string.set_number, index + 1),
+                                modifier = Modifier.padding(vertical = 12.dp),
+                                style = TrainlogTypography.small.copy(
+                                    color = colors.accent,
+                                    fontWeight = FontWeight.Bold,
+                                ),
                             )
-                        },
-                    )
-                    SessionNumberField(
-                        label = strings.getString(R.string.set_load_field, index + 1, loadLabel),
-                        value = row.weightText,
-                        decimal = true,
-                        testTag = "session-set-$index-weight",
-                        onValueChange = { value ->
-                            val updated = setRows.replaceAt(index, row.copy(weightText = value))
-                            setRows = updated
-                            repsText = encodeRawReps(updated)
-                            weightText = encodeRawWeights(updated)
-                            error = null
-                            onFormChanged(
-                                currentForm(
-                                    exercise, setCountText, repsText, durationText,
-                                    speedText, distanceText, selectedEquipmentId, weightText,
-                                )
+                            TrainlogIconAction(
+                                icon = TrainlogIcons.DeleteOutline,
+                                contentDescription = localizedContext().getString(R.string.a11y_delete_set),
+                                modifier = Modifier.testTag("delete-set-${index + 1}"),
+                                accent = colors.error,
+                                onClick = { pendingSetRemoval = index },
                             )
-                        },
-                    )
-                    TrainlogDeleteButton(
-                        contentDescription = localizedContext().getString(com.labfytools.trainlog.R.string.a11y_delete_set),
-                        modifier = Modifier.testTag("delete-set-${index + 1}"),
-                        onClick = {
-                            pendingSetRemoval = index
-                        },
-                    )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            SessionNumberField(
+                                label = strings.getString(R.string.field_reps),
+                                value = row.repsText,
+                                modifier = Modifier.weight(1f),
+                                testTag = "session-set-$index-reps",
+                                onValueChange = { value ->
+                                    val updated = setRows.replaceAt(index, row.copy(repsText = value))
+                                    setRows = updated
+                                    repsText = encodeRawReps(updated)
+                                    weightText = encodeRawWeights(updated)
+                                    error = null
+                                    onFormChanged(
+                                        currentForm(
+                                            exercise, setCountText, repsText, durationText,
+                                            speedText, distanceText, selectedEquipmentId, weightText,
+                                        )
+                                    )
+                                },
+                            )
+                            SessionNumberField(
+                                label = loadLabel,
+                                value = row.weightText,
+                                modifier = Modifier.weight(1f),
+                                decimal = true,
+                                testTag = "session-set-$index-weight",
+                                onValueChange = { value ->
+                                    val updated = setRows.replaceAt(index, row.copy(weightText = value))
+                                    setRows = updated
+                                    repsText = encodeRawReps(updated)
+                                    weightText = encodeRawWeights(updated)
+                                    error = null
+                                    onFormChanged(
+                                        currentForm(
+                                            exercise, setCountText, repsText, durationText,
+                                            speedText, distanceText, selectedEquipmentId, weightText,
+                                        )
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
                 TrainlogAction(
                     label = strings.getString(R.string.add_set_plain),
@@ -1608,6 +1598,7 @@ private fun SessionNumberField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
     testTag: String? = null,
     decimal: Boolean = false,
 ) {
@@ -1623,6 +1614,7 @@ private fun SessionNumberField(
         } else {
             KeyboardOptions(keyboardType = KeyboardType.Number)
         },
+        modifier = modifier,
     )
 }
 

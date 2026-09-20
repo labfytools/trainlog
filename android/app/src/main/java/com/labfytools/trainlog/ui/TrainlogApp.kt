@@ -93,7 +93,6 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
         when (val route = navigation.route) {
             AppRoute.Home -> HomeScreen(
                 activeDraft, draftMessage ?: (draftLoad as? ActiveDraftLoadResult.Error)?.let { localizedRepositoryMessage(localized, it.message) } ?: (draftLoad as? ActiveDraftLoadResult.Loaded)?.warning?.let { localizedRepositoryMessage(localized, it) },
-                repository.listSessions().firstOrNull(), repository.listLatestExerciseMaxima().firstOrNull(),
                 repository.getBodyZoneHomeOverview(),
                 ::openManualSession,
                 { zoneId ->
@@ -102,8 +101,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                     exerciseState.searchQuery.value = ""
                     open(AppRoute.Exercises)
                 },
-                { open(AppRoute.Statistics) },
-                { open(AppRoute.BodyMeasurements) }, { open(AppRoute.SessionDetail(it)) }, { open(AppRoute.Sync) },
+                { open(AppRoute.BodyMeasurements) }, { open(AppRoute.Sync) },
             )
             AppRoute.Sessions -> SessionsHub(activeDraft, pendingAiDraftCount, { open(AppRoute.SessionEditor) }, ::openManualSession,
                 { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) }, { open(AppRoute.Programs) })
@@ -141,7 +139,6 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             AppRoute.Equipment -> EquipmentScreen(repository, equipmentState, { open(AppRoute.EquipmentCreate(AppRoute.Equipment)) }, { open(AppRoute.EquipmentDetail(it)) })
             is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId) { open(AppRoute.ExerciseDetail(it)) }
             is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exportSnapshot(); catalogRevision++; back() }
-            AppRoute.Statistics -> StatisticsDashboard(repository)
             AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exportSnapshot() }, { back() })
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)
             AppRoute.Sync -> SyncScreen(repository, inbox, exporter, requestOutbox, { exportSnapshot(); catalogRevision++ }, { back() })

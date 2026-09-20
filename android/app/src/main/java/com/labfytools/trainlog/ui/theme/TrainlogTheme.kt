@@ -9,12 +9,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 
 data class TrainlogColors(
     val background: Color,
@@ -110,6 +113,19 @@ fun TrainlogTheme(
         error = TrainlogDarkColors.error,
     )
     CompositionLocalProvider(LocalTrainlogColors provides TrainlogDarkColors) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        /* INVARIANT: all Material controls share the same restrained corner
+         * language. Screen code may change size, but must not reintroduce the
+         * former pill-shaped action hierarchy. */
+        MaterialTheme(
+            colorScheme = scheme,
+            shapes = Shapes(
+                extraSmall = RoundedCornerShape(6.dp),
+                small = RoundedCornerShape(8.dp),
+                medium = RoundedCornerShape(10.dp),
+                large = RoundedCornerShape(12.dp),
+                extraLarge = RoundedCornerShape(14.dp),
+            ),
+            content = content,
+        )
     }
 }

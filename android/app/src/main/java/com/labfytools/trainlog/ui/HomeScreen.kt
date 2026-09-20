@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -52,8 +51,6 @@ import com.labfytools.trainlog.data.BodyZoneHomeOverview
 import com.labfytools.trainlog.data.BodyZoneHomeState
 import com.labfytools.trainlog.data.BodyZoneHomeStatus
 import com.labfytools.trainlog.model.ActiveSessionDraft
-import com.labfytools.trainlog.model.LatestExerciseMax
-import com.labfytools.trainlog.model.SessionSummary
 import com.labfytools.trainlog.model.SessionType
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogColors
@@ -64,19 +61,14 @@ import com.labfytools.trainlog.R
 fun HomeScreen(
     activeDraft: ActiveSessionDraft?,
     draftError: String?,
-    latestSession: SessionSummary?,
-    latestMaximum: LatestExerciseMax?,
     bodyZoneOverview: BodyZoneHomeOverview,
     onSession: () -> Unit,
     onOpenExercises: (String) -> Unit,
-    onOpenStatistics: () -> Unit,
     onBody: () -> Unit,
-    onOpenLatestSession: (String) -> Unit,
     onSync: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
     val strings = localizedContext()
-    val locale = presentationLocale()
     TrainlogScreen(strings.getString(R.string.nav_home), scrollKey = "home") {
         draftError?.let { TrainlogInfo(it, colors.error) }
         TrainlogFrame(strings.getString(R.string.home_session)) {
@@ -87,17 +79,7 @@ fun HomeScreen(
                 TrainlogPrimaryAction(strings.getString(R.string.new_manual_session), strings.getString(R.string.new_manual_description), onSession)
             }
         }
-        BodyZoneHomeSection(bodyZoneOverview, onOpenExercises, onOpenStatistics)
-        latestSession?.let { session ->
-            TrainlogFrame(strings.getString(R.string.latest_session)) {
-                TrainlogAction(formatStartedAt(session.startedAt), sessionTypeLabel(session.sessionType) + " · " +
-                    strings.resources.getQuantityString(R.plurals.exercise_count, session.exerciseCount, session.exerciseCount), { onOpenLatestSession(session.sessionId) })
-            }
-        }
-        latestMaximum?.let { maximum ->
-            val weight = "%.2f".format(locale, maximum.maxWeightKg).trimEnd('0').trimEnd(',', '.')
-            TrainlogInfo(strings.getString(R.string.latest_max_value, maximum.exerciseName, weight, formatDate(maximum.startedAt)), colors.warning)
-        }
+        BodyZoneHomeSection(bodyZoneOverview, onOpenExercises)
         TrainlogFrame(strings.getString(R.string.quick_access), active = false) {
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("home-quick-actions-row"),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -119,7 +101,6 @@ fun HomeScreen(
 internal fun BodyZoneHomeSection(
     overview: BodyZoneHomeOverview,
     onOpenExercises: (String) -> Unit,
-    onOpenStatistics: () -> Unit,
 ) {
     val colors = LocalTrainlogColors.current
     val strings = localizedContext()
@@ -159,7 +140,9 @@ internal fun BodyZoneHomeSection(
         }
         selected?.let { zone ->
             Column(
-                Modifier.fillMaxWidth().padding(top = 8.dp).background(colors.surface, RoundedCornerShape(8.dp)).padding(12.dp),
+                Modifier.fillMaxWidth().padding(top = 8.dp)
+                    .background(colors.surface, androidx.compose.material3.MaterialTheme.shapes.medium)
+                    .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 BasicText(localizedBodyZoneName(strings, zone.zoneId, zone.displayName), style = TrainlogTypography.section.copy(color = colors.text))
@@ -179,7 +162,6 @@ internal fun BodyZoneHomeSection(
                 )
                 if (zone.availableExerciseCount == 0) TrainlogInfo(BodyZoneHomeState.UNSUPPORTED.label, colors.muted)
                 TrainlogAction(strings.getString(R.string.view_exercises), "", { onOpenExercises(zone.zoneId) })
-                TrainlogAction(strings.getString(R.string.view_statistics), "", onOpenStatistics)
             }
         }
     }

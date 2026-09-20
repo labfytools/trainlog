@@ -110,12 +110,10 @@ class BodyZoneHomeSemanticsTest {
 
     @Test fun practicalWidthMapSelectionFeedsExistingNavigationActions() {
         var openedZone: String? = null
-        var statisticsOpened = false
         setSection(
             widthDp = 380,
             fontScale = 1f,
             onOpenExercises = { openedZone = it },
-            onOpenStatistics = { statisticsOpened = true },
         )
 
         assertEquals("core", bodyZoneAtPoint("front", 180f, 236f, Offset(90f, 113.28f), allZoneIds.toSet()))
@@ -126,16 +124,12 @@ class BodyZoneHomeSemanticsTest {
         compose.onNodeWithText("Voir les exercices").assertHasClickAction()
             .performSemanticsAction(SemanticsActions.OnClick)
         assertEquals("core", openedZone)
-        compose.onNodeWithText("Voir les statistiques").assertHasClickAction()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        assertTrue(statisticsOpened)
     }
 
     private fun setSection(
         widthDp: Int,
         fontScale: Float,
         onOpenExercises: (String) -> Unit = {},
-        onOpenStatistics: () -> Unit = {},
     ) {
         val zones = allZoneIds.map { id ->
             status(id, if (id == "chest") BodyZoneHomeState.PRIORITIZE else BodyZoneHomeState.RECENT_WORK)
@@ -147,7 +141,6 @@ class BodyZoneHomeSemanticsTest {
                         BodyZoneHomeSection(
                             BodyZoneHomeOverview(zones, listOf(zones.first()), true, false),
                             onOpenExercises,
-                            onOpenStatistics,
                         )
                     }
                 }

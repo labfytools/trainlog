@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
@@ -37,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -164,7 +166,7 @@ fun TrainlogAction(
                 .padding(vertical = 3.dp)
                 .heightIn(min = 48.dp)
                 .height(IntrinsicSize.Min)
-                .background(Color.Transparent)
+                .background(colors.surface, MaterialTheme.shapes.medium)
                 .clickable(onClick = onClick)
     ) {
         Column(
@@ -199,6 +201,8 @@ fun TrainlogAction(
     }
 }
 
+enum class TrainlogButtonStyle { PRIMARY, SECONDARY, SUCCESS, DESTRUCTIVE, GHOST }
+
 /** Compact pictogram action with a mandatory accessible name. */
 @Composable
 fun TrainlogIconAction(
@@ -230,6 +234,7 @@ fun TrainlogDeleteButton(
     Button(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().heightIn(min = 52.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(containerColor = colors.error),
     ) {
         Icon(TrainlogIcons.DeleteOutline, contentDescription = contentDescription)
@@ -240,9 +245,7 @@ fun TrainlogDeleteButton(
 fun TrainlogPrimaryAction(label: String, description: String, onClick: () -> Unit) {
     val colors = LocalTrainlogColors.current
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        Button(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(label)
-        }
+        TrainlogButton(label, onClick, Modifier.fillMaxWidth())
         if (description.isNotBlank()) {
             BasicText(
                 description,
@@ -270,7 +273,7 @@ fun TrainlogActionTile(
     Column(
         modifier
             .heightIn(min = 112.dp)
-            .background(colors.surface, RoundedCornerShape(12.dp))
+            .background(colors.surface, MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -291,13 +294,33 @@ fun TrainlogButton(
     containerColor: Color? = null,
     maxLines: Int = 1,
     enabled: Boolean = true,
+    style: TrainlogButtonStyle = TrainlogButtonStyle.PRIMARY,
 ) {
+    val colors = LocalTrainlogColors.current
+    val resolvedContainer = containerColor ?: when (style) {
+        TrainlogButtonStyle.PRIMARY -> colors.accent
+        TrainlogButtonStyle.SECONDARY -> colors.surfaceAlt
+        TrainlogButtonStyle.SUCCESS -> colors.success
+        TrainlogButtonStyle.DESTRUCTIVE -> colors.error
+        TrainlogButtonStyle.GHOST -> Color.Transparent
+    }
+    val resolvedContent = when (style) {
+        TrainlogButtonStyle.PRIMARY, TrainlogButtonStyle.SUCCESS,
+        TrainlogButtonStyle.DESTRUCTIVE -> colors.crust
+        TrainlogButtonStyle.SECONDARY, TrainlogButtonStyle.GHOST -> colors.text
+    }
     Button(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.heightIn(min = 52.dp),
-        colors = containerColor?.let { ButtonDefaults.buttonColors(containerColor = it) }
-            ?: ButtonDefaults.buttonColors(),
+        shape = MaterialTheme.shapes.medium,
+        border = if (style == TrainlogButtonStyle.GHOST) BorderStroke(1.dp, colors.surfaceAlt) else null,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = resolvedContainer,
+            contentColor = resolvedContent,
+            disabledContainerColor = colors.surfaceAlt,
+            disabledContentColor = colors.muted,
+        ),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
     ) {
         icon?.let {
@@ -334,6 +357,7 @@ fun TrainlogInputField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
     keyboardOptions: KeyboardOptions =
         KeyboardOptions.Default,
     testTag: String? = null,
@@ -350,8 +374,7 @@ fun TrainlogInputField(
         }
 
     Column(
-        modifier =
-            Modifier.padding(bottom = 10.dp)
+        modifier = modifier.padding(bottom = 10.dp)
     ) {
         BasicText(
             text = label.uppercase(),

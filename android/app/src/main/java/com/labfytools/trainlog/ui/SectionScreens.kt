@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -188,13 +190,29 @@ fun LatestMaximaScreen(repository: TrainlogRepository) {
     val locale = presentationLocale()
     val strings = localizedContext()
     TrainlogScreen(strings.getString(R.string.route_latest_maxima)) {
-        TrainlogFrame(strings.getString(R.string.max_capacities), active = maxima.isNotEmpty()) {
-            if (maxima.isEmpty()) TrainlogInfo(strings.getString(R.string.max_none))
-            maxima.forEach { max ->
-                val weight = "%.2f".format(locale, max.maxWeightKg).trimEnd('0').trimEnd(',', '.')
-                TrainlogInfo("${max.exerciseName} · $weight kg", colors.warning)
-                TrainlogInfo("${formatDate(max.startedAt)} · " + strings.getString(R.string.equipment_value,
-                    max.equipmentDisplayName ?: strings.getString(R.string.value_none)), colors.muted)
+        if (maxima.isEmpty()) TrainlogInfo(strings.getString(R.string.max_none))
+        maxima.forEach { max ->
+            val weight = "%.2f".format(locale, max.maxWeightKg).trimEnd('0').trimEnd(',', '.')
+            androidx.compose.foundation.layout.Column(
+                Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    .background(colors.surface, androidx.compose.material3.MaterialTheme.shapes.medium)
+                    .padding(12.dp),
+            ) {
+                androidx.compose.material3.Text(
+                    max.exerciseName,
+                    color = colors.text,
+                    style = com.labfytools.trainlog.ui.theme.TrainlogTypography.section,
+                )
+                androidx.compose.foundation.layout.Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    androidx.compose.material3.Text("$weight kg", color = colors.warning)
+                    androidx.compose.material3.Text(formatDate(max.startedAt), color = colors.muted)
+                }
+                max.equipmentDisplayName?.let {
+                    TrainlogInfo(strings.getString(R.string.equipment_value, it), colors.muted)
+                }
             }
         }
     }

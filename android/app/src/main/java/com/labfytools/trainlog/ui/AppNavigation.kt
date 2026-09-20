@@ -12,7 +12,7 @@ import androidx.lifecycle.ViewModel
 
 enum class AppSection {
     HOME, SESSIONS, EXERCISES,
-    EQUIPMENT, STATISTICS, SYNC, SETTINGS,
+    EQUIPMENT, SYNC, SETTINGS,
 }
 
 sealed interface AppRoute {
@@ -34,9 +34,8 @@ sealed interface AppRoute {
     data object Equipment : AppRoute { override val section = AppSection.EQUIPMENT }
     data class EquipmentDetail(val equipmentId: String) : AppRoute { override val section = AppSection.EQUIPMENT }
     data class EquipmentCreate(val caller: AppRoute) : AppRoute { override val section = caller.section }
-    data object Statistics : AppRoute { override val section = AppSection.STATISTICS }
-    data object BodyMeasurements : AppRoute { override val section = AppSection.STATISTICS }
-    data object LatestMaxima : AppRoute { override val section = AppSection.STATISTICS }
+    data object BodyMeasurements : AppRoute { override val section = AppSection.HOME }
+    data object LatestMaxima : AppRoute { override val section = AppSection.EXERCISES }
     data object Sync : AppRoute { override val section = AppSection.SYNC }
     data object Settings : AppRoute { override val section = AppSection.SETTINGS }
 }
@@ -46,7 +45,6 @@ fun AppSection.rootRoute(): AppRoute = when (this) {
     AppSection.SESSIONS -> AppRoute.Sessions
     AppSection.EXERCISES -> AppRoute.Exercises
     AppSection.EQUIPMENT -> AppRoute.Equipment
-    AppSection.STATISTICS -> AppRoute.Statistics
     AppSection.SYNC -> AppRoute.Sync
     AppSection.SETTINGS -> AppRoute.Settings
 }
