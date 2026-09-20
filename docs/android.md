@@ -746,6 +746,7 @@ Android writes:
 
 ```text
 trainlog-sync-request-v1.json
+trainlog-sync-full-generation-request-v1.json
 ```
 
 The request is replaced through the same direct `Documents/Trainlog` directory

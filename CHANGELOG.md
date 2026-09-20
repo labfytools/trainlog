@@ -2,6 +2,13 @@
 
 ## Unreleased — 0.1.3
 
+- Decoupled the Android full-generation request from the strict legacy V3
+  compatibility signal. One explicit intent now publishes the dedicated
+  `trainlog-sync-full-generation-request-v1.json` channel first; the legacy
+  request is published with the same identity only after a fresh V3 snapshot
+  succeeds. The desktop daemon prioritizes this channel and durably
+  deduplicates a bounded set of request identities across both channels.
+
 Development opened after the stable v0.1.2 release.
 
 - Made explicit Android synchronization intent authoritative over automatic

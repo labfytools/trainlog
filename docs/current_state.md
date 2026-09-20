@@ -47,7 +47,11 @@ Completed history hides the active preparation exclusively through the
 delivery's stable execution-session identity and retains all provenance.
 
 The opt-in full-generation path is operational on the private daily
-installation. The loopback Web control and foreground Android coordinator use
+installation. Android explicit synchronization uses a dedicated coordination
+filename carrying the unchanged request-v1 payload. Legacy V3 signalling is
+additive and occurs only after a fresh strict V3 snapshot succeeds; daemon
+request identities are deduplicated across both bounded channels. The loopback
+Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
 persistent peer identities. Controlled USB and private Drive validation proved
 the complete Web-initiated request, generation, import, publication, and ACK

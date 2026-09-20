@@ -185,6 +185,7 @@ does not publish to it or let it override an artifact in the new endpoint.
 | PC -> Android | `programs-v1.json` | optional staged `trainlog-programs` v1 companion: full nondeleted snapshot plus unacknowledged deletion tombstones |
 | Android -> PC | `program-executions-v1.json` | optional `trainlog-program-executions` v1 companion: stable in-progress/completed provenance |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
+| Android -> full-generation daemon | `trainlog-sync-full-generation-request-v1.json` | `trainlog-sync-request` v1 |
 | PC agent -> Android | `trainlog-sync-receipt-v1.json` | `trainlog-sync-receipt` v1 |
 
 No SQLite file is transferred.
@@ -917,7 +918,8 @@ for its ACK). Objects retained from an interrupted conversation are ignored
 until atomically replaced by matching objects. After both peer ACKs, Android
 reports completion directly; it does not enter the legacy receipt wait state.
 
-The peer publication precedes one fresh `trainlog-sync-request-v1` signal on
+The peer publication precedes one fresh
+`trainlog-sync-full-generation-request-v1` signal on
 every explicit Android attempt. This wakes the existing user-session daemon;
 it is not an ACK and does not alter generation identity. A retry may resume an
 exact `captured`, `published`, or `waiting_acknowledgement` generation. It may

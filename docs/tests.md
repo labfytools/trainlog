@@ -1544,6 +1544,11 @@ fixture's sample draft.
 
 ## Private full-generation rollout validation
 
+Routing regressions cover a strict V3 refusal in the presence of causal
+deletions, publication of the dedicated full-generation request before legacy
+compatibility, same-identity dual-channel deduplication, full-generation
+priority over stale legacy requests, and bounded durable seen-request state.
+
 The MTP visibility regression suite uses injected clocks and transport
 callbacks, with no multi-second sleeps. It covers delayed Android publication,
 multiple throttled polls, stale run references, a never-visible generation,
