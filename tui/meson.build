@@ -877,6 +877,11 @@ test(
   args: [meson.project_source_root() / 'tests/test_sync_orchestrator.py'],
 )
 test(
+  'sync_peer_worker',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_sync_peer_worker.py'],
+)
+test(
   'sync_drive_transport',
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_sync_drive_transport.py'],

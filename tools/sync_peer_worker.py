@@ -34,6 +34,30 @@ CAPS = {
     "session-preparations-v2",
 }
 
+MTP_OPERATION_TIMEOUT_SECONDS = 30.0
+MTP_POLL_INTERVAL_SECONDS = 3.0
+
+
+class ConversationDeadlineExpired(RuntimeError):
+    """Internal signal that the protocol deadline, not the transport, expired."""
+
+
+class MtpPullPump:
+    """Throttle complete MTP refreshes while local correlation is polled."""
+
+    def __init__(self, pull, interval=MTP_POLL_INTERVAL_SECONDS, clock=time.monotonic):
+        self._pull = pull
+        self._interval = interval
+        self._clock = clock
+        self._last_pull = clock()
+
+    def __call__(self, force: bool = False) -> None:
+        now = self._clock()
+        if not force and now - self._last_pull < self._interval:
+            return
+        self._pull()
+        self._last_pull = self._clock()
+
 
 def emit(run_id: str, phase: str, **values: object) -> None:
     value = {
@@ -97,9 +121,13 @@ def run_adapter(
     root: Path,
     deadline: float,
     allow_missing_peer: bool = False,
+    clock=time.monotonic,
 ) -> bool:
-    remaining = max(1, int(deadline - time.monotonic()))
-    timeout = min(remaining, 30)
+    remaining = deadline - clock()
+    if remaining <= 0:
+        raise ConversationDeadlineExpired()
+    timeout = min(remaining, MTP_OPERATION_TIMEOUT_SECONDS)
+    deadline_limited = remaining < MTP_OPERATION_TIMEOUT_SECONDS
     try:
         result = subprocess.run(
             [str(adapter), operation, peer, str(root)],
@@ -109,10 +137,13 @@ def run_adapter(
             check=False,
         )
     except subprocess.TimeoutExpired as error:
+        if deadline_limited:
+            raise ConversationDeadlineExpired() from error
         # CONTRACT: an adapter timeout is an ambiguous transport failure. It
         # never implies rollback, replay, or permission to retry a mutation.
         raise RuntimeError(
-            f"transport_timeout: MTP {operation} did not finish within {timeout} seconds"
+            f"transport_timeout: MTP {operation} did not finish within "
+            f"{MTP_OPERATION_TIMEOUT_SECONDS:g} seconds"
         ) from error
     if result.returncode != 0:
         diagnostic = (
@@ -248,29 +279,44 @@ def push_drive(
         run_drive_adapter(adapter, "push", remote, outbox, deadline)
 
 
-def wait_file(path: Path, deadline: float, pump=None) -> None:
+def wait_file(path: Path, deadline: float, pump=None, clock=time.monotonic, sleeper=time.sleep) -> None:
     while not path.is_file():
-        if time.monotonic() >= deadline:
+        if clock() >= deadline:
             raise RuntimeError(f"timeout waiting for {path.name}")
         if pump is not None:
-            pump()
-        time.sleep(0.05)
+            try:
+                pump()
+            except ConversationDeadlineExpired as error:
+                raise RuntimeError(f"timeout waiting for {path.name}") from error
+        sleeper(0.05)
 
 
-def wait_json(path: Path, deadline: float, predicate, pump=None) -> dict:
+def wait_json(
+    path: Path,
+    deadline: float,
+    predicate,
+    pump=None,
+    clock=time.monotonic,
+    sleeper=time.sleep,
+) -> dict:
     while True:
-        wait_file(path, deadline, pump)
+        wait_file(path, deadline, pump, clock, sleeper)
         try:
             value = json.loads(bounded(path))
         except (OSError, json.JSONDecodeError):
             value = None
         if isinstance(value, dict) and predicate(value):
             return value
-        if time.monotonic() >= deadline:
+        if clock() >= deadline:
             raise RuntimeError(f"timeout waiting for correlated {path.name}")
         if pump is not None:
-            pump()
-        time.sleep(0.05)
+            try:
+                pump()
+            except ConversationDeadlineExpired as error:
+                raise RuntimeError(
+                    f"timeout waiting for correlated {path.name}"
+                ) from error
+        sleeper(0.05)
 
 
 def refresh_mtp_peer(
@@ -291,19 +337,24 @@ def refresh_mtp_peer(
     """
     peer_path = root / "android-peer-v1.json"
     while True:
-        pulled = run_adapter(
-            adapter,
-            "pull",
-            peer,
-            root,
-            deadline,
-            True,
-        )
+        try:
+            pulled = run_adapter(
+                adapter,
+                "pull",
+                peer,
+                root,
+                deadline,
+                True,
+            )
+        except ConversationDeadlineExpired as error:
+            raise RuntimeError("timeout waiting for android-peer-v1.json") from error
         if pulled and peer_path.is_file():
             return
         if time.monotonic() >= deadline:
             raise RuntimeError("timeout waiting for android-peer-v1.json")
-        time.sleep(0.05)
+        # A complete libmtp discovery is the expensive poll. Keep retries
+        # interactive without continuously reopening the USB/MTP session.
+        time.sleep(min(MTP_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
 
 
 def correlated_peer_error(root: Path, run_id: str) -> None:
@@ -360,19 +411,21 @@ def main() -> int:
     if args.mode == "mtp":
         if args.mtp_adapter is None:
             raise RuntimeError("MTP adapter is required")
-        pump = lambda: run_adapter(
-            args.mtp_adapter,
-            "pull",
-            args.expected_peer,
-            args.transport_root,
-            deadline,
-            True,
-        )
         refresh_mtp_peer(
             args.mtp_adapter,
             args.expected_peer,
             args.transport_root,
             deadline,
+        )
+        pump = MtpPullPump(
+            lambda: run_adapter(
+                args.mtp_adapter,
+                "pull",
+                args.expected_peer,
+                args.transport_root,
+                deadline,
+                True,
+            )
         )
     elif args.mode == "drive":
         if args.drive_adapter is None or not args.drive_remote:
