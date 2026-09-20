@@ -4,9 +4,10 @@ The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated
 ACKs, restart, and idempotent replay passed. Generation mode remains an
 explicit per-installation opt-in. The additive private Drive transport and
-Android background software are implemented and fake-transport validated;
-private live Drive and post-reboot/manual device validation remain explicit
-deployment gates.
+Android background software are implemented and validated with fake transport
+and the private production namespace. USB remains preferred, Drive is the
+configured mirror/fallback, and Android background operation retains its
+documented post-reboot platform limits.
 
 This document owns future work. The implemented baseline is summarized in
 [current_state.md](current_state.md); completed narratives and evidence belong
@@ -27,7 +28,7 @@ distinction between measured values and estimates.
 
 ## Current baseline
 
-Desktop schema v28, Android schema v25, Notcurses, direct
+Stable v0.1.2 is the release baseline. Desktop schema v28, Android schema v25, Notcurses, direct
 `Documents/Trainlog` storage, mobile export V3, Training Knowledge V1, Body
 Zones V1, Training Feedback V1/V2, STATS V1, and Session Generator V1 are
 implemented. Session Generator V1 is hidden pending V2. AI session-draft
@@ -48,6 +49,10 @@ session-preparations V2 participant and does not change the frozen Dashboard,
 mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
+
+The stable v0.1.2 baseline is closed; future work proceeds from its validated
+Web, Program execution, USB/Drive generation, ACK, and causal-deletion
+contracts without reopening those completed gates.
 
 ```text
 CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_V1_NEXT_CONTRACT

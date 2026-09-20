@@ -18,18 +18,18 @@ delivery's stable execution-session identity and retains all provenance.
 The opt-in full-generation path is operational on the private daily
 installation. The loopback Web control and foreground Android coordinator use
 the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
-persistent peer identities. The latest controlled rollout verified real
-desktop and Android backups, desktop schema v26 to v28, and an in-place private
-Android update from versionCode 16 to 17 with schema v24 to v25. The
-installed APK remains `com.labfytools.trainlog` 0.1.2, is
-non-debuggable, and retains certificate SHA-256
-`aa56c97f2781a0d01f007f4444c3970deb58ad8327ca3da7b0b90f37dbe2ad25`.
-One preparation created explicitly as disposable was withdrawn through the Web
-confirmation flow. Two complete generation conversations around a Trainlog-only
-restart proved one durable Android `no_matching_delivery` result, no delivery
-or performed session, no resurrection, and no duplication. Drive was not
-configured and remains outside this local MTP result. This is a private 0.1.2
-development deployment, not a public release; v0.1.1 is unchanged.
+persistent peer identities. Controlled USB and private Drive validation proved
+the complete Web-initiated request, generation, import, publication, and ACK
+conversation without opening SyncScreen for each run. USB remains preferred;
+the private `Trainlog/Sync/v1` namespace is configured as a verified mirror and
+fallback, independently from `Trainlog/AI`. Cross-transport replay is
+idempotent and neither transport carries SQLite.
+
+The public Android release chain advances from v0.1.1 versionCode 2 to v0.1.2
+versionCode 3 under certificate SHA-256
+`5ef41117da107c9805ae3215c5ec823cff06216610e6e4f7542a754161c71bd2`.
+Higher-numbered private validation builds used a separate Android Debug
+certificate and are not members of the public update-signature chain.
 
 `TRAINLOG_NATIVE_BUILD_AND_CANDIDATE_V1` closes the native warning gate. Strict
 GCC 16.2.1 and Clang 22.1.8 builds now pass the same 81-test inventory, and the
@@ -41,7 +41,7 @@ The rollout packager now keeps the legacy request daemon and one-shot helper in
 the same relocatable, hashed bundle as the Web generation coordinator, avoiding
 mixed-checkout user-service execution during the controlled rollout.
 
-Snapshot date: **2026-09-18**.
+Snapshot date: **2026-09-20**.
 
 `TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,
 generation/ACK, Android-backup, Web Dashboard serialization, tests, doubles and
@@ -76,7 +76,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v25 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.2` development, synchronized across Android and desktop; latest stable release: `v0.1.1` |
+| Trainlog product version | `0.1.2`, synchronized across Android and desktop; latest stable release: `v0.1.2` (`v0.1.1` is the previous stable release) |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |

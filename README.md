@@ -24,13 +24,13 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.2 development) | Display the Dashboard, the operational top-level Programmes daily active-program calendar, and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and Programs administration workflow through typed Trainlog Core/API boundaries. Programs has responsive detail, terminal logical deletion, and a privately deployed read-only Android projection. Analyse and Exercises remain placeholders. |
+| Local Web (0.1.2) | Display the Dashboard, the operational top-level Programmes daily active-program calendar, and the implemented Sessions inventory, deletion, manual preparation, Android-delivery, and Programs administration workflow through typed Trainlog Core/API boundaries. Programs has responsive detail, terminal logical deletion, and a privately deployed read-only Android projection. Analyse and Exercises remain placeholders. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
 CLI/HTTP adapter, embedded frontend, read-only Dashboard API, factual tiles,
 visualizations, and private layout persistence are implemented. This does not
-make the remaining placeholder routes functional or publish version 0.1.2.
+make the remaining placeholder routes functional.
 The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
@@ -46,15 +46,15 @@ both official mirrors:
 Each published stable release provides:
 
 - a signed Android APK;
-- a Linux x86-64 TUI executable;
+- a Linux x86-64 desktop runtime bundle;
 - SHA-256 checksums.
 
 Both mirrors publish the same Trainlog product version and release assets. The
-current development version is **0.1.2** on Android and desktop; this is one
-shared Trainlog version, not separate interface versions. Version 0.1.1 is the
-latest stable release.
+latest stable version is **0.1.2** on Android and desktop; this is one shared
+Trainlog version, not separate interface versions. Version 0.1.1 is the
+previous stable release.
 
-Version 0.1.1 presents Trainlog in French by default, with English selectable
+Trainlog presents French by default, with English selectable
 from **Settings → Language** on Android and the desktop TUI. The selection is
 local to that installation and updates the visible interface immediately; it
 does not translate user exercise/catalogue names or change training data,
@@ -75,21 +75,25 @@ For a published release, download Trainlog from either official mirror:
 - [GitHub](https://github.com/labfytools/trainlog/releases)
 - [Forgejo](https://git.labfytools.com/fy59/trainlog/releases)
 
-Both mirrors contain the same Android APK, Linux x86-64 TUI binary, and SHA-256
+Both mirrors contain the same Android APK, Linux x86-64 runtime bundle, and SHA-256
 checksums for each stable Trainlog release. Verify the downloaded binaries
 against `SHA256SUMS` before installing them.
 
-The Linux TUI artifact is architecture-specific and dynamically linked. It is
-not a universally portable Linux binary: the host must provide compatible
-runtime libraries listed under [Dependencies](#dependencies).
+The Linux artifact is an architecture-specific tar archive whose published
+filename intentionally remains `trainlog-tui-linux-x86_64-v<version>`. It
+contains the TUI/Web executable, synchronization daemon and helpers, catalogs,
+and a hashed inventory from the same release commit. Its native executables are
+dynamically linked, so the host must provide compatible runtime libraries
+listed under [Dependencies](#dependencies).
 
 ```bash
-chmod +x trainlog-tui-linux-x86_64-v<version>
-./trainlog-tui-linux-x86_64-v<version>
+mkdir trainlog-v<version>
+tar -xf trainlog-tui-linux-x86_64-v<version> -C trainlog-v<version>
+./trainlog-v<version>/bin/trainlog
 ```
 
-The executable can remain in the download directory. Moving it into a directory
-on `PATH`, such as a user-managed `~/.local/bin`, is optional.
+The extracted bundle can remain in a user-managed installation directory.
+Linking its launchers from `bin/` into `~/.local/bin` is optional.
 
 For Android, download the release APK, allow installation from the browser or
 file manager when Android requests it, and install the package. Android 8.0
@@ -103,13 +107,14 @@ independent.
 
 ### Daily synchronization on an opted-in installation
 
-Connect and unlock the paired phone, keep Trainlog's Synchronization screen in
-the foreground, then select **Synchronize** in the local Web Dashboard and
-**Synchronize now** on Android. Wait until Web reports completion and Android
-shows that synchronization completed on both Android and PC. A failure remains
-durable and should be diagnosed before retrying; do not delete generation,
-ACK, database, or backup files. Full-generation mode is a trusted local opt-in;
-other installations continue to use the established V3 request/receipt path.
+After explicitly enabling Android background synchronization once, connect and
+unlock the paired phone and select **Synchronize** in the local Web Dashboard.
+USB/MTP is preferred when the Trainlog peer is usable; the separately selected
+private Drive folder is updated as a mirror and is the fallback transport. Wait
+until Web reports the correlated generation and acknowledgements. A failure
+remains durable and should be diagnosed before retrying; do not delete
+generation, ACK, database, or backup files. Full-generation mode and Drive
+remain trusted per-installation configuration.
 
 ### Build from source
 
@@ -150,8 +155,8 @@ updates; generating a replacement key is not a normal release procedure.
 
 ### Linux runtime dependencies
 
-The published v0.1.1 x86-64 TUI is dynamically linked. Its tagged source
-directly requires compatible versions of:
+The published v0.1.2 x86-64 desktop runtime is dynamically linked. Its tagged
+source directly requires compatible versions of:
 
 - glibc and the GCC support runtime;
 - SQLite 3;
@@ -162,9 +167,9 @@ directly requires compatible versions of:
 - Notcurses Core;
 - the standard math library.
 
-The current 0.1.2 development source additionally links GNU libmicrohttpd and
-yyjson for the local Web adapter and Dashboard layout configuration. Those are
-not retroactive requirements of the pre-Web v0.1.1 tagged source.
+Version 0.1.2 additionally links GNU libmicrohttpd and yyjson for the local Web
+adapter and Dashboard layout configuration. Those are not retroactive
+requirements of the pre-Web v0.1.1 tagged source.
 
 Distribution packages may pull additional transitive libraries, including
 libusb, ncursesw, unistring, gpm, libgcrypt, libgpg-error, and libdeflate.
@@ -179,9 +184,9 @@ assuming one universal package command.
   device.
 - `trainlog-syncd` installation expects a systemd user session. Manual TUI
   synchronization does not require the user service.
-- `rclone` is required only for automatic AI history upload and Drive
-  inbox/archive workflows. Core capture, local history, analytics, and direct
-  MTP synchronization work without `rclone`.
+- `rclone` is required for desktop Google Drive synchronization and automatic
+  AI Drive workflows. Core capture, local history, analytics, and direct MTP
+  synchronization continue to work without `rclone`.
 
 ### Build dependencies
 

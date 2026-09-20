@@ -121,6 +121,15 @@ class DeploymentToolsTest(unittest.TestCase):
                     for row in inventory["files"]
                 )
             )
+            for required in (
+                "tools/sync_drive_transport.py",
+                "tools/sync_ai_session_draft_drive.py",
+                "tools/post_sync_ai_drive.py",
+            ):
+                self.assertTrue(
+                    any(row["path"] == required for row in inventory["files"]),
+                    required,
+                )
 
 
 if __name__ == "__main__":
