@@ -382,9 +382,9 @@ internal class SyncGenerationCoordinator(
         }
         var currentRunId: String? = null
         return try {
-            val baselineRunId = request(directory)?.optString("run_id")
             val peer = publishPeer(directory)
             phase(null, "peer_published", "android-peer-v1.json")
+            val baselineRunId = request(directory)?.optString("run_id")
             /* WHY: trainlog-syncd is intentionally driven by the established
              * Android request artifact, not by polling generation internals.
              * CONTRACT: each explicit foreground attempt publishes the peer
@@ -393,7 +393,11 @@ internal class SyncGenerationCoordinator(
              * ACK evidence remain immutable; retry creates new correlation. */
             afterPeerPublication?.let {
                 it.invoke()
-                phase(null, "legacy_trigger_published", "trainlog-sync-request-v1.json")
+                phase(
+                    null,
+                    "full_generation_trigger_published",
+                    FULL_GENERATION_REQUEST_NAME,
+                )
             }
             val deadline = System.nanoTime() + timeout.toNanos()
             val requestRaw =

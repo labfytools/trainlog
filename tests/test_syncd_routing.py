@@ -126,17 +126,65 @@ class SyncdRoutingTest(unittest.TestCase):
             self.assertEqual(1, len(commands))
             self.assertEqual("sy_old", json.loads(state.read_text())["run_id"])
 
-    def test_android_production_trigger_no_longer_uses_opt_in_or_legacy_export(self):
+    def test_android_production_publishes_full_generation_before_optional_legacy(self):
         source = (ROOT / "android/app/src/main/java/com/labfytools/trainlog/ui/SyncScreen.kt").read_text()
         production = source.split("internal suspend fun publishBundleAndRequest", 1)[1].split(
             "internal suspend fun publishLegacyBundleAndRequest", 1
         )[0]
-        self.assertIn(
-            "SyncGenerationForegroundCoordinator(repository, visibility).run", production
-        )
+        self.assertIn("coordinator.run", production)
         self.assertNotIn("generation-opt-in", production)
         self.assertIn("exportMobileBundle", production)
-        self.assertIn("generation below", production)
+        self.assertLess(
+            production.index("publishFullGeneration"), production.index("exportMobileBundle")
+        )
+        self.assertGreater(
+            production.index("publishLegacy"), production.index("exportMobileBundle")
+        )
+
+    def test_full_generation_wins_and_retires_older_legacy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = "sr_11111111-1111-4111-8111-111111111111"
+            new = "sr_22222222-2222-4222-8222-222222222222"
+            self._write_request(root / syncd.REQUEST_NAME, old, "2026-09-20T11:00:00Z")
+            self._write_request(
+                root / syncd.FULL_GENERATION_REQUEST_NAME, new, "2026-09-20T12:00:00Z"
+            )
+            selected = syncd.select_request(root, [])
+            self.assertEqual((new, "full_generation", [old]), selected)
+            self.assertIsNone(syncd.select_request(root, [old, new]))
+
+    def test_dual_channel_same_intent_is_one_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = "sr_22222222-2222-4222-8222-222222222222"
+            for name in (syncd.REQUEST_NAME, syncd.FULL_GENERATION_REQUEST_NAME):
+                self._write_request(root / name, request, "2026-09-20T12:00:00Z")
+            self.assertEqual(
+                (request, "full_generation", []), syncd.select_request(root, [])
+            )
+            self.assertIsNone(syncd.select_request(root, [request]))
+
+    def test_newer_legacy_remains_eligible_after_full_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            full = "sr_22222222-2222-4222-8222-222222222222"
+            legacy = "sr_33333333-3333-4333-8333-333333333333"
+            self._write_request(
+                root / syncd.FULL_GENERATION_REQUEST_NAME, full, "2026-09-20T12:00:00Z"
+            )
+            self._write_request(root / syncd.REQUEST_NAME, legacy, "2026-09-20T13:00:00Z")
+            self.assertEqual((full, "full_generation", []), syncd.select_request(root, []))
+            self.assertEqual((legacy, "legacy", [full]), syncd.select_request(root, [full]))
+
+    @staticmethod
+    def _write_request(path, request_id, requested_at):
+        path.write_text(json.dumps({
+            "format": "trainlog-sync-request",
+            "version": 1,
+            "request_id": request_id,
+            "requested_at": requested_at,
+        }))
 
 
 if __name__ == "__main__":

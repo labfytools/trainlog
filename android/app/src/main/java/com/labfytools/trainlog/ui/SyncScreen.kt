@@ -60,35 +60,56 @@ internal suspend fun publishBundleAndRequest(
     terminalLedger: BackgroundSyncRunLedger? = null,
 ): SyncRequestResult = withContext(Dispatchers.IO) {
     try {
-        val opened = exporter.openStorageSnapshot()
-        if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
-            return@withContext SyncRequestResult.Error("prepare:${opened.message}")
-        }
-        val snapshot =
-            (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
-        /* CONTRACT: the request signal remains compatible with an unconfigured
-         * desktop, so publish the strict standalone V3 snapshot before admission.
-         * A configured daemon still routes the signal exclusively to the complete
-         * generation below; this compatibility publication never selects V3. */
-        when (val publication = exporter.exportMobileBundle(snapshot)) {
-            SyncExportResult.Unsupported -> return@withContext SyncRequestResult.Unsupported
-            is SyncExportResult.Error ->
-                return@withContext SyncRequestResult.Error("prepare:${publication.message}")
-            is SyncExportResult.Exported -> Unit
-        }
         val directory = canonicalExchangeDirectory()
         val coordinator = SyncGenerationForegroundCoordinator(repository, visibility)
         return@withContext when (
             val result = coordinator.run(
                 directory,
                 afterPeerPublication = {
-                    when (val request = requestOutbox.requestSync(snapshot)) {
+                    val opened = exporter.openStorageSnapshot()
+                    if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
+                        throw IllegalStateException(opened.message)
+                    }
+                    val snapshot =
+                        (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready)
+                            .snapshot
+                    val requestIntent = requestOutbox.newIntent()
+                    /* WHY: a strict V3 snapshot cannot represent causal
+                     * tombstones, but the complete generation can. CONTRACT:
+                     * publish and confirm the modern trigger before attempting
+                     * optional legacy compatibility. INVARIANT: an old desktop
+                     * sees this intent only after a fresh V3 bundle succeeds. */
+                    when (
+                        val request =
+                            requestOutbox.publishFullGeneration(snapshot, requestIntent)
+                    ) {
                         is SyncRequestResult.Requested -> Unit
                         SyncRequestResult.Unsupported ->
                             throw IllegalStateException("Generation synchronization is unsupported.")
                         is SyncRequestResult.Error -> throw IllegalStateException(request.message)
                         is SyncRequestResult.Completed ->
                             throw IllegalStateException("Unexpected completed request signal.")
+                    }
+                    when (exporter.exportMobileBundle(snapshot)) {
+                        is SyncExportResult.Exported ->
+                            when (requestOutbox.publishLegacy(snapshot, requestIntent)) {
+                                is SyncRequestResult.Requested ->
+                                    logDirectExchange(
+                                        "trainlog-sync-request-v1.json",
+                                        "legacy_compatibility_published",
+                                    )
+                                else ->
+                                    logDirectExchange(
+                                        "trainlog-sync-request-v1.json",
+                                        "legacy_compatibility_unavailable",
+                                    )
+                            }
+                        SyncExportResult.Unsupported,
+                        is SyncExportResult.Error ->
+                            logDirectExchange(
+                                "trainlog-sync-request-v1.json",
+                                "legacy_compatibility_unavailable",
+                            )
                     }
                 },
                 intent = SyncConversationIntent.NEW_EXPLICIT,

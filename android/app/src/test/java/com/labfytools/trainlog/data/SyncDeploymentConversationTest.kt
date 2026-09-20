@@ -177,7 +177,7 @@ class SyncDeploymentConversationTest {
                     tracePhases.containsAll(
                         listOf(
                             "peer_published",
-                            "legacy_trigger_published",
+                            "full_generation_trigger_published",
                             "generation_request_observed",
                             "archive_ack_observed",
                             "generation_capture_started",

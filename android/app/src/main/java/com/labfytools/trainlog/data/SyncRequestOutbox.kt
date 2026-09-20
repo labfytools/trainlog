@@ -13,6 +13,23 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+internal const val FULL_GENERATION_REQUEST_NAME =
+    "trainlog-sync-full-generation-request-v1.json"
+internal const val LEGACY_SYNC_REQUEST_NAME = "trainlog-sync-request-v1.json"
+
+internal data class SyncRequestIntent(
+    val requestId: String,
+    val requestedAt: String,
+) {
+    fun payload(): String =
+        JSONObject()
+            .put("format", "trainlog-sync-request")
+            .put("version", 1)
+            .put("request_id", requestId)
+            .put("requested_at", requestedAt)
+            .toString()
+}
+
 sealed interface SyncRequestResult {
     /** The full-generation coordinator completed both durable peer ACKs. */
     data class Completed(
@@ -60,39 +77,39 @@ class SyncRequestOutbox private constructor(
             return SyncRequestResult.Unsupported
         }
 
-        val requestId =
-            "sr_" +
-                UUID.randomUUID()
-                    .toString()
+        val intent = newIntent()
+        return publishLegacy(snapshot, intent)
+    }
 
-        val payload =
-            JSONObject()
-                .put(
-                    "format",
-                    "trainlog-sync-request",
-                )
-                .put(
-                    "version",
-                    1,
-                )
-                .put(
-                    "request_id",
-                    requestId,
-                )
-                .put(
-                    "requested_at",
-                    OffsetDateTime.now()
-                        .toString(),
-                )
-                .toString()
+    internal fun newIntent(): SyncRequestIntent =
+        SyncRequestIntent(
+            requestId = "sr_${UUID.randomUUID()}",
+            requestedAt = OffsetDateTime.now().toString(),
+        )
 
-        val displayName =
-            "trainlog-sync-request-v1.json"
-        val error = snapshot.writeJson(displayName, payload)
+    internal fun publishFullGeneration(
+        snapshot: DirectExchangeSnapshot,
+        intent: SyncRequestIntent,
+    ): SyncRequestResult = publish(snapshot, FULL_GENERATION_REQUEST_NAME, intent)
+
+    internal fun publishLegacy(
+        snapshot: DirectExchangeSnapshot,
+        intent: SyncRequestIntent,
+    ): SyncRequestResult = publish(snapshot, LEGACY_SYNC_REQUEST_NAME, intent)
+
+    private fun publish(
+        snapshot: DirectExchangeSnapshot,
+        displayName: String,
+        intent: SyncRequestIntent,
+    ): SyncRequestResult {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return SyncRequestResult.Unsupported
+        }
+        val error = snapshot.writeJson(displayName, intent.payload())
         return if (error == null) {
             try {
                 visibility.confirm(listOf(java.io.File(canonicalExchangeDirectory(), displayName)))
-                SyncRequestResult.Requested(requestId)
+                SyncRequestResult.Requested(intent.requestId)
             } catch (error: Exception) {
                 SyncRequestResult.Error(error.message ?: "Publication MTP impossible.")
             }

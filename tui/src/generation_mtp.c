@@ -603,6 +603,18 @@ TrainlogStatus trainlog_generation_mtp_pull(const TrainlogGenerationMtpIo *io,
             io, &selection, selection.root, "trainlog-sync-request-v1.json", local, false);
     }
     if (status == TRAINLOG_STATUS_OK) {
+        /* WHY: strict legacy V3 may be unavailable while a complete causal
+         * generation remains valid. CONTRACT: pull the dedicated bounded
+         * coordination object without scanning the exchange tree. INVARIANT:
+         * this read never acknowledges, deletes, or rewrites remote state. */
+        status = pull_named_file(io,
+                                 &selection,
+                                 selection.root,
+                                 "trainlog-sync-full-generation-request-v1.json",
+                                 local,
+                                 false);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
         status = pull_named_file(
             io, &selection, selection.root, "android-generation-v1.json", local, false);
     }

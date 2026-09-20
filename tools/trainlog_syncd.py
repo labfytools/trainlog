@@ -19,6 +19,8 @@ from pathlib import Path
 
 STOP = False
 REQUEST_NAME = "trainlog-sync-request-v1.json"
+FULL_GENERATION_REQUEST_NAME = "trainlog-sync-full-generation-request-v1.json"
+SEEN_REQUEST_LIMIT = 64
 REQUEST_ID = re.compile(r"sr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
 
@@ -90,7 +92,7 @@ def load_generation_config(path: Path) -> dict:
     return value
 
 
-def request_id(path: Path) -> str | None:
+def request(path: Path) -> tuple[str, datetime] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
@@ -106,7 +108,58 @@ def request_id(path: Path) -> str | None:
         and isinstance(candidate, str)
         and REQUEST_ID.fullmatch(candidate)
     ):
-        return candidate
+        requested_at = value.get("requested_at")
+        if not isinstance(requested_at, str):
+            return None
+        try:
+            timestamp = datetime.fromisoformat(requested_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if timestamp.tzinfo is None:
+            return None
+        return candidate, timestamp
+    return None
+
+
+def load_request_state(path: Path) -> tuple[dict, list[str]]:
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}, []
+    if not isinstance(state, dict):
+        return {}, []
+    seen = [item for item in state.get("seen_request_ids", [])
+            if isinstance(item, str) and REQUEST_ID.fullmatch(item)]
+    historical = state.get("request_id")
+    if isinstance(historical, str) and REQUEST_ID.fullmatch(historical) and historical not in seen:
+        seen.append(historical)
+    return state, seen[-SEEN_REQUEST_LIMIT:]
+
+
+def select_request(root: Path, seen: list[str]) -> tuple[str, str, list[str]] | None:
+    """Select one unseen intent while preventing an older cross-channel replay.
+
+    WHY: modern Android may publish the same intent on full-generation and
+    legacy channels, while stale legacy files remain durable on MTP. CONTRACT:
+    full-generation wins and an older alternate intent is retired. INVARIANT:
+    one request_id starts at most one daemon conversation.
+    """
+    full = request(root / FULL_GENERATION_REQUEST_NAME)
+    legacy = request(root / REQUEST_NAME)
+    unseen_full = full if full is not None and full[0] not in seen else None
+    unseen_legacy = legacy if legacy is not None and legacy[0] not in seen else None
+    if unseen_full is not None:
+        selected_id, selected_at = unseen_full
+        retired = list(seen)
+        if (
+            unseen_legacy is not None
+            and unseen_legacy[0] != selected_id
+            and unseen_legacy[1] <= selected_at
+        ):
+            retired.append(unseen_legacy[0])
+        return selected_id, "full_generation", retired
+    if unseen_legacy is not None:
+        return unseen_legacy[0], "legacy", list(seen)
     return None
 
 
@@ -123,16 +176,13 @@ def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
     )
     if pull.returncode != 0:
         return 3
-    correlated_request = request_id(root / REQUEST_NAME)
-    if correlated_request is None:
+    _, seen = load_request_state(args.state)
+    selected = select_request(root, seen)
+    if selected is None:
         return 3
-    if args.state.is_file():
-        try:
-            previous = json.loads(args.state.read_text(encoding="utf-8"))
-            if previous.get("request_id") == correlated_request:
-                return 3
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            pass
+    correlated_request, request_channel, seen = selected
+    seen.append(correlated_request)
+    seen = list(dict.fromkeys(seen))[-SEEN_REQUEST_LIMIT:]
     run_id = "sy_" + str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     atomic_json(
@@ -142,6 +192,8 @@ def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
             "version": 1,
             "run_id": run_id,
             "request_id": correlated_request,
+            "request_channel": request_channel,
+            "seen_request_ids": seen,
             "trigger": args.trigger,
             "requested_mode": "full_generation_v1",
             "effective_mode": "full_generation_v1",

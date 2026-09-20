@@ -39,6 +39,7 @@ internal fun canonicalExchangeDirectory(): File =
 internal fun exchangeArtifactIdentity(displayName: String): String = when (displayName) {
     "trainlog-exercise-body-zones-v1.json" -> "BODY_ZONES"
     "trainlog-sync-request-v1.json" -> "SYNC_REQUEST"
+    "trainlog-sync-full-generation-request-v1.json" -> "FULL_GENERATION_SYNC_REQUEST"
     "trainlog-mobile-export-v3.json" -> "MOBILE_EXPORT"
     "trainlog-mobile-equipment-definitions-v1.json" -> "EQUIPMENT_DEFINITIONS"
     "trainlog-equipment-associations-v2.json" -> "EQUIPMENT_ASSOCIATIONS"
