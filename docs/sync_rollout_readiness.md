@@ -13,18 +13,20 @@ record is [sync rollout V1 deployment](reviews/sync_rollout_v1_deployment.md).
 
 ## Deployment-readiness contract
 
-The generation path remains disabled unless desktop configuration authorizes a
-specific persisted Android peer and Android contains the strict opt-in document
-`Documents/Trainlog/trainlog-sync-generation-opt-in-v1.json`. Absence preserves
-V3; malformed opt-in fails explicitly. The Web coordinator owns a fixed worker,
-bounded typed progress and its descendant process group. The foreground Android
-coordinator advertises its real peer identity, publishes manifest-last bytes,
-consumes the return generation and emits a durable correlated ACK.
+The desktop generation path remains disabled unless trusted local configuration
+authorizes a specific persisted Android peer. Android foreground synchronization
+uses its generation coordinator by default; the request artifact is a correlated
+admission signal, not a switch back to standalone V3. Configuration absence on
+desktop preserves the strict V3 compatibility fallback. The Web coordinator owns
+a fixed worker, bounded typed progress and its descendant process group. The
+foreground Android coordinator advertises its real peer identity, publishes
+manifest-last bytes, consumes the return generation and emits a durable
+correlated ACK.
 
 The isolated proof still uses the production generation adapter with only its
 typed libudev/libmtp I/O callbacks replaced by an object-store double. The
 separate deployment record owns the physical-phone evidence; neither proof
-generalizes pairing to another phone or enables generation mode by default.
+generalizes pairing to another phone or authorizes an unconfigured desktop.
 
 ### Candidate, backup and recovery
 
