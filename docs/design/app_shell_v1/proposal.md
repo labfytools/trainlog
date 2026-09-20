@@ -6,6 +6,12 @@ Le dépôt était propre à l'ouverture. **Design seulement ; aucune autorisatio
 d'implémentation n'est déduite de ce document.** Ce dossier est une proposition,
 pas une description de fonctionnalités déjà livrées ni un contrat FROZEN.
 
+> Historical baseline note: this proposal remains an important design source,
+> but its repository, dependency, schema, and architecture observations describe
+> the inspected September 2026 baseline, not current 0.1.3 HEAD. The 0.1.3
+> Android redesign must revalidate them and make final decisions screen by
+> screen; it must not apply these mockups mechanically.
+
 Les [maquettes Android](android_mockups.html) sont consultables hors ligne,
 avec un [aperçu PNG](android_overview.png). Les [maquettes TUI en couleur](tui_mockups.html)
 et leur [version texte](tui_mockups.txt) donnent les quatre grilles exactes et les
@@ -44,7 +50,7 @@ multi-séances, ni seconde séance planifiée persistante.
 | TUI état terminal | `tui.c:63` utilise un pointeur file-static pendant `trainlog_tui_run()` | Remplacer cet accès implicite par un contexte d'application passé explicitement |
 | Notcurses | `pkg-config notcurses-core` et `/usr/include/notcurses/version.h` : **3.0.17**, liaison `-lnotcurses-core` | Sélection d'API fondée sur ce header, sans mise à niveau nécessaire |
 | Équipements | Android : choix/création dans la saisie ; TUI : catalogue autonome. Création/liste/résolution disponibles, modification de définition absente | Ajouter le point d'entrée Android en réutilisant les opérations existantes ; ne pas inventer un éditeur de définition |
-| Persistance | Desktop et Android v11 dans le code et `docs/current_state.md` ; brouillon Android durable, brouillon TUI en mémoire | Le shell ne crée aucune migration ; ne pas promettre une reprise TUI après arrêt du processus |
+| Persistance (constat historique) | Desktop et Android v11 dans la baseline inspectée ; brouillon Android durable, brouillon TUI en mémoire | Le shell ne crée aucune migration ; ne pas promettre une reprise TUI après arrêt du processus |
 
 Le texte desktop v9 de `AGENTS.md` §8 est un état ancien par rapport au code
 et aux documents actuels v11. La proposition ne résout pas cet écart par une
@@ -878,8 +884,9 @@ existantes ne sont pas différés sous prétexte de polish.
 
 ## 23. État du design gate
 
-La proposition et ses maquettes sont destinées à la revue humaine. L'approbation
-du design, lorsqu'elle sera donnée, précédera toute implémentation de production.
+La proposition et ses maquettes constituaient le design gate de leur baseline.
+Elles restent des sources de conception, mais ne préjugent ni du contrat ni des
+décisions écran par écran de `TRAINLOG_ANDROID_UI_REDESIGN_V1` en 0.1.3.
 
 `APP_SHELL_V1_DESIGN=READY_FOR_HUMAN_REVIEW`
 

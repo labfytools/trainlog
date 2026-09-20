@@ -2,6 +2,11 @@
 
 Date : 10 septembre 2026.
 
+Ce document est un relevé historique de la baseline inspectée à cette date. Il
+reste une source importante pour 0.1.3, mais ses constats techniques doivent être
+revalidés contre HEAD et ne constituent pas une instruction d'appliquer les
+anciennes maquettes sans revue écran par écran.
+
 ## Périmètre réellement exécuté
 
 - Inspection du dépôt propre à `7cb4996` : `SESSION_GENERATOR_V1` après
@@ -114,9 +119,10 @@ Références officielles consultées pour les choix de présentation/API :
   [selector 3.0.17 et propriété du plan](https://notcurses.com/notcurses_selector.3.html),
   [reader et ses limites](https://notcurses.com/notcurses_reader.3.html).
 
-## Arrêt demandé
+## Arrêt demandé sur la baseline historique
 
 `APP_SHELL_V1_DESIGN=READY_FOR_HUMAN_REVIEW`
 
-La tranche s'arrête au design gate demandé. Une approbation explicite reste
-nécessaire pour commencer l'implémentation de production.
+La tranche historique s'est arrêtée au design gate demandé. Le nouveau lot
+`TRAINLOG_ANDROID_UI_REDESIGN_V1` exige son propre contrat et sa propre revue
+visuelle avant toute implémentation de production.

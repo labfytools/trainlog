@@ -32,8 +32,10 @@ Stable v0.1.2 is the release baseline for the v0.1.3 development cycle.
 Desktop schema v28, Android schema v25, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
-Generator V1 is hidden pending V2. AI session-draft
-exchange and APP_SHELL_V1 retain their explicit manual validation/review gates.
+Generator V1 is hidden pending V2. AI session-draft exchange retains its
+explicit manual validation gate. APP_SHELL_V1 remains useful historical design
+evidence, but its September 2026 observations must be revalidated against the
+v0.1.3 baseline rather than treated as a current implementation plan.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
@@ -41,8 +43,9 @@ tile rendering exist. The Dashboard's bounded progression and BODY ZONES
 visualizations and Sessions V1 are implemented. The top-level `/programmes`
 route is an operational daily active-Program calendar, while
 Sessions → Programmes remains the technical administration/import, list,
-detail, archive, and delete surface. Analyse and Exercises remain placeholders
-or out of scope.
+detail, archive, and delete surface. Analyse and Exercises remain placeholders.
+Exercises is now the second ordered v0.1.3 priority; Analyse remains outside
+this cycle unless a later explicit decision changes that order.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -56,7 +59,8 @@ and its validated Web, Program execution, USB/Drive generation, ACK, and
 causal-deletion contracts without reopening those completed gates.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_V1_NEXT_CONTRACT
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_ANDROID_UI_REDESIGN_V1_CONTRACT
+NEXT_AFTER_ANDROID_UI_REDESIGN=TRAINLOG_WEB_EXERCISES_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
@@ -68,9 +72,9 @@ transactional consumption, durable correlated ACK and restart/replay entry
 points. The orchestrator, Web API and Web control are complete behind an
 explicit trusted opt-in. The authorized private direct-MTP rollout passed on
 real hardware; automatic V3 selection remains unchanged without that opt-in.
-The next separately contracted Web surface is Exercises. Sessions deletion and
-its Programs subtab are complete in software and are not reopened by that
-future contract. `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` after
+Sessions deletion and its Programs subtab are complete in software and are not
+reopened by the future Exercises contract.
+`TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` after
 its coordinated private desktop/Android deployment, correlated deletion ACK,
 and post-restart non-resurrection validation. It must not be reopened by the
 Exercises contract.
@@ -81,16 +85,17 @@ desktop/Android rollout, real start/resume/completion, correlated
 preserved-generation replay, and disposable-Program deletion proof. It also
 must not be reopened by the Exercises contract.
 
-`TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS`
-defines the complete-sync target and its bounded dependency order.
+`TRAINLOG_SYNC_GAP_CONTRACT_V1` defines the complete-sync target and its bounded
+dependency order; the v0.1.2 USB/Drive delivery closed the operational slices
+needed by the current baseline.
 `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` supplies the reproducible isolated
 desktop/Android validation entry point, JDK 17 gate and private JVM/XDG paths.
 `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` reuses and completes the
 current-behavior evidence for cross-implementation V3 exchange, identities,
 ordering, replay, partial publication, request/receipt processing and the real
-lock. Data lifecycle, causal deletion, and generation/ACK slices are complete;
-the orchestrator/report slice remains next and does not authorize an endpoint,
-button, deployment, or transport activation here.
+lock. Data lifecycle, causal deletion, generation/ACK, orchestrator/report, Web
+API/control, direct-MTP, backup, and private rollout slices are complete. Their
+remaining per-installation opt-ins are deployment policy, not the v0.1.3 cursor.
 [Contract details](design/sync_gap_contract_v1.md).
 
 `WEB_FRONTEND_SHELL_V1=PASS/FROZEN`. `trainlog -w` serves the embedded React,
@@ -155,15 +160,141 @@ business SQLite and frozen formats, and specifies Activity/Progression before
 rendering those metrics. Later Dashboard evolution must preserve those frozen
 boundaries.
 
-`WEB_NEXT_MODULE_SELECTION_V1` remains a future Web documentary cursor. The current
-roadmap does not yet establish a contract order between the remaining placeholder
-routes, Analyse and Exercices. This cursor must inventory their existing Core
-services, read/write boundaries and dependencies, then select one bounded module
-contract; it does not authorize silently implementing a page.
+The former `WEB_NEXT_MODULE_SELECTION_V1` documentary cursor is closed by the
+v0.1.3 ordering below. It selected Exercices after the Android redesign; it did
+not authorize implementation and it did not select Analyse.
+
+## Trainlog v0.1.3
+
+Trainlog v0.1.3 has two ordered priorities:
+
+1. the global Android experience redesign;
+2. the complete Web Exercices surface.
+
+```text
+TRAINLOG_ANDROID_UI_REDESIGN_V1
+        -> TRAINLOG_WEB_EXERCISES_V1
+```
+
+Each lot requires its own reviewed contract before implementation. This roadmap
+is documentary ordering, not authorization to implement both lots in one
+ticket. Analyse and every other new Web module remain after these priorities
+unless a later explicit decision changes the order.
+
+### TRAINLOG_ANDROID_UI_REDESIGN_V1
+
+The goal is to make the Android application clearer, faster, and more pleasant
+during real gym use. This is primarily a UX/UI lot. By default it must not
+redefine business rules, change synchronization formats, rewrite data, break
+stable IDs or durable drafts, break Program sessions, or regress USB/Drive.
+
+The contract must cover these axes:
+
+- **Navigation:** review the screen hierarchy, remove unnecessary paths, expose
+  primary actions immediately, preserve coherent caller-aware return behavior,
+  and avoid overloaded screens.
+- **Actions and buttons:** replace isolated action text with real buttons where
+  that improves scanning; use relevant icons for evident actions; retain a
+  label, tooltip/content description, or accessible text whenever an icon alone
+  is ambiguous; keep sufficient Android touch targets; and preserve TalkBack
+  and keyboard navigation.
+- **Presentation:** improve visual hierarchy; make cards, buttons, states,
+  spacing, and titles consistent; retain the Trainlog/Catppuccin identity; and
+  never trade readability for density.
+- **Active session:** make in-workout entry the main UX priority. Redesign the
+  current-exercise view, set addition, repetition and load entry, duration entry
+  for DURATION exercises, previous/next exercise navigation, exercise
+  addition/removal/reordering, equipment selection, immediate feedback, and
+  session completion. The measured objective is fewer manipulations and taps
+  during training.
+- **Exercise entry:** define a detailed contract before implementation covering
+  at least `SETS + REPS`, `SETS + DURATION`, `CONTINUOUS + DURATION`, external
+  load, assistance, unloaded work, equipment, heterogeneous sets, MAX, and
+  feedback. This roadmap deliberately does not choose the final layout; that
+  decision follows a real screen-by-screen visual review with the user.
+
+APP_SHELL_V1 remains an important design source. Its proposal, mockups, and
+review record preserve useful navigation, accessibility, ownership, and visual
+reasoning. They were produced against an older baseline, however: technical
+observations are historical until revalidated against 0.1.3, the Android
+redesign must not apply an old mockup mechanically, and final 0.1.3 decisions
+will be made screen by screen.
+
+### TRAINLOG_WEB_EXERCISES_V1
+
+The top-level `/exercices` placeholder will become the desktop catalogue
+administration surface. The first step is an audit of existing Core catalogue
+services and persisted capabilities; implementation is not authorized until a
+separate read/command contract has been reviewed.
+
+The future lot includes:
+
+- **Catalogue:** a complete or paged list according to the Core contract,
+  search, relevant filters, available/retired state when the model supports it,
+  and access to an exercise detail.
+- **Exercise detail:** show only actually persisted data made available by Core,
+  including name, `exercise_id`, `recording_mode`, `tracking_mode`,
+  `data_fields`, primary and secondary BODY ZONES, equipment/associations when
+  available, and other real structured metadata. React must not reconstruct
+  business truth.
+- **Creation:** create through a real transactional Core command service, with
+  name, profile, tracking, `data_fields`, primary and secondary zones, and
+  equipment/associations only where the Core contract permits them.
+- **Modification:** expose only Core-authorized changes. The contract must
+  distinguish mutable and immutable fields, compatible changes, changes that
+  require a new identity, and exercises already referenced by history.
+- **Retirement/deletion:** never naively delete a referenced identity. Reuse the
+  existing causal model where applicable and preserve history.
+
+**Historical exercise invariant:** changing the current definition of an
+exercise must never rewrite past session history. Historical occurrences keep
+their own recorded data. Catalogue changes apply to future uses according to
+the Core contract. If a requested change is incompatible with the existing
+identity, Core must reject it or create a new identity/mechanism under an
+explicit contract. No silent migration may rewrite the past merely to match the
+current catalogue.
+
+Desktop/Core is the administration source. After creation, modification, or
+retirement, Android synchronization must reuse the v0.1.2 engine: USB first,
+with Drive as mirror/fallback. React must not introduce an Exercises-specific
+synchronization path. The future contract must first audit the existing
+catalogue, profile, BODY ZONES, and equipment artifacts to determine whether
+the planned changes are representable. Frozen formats remain frozen; if a new
+datum cannot be transported, the contract must state that explicitly before
+any protocol change.
+
+### Bounded v0.1.3 order
+
+```text
+0.1.3
+|
++-- ANDROID_UI_REDESIGN_V1
+|   |
+|   +-- current-state audit
+|   +-- UX/navigation contract
+|   +-- shell / buttons / components
+|   +-- active-session workflow
+|   +-- exercise-entry workflow
+|   +-- real visual review
+|   +-- accessibility validation
+|
++-- WEB_EXERCISES_V1
+    |
+    +-- Core/catalogue characterization
+    +-- read-model contract
+    +-- command-service contract
+    +-- Web catalogue
+    +-- exercise detail
+    +-- creation
+    +-- modification
+    +-- causal retirement
+    +-- Android synchronization
+    +-- real validation
+```
 
 ## Next
 
-### Complete synchronization implementation
+### Complete synchronization baseline
 
 The frozen contract orders future bounded lots as environment/test,
 characterization, data/lifecycles, causal deletion, generation/consumption/ack,
@@ -175,9 +306,11 @@ validated through explicit staged entry points, including both real producer
 directions for every contracted target kind; generation/consumption
 acknowledgement, orchestration/reporting, Web sync, the production generation
 MTP adapter and complete Android backup/restore are implemented on the
-development branch. Remaining gates are physical-device validation, signed
-bridge/current APK procedures, real user backups and an explicitly authorized
-rollout.
+development branch. The authorized private rollout, physical-device validation,
+signed update procedure, real backups, USB-priority exchange, and configured
+Drive mirror/fallback validation are complete. Broader deployment remains an
+explicit per-installation decision rather than a v0.1.3 product-development
+gate.
 `WEB_DASHBOARD_V1=PASS/FROZEN` remains closed and unchanged.
 
 ### Gym catalog V1
@@ -219,11 +352,8 @@ normal capture.
 ## Canonical order
 
 ```text
-WEB_DASHBOARD_CHARACTERIZATION_V1
-        -> WEB_DASHBOARD_CORE_READ_MODEL_V1
-        -> WEB_TUI_READ_MODEL_ADOPTION_V1
-        -> TRAINLOG_WEB_V1
-        -> REAL_DATA_BASELINE_V1
+TRAINLOG_ANDROID_UI_REDESIGN_V1
+        -> TRAINLOG_WEB_EXERCISES_V1
         -> GYM_CATALOG_V1
         -> EXERCISE_METADATA_V1
         -> SESSION_GENERATOR_V2
@@ -235,10 +365,11 @@ WEB_DASHBOARD_CHARACTERIZATION_V1
         -> BACKUP_EXPORT_V1
 ```
 
-## Outstanding validation gates
+## Independent outstanding validation gates
 
-- `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`: complete the recorded
-  human visual/accessibility matrix without redefining product semantics.
+- `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`: its recorded legacy
+  visual/accessibility review remains useful evidence, but the 0.1.3 Android
+  redesign owns its own screen-by-screen decisions and validation.
 - `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING`: complete one real Drive
   plus Android-triggered bidirectional synchronization smoke test.
 

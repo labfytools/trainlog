@@ -34,6 +34,8 @@ make the remaining placeholder routes functional.
 The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
+The ordered 0.1.3 development focus is an Android UX redesign followed by Web
+Exercises administration; both remain planned, separately contracted work.
 
 ## Releases
 

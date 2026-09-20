@@ -105,13 +105,15 @@ parallel implementation of its rules.
 | Sync Web end-to-end wrapper | `TRAINLOG_SYNC_WEB_END_TO_END_V1=PASS/FROZEN` (isolated) |
 | Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (direct MTP, one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
-| Complete synchronization gap contract | `TRAINLOG_SYNC_GAP_CONTRACT_V1=CONTRACT_FROZEN / IMPLEMENTATION_IN_PROGRESS` |
+| Current operational cursor | `TRAINLOG_ANDROID_UI_REDESIGN_V1_CONTRACT` |
+| Next after Android redesign | `TRAINLOG_WEB_EXERCISES_V1` |
+| Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
 | Synchronization data/lifecycle slice | `TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN` |
 | Synchronization causal deletion slice | `TRAINLOG_SYNC_CAUSAL_DELETE_V1=PASS/FROZEN` |
 | Synchronization generation/ACK slice | `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` (explicit staged entry points; active transport remains V3) |
-| Generation MTP and Android backup | `TRAINLOG_SYNC_MTP_AND_ANDROID_BACKUP_V1=SOFTWARE_COMPLETE` (physical-device and user-operation gates remain) |
+| Generation MTP and Android backup | Software complete and validated in the authorized private physical-device rollout |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -516,9 +518,12 @@ tests, Android debug assembly, and 211 Android tests (207 passed, four optional
 historical-fixture skips). Strict desktop builds use Clang 22.1.8; the compared
 pre-existing GCC 16.2.1 Web warning gate remains documented rather than green.
 
-- `WEB_NEXT_MODULE_SELECTION_V1`: Analyse and Exercices remain shell
-  placeholders. Exercises is the next proposed Web module.
-- `APP_SHELL_V1` still awaits the recorded human visual/accessibility review.
+- The next planned work is `TRAINLOG_ANDROID_UI_REDESIGN_V1`; it is not yet
+  implemented. `TRAINLOG_WEB_EXERCISES_V1` follows it and will replace the
+  current `/exercices` placeholder only after a separate Core/read/command
+  contract. Analyse remains a placeholder and is not a v0.1.3 priority.
+- `APP_SHELL_V1` retains a recorded legacy visual/accessibility review gate; its
+  observations are inputs to, not decisions for, the new 0.1.3 Android contract.
 - Session Generator V1 is hidden while V2 planning semantics are developed.
 - Hardware MTP validation requires a connected unlocked Android device.
 - Scientific knowledge is bounded to reviewed catalog entries; unknown custom
