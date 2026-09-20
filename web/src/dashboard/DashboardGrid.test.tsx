@@ -113,9 +113,9 @@ describe('grille interactive du Dashboard', () => {
     expect(screen.getByText('Identité comparable : reps · external')).toBeInTheDocument()
     fireEvent.keyDown(screen.getByRole('article', { name: 'Progression, tuile modifiable' }), { key: 'ArrowLeft', shiftKey: true })
     expect(screen.queryByText('Identité comparable : reps · external')).not.toBeInTheDocument()
-    expect(screen.getAllByText(/^Exercice \d$/)).toHaveLength(1)
-    fireEvent.keyDown(screen.getByRole('article', { name: 'Records / MAX, tuile modifiable' }), { key: 'ArrowDown', shiftKey: true })
-    expect(screen.getAllByText(/^Exercice \d$/)).toHaveLength(3)
+    expect(screen.getByRole('article', { name: 'Progression, tuile modifiable' })).toHaveAttribute('data-size', 'medium')
+    fireEvent.keyDown(screen.getByRole('article', { name: 'Mensurations, tuile modifiable' }), { key: 'ArrowDown', shiftKey: true })
+    expect(screen.getByRole('article', { name: 'Mensurations, tuile modifiable' })).toHaveAttribute('data-size', 'medium')
   })
 
   it('signale discrètement loading, erreur globale et invalid_data', async () => {

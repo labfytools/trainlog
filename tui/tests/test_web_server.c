@@ -308,7 +308,7 @@ static bool test_http_contract(TrainlogDatabase *database) {
     CHECK(strstr(response, "Access-Control-Allow-Origin") == NULL);
     CHECK(strstr(response,
                  "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
-                 "\"version\":\"0.1.3\"}") != NULL);
+                 "\"version\":\"0.1.4\"}") != NULL);
     {
         char token[80];
         CHECK(exchange(port,
@@ -508,6 +508,26 @@ static bool test_http_contract(TrainlogDatabase *database) {
     CHECK(strstr(response, "\"no_cardio_data_source\"") != NULL);
     CHECK(strstr(response, "\"window_days\":90") != NULL);
     CHECK(strstr(response, "\"partial\":false") != NULL);
+    CHECK(exchange(port,
+                   "GET /api/v1/analysis?period=30d&metric=waist&page=1 HTTP/1.1\r\n"
+                   "Host: 127.0.0.1\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 200") != NULL &&
+          strstr(response, "\"period\":\"30d\"") != NULL &&
+          strstr(response, "\"selected_metric\":\"waist\"") != NULL);
+    CHECK(exchange(port,
+                   "GET /api/v1/analysis?period=invalid HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 400") != NULL &&
+          strstr(response, "invalid_analysis_query") != NULL);
+    CHECK(exchange(port,
+                   "GET /api/v1/analysis?period=7d&period=90d HTTP/1.1\r\n"
+                   "Host: 127.0.0.1\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 400") != NULL);
     CHECK(exchange(port,
                    "GET /api/v1/prepared-items HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
                    response,

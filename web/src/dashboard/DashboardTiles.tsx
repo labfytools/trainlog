@@ -7,10 +7,11 @@ import type { PreparedItemsSnapshot } from '../api/preparedItems'
 import type { PreparedItem } from '../api/preparedItems'
 import { useDatePreferences } from '../presentation/DatePreferences'
 import { validDateSortValue, validTimestampValue } from '../presentation/dateFormat'
+import type { AnalysisSnapshot } from '../api/analysis'
 
 const ProgressionChart = lazy(() => import('../charts/ProgressionChart').then((module) => ({ default: module.ProgressionChart })))
 
-interface TileDataProps { snapshot: DashboardSnapshot; size: TileSize }
+interface TileDataProps { snapshot: DashboardSnapshot; size: TileSize; analysis?: AnalysisSnapshot | null }
 
 export interface NextSessionTileProps {
   size: TileSize
@@ -99,21 +100,22 @@ export function NextSessionTile({
       )}
       {failed && <small>Dernière lecture conservée · actualisation indisponible</small>}
       {pending && !failed && <small>Actualisation…</small>}
+      <a className="tile-context-link" href={`/seances/${proposal ? 'proposal' : manual ? 'preparation' : 'draft'}/${encodeURIComponent(item.identity)}`}>Ouvrir la séance</a>
     </div>
   )
 }
 
-export function ActivityTile({ snapshot, size }: TileDataProps) {
+export function ActivityTile({ snapshot, size, analysis }: TileDataProps) {
   const { dateFormat } = useDatePreferences()
   const days = snapshot.data.activity.days
   // CONTRACT: these are direct presentation totals of Core-projected counters,
   // never an activity or physiological-intensity score.
   const activeDays = days.filter((day) => day.active).length
-  const sessions = days.reduce((total, day) => total + day.session_count, 0)
-  const sets = days.reduce((total, day) => total + day.set_count, 0)
+  const sessions = analysis?.overview.sessions ?? days.reduce((total, day) => total + day.session_count, 0)
+  const sets = analysis?.overview.sets ?? days.reduce((total, day) => total + day.set_count, 0)
   const shown = size === 'compact' ? days.slice(-35) : days
   return <div className="activity-content">
-    <div className="metric-row"><Metric value={String(activeDays)} label="jours actifs" />{size !== 'compact' && <Metric value={String(sessions)} label="séances" />}{size === 'large' && <Metric value={String(sets)} label="séries" />}</div>
+    <div className="metric-row"><Metric value={String(activeDays)} label="jours actifs" />{size !== 'compact' && <Metric value={String(sessions)} label="séances" />}{size === 'large' && <Metric value={String(sets)} label="séries" />}{size === 'large' && analysis?.overview.duration_seconds !== null && analysis?.overview.duration_seconds !== undefined && <Metric value={formatDuration(analysis.overview.duration_seconds)} label="durée calculable" />}</div>
     <div className="activity-heatmap" role="img" aria-label={`Sur 90 jours : ${count(activeDays, 'jour actif', 'jours actifs')}, ${count(sessions, 'séance')}, ${count(sets, 'série')}.`}>
       {shown.map((day) => <span key={day.date} className={`activity-day${day.active ? ' is-active' : ''}${day.session_count > 1 ? ' is-multiple' : ''}`} title={`${formatDate(day.date, dateFormat)} — ${count(day.session_count, 'séance')}, ${count(day.set_count, 'série')}`} />)}
     </div>
@@ -121,8 +123,13 @@ export function ActivityTile({ snapshot, size }: TileDataProps) {
   </div>
 }
 
-export function ProgressionTile({ snapshot, size }: TileDataProps) {
+export function ProgressionTile({ snapshot, size, analysis }: TileDataProps) {
   const { dateFormat } = useDatePreferences()
+  if (analysis?.exercise !== null && analysis?.exercise !== undefined) {
+    const exercise = analysis.exercise
+    const latest = exercise.points[0]
+    return <div className="progression-content"><div><p className="primary-label">{exercise.name}</p><p className="secondary-label">{exercise.tracking_mode === 'reps' ? 'Répétitions' : 'Durée'}</p></div>{latest === undefined ? <Unavailable text="Aucune donnée compatible sur 30 jours" /> : <dl className="fact-list horizontal"><Fact label="Séries" value={String(latest.sets)} />{latest.reps !== null && <Fact label="Répétitions" value={String(latest.reps)} />}{latest.external_volume_kg !== null && <Fact label="Volume externe" value={formatWeight(latest.external_volume_kg)} />}{latest.explicit_max_kg !== null && <Fact label="MAX explicite" value={formatWeight(latest.explicit_max_kg)} />}</dl>}<a className="tile-context-link" href={`/analyse?section=exercise&exercise_id=${encodeURIComponent(exercise.exercise_id)}&period=30d`}>Voir dans Analyse</a></div>
+  }
   const progression = snapshot.data.progression
   if (!progression.available) return <Unavailable text="Aucune performance comparable disponible" />
   const first = progression.points[0]
@@ -167,7 +174,7 @@ export function MuscleDistributionTile({ snapshot, size }: TileDataProps) {
   const maximum = Math.max(...ordered.map((zone) => zone.session_count), 1)
   return <div className="muscle-content">
     {size !== 'compact' && <div className="muscle-visual"><BodyZoneFigure zones={zones} /><p className="chart-legend">Couleur : séances sur 30 jours · maximum relatif au snapshot affiché</p></div>}
-    <div className="muscle-details"><p className="chart-legend">Longueur : nombre de séances sur 30 jours</p><ul className="muscle-list">{shown.map((zone) => <MuscleRow key={zone.zone_id} zone={zone} maximum={maximum} detailed={size !== 'compact'} full={size === 'large'} />)}</ul></div>
+    <div className="muscle-details"><p className="chart-legend">Longueur : nombre de séances sur 30 jours</p><ul className="muscle-list">{shown.map((zone) => <MuscleRow key={zone.zone_id} zone={zone} maximum={maximum} detailed={size !== 'compact'} full={size === 'large'} />)}</ul><a className="tile-context-link" href="/analyse?section=body-zones&period=30d">Voir dans Analyse</a></div>
   </div>
 }
 
@@ -177,6 +184,19 @@ function MuscleRow({ zone, maximum, detailed, full }: { zone: WorkedZone; maximu
 
 export function CardioTile({ size }: TileDataProps) {
   return <div className="unavailable-content"><strong aria-hidden="true">—</strong>{size !== 'compact' && <p>Aucune donnée cardio disponible</p>}{size === 'large' && <small>Les mesures apparaîtront ici lorsqu’une source cardio sera enregistrée.</small>}</div>
+}
+
+export function ProgramTile({ size, analysis }: TileDataProps) {
+  const program = analysis?.active_program
+  if (program === null || program === undefined) return <Unavailable text="Aucun programme actif" />
+  return <div className="program-progress"><strong>{program.title}</strong><div><span>{program.completed_sessions}/{program.total_sessions} séances effectuées</span></div><progress max={program.total_sessions || 1} value={program.completed_sessions} aria-label="Progression du programme actif" />{size !== 'compact' && <p>{program.next_session_title === null ? 'Programme terminé' : `Prochaine séance : ${program.next_session_title}`}</p>}<a className="tile-context-link" href="/programmes">Ouvrir Programmes</a></div>
+}
+
+export function MeasurementsTile({ size, analysis }: TileDataProps) {
+  const summaries = analysis?.measurements.summaries ?? []
+  const visible = summaries.filter((summary) => summary.metric === 'weight' || summary.metric === 'waist').filter((summary) => summary.last !== null)
+  if (visible.length === 0) return <Unavailable text="Aucune mensuration disponible" />
+  return <div className="measurement-summary"><dl className="fact-list horizontal">{visible.map((summary) => <div key={summary.metric}><dt>{summary.metric === 'weight' ? 'Poids' : 'Tour de taille'}</dt><dd>{formatWeight(summary.last ?? 0).replace('kg', summary.unit)}{summary.delta !== null && size !== 'compact' && <small>{summary.delta > 0 ? '+' : ''}{summary.delta.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} {summary.unit}</small>}</dd></div>)}</dl><a className="tile-context-link" href="/analyse?section=measurements&metric=waist&period=30d">Voir dans Analyse</a></div>
 }
 
 function Metric({ value, label }: { value: string; label: string }) { return <div className="metric"><strong>{value}</strong><span>{label}</span></div> }

@@ -68,6 +68,43 @@ h2 { color: var(--text); font-size: var(--font-size-lg); line-height: 1.25; lett
 .page-intro { max-width: 34rem; margin-bottom: .15rem; color: var(--subtext-0); font-size: clamp(.95rem, 1.4vw, 1.08rem); line-height: 1.65; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
+.analysis-toolbar { margin-bottom: 1.5rem; display: flex; align-items: end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.analysis-tabs { display: flex; flex-wrap: wrap; gap: .35rem; }
+.analysis-tabs button { min-height: 2.6rem; padding: .55rem .8rem; color: var(--subtext-0); background: transparent; border: 1px solid var(--surface-2); border-radius: .45rem; cursor: pointer; }
+.analysis-tabs button[aria-selected="true"] { color: var(--crust); background: var(--lavender); border-color: var(--lavender); font-weight: 700; }
+.analysis-toolbar label, .analysis-language, .analysis-picker { display: grid; gap: .35rem; color: var(--subtext-0); font-size: var(--font-size-sm); }
+.analysis-toolbar select, .analysis-language select, .analysis-picker select { min-height: 2.6rem; padding: .55rem .7rem; color: var(--text); background: var(--mantle); border: 1px solid var(--surface-2); border-radius: .45rem; }
+.analysis-section-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.analysis-panel { min-width: 0; padding: clamp(1rem, 3vw, 1.75rem); border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); overflow: hidden; }
+.analysis-panel h3 { margin-bottom: .6rem; }
+.analysis-wide { width: 100%; }
+.analysis-facts { margin: 1rem 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .75rem; }
+.analysis-facts div { min-width: 0; padding: .75rem; background: var(--base); border: 1px solid var(--surface-1); border-radius: .55rem; }
+.analysis-facts dt { color: var(--subtext-0); font-size: var(--font-size-xs); }
+.analysis-facts dd { margin: .3rem 0 0; overflow-wrap: anywhere; font-size: 1.1rem; font-weight: 700; }
+.analysis-empty, .analysis-note { color: var(--subtext-0); line-height: 1.55; }
+.analysis-chart { min-width: 0; margin: 1rem 0 0; }
+.analysis-chart svg { width: 100%; height: clamp(10rem, 25vw, 16rem); overflow: visible; }
+.analysis-chart polyline { stroke: var(--lavender); stroke-width: 2; }
+.analysis-chart circle { fill: var(--green); stroke: var(--base); stroke-width: .5; }
+.analysis-chart figcaption { color: var(--subtext-0); font-size: var(--font-size-xs); }
+.analysis-zones { display: grid; grid-template-columns: minmax(14rem, .8fr) minmax(16rem, 1.2fr); align-items: start; gap: 1.5rem; }
+.analysis-zones ul { margin: 0; padding: 0; display: grid; gap: .5rem; list-style: none; }
+.analysis-zones li { padding: .75rem; display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--surface-1); }
+.analysis-zones li span { color: var(--subtext-0); text-align: right; }
+.analysis-link, .tile-context-link { width: max-content; max-width: 100%; color: var(--lavender); background: transparent; border: 0; padding: .35rem 0; text-decoration: underline; text-underline-offset: .2rem; cursor: pointer; }
+.measurement-summary dd { display: grid; gap: .2rem; }
+.measurement-summary small { color: var(--subtext-0); font-weight: 500; }
+.program-progress p { margin: .25rem 0; color: var(--subtext-0); }
+
+@media (max-width: 48rem) {
+  .analysis-section-grid, .analysis-zones { grid-template-columns: 1fr; }
+  .analysis-page .page-heading { align-items: start; flex-direction: column; }
+  .analysis-toolbar { align-items: stretch; flex-direction: column; }
+  .analysis-toolbar label { width: 100%; }
+  .analysis-tabs button { flex: 1 1 8rem; }
+}
+
 .sessions-toolbar { margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .detail-actions, .confirmation-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .65rem; }
 .session-tabs { display: flex; gap: .4rem; padding: .3rem; border: 1px solid var(--surface-1); border-radius: .75rem; background: var(--mantle); }

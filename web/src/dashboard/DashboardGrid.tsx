@@ -18,16 +18,18 @@ import {
   type TileId,
   type TileLayout,
 } from './dashboardLayout'
-import { ActivityTile, CardioTile, LastSessionTile, MaxRecordsTile, MuscleDistributionTile, NextSessionTile, ProgressionTile, type DashboardTileComponent } from './DashboardTiles'
+import { ActivityTile, LastSessionTile, MuscleDistributionTile, NextSessionTile, ProgressionTile, type DashboardTileComponent } from './DashboardTiles'
+import { MeasurementsTile, ProgramTile } from './DashboardTiles'
+import type { AnalysisSnapshot } from '../api/analysis'
 
 const dashboardTiles: Readonly<Record<TileId, { title: string, eyebrow: string, component: DashboardTileComponent }>> = {
   'next-session': { title: 'Prochaine séance', eyebrow: 'Planification', component: NextSessionTile },
   activity: { title: 'Activité', eyebrow: 'Régularité', component: ActivityTile },
   progression: { title: 'Progression', eyebrow: 'Évolution', component: ProgressionTile },
   'last-session': { title: 'Dernière séance', eyebrow: 'Historique', component: LastSessionTile },
-  'max-records': { title: 'Records / MAX', eyebrow: 'Performances', component: MaxRecordsTile },
+  'max-records': { title: 'Mensurations', eyebrow: 'Évolution', component: MeasurementsTile },
   'muscle-distribution': { title: 'Répartition musculaire', eyebrow: 'Zones', component: MuscleDistributionTile },
-  'cardio-recovery': { title: 'Cardio / récupération', eyebrow: 'Physiologie', component: CardioTile },
+  'cardio-recovery': { title: 'Programme actif', eyebrow: 'Planification', component: ProgramTile },
 }
 
 function breakpoint(width: number): { columns: 12 | 6 | 1, rowHeight: number } {
@@ -43,6 +45,7 @@ interface DashboardGridProps {
   preparedItems?: PreparedItemsSnapshot | null
   preparedItemsPending?: boolean
   preparedItemsFailed?: boolean
+  analysis?: AnalysisSnapshot | null
 }
 
 export function DashboardGrid({
@@ -52,6 +55,7 @@ export function DashboardGrid({
   preparedItems = null,
   preparedItemsPending = false,
   preparedItemsFailed = false,
+  analysis = null,
 }: DashboardGridProps) {
   const [layout, setLayout] = useState<TileLayout[]>(() => cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
   const [editing, setEditing] = useState(false)
@@ -186,7 +190,7 @@ export function DashboardGrid({
             const size = tileSize(dimensions)
             const available = id === 'next-session'
               ? (preparedItems?.items.length ?? 0) > 0
-              : dashboard !== null && tileAvailable(dashboard, id)
+              : dashboard !== null && tileAvailable(dashboard, id, analysis)
             const tilePending = id === 'next-session' ? preparedItemsPending : pending
             const partial = dashboard?.meta.partial === true && id === 'max-records'
             const TileContent = content.component
@@ -211,7 +215,7 @@ export function DashboardGrid({
                   ) : dashboard === null ? (
                     <div className="tile-data-placeholder" aria-hidden="true"><span /><span /><span /></div>
                   ) : (
-                    <TileContent snapshot={dashboard} size={size} />
+                    <TileContent snapshot={dashboard} size={size} analysis={analysis} />
                   )}
                 </Tile>
               </div>
@@ -223,12 +227,12 @@ export function DashboardGrid({
   )
 }
 
-function tileAvailable(snapshot: DashboardSnapshot, id: TileId): boolean {
+function tileAvailable(snapshot: DashboardSnapshot, id: TileId, analysis: AnalysisSnapshot | null): boolean {
   if (id === 'next-session') return false
   if (id === 'activity') return snapshot.data.activity.available
   if (id === 'progression') return snapshot.data.progression.available
   if (id === 'last-session') return snapshot.data.last_session.available
-  if (id === 'max-records') return snapshot.data.max_records.available
+  if (id === 'max-records') return analysis?.measurements.summaries.some((item) => item.last !== null) === true
   if (id === 'muscle-distribution') return snapshot.data.muscle_distribution.available
-  return snapshot.data.cardio.available
+  return analysis?.active_program !== null && analysis?.active_program !== undefined
 }

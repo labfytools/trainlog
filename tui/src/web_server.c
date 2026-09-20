@@ -21,6 +21,7 @@
 #include <yyjson.h>
 
 #include "trainlog/web_dashboard.h"
+#include "trainlog/web_analysis.h"
 #include "trainlog/web_exercises.h"
 #include "trainlog/web_prepared_items.h"
 #include "trainlog/web_programs.h"
@@ -62,6 +63,91 @@ typedef struct TrainlogHttpRequestState {
 static bool valid_sync_id(const char *value) {
     return value != NULL && strlen(value) == 39U && strncmp(value, "sy_", 3U) == 0 &&
            uuid_parse(value + 3U, (unsigned char[16]){0}) == 0;
+}
+
+static bool valid_exercise_id(const char *value) {
+    return value != NULL && strlen(value) == 39U && strncmp(value, "ex_", 3U) == 0 &&
+           uuid_parse(value + 3U, (unsigned char[16]){0}) == 0;
+}
+
+typedef struct TrainlogAnalysisArguments {
+    bool valid;
+    unsigned int period_count;
+    unsigned int exercise_count;
+    unsigned int metric_count;
+    unsigned int page_count;
+} TrainlogAnalysisArguments;
+
+static enum MHD_Result validate_analysis_argument(void *context,
+                                                  enum MHD_ValueKind kind,
+                                                  const char *key,
+                                                  const char *value) {
+    TrainlogAnalysisArguments *arguments = context;
+    unsigned int *count = NULL;
+    (void)kind;
+    (void)value;
+    if (strcmp(key, "period") == 0) {
+        count = &arguments->period_count;
+    } else if (strcmp(key, "exercise_id") == 0) {
+        count = &arguments->exercise_count;
+    } else if (strcmp(key, "metric") == 0) {
+        count = &arguments->metric_count;
+    } else if (strcmp(key, "page") == 0) {
+        count = &arguments->page_count;
+    } else {
+        arguments->valid = false;
+        return MHD_NO;
+    }
+    ++*count;
+    if (*count > 1U) {
+        arguments->valid = false;
+        return MHD_NO;
+    }
+    return MHD_YES;
+}
+
+static bool parse_analysis_period(const char *value, TrainlogWebAnalysisPeriod *period) {
+    if (value == NULL || strcmp(value, "30d") == 0) {
+        *period = TRAINLOG_WEB_ANALYSIS_30_DAYS;
+        return true;
+    }
+    if (strcmp(value, "7d") == 0) {
+        *period = TRAINLOG_WEB_ANALYSIS_7_DAYS;
+        return true;
+    }
+    if (strcmp(value, "90d") == 0) {
+        *period = TRAINLOG_WEB_ANALYSIS_90_DAYS;
+        return true;
+    }
+    if (strcmp(value, "all") == 0) {
+        *period = TRAINLOG_WEB_ANALYSIS_ALL;
+        return true;
+    }
+    return false;
+}
+
+static bool valid_measurement_metric(const char *value) {
+    static const char *const VALUES[] = {"weight",
+                                         "neck",
+                                         "shoulders",
+                                         "chest",
+                                         "waist",
+                                         "hips",
+                                         "left_arm",
+                                         "right_arm",
+                                         "left_forearm",
+                                         "right_forearm",
+                                         "left_thigh",
+                                         "right_thigh",
+                                         "left_calf",
+                                         "right_calf"};
+    size_t index;
+    for (index = 0U; index < sizeof(VALUES) / sizeof(VALUES[0]); ++index) {
+        if (strcmp(value, VALUES[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool trainlog_web_sync_accepted_serialize(const char *request_id,
@@ -1262,6 +1348,55 @@ static enum MHD_Result handle_request(void *closure,
                                      accepted_size,
                                      context->csrf_token,
                                      "/api/v1/sync/status");
+    }
+    if (strcmp(url, "/api/v1/analysis") == 0) {
+        TrainlogAnalysisArguments arguments = {.valid = true};
+        TrainlogWebAnalysisQuery query;
+        const char *period;
+        const char *exercise_id;
+        const char *metric;
+        const char *page;
+        char json[TRAINLOG_WEB_ANALYSIS_JSON_CAPACITY];
+        size_t json_size = 0U;
+        time_t now;
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
+        (void)MHD_get_connection_values(
+            connection, MHD_GET_ARGUMENT_KIND, validate_analysis_argument, &arguments);
+        period = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "period");
+        exercise_id = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "exercise_id");
+        metric = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "metric");
+        page = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "page");
+        if (!arguments.valid || !parse_analysis_period(period, &query.period) ||
+            (exercise_id != NULL && !valid_exercise_id(exercise_id)) ||
+            (metric != NULL && !valid_measurement_metric(metric)) ||
+            (page != NULL && strcmp(page, "1") != 0)) {
+            return queue_json(
+                connection, MHD_HTTP_BAD_REQUEST, "{\"error\":\"invalid_analysis_query\"}\n", NULL);
+        }
+        now = time(NULL);
+        if (now == (time_t)-1 || (int64_t)now != (int64_t)(time_t)now) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"clock_unavailable\"}\n",
+                              NULL);
+        }
+        query.reference_unix_second = (int64_t)now;
+        query.exercise_id = exercise_id;
+        query.measurement_metric = metric == NULL ? "weight" : metric;
+        if (trainlog_web_analysis_json(context->database, &query, json, sizeof(json), &json_size) !=
+                TRAINLOG_STATUS_OK ||
+            json_size == 0U) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"analysis_unavailable\"}\n",
+                              NULL);
+        }
+        return queue_json(connection, MHD_HTTP_OK, json, NULL);
     }
     if (strcmp(url, "/api/v1/dashboard") == 0) {
         TrainlogWebDashboardQuery query;

@@ -1,6 +1,7 @@
 import { DashboardGrid } from '../dashboard/DashboardGrid'
 import type { DashboardSnapshot } from '../api/dashboard'
 import type { PreparedItemsSnapshot } from '../api/preparedItems'
+import type { AnalysisSnapshot } from '../api/analysis'
 
 interface DashboardPageProps {
   dashboard: DashboardSnapshot | null
@@ -9,6 +10,7 @@ interface DashboardPageProps {
   preparedItems: PreparedItemsSnapshot | null
   preparedItemsPending: boolean
   preparedItemsFailed: boolean
+  analysis: AnalysisSnapshot | null
 }
 
 export function DashboardPage({
@@ -18,6 +20,7 @@ export function DashboardPage({
   preparedItems,
   preparedItemsPending,
   preparedItemsFailed,
+  analysis,
 }: DashboardPageProps) {
   return (
     <section className="page" aria-labelledby="page-title">
@@ -31,6 +34,7 @@ export function DashboardPage({
         preparedItems={preparedItems}
         preparedItemsPending={preparedItemsPending}
         preparedItemsFailed={preparedItemsFailed}
+        analysis={analysis}
       />
     </section>
   )

@@ -9,12 +9,13 @@ import { PlaceholderPage } from '../routes/PlaceholderPage'
 import { ProgramsCalendarPage } from '../routes/ProgramsCalendarPage'
 import { SessionsPage } from '../routes/SessionsPage'
 import { ExercisesPage } from '../routes/ExercisesPage'
+import { AnalysisPage } from '../routes/AnalysisPage'
 import type { RouteId } from './routes'
 import { useRoute } from './useRoute'
 import { DatePreferencesProvider } from '../presentation/DatePreferences'
+import { fetchAnalysis, type AnalysisSnapshot } from '../api/analysis'
 
-const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'programs' | 'exercises'>, [string, string, string]> = {
-  analysis: ['Analyse', 'COMPRENDRE', 'Les analyses détaillées apparaîtront ici lorsque leurs read models Core seront disponibles.'],
+const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'analysis' | 'programs' | 'exercises'>, [string, string, string]> = {
   sessions: ['Séances', 'ORGANISER', 'Les séances préparées et terminées seront présentées sans confondre plan et réalisé.'],
 }
 
@@ -29,6 +30,7 @@ function AppContent() {
   const [preparedItems, setPreparedItems] = useState<PreparedItemsSnapshot | null>(null)
   const [preparedItemsPending, setPreparedItemsPending] = useState(true)
   const [preparedItemsFailed, setPreparedItemsFailed] = useState(false)
+  const [analysis, setAnalysis] = useState<AnalysisSnapshot | null>(null)
   const reloadDashboard = useCallback(() => {
     fetchDashboard().then((value) => { setDashboard(value); setDashboardFailed(false) })
       .catch(() => setDashboardFailed(true)).finally(() => setDashboardPending(false))
@@ -62,6 +64,7 @@ function AppContent() {
     }).catch(() => {
       setPreparedItemsFailed(true)
     }).finally(() => setPreparedItemsPending(false))
+    fetchAnalysis({}, controller.signal).then(setAnalysis).catch(() => setAnalysis(null))
     return () => controller.abort()
   }, [])
 
@@ -73,8 +76,10 @@ function AppContent() {
       preparedItems={preparedItems}
       preparedItemsPending={preparedItemsPending}
       preparedItemsFailed={preparedItemsFailed}
+      analysis={analysis}
     />
-  ) : route.id === 'sessions' ? <SessionsPage /> :
+  ) : route.id === 'analysis' ? <AnalysisPage /> :
+    route.id === 'sessions' ? <SessionsPage /> :
     route.id === 'programs' ? <ProgramsCalendarPage onNavigate={navigate} /> :
     route.id === 'exercises' ? <ExercisesPage path={route.path} onNavigate={navigate} /> :
     <PlaceholderPage title={placeholderContent[route.id][0]}

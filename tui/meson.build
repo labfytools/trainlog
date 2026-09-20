@@ -47,6 +47,9 @@ if web_assets_enabled
     '../web/src/vite-env.d.ts',
     '../web/src/api/health.ts',
     '../web/src/api/dashboard.ts',
+    '../web/src/api/analysis.ts',
+    '../web/src/api/analysis.test.ts',
+    '../web/src/analysis/messages.ts',
     '../web/src/api/dashboardLayout.ts',
     '../web/src/api/preparedItems.ts',
     '../web/src/api/sync.ts',
@@ -73,6 +76,8 @@ if web_assets_enabled
     '../web/src/presentation/DatePreferences.tsx',
     '../web/src/presentation/dateFormat.ts',
     '../web/src/routes/DashboardPage.tsx',
+    '../web/src/routes/AnalysisPage.tsx',
+    '../web/src/routes/AnalysisPage.test.tsx',
     '../web/src/routes/PlaceholderPage.tsx',
     '../web/src/routes/SessionsPage.tsx',
     '../web/src/api/sessions.ts',
@@ -208,6 +213,7 @@ trainlog_core_sources = files(
   'src/json_writer.c',
   'src/web_dashboard.c',
   'src/web_dashboard_json.c',
+  'src/web_analysis.c',
   'src/web_prepared_items.c',
   'src/web_prepared_items_json.c',
   'src/web_sessions.c',
@@ -359,6 +365,15 @@ test_web_dashboard = executable(
   c_args: strict_c_args,
 )
 test('web_dashboard', test_web_dashboard)
+
+test_web_analysis = executable(
+  'test_web_analysis',
+  'tests/test_web_analysis.c',
+  dependencies: trainlog_core_dep,
+  include_directories: trainlog_private_include,
+  c_args: strict_c_args,
+)
+test('web_analysis', test_web_analysis)
 
 test_web_prepared_items = executable(
   'test_web_prepared_items',
