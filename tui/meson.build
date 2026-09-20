@@ -653,6 +653,12 @@ test_generation_mtp = executable(
 )
 test('generation_mtp', test_generation_mtp)
 
+test(
+  'syncd_routing',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_syncd_routing.py'],
+)
+
 generation_mtp_adapter_double = executable(
   'generation-mtp-adapter-double',
   'tests/generation_mtp_adapter_double.c',

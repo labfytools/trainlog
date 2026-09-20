@@ -75,6 +75,10 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertTrue((output / "bin/trainlog-sync-once").is_file())
             self.assertTrue((output / "bin/trainlog-syncd").is_file())
             self.assertTrue((output / "libexec/trainlog-sync-once").is_file())
+            self.assertIn(
+                'TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"',
+                (output / "bin/trainlog-syncd").read_text(),
+            )
             stable_bin = Path(directory) / "stable-bin"
             stable_bin.mkdir()
             (stable_bin / "trainlog").symlink_to(output / "bin/trainlog")

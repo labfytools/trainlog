@@ -238,6 +238,12 @@ static int test_pull_and_manifest_last(void) {
         "android-generation-v1.json",
         "{\"relative_path\":\"android-objects/generations/gen_11111111-1111-4111-8111-"
         "111111111111\"}");
+    add(13,
+        2,
+        false,
+        "trainlog-sync-request-v1.json",
+        "{\"format\":\"trainlog-sync-request\",\"version\":1,\"request_id\":\"sr_11111111-"
+        "1111-4111-8111-111111111111\",\"requested_at\":\"2026-09-20T12:00:00Z\"}");
     add(5, 2, true, "android-objects", NULL);
     add(6, 5, true, "generations", NULL);
     add(7, 6, true, "gen_11111111-1111-4111-8111-111111111111", NULL);
@@ -254,6 +260,8 @@ static int test_pull_and_manifest_last(void) {
         sizeof(path),
         root,
         "android-objects/generations/gen_11111111-1111-4111-8111-111111111111/payload.json"));
+    CHECK(access(path, R_OK) == 0);
+    CHECK(trainlog_test_join_path(path, sizeof(path), root, "trainlog-sync-request-v1.json"));
     CHECK(access(path, R_OK) == 0);
     CHECK(trainlog_test_join_path(path, sizeof(path), root, "out"));
     CHECK(mkdir(path, 0700) == 0);

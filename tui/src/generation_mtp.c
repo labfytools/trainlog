@@ -338,14 +338,16 @@ static TrainlogStatus pull_referenced_generation(const TrainlogGenerationMtpIo *
     TrainlogStatus status;
     status = one_named(io, selection, selection->root, "android-objects", true, &android_objects);
     if (status == TRAINLOG_STATUS_OK) {
-        status = one_named(io, selection, android_objects.item_id, "generations", true, &generations);
+        status =
+            one_named(io, selection, android_objects.item_id, "generations", true, &generations);
     }
     if (status == TRAINLOG_STATUS_OK) {
         status = one_named(io, selection, generations.item_id, generation, true, &selected);
     }
     if (status != TRAINLOG_STATUS_OK ||
         snprintf(path, sizeof(path), "%s/android-objects/generations/%s", local, generation) < 0 ||
-        strlen(local) + strlen("/android-objects/generations/") + strlen(generation) >= sizeof(path)) {
+        strlen(local) + strlen("/android-objects/generations/") + strlen(generation) >=
+            sizeof(path)) {
         return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_INVALID_ARGUMENT : status;
     }
     char parent[1024];
@@ -357,7 +359,8 @@ static TrainlogStatus pull_referenced_generation(const TrainlogGenerationMtpIo *
     char objects_path[1024];
     if (snprintf(objects_path, sizeof(objects_path), "%s/android-objects", local) < 0 ||
         strlen(local) + strlen("/android-objects") >= sizeof(objects_path) ||
-        mkdir_private(objects_path) != TRAINLOG_STATUS_OK || mkdir_private(parent) != TRAINLOG_STATUS_OK) {
+        mkdir_private(objects_path) != TRAINLOG_STATUS_OK ||
+        mkdir_private(parent) != TRAINLOG_STATUS_OK) {
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
     return pull_folder(io, selection, selected.item_id, path, 0U, &total, &objects);
@@ -587,8 +590,17 @@ TrainlogStatus trainlog_generation_mtp_pull(const TrainlogGenerationMtpIo *io,
          * remain a normal polling state for the Python conversation.
          * INVARIANT: no remote object, ACK, tombstone, or retained generation is
          * removed or rewritten by this bounded read. */
+        status =
+            pull_named_file(io, &selection, selection.root, "android-peer-v1.json", local, true);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        /* WHY: the Android request remains the explicit user/foreground
+         * admission signal even when the conversation uses full generations.
+         * CONTRACT: copy the bounded signal only; the orchestrator, not this
+         * transport adapter, owns correlation and all domain mutations.
+         * INVARIANT: reading the request never acknowledges or removes it. */
         status = pull_named_file(
-            io, &selection, selection.root, "android-peer-v1.json", local, true);
+            io, &selection, selection.root, "trainlog-sync-request-v1.json", local, false);
     }
     if (status == TRAINLOG_STATUS_OK) {
         status = pull_named_file(

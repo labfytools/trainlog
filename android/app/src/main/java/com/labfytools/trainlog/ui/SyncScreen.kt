@@ -50,39 +50,37 @@ internal suspend fun publishBundleAndRequest(
     exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
 ): SyncRequestResult = withContext(Dispatchers.IO) {
-    val optIn = java.io.File(canonicalExchangeDirectory(), "trainlog-sync-generation-opt-in-v1.json")
-    if (optIn.isFile) {
-        val enabled = try {
-            val value = org.json.JSONObject(optIn.readText())
-            value.keys().asSequence().toSet() == setOf("format", "version", "enabled") &&
-                value.optString("format") == "trainlog-sync-generation-opt-in" &&
-                value.opt("version") is Int && value.getInt("version") == 1 && value.opt("enabled") == true
-        } catch (_: Exception) { false }
-        if (!enabled) return@withContext SyncRequestResult.Error("Invalid generation synchronization opt-in.")
-        val opened = exporter.openStorageSnapshot()
-        if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
-            return@withContext SyncRequestResult.Error("prepare:${opened.message}")
-        }
-        val snapshot = (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
-        return@withContext when (
-            val result = SyncGenerationForegroundCoordinator(repository).run(
-                canonicalExchangeDirectory(),
-                afterPeerPublication = {
-                    when (val request = requestOutbox.requestSync(snapshot)) {
-                        is SyncRequestResult.Requested -> Unit
-                        SyncRequestResult.Unsupported ->
-                            throw IllegalStateException("Generation synchronization is unsupported.")
-                        is SyncRequestResult.Error -> throw IllegalStateException(request.message)
-                        is SyncRequestResult.Completed ->
-                            throw IllegalStateException("Unexpected completed request signal.")
-                    }
-                },
-            )
-        ) {
-            is ForegroundGenerationResult.Completed -> SyncRequestResult.Completed(result.runId)
-            is ForegroundGenerationResult.Error -> SyncRequestResult.Error(result.message)
-        }
+    val opened = exporter.openStorageSnapshot()
+    if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
+        return@withContext SyncRequestResult.Error("prepare:${opened.message}")
     }
+    val snapshot = (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
+    return@withContext when (
+        val result = SyncGenerationForegroundCoordinator(repository).run(
+            canonicalExchangeDirectory(),
+            afterPeerPublication = {
+                when (val request = requestOutbox.requestSync(snapshot)) {
+                    is SyncRequestResult.Requested -> Unit
+                    SyncRequestResult.Unsupported ->
+                        throw IllegalStateException("Generation synchronization is unsupported.")
+                    is SyncRequestResult.Error -> throw IllegalStateException(request.message)
+                    is SyncRequestResult.Completed ->
+                        throw IllegalStateException("Unexpected completed request signal.")
+                }
+            },
+        )
+    ) {
+        is ForegroundGenerationResult.Completed -> SyncRequestResult.Completed(result.runId)
+        is ForegroundGenerationResult.Error -> SyncRequestResult.Error(result.message)
+    }
+}
+
+/* Compatibility tooling keeps the standalone V3 publisher strict and
+ * available, but production Android triggers no longer select this path. */
+internal suspend fun publishLegacyBundleAndRequest(
+    exporter: SyncExporter,
+    requestOutbox: SyncRequestOutbox,
+): SyncRequestResult = withContext(Dispatchers.IO) {
     logDirectExchange("SYNC_BUNDLE", "coordinator.export.begin")
     when (val opened = exporter.openStorageSnapshot()) {
         is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error ->
@@ -90,9 +88,7 @@ internal suspend fun publishBundleAndRequest(
         is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready ->
             when (val publication = exporter.exportMobileBundle(opened.snapshot)) {
                 SyncExportResult.Unsupported -> SyncRequestResult.Unsupported
-                is SyncExportResult.Error -> SyncRequestResult.Error(
-                    "prepare:${publication.message}",
-                )
+                is SyncExportResult.Error -> SyncRequestResult.Error("prepare:${publication.message}")
                 is SyncExportResult.Exported -> {
                     logDirectExchange("SYNC_BUNDLE", "coordinator.export.success")
                     logDirectExchange("trainlog-sync-request-v1.json", "coordinator.request.begin")

@@ -12,6 +12,8 @@ import com.labfytools.trainlog.model.TrackingMode
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.util.zip.ZipInputStream
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,6 +25,30 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class AndroidBackupServiceTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Test
+    fun manifestUsesInjectedCanonicalProductVersion() {
+        val name = "backup-version-${UUID.randomUUID()}.db"
+        val repository = TrainlogRepository(context, name)
+        try {
+            val output = ByteArrayOutputStream()
+            val service = AndroidBackupService(context, "0.1.3-test")
+            assertTrue(service.create(repository, output) is AndroidBackupResult.Success)
+            var manifest: JSONObject? = null
+            ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (entry.name == "manifest.json") {
+                        manifest = JSONObject(zip.readBytes().toString(Charsets.UTF_8))
+                    }
+                }
+            }
+            assertEquals("0.1.3-test", checkNotNull(manifest).getString("product_version"))
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
 
     @Test
     fun completeBackupRestoresDraftPeerLedgersAndPreferences() {

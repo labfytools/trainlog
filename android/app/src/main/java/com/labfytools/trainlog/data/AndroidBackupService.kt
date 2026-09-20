@@ -26,7 +26,13 @@ internal data class VerifiedAndroidBackup(
 )
 
 /** Complete same-installation backup container; plaintext is explicit by design. */
-internal class AndroidBackupService(private val context: Context) {
+internal class AndroidBackupService(
+    private val context: Context,
+    private val productVersion: String =
+        checkNotNull(
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName,
+        ),
+) {
     companion object {
         const val FORMAT = "trainlog-android-backup"
         const val VERSION = 1
@@ -140,7 +146,7 @@ internal class AndroidBackupService(private val context: Context) {
                     .put("version", VERSION)
                     .put("package", context.packageName)
                     .put("schema", schema)
-                    .put("product_version", "0.1.2")
+                    .put("product_version", productVersion)
                     .put("plaintext", true)
                     .put("created_at", OffsetDateTime.now().toString())
                     .put(

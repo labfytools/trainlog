@@ -4,13 +4,22 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import re
 import signal
 import subprocess
+import sys
+import tempfile
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 STOP = False
+REQUEST_NAME = "trainlog-sync-request-v1.json"
+REQUEST_ID = re.compile(r"sr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
 
 def request_stop(
@@ -46,6 +55,126 @@ def append_log(
         handle.write("\n")
 
 
+def default_database() -> Path:
+    data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    return data_home / "trainlog/trainlog.db"
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    raw = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary = tempfile.mkstemp(prefix=".sync-run-", dir=path.parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def load_generation_config(path: Path) -> dict:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(value, dict)
+        or value.get("format") != "trainlog-sync-orchestrator-config"
+        or value.get("enabled") is not True
+        or value.get("mode") not in ("mtp", "auto")
+    ):
+        raise RuntimeError("trusted full-generation MTP configuration is invalid")
+    return value
+
+
+def request_id(path: Path) -> str | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    candidate = value.get("request_id")
+    if (
+        set(value) == {"format", "version", "request_id", "requested_at"}
+        and value.get("format") == "trainlog-sync-request"
+        and type(value.get("version")) is int
+        and value.get("version") == 1
+        and isinstance(candidate, str)
+        and REQUEST_ID.fullmatch(candidate)
+    ):
+        return candidate
+    return None
+
+
+def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
+    config = load_generation_config(config_path)
+    root = Path(config["transport_root"])
+    expected_peer = config["expected_peer_id"]
+    adapter = args.mtp_adapter
+    pull = subprocess.run(
+        [str(adapter), "pull", expected_peer, str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if pull.returncode != 0:
+        return 3
+    correlated_request = request_id(root / REQUEST_NAME)
+    if correlated_request is None:
+        return 3
+    if args.state.is_file():
+        try:
+            previous = json.loads(args.state.read_text(encoding="utf-8"))
+            if previous.get("request_id") == correlated_request:
+                return 3
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            pass
+    run_id = "sy_" + str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    atomic_json(
+        args.state,
+        {
+            "format": "trainlog-sync-run-report",
+            "version": 1,
+            "run_id": run_id,
+            "request_id": correlated_request,
+            "trigger": args.trigger,
+            "requested_mode": "full_generation_v1",
+            "effective_mode": "full_generation_v1",
+            "phase": "requested",
+            "progress_revision": 1,
+            "result": "running",
+            "started_at": now,
+            "updated_at": now,
+        },
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(args.orchestrator),
+            "--database",
+            str(args.database),
+            "--state",
+            str(args.state),
+            "--config",
+            str(config_path),
+            "--run-id",
+            run_id,
+            "--request-id",
+            correlated_request,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    append_log(result.stdout if result.returncode == 0 else result.stderr or result.stdout)
+    return result.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
 
@@ -53,6 +182,25 @@ def main() -> int:
         "--sync-once",
         required=True,
         type=Path,
+    )
+
+    parser.add_argument("--trigger", choices=("android", "daemon"), default="android")
+    parser.add_argument(
+        "--generation-config",
+        type=Path,
+        default=os.environ.get("TRAINLOG_SYNC_GENERATION_CONFIG"),
+    )
+    parser.add_argument(
+        "--orchestrator",
+        type=Path,
+        default=Path(__file__).with_name("sync_orchestrator.py"),
+    )
+    parser.add_argument("--database", type=Path, default=default_database())
+    parser.add_argument("--state", type=Path)
+    parser.add_argument(
+        "--mtp-adapter",
+        type=Path,
+        default=Path(os.environ.get("TRAINLOG_SYNC_MTP_ADAPTER", "")),
     )
 
     parser.add_argument(
@@ -63,10 +211,19 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if args.state is None:
+        # The Web adapter owns .sync-run.json. The daemon keeps independent
+        # durable request replay evidence while sharing the database lock.
+        args.state = Path(str(args.database) + ".syncd-run.json")
+
     if not args.sync_once.exists():
         raise SystemExit(
             f"sync executable missing: {args.sync_once}"
         )
+
+    if args.generation_config is not None:
+        if not args.orchestrator.is_file() or not args.mtp_adapter.is_file():
+            raise SystemExit("full-generation runtime is incomplete")
 
     signal.signal(
         signal.SIGTERM,
@@ -83,17 +240,21 @@ def main() -> int:
     )
 
     while not STOP:
-        result = subprocess.run(
-            [
-                str(args.sync_once),
-                "--request-only",
-                "--trigger",
-                "android",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        if args.generation_config is not None:
+            code = run_full_generation(args, args.generation_config)
+            result = subprocess.CompletedProcess([], code, "", "")
+        else:
+            result = subprocess.run(
+                [
+                    str(args.sync_once),
+                    "--request-only",
+                    "--trigger",
+                    args.trigger,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
 
         if result.returncode == 0:
             append_log(

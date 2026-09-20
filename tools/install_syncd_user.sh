@@ -9,10 +9,17 @@ ROOT="$(
 )"
 
 SYNC_ONCE="$ROOT/build/tui/trainlog-sync-once"
+MTP_ADAPTER="$ROOT/build/tui/trainlog-generation-mtp-adapter"
 DAEMON="$ROOT/tools/trainlog_syncd.py"
 
 if [[ ! -x "$SYNC_ONCE" ]]; then
   echo "missing executable: $SYNC_ONCE" >&2
+  echo "run meson compile -C build first" >&2
+  exit 1
+fi
+
+if [[ ! -x "$MTP_ADAPTER" ]]; then
+  echo "missing executable: $MTP_ADAPTER" >&2
   echo "run meson compile -C build first" >&2
   exit 1
 fi
@@ -37,7 +44,7 @@ Description=Trainlog Android MTP synchronization agent
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 "$DAEMON" --sync-once "$SYNC_ONCE" --interval 3
+ExecStart=/usr/bin/python3 "$DAEMON" --sync-once "$SYNC_ONCE" --mtp-adapter "$MTP_ADAPTER" --interval 3
 Restart=on-failure
 RestartSec=2
 

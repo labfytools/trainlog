@@ -94,7 +94,7 @@ def main() -> int:
     )
     syncd_launcher = args.output / "bin/trainlog-syncd"
     syncd_launcher.write_text(
-        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
     )
     files = sorted(path for path in args.output.rglob("*") if path.is_file())
     inventory = {
