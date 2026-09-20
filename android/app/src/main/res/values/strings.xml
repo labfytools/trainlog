@@ -94,6 +94,7 @@
     <string name="sync_action">Synchroniser</string>
     <string name="sync_snapshot_automatic">Le snapshot Android est maintenu automatiquement.</string>
     <string name="sync_running">Synchronisation en cours…</string>
+    <string name="sync_interrupted">Synchronisation interrompue. Une nouvelle tentative peut être lancée.</string>
     <string name="sync_now">Synchroniser maintenant</string>
     <string name="background_sync_title">Synchronisation en arrière-plan</string>
     <string name="background_sync_description">Permet à Trainlog de recevoir les synchronisations du PC sans ouvrir l’application.</string>

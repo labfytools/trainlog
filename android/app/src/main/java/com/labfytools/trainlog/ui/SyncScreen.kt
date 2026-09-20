@@ -29,6 +29,9 @@ import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.SyncRequestResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.ForegroundGenerationResult
+import com.labfytools.trainlog.data.BackgroundSyncRunLedger
+import com.labfytools.trainlog.data.SyncConversationArbiter
+import com.labfytools.trainlog.data.SyncConversationIntent
 import com.labfytools.trainlog.data.SyncGenerationForegroundCoordinator
 import com.labfytools.trainlog.data.BackgroundSyncSettings
 import com.labfytools.trainlog.data.SyncBackgroundService
@@ -52,39 +55,72 @@ internal suspend fun publishBundleAndRequest(
     exporter: SyncExporter,
     requestOutbox: SyncRequestOutbox,
     visibility: MtpPublicationVisibility = com.labfytools.trainlog.data.ImmediateMtpPublicationVisibility,
+    explicitClaim: SyncConversationArbiter.ExplicitClaim =
+        SyncConversationArbiter.process.announceExplicit(),
+    terminalLedger: BackgroundSyncRunLedger? = null,
 ): SyncRequestResult = withContext(Dispatchers.IO) {
-    val opened = exporter.openStorageSnapshot()
-    if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
-        return@withContext SyncRequestResult.Error("prepare:${opened.message}")
-    }
-    val snapshot = (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
-    /* CONTRACT: the request signal remains compatible with an unconfigured
-     * desktop, so publish the strict standalone V3 snapshot before admission.
-     * A configured daemon still routes the signal exclusively to the complete
-     * generation below; this compatibility publication never selects V3. */
-    when (val publication = exporter.exportMobileBundle(snapshot)) {
-        SyncExportResult.Unsupported -> return@withContext SyncRequestResult.Unsupported
-        is SyncExportResult.Error ->
-            return@withContext SyncRequestResult.Error("prepare:${publication.message}")
-        is SyncExportResult.Exported -> Unit
-    }
-    return@withContext when (
-        val result = SyncGenerationForegroundCoordinator(repository, visibility).run(
-            canonicalExchangeDirectory(),
-            afterPeerPublication = {
-                when (val request = requestOutbox.requestSync(snapshot)) {
-                    is SyncRequestResult.Requested -> Unit
-                    SyncRequestResult.Unsupported ->
-                        throw IllegalStateException("Generation synchronization is unsupported.")
-                    is SyncRequestResult.Error -> throw IllegalStateException(request.message)
-                    is SyncRequestResult.Completed ->
-                        throw IllegalStateException("Unexpected completed request signal.")
+    try {
+        val opened = exporter.openStorageSnapshot()
+        if (opened is com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Error) {
+            return@withContext SyncRequestResult.Error("prepare:${opened.message}")
+        }
+        val snapshot =
+            (opened as com.labfytools.trainlog.data.DirectExchangeSnapshotResult.Ready).snapshot
+        /* CONTRACT: the request signal remains compatible with an unconfigured
+         * desktop, so publish the strict standalone V3 snapshot before admission.
+         * A configured daemon still routes the signal exclusively to the complete
+         * generation below; this compatibility publication never selects V3. */
+        when (val publication = exporter.exportMobileBundle(snapshot)) {
+            SyncExportResult.Unsupported -> return@withContext SyncRequestResult.Unsupported
+            is SyncExportResult.Error ->
+                return@withContext SyncRequestResult.Error("prepare:${publication.message}")
+            is SyncExportResult.Exported -> Unit
+        }
+        val directory = canonicalExchangeDirectory()
+        val coordinator = SyncGenerationForegroundCoordinator(repository, visibility)
+        return@withContext when (
+            val result = coordinator.run(
+                directory,
+                afterPeerPublication = {
+                    when (val request = requestOutbox.requestSync(snapshot)) {
+                        is SyncRequestResult.Requested -> Unit
+                        SyncRequestResult.Unsupported ->
+                            throw IllegalStateException("Generation synchronization is unsupported.")
+                        is SyncRequestResult.Error -> throw IllegalStateException(request.message)
+                        is SyncRequestResult.Completed ->
+                            throw IllegalStateException("Unexpected completed request signal.")
+                    }
+                },
+                intent = SyncConversationIntent.NEW_EXPLICIT,
+                explicitClaim = explicitClaim,
+            )
+        ) {
+            is ForegroundGenerationResult.Completed -> SyncRequestResult.Completed(result.runId)
+            ForegroundGenerationResult.Busy ->
+                SyncRequestResult.Error("sync_interrupted")
+            is ForegroundGenerationResult.Superseded ->
+                SyncRequestResult.Error("sync_interrupted").also {
+                    result.runId?.let { runId ->
+                        terminalLedger?.recordTerminal(
+                            runId,
+                            coordinator.remoteEvidence(directory, runId),
+                        )
+                    }
                 }
-            },
-        )
-    ) {
-        is ForegroundGenerationResult.Completed -> SyncRequestResult.Completed(result.runId)
-        is ForegroundGenerationResult.Error -> SyncRequestResult.Error(result.message)
+            is ForegroundGenerationResult.Cancelled ->
+                SyncRequestResult.Error("sync_interrupted")
+            is ForegroundGenerationResult.Failed ->
+                SyncRequestResult.Error(result.message).also {
+                    result.runId?.let { runId ->
+                        terminalLedger?.recordTerminal(
+                            runId,
+                            coordinator.remoteEvidence(directory, runId),
+                        )
+                    }
+                }
+        }
+    } finally {
+        explicitClaim.close()
     }
 }
 
@@ -147,8 +183,11 @@ fun SyncScreen(
         add(strings.resources.getQuantityString(R.plurals.catalog_reconciled, reconciled, reconciled))
         skipped?.let { add(strings.resources.getQuantityString(R.plurals.catalog_present, it, it)) }
     }.joinToString(", ")
-    fun visibleError(raw: String): String = raw.removePrefix("prepare:").let {
-        if (raw.startsWith("prepare:")) strings.getString(R.string.sync_prepare_error, it) else raw
+    fun visibleError(raw: String): String = when {
+        raw == "sync_interrupted" -> strings.getString(R.string.sync_interrupted)
+        raw.startsWith("prepare:") ->
+            strings.getString(R.string.sync_prepare_error, raw.removePrefix("prepare:"))
+        else -> raw
     }
 
     var status by
@@ -393,15 +432,15 @@ fun SyncScreen(
                      * published from one prepared repository snapshot before
                      * that signal becomes visible; otherwise the PC can mix a
                      * fresh V3 file with stale or absent causal companions. */
-                    if (backgroundSettings.enabled) {
-                        /* WHY: Samsung may freeze the activity after USB mode
-                         * changes or a permission surface opens. CONTRACT: a
-                         * user-enabled foreground listener is refreshed before
-                         * the UI-owned conversation begins; the process lock
-                         * prevents it from creating a second generation. */
-                        SyncBackgroundService.start(context)
-                    }
+                    /* WHY: Samsung may freeze the activity after USB mode
+                     * changes or a permission surface opens. CONTRACT:
+                     * announce explicit priority before waking the service.
+                     * The service may keep Android alive, but cannot become
+                     * conversation owner while this claim is pending. */
+                    val explicitClaim = SyncConversationArbiter.process.announceExplicit()
+                    if (backgroundSettings.enabled) SyncBackgroundService.start(context)
                     syncRunning = true
+                    status = strings.getString(R.string.sync_running)
                     coroutineScope.launch {
                         try {
                             when (
@@ -410,6 +449,8 @@ fun SyncScreen(
                                     exporter,
                                     requestOutbox,
                                     AndroidMtpPublicationVisibility(context),
+                                    explicitClaim,
+                                    BackgroundSyncRunLedger(context),
                                 )
                             ) {
                                 is SyncRequestResult.Completed -> {
@@ -435,6 +476,7 @@ fun SyncScreen(
                                 }
                             }
                         } finally {
+                            explicitClaim.close()
                             syncRunning = false
                         }
                     }

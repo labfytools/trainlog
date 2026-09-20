@@ -76,6 +76,7 @@ class SyncBackgroundService : Service() {
                 requireNotNull(repository),
                 AndroidMtpPublicationVisibility(applicationContext),
             )
+            val terminalLedger = BackgroundSyncRunLedger(applicationContext)
             while (!stopped.get() && BackgroundSyncSettings(this).enabled) {
                 val directory = canonicalExchangeDirectory()
                 /* WHY: waiting inside run() owns the process-wide conversation
@@ -84,8 +85,36 @@ class SyncBackgroundService : Service() {
                  * the coordinator still validates all protocol evidence.
                  * INVARIANT: no request means no business work and no lock. */
                 coordinator.publishPeer(directory)
-                if (coordinator.hasActionableRequest(directory)) {
-                    coordinator.run(directory, Duration.ofMinutes(5))
+                val actionability =
+                    coordinator.classifyBackgroundRequest(directory, terminalLedger.terminal())
+                if (
+                    actionability == BackgroundRequestActionability.NEW_REQUEST ||
+                        actionability == BackgroundRequestActionability.NEW_REMOTE_EVIDENCE ||
+                        actionability == BackgroundRequestActionability.ACTIVE_HANDOFF
+                ) {
+                    when (
+                        val result = coordinator.run(
+                            directory,
+                            Duration.ofMinutes(5),
+                            intent = SyncConversationIntent.RESUME_BACKGROUND,
+                        )
+                    ) {
+                        is ForegroundGenerationResult.Completed ->
+                            terminalLedger.recordTerminal(
+                                result.runId,
+                                coordinator.remoteEvidence(directory, result.runId),
+                            )
+                        is ForegroundGenerationResult.Failed ->
+                            result.runId?.let {
+                                terminalLedger.recordTerminal(it, coordinator.remoteEvidence(directory, it))
+                            }
+                        is ForegroundGenerationResult.Superseded ->
+                            result.runId?.let {
+                                terminalLedger.recordTerminal(it, coordinator.remoteEvidence(directory, it))
+                            }
+                        ForegroundGenerationResult.Busy,
+                        is ForegroundGenerationResult.Cancelled -> Unit
+                    }
                 }
                 if (!stopped.get()) runCatching { Thread.sleep(5_000) }
             }

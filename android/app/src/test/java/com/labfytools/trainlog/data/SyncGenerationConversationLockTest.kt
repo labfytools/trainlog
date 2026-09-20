@@ -38,12 +38,8 @@ class SyncGenerationConversationLockTest {
             }
             assertTrue(entered.await(2, TimeUnit.SECONDS))
             val duplicate = background.run(root, Duration.ofMillis(10))
-            assertTrue(duplicate is ForegroundGenerationResult.Error)
-            assertEquals(
-                "Synchronization already in progress.",
-                (duplicate as ForegroundGenerationResult.Error).message,
-            )
-            assertTrue(active.get(2, TimeUnit.SECONDS) is ForegroundGenerationResult.Error)
+            assertEquals(ForegroundGenerationResult.Busy, duplicate)
+            assertTrue(active.get(2, TimeUnit.SECONDS) is ForegroundGenerationResult.Failed)
             repository.inSyncGenerationTransaction { database ->
                 database.rawQuery("SELECT COUNT(*) FROM sync_generations", null).use { cursor ->
                     assertTrue(cursor.moveToFirst())

@@ -291,10 +291,15 @@ class DriveSyncWorker(context: Context, parameters: WorkerParameters) :
             transport.pull(local)
             stage = "coordinate"
             val coordinator = SyncGenerationCoordinator(repository)
+            val terminalLedger = BackgroundSyncRunLedger(applicationContext)
             coordinator.publishPeer(local)
             stage = "peer-publication"
             transport.pushPeer(local)
-            if (!coordinator.hasActionableRequest(local)) {
+            val actionability = coordinator.classifyBackgroundRequest(local, terminalLedger.terminal())
+            if (
+                actionability == BackgroundRequestActionability.NOT_ACTIONABLE ||
+                    actionability == BackgroundRequestActionability.RESUMABLE_BUT_STALE
+            ) {
                 if (coordinator.hasReplayableAcknowledgement(local)) {
                     stage = "acknowledgement-replay"
                     transport.pushAcknowledgement(local)
@@ -322,8 +327,31 @@ class DriveSyncWorker(context: Context, parameters: WorkerParameters) :
                     stage = "acknowledgement"
                     transport.pushAcknowledgement(local)
                 },
+                intent = SyncConversationIntent.RESUME_BACKGROUND,
             )
-            if (result is ForegroundGenerationResult.Completed) Result.success() else Result.retry()
+            when (result) {
+                is ForegroundGenerationResult.Completed -> {
+                    terminalLedger.recordTerminal(
+                        result.runId,
+                        coordinator.remoteEvidence(local, result.runId),
+                    )
+                    Result.success()
+                }
+                ForegroundGenerationResult.Busy,
+                is ForegroundGenerationResult.Cancelled -> Result.success()
+                is ForegroundGenerationResult.Superseded -> {
+                    result.runId?.let {
+                        terminalLedger.recordTerminal(it, coordinator.remoteEvidence(local, it))
+                    }
+                    Result.success()
+                }
+                is ForegroundGenerationResult.Failed -> {
+                    result.runId?.let {
+                        terminalLedger.recordTerminal(it, coordinator.remoteEvidence(local, it))
+                    }
+                    Result.retry()
+                }
+            }
         } catch (error: Exception) {
             /* SECURITY: stage and exception class are fixed application
              * metadata.  Provider messages may contain private URIs and are

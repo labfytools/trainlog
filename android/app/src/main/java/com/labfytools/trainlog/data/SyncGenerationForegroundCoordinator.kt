@@ -13,8 +13,15 @@ import org.json.JSONObject
 
 internal sealed interface ForegroundGenerationResult {
     data class Completed(val runId: String) : ForegroundGenerationResult
+    data object Busy : ForegroundGenerationResult
+    data class Superseded(val runId: String?) : ForegroundGenerationResult
+    data class Cancelled(val runId: String?) : ForegroundGenerationResult
+    data class Failed(val message: String, val runId: String?) : ForegroundGenerationResult
+}
 
-    data class Error(val message: String) : ForegroundGenerationResult
+internal enum class SyncConversationIntent {
+    NEW_EXPLICIT,
+    RESUME_BACKGROUND,
 }
 
 internal fun interface SyncGenerationTrace {
@@ -43,6 +50,7 @@ internal class SyncGenerationCoordinator(
     private val repository: TrainlogRepository,
     private val visibility: MtpPublicationVisibility = ImmediateMtpPublicationVisibility,
     private val trace: SyncGenerationTrace = AndroidSyncGenerationTrace,
+    private val arbiter: SyncConversationArbiter = SyncConversationArbiter.process,
 ) {
     private val service = SyncGenerationService(repository)
 
@@ -53,14 +61,6 @@ internal class SyncGenerationCoordinator(
         generationId: String? = null,
         result: String? = null,
     ) = trace.record(runId, phase, artifact, generationId, result)
-
-    companion object {
-        /* WHY: UI and background triggers share one repository protocol and
-         * must never create concurrent runs. CONTRACT: this process-wide lock
-         * guards only one bounded conversation; SQLite remains the durable
-         * replay authority after process restart. */
-        private val conversationLock = java.util.concurrent.locks.ReentrantLock()
-    }
 
     internal fun resumableGeneration(runId: String, consumerPeerId: String? = null): CapturedSyncGeneration? =
         repository.inSyncGenerationTransaction { db ->
@@ -90,10 +90,10 @@ internal class SyncGenerationCoordinator(
             }
         }
 
-    internal fun hasActionableRequest(directory: File): Boolean {
+    private fun request(directory: File): JSONObject? {
         val path = File(directory, "request-v1.json")
-        if (!path.isFile || path.length() !in 1..64 * 1024) return false
-        val request = runCatching { JSONObject(path.readText()) }.getOrNull() ?: return false
+        if (!path.isFile || path.length() !in 1..64 * 1024) return null
+        val request = runCatching { JSONObject(path.readText()) }.getOrNull() ?: return null
         val runId = request.optString("run_id")
         val desktopPeerId = request.optString("desktop_peer_id")
         if (
@@ -102,15 +102,63 @@ internal class SyncGenerationCoordinator(
                 !runId.matches(Regex("^sy_[0-9a-f-]{36}$")) ||
                 !desktopPeerId.matches(Regex("^peer_[0-9a-f-]{36}$")) ||
                 request.optString("android_peer_id") != service.peerId()
-        ) return false
-        if (resumableGeneration(runId, desktopPeerId) != null) return true
-        return !repository.inSyncGenerationTransaction { db ->
+        ) return null
+        return request
+    }
+
+    private fun hasGeneration(runId: String): Boolean =
+        repository.inSyncGenerationTransaction { db ->
             db.rawQuery(
                 "SELECT 1 FROM sync_generations WHERE run_id=? LIMIT 1",
                 arrayOf(runId),
             ).use { it.moveToFirst() }
         }
+
+    internal fun remoteEvidence(directory: File, runId: String): String {
+        val evidence =
+            listOf(
+                    Triple("desktop-consumption-ack-v1.json", "trainlog-sync-ack", 1),
+                    Triple("desktop-generation-v1.json", "trainlog-sync-generation-reference", 1),
+                )
+                .mapNotNull { (name, format, version) ->
+                    val path = File(directory, name)
+                    if (!path.isFile || path.length() !in 1..64 * 1024) return@mapNotNull null
+                    val raw = runCatching { path.readBytes() }.getOrNull() ?: return@mapNotNull null
+                    val value = runCatching { JSONObject(raw.toString(Charsets.UTF_8)) }.getOrNull()
+                        ?: return@mapNotNull null
+                    if (
+                        value.optString("format") != format ||
+                            value.optInt("version", -1) != version ||
+                            value.optString("run_id") != runId
+                    ) return@mapNotNull null
+                    "$name:${java.security.MessageDigest.getInstance("SHA-256").digest(raw)
+                        .joinToString("") { "%02x".format(it) }}"
+                }
+        return evidence.sorted().joinToString("|")
     }
+
+    internal fun classifyBackgroundRequest(
+        directory: File,
+        terminal: BackgroundTerminalRun?,
+    ): BackgroundRequestActionability {
+        val request = request(directory) ?: return BackgroundRequestActionability.NOT_ACTIONABLE
+        val runId = request.getString("run_id")
+        val desktopPeerId = request.getString("desktop_peer_id")
+        val resumable = resumableGeneration(runId, desktopPeerId) != null
+        if (terminal?.runId == runId) {
+            val currentEvidence = remoteEvidence(directory, runId)
+            return if (currentEvidence.isNotEmpty() && currentEvidence != terminal.remoteEvidence)
+                BackgroundRequestActionability.NEW_REMOTE_EVIDENCE
+            else if (resumable) BackgroundRequestActionability.RESUMABLE_BUT_STALE
+            else BackgroundRequestActionability.NOT_ACTIONABLE
+        }
+        if (!hasGeneration(runId)) return BackgroundRequestActionability.NEW_REQUEST
+        if (resumable) return BackgroundRequestActionability.ACTIVE_HANDOFF
+        return BackgroundRequestActionability.NOT_ACTIONABLE
+    }
+
+    internal fun currentRequestRunId(directory: File): String? =
+        request(directory)?.optString("run_id")
 
     internal fun hasReplayableAcknowledgement(directory: File): Boolean {
         val request =
@@ -287,8 +335,10 @@ internal class SyncGenerationCoordinator(
         deadline: Long,
         predicate: (JSONObject) -> Boolean,
         pump: (() -> Unit)? = null,
+        lease: SyncConversationArbiter.Lease,
     ): ByteArray {
         while (true) {
+            lease.throwIfYieldRequested()
             if (path.isFile && path.length() <= 64 * 1024) {
                 try {
                     val raw = path.readBytes()
@@ -312,11 +362,27 @@ internal class SyncGenerationCoordinator(
         afterPublication: (() -> Unit)? = null,
         pollTransport: (() -> Unit)? = null,
         afterAcknowledgement: (() -> Unit)? = null,
+        intent: SyncConversationIntent = SyncConversationIntent.RESUME_BACKGROUND,
+        explicitClaim: SyncConversationArbiter.ExplicitClaim? = null,
     ): ForegroundGenerationResult {
-        if (!conversationLock.tryLock()) {
-            return ForegroundGenerationResult.Error("Synchronization already in progress.")
+        val claim =
+            if (intent == SyncConversationIntent.NEW_EXPLICIT)
+                explicitClaim ?: arbiter.announceExplicit()
+            else null
+        val lease = try {
+            claim?.acquire(timeout) ?: if (claim == null) arbiter.tryAcquireBackground() else null
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            claim?.close()
+            return ForegroundGenerationResult.Cancelled(null)
         }
+        if (lease == null) {
+            claim?.close()
+            return ForegroundGenerationResult.Busy
+        }
+        var currentRunId: String? = null
         return try {
+            val baselineRunId = request(directory)?.optString("run_id")
             val peer = publishPeer(directory)
             phase(null, "peer_published", "android-peer-v1.json")
             /* WHY: trainlog-syncd is intentionally driven by the established
@@ -325,23 +391,23 @@ internal class SyncGenerationCoordinator(
              * identity before its caller emits one fresh request signal.
              * INVARIANT: a failed attempt's request, run, generations, and
              * ACK evidence remain immutable; retry creates new correlation. */
-            afterPeerPublication?.invoke()
-            phase(null, "legacy_trigger_published", "trainlog-sync-request-v1.json")
+            afterPeerPublication?.let {
+                it.invoke()
+                phase(null, "legacy_trigger_published", "trainlog-sync-request-v1.json")
+            }
             val deadline = System.nanoTime() + timeout.toNanos()
             val requestRaw =
                 awaitCorrelated(File(directory, "request-v1.json"), deadline, { candidate ->
                     val runId = candidate.optString("run_id")
-                    runId.startsWith("sy_") &&
-                        (resumableGeneration(runId) != null ||
-                            !repository.inSyncGenerationTransaction { db ->
-                                db.rawQuery(
-                                    "SELECT 1 FROM sync_generations WHERE run_id=? LIMIT 1",
-                                    arrayOf(runId),
-                                ).use { it.moveToFirst() }
-                            })
-                }, pollTransport)
+                    runId.startsWith("sy_") && when (intent) {
+                        SyncConversationIntent.NEW_EXPLICIT -> runId != baselineRunId
+                        SyncConversationIntent.RESUME_BACKGROUND ->
+                            resumableGeneration(runId) != null || !hasGeneration(runId)
+                    }
+                }, pollTransport, lease)
             val request = JSONObject(requestRaw.toString(Charsets.UTF_8))
             val runId = request.getString("run_id")
+            currentRunId = runId
             phase(runId, "generation_request_observed", "request-v1.json")
             if (request.getString("android_peer_id") != peer)
                 throw SyncGenerationException("request targets another Android peer")
@@ -354,6 +420,7 @@ internal class SyncGenerationCoordinator(
                             it.optString("android_peer_id") == peer
                     },
                     pollTransport,
+                    lease,
                 )
             reconcileArchiveAcknowledgements(
                 archiveAckRaw,
@@ -370,6 +437,7 @@ internal class SyncGenerationCoordinator(
              * an acknowledged outbound generation remains resumable only to
              * finish its missing inbound half. */
             phase(runId, "generation_capture_started")
+            lease.throwIfYieldRequested()
             val captured =
                 resumableGeneration(
                     request.getString("run_id"),
@@ -379,11 +447,13 @@ internal class SyncGenerationCoordinator(
                     request.getString("desktop_peer_id"),
                     request.getString("run_id"),
                 )
+            lease.throwIfYieldRequested()
             phase(runId, "generation_captured", generationId = captured.generationId)
             val published = service.publish(captured, File(directory, "android-objects"))
             visibility.confirm(
                 published.walkTopDown().filter(File::isFile).sortedBy { it.name == "manifest.json" }.toList()
             )
+            lease.throwIfYieldRequested()
             phase(
                 runId,
                 "generation_objects_published",
@@ -410,6 +480,7 @@ internal class SyncGenerationCoordinator(
                 captured.generationId,
             )
             afterPublication?.invoke()
+            lease.throwIfYieldRequested()
             // CONTRACT: durable objects from earlier conversations remain in
             // the exchange directory. Only this run's exact generation ACK
             // can advance its lineage; stale bytes are retained and ignored.
@@ -417,13 +488,13 @@ internal class SyncGenerationCoordinator(
                 awaitCorrelated(File(directory, "desktop-consumption-ack-v1.json"), deadline, {
                     it.optString("run_id") == captured.runId &&
                         it.optString("generation_id") == captured.generationId
-                }, pollTransport)
+                }, pollTransport, lease)
             service.acceptAcknowledgement(desktopAck)
             phase(runId, "desktop_ack_observed", "desktop-consumption-ack-v1.json", captured.generationId)
             val referenceRaw =
                 awaitCorrelated(File(directory, "desktop-generation-v1.json"), deadline, {
                     it.optString("run_id") == captured.runId
-                }, pollTransport)
+                }, pollTransport, lease)
             val reference = JSONObject(referenceRaw.toString(Charsets.UTF_8))
             phase(
                 runId,
@@ -458,6 +529,13 @@ internal class SyncGenerationCoordinator(
             afterAcknowledgement?.invoke()
             phase(runId, "completed", result = "completed")
             ForegroundGenerationResult.Completed(captured.runId)
+        } catch (_: SyncConversationYieldedException) {
+            phase(currentRunId, "superseded", result = "foreground_priority")
+            ForegroundGenerationResult.Superseded(currentRunId)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            phase(currentRunId, "cancelled", result = "interrupted")
+            ForegroundGenerationResult.Cancelled(currentRunId)
         } catch (error: Exception) {
             if (error.message == "generation retention capacity exhausted") {
                 try {
@@ -486,9 +564,13 @@ internal class SyncGenerationCoordinator(
                 "error",
                 result = error.javaClass.simpleName,
             )
-            ForegroundGenerationResult.Error(error.message ?: "generation synchronization failed")
+            ForegroundGenerationResult.Failed(
+                error.message ?: "generation synchronization failed",
+                currentRunId,
+            )
         } finally {
-            conversationLock.unlock()
+            lease.close()
+            claim?.close()
         }
     }
 }

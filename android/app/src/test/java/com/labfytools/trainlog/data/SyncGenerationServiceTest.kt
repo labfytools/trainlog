@@ -357,9 +357,15 @@ class SyncGenerationServiceTest {
         val repository = TrainlogRepository(context, databaseName)
         try {
             val coordinator = SyncGenerationCoordinator(repository)
-            assertEquals(false, coordinator.hasActionableRequest(root))
+            assertEquals(
+                BackgroundRequestActionability.NOT_ACTIONABLE,
+                coordinator.classifyBackgroundRequest(root, null),
+            )
             File(root, "request-v1.json").writeText("not-json")
-            assertEquals(false, coordinator.hasActionableRequest(root))
+            assertEquals(
+                BackgroundRequestActionability.NOT_ACTIONABLE,
+                coordinator.classifyBackgroundRequest(root, null),
+            )
 
             val peer = SyncGenerationService(repository).peerId()
             val request =
@@ -370,11 +376,17 @@ class SyncGenerationServiceTest {
                     .put("android_peer_id", "peer_${UUID.randomUUID()}")
                     .put("desktop_peer_id", "peer_${UUID.randomUUID()}")
             File(root, "request-v1.json").writeText(request.toString())
-            assertEquals(false, coordinator.hasActionableRequest(root))
+            assertEquals(
+                BackgroundRequestActionability.NOT_ACTIONABLE,
+                coordinator.classifyBackgroundRequest(root, null),
+            )
 
             request.put("android_peer_id", peer)
             File(root, "request-v1.json").writeText(request.toString())
-            assertEquals(true, coordinator.hasActionableRequest(root))
+            assertEquals(
+                BackgroundRequestActionability.NEW_REQUEST,
+                coordinator.classifyBackgroundRequest(root, null),
+            )
         } finally {
             repository.close()
             context.deleteDatabase(databaseName)

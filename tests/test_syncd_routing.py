@@ -74,6 +74,58 @@ class SyncdRoutingTest(unittest.TestCase):
                 self.assertEqual(trigger, state["trigger"])
                 self.assertEqual("full_generation_v1", state["effective_mode"])
 
+    def test_consumed_request_id_does_not_create_a_second_desktop_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            transport = root / "transport"
+            transport.mkdir()
+            request = "sr_22222222-2222-4222-8222-222222222222"
+            config = root / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "format": "trainlog-sync-orchestrator-config",
+                        "version": 1,
+                        "enabled": True,
+                        "mode": "mtp",
+                        "expected_peer_id": "peer_11111111-1111-4111-8111-111111111111",
+                        "transport_root": str(transport),
+                        "owned_root": str(root / "owned"),
+                        "timeout_seconds": 30,
+                    }
+                )
+            )
+            state = root / "trainlog.db.sync-run.json"
+            state.write_text(json.dumps({"request_id": request, "run_id": "sy_old"}))
+            args = argparse.Namespace(
+                mtp_adapter=root / "adapter",
+                state=state,
+                trigger="android",
+                orchestrator=root / "sync_orchestrator.py",
+                database=root / "trainlog.db",
+            )
+            commands = []
+
+            def execute(command, **_kwargs):
+                commands.append(command)
+                (transport / syncd.REQUEST_NAME).write_text(
+                    json.dumps(
+                        {
+                            "format": "trainlog-sync-request",
+                            "version": 1,
+                            "request_id": request,
+                            "requested_at": "2026-09-20T12:00:00Z",
+                        }
+                    )
+                )
+                return subprocess.CompletedProcess(command, 0, "PASS\n", "")
+
+            with mock.patch.object(syncd.subprocess, "run", side_effect=execute):
+                self.assertEqual(3, syncd.run_full_generation(args, config))
+            self.assertEqual(str(args.mtp_adapter), commands[0][0])
+            self.assertEqual(1, len(commands))
+            self.assertEqual("sy_old", json.loads(state.read_text())["run_id"])
+
     def test_android_production_trigger_no_longer_uses_opt_in_or_legacy_export(self):
         source = (ROOT / "android/app/src/main/java/com/labfytools/trainlog/ui/SyncScreen.kt").read_text()
         production = source.split("internal suspend fun publishBundleAndRequest", 1)[1].split(
