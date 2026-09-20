@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -378,7 +379,7 @@ private fun BodyMetricField(
     )
 }
 
-private data class BodyMetricItem(
+internal data class BodyMetricItem(
     val label: String,
     val unit: String,
     val value: String,
@@ -386,10 +387,19 @@ private data class BodyMetricItem(
 )
 
 /** Two columns retain scanability; very narrow accessibility layouts stack. */
+internal fun bodyMetricColumnCount(availableWidthDp: Float, fontScale: Float): Int {
+    val twoCompactFieldsDp = 2 * 140f + 10f
+    return if (availableWidthDp >= twoCompactFieldsDp && fontScale < 1.5f) 2 else 1
+}
+
 @Composable
-private fun ColumnScope.BodyMetricGrid(items: List<BodyMetricItem>) {
+internal fun ColumnScope.BodyMetricGrid(items: List<BodyMetricItem>) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth < 330.dp) 1 else 2
+        /* WHY: this 360 dp device has 312 dp after screen padding; the old
+         * 330 dp threshold therefore stacked fields that need only 140 dp.
+         * CONTRACT: two compact fields plus their 10 dp gutter are preferred
+         * unless width or accessibility font scaling makes them unreadable. */
+        val columns = bodyMetricColumnCount(maxWidth.value, LocalDensity.current.fontScale)
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
             items.chunked(columns).forEach { rowItems ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
