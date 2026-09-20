@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 0.1.3
+## 0.1.3 — 2026-09-20
 
 - Decoupled the Android full-generation request from the strict legacy V3
   compatibility signal. One explicit intent now publishes the dedicated

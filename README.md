@@ -52,9 +52,9 @@ Each published stable release provides:
 - SHA-256 checksums.
 
 Both mirrors publish the same Trainlog product version and release assets. The
-current development version is **0.1.3** on Android and desktop; this is one
-shared Trainlog version, not separate interface versions. Version 0.1.2 is the
-latest stable release.
+latest stable version is **0.1.3** on Android and desktop; this is one shared
+Trainlog version, not separate interface versions. Version 0.1.2 is the
+previous stable release.
 
 Trainlog presents French by default, with English selectable
 from **Settings → Language** on Android and the desktop TUI. The selection is
@@ -157,7 +157,7 @@ updates; generating a replacement key is not a normal release procedure.
 
 ### Linux runtime dependencies
 
-The published v0.1.2 x86-64 desktop runtime is dynamically linked. Its tagged
+The published v0.1.3 x86-64 desktop runtime is dynamically linked. Its tagged
 source directly requires compatible versions of:
 
 - glibc and the GCC support runtime;
@@ -169,7 +169,7 @@ source directly requires compatible versions of:
 - Notcurses Core;
 - the standard math library.
 
-Version 0.1.2 additionally links GNU libmicrohttpd and yyjson for the local Web
+Version 0.1.3 additionally links GNU libmicrohttpd and yyjson for the local Web
 adapter and Dashboard layout configuration. Those are not retroactive
 requirements of the pre-Web v0.1.1 tagged source.
 

@@ -60,8 +60,8 @@ the private `Trainlog/Sync/v1` namespace is configured as a verified mirror and
 fallback, independently from `Trainlog/AI`. Cross-transport replay is
 idempotent and neither transport carries SQLite.
 
-The public Android release chain advances from v0.1.1 versionCode 2 to v0.1.2
-versionCode 3 under certificate SHA-256
+The public Android release chain advances from v0.1.1 versionCode 2 through
+v0.1.2 versionCode 3 to v0.1.3 versionCode 4 under certificate SHA-256
 `5ef41117da107c9805ae3215c5ec823cff06216610e6e4f7542a754161c71bd2`.
 Higher-numbered private validation builds used a separate Android Debug
 certificate and are not members of the public update-signature chain.
@@ -111,7 +111,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v25 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.3` development, synchronized across Android and desktop; latest stable release: `v0.1.2` |
+| Trainlog product version | `0.1.3` stable, synchronized across Android and desktop; latest stable release: `v0.1.3` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
