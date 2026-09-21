@@ -106,6 +106,106 @@ class SessionPreparationExchangeTest {
     }
 
     @Test
+    fun startingMixedPreparationCopiesTargetsWithoutPerformedRows() {
+        val name = "prepared-mixed-${System.nanoTime()}.db"
+        val repository = TrainlogRepository(context, name)
+        try {
+            assertTrue(
+                repository.createExercise(
+                    NewExerciseProfile(
+                        name = "Test prepared walk",
+                        recordingMode = RecordingMode.CONTINUOUS,
+                        trackingMode = TrackingMode.DURATION,
+                        dataFields = 0,
+                    ),
+                ) is CreateExerciseResult.Created,
+            )
+            assertTrue(
+                repository.createExercise(
+                    NewExerciseProfile(
+                        name = "Test prepared press",
+                        recordingMode = RecordingMode.SETS,
+                        trackingMode = TrackingMode.REPS,
+                        dataFields = 0,
+                    ),
+                ) is CreateExerciseResult.Created,
+            )
+            val continuous = repository.listExercises().single { it.name == "Test prepared walk" }
+            val sets = repository.listExercises().single { it.name == "Test prepared press" }
+            val payload = JSONObject(artifact(repository))
+            val delivery = payload.getJSONArray("deliveries").getJSONObject(0)
+            delivery.put(
+                "occurrences",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("entry_id", "spe_11111111-1111-4111-8111-111111111111")
+                            .put("position", 0)
+                            .put("exercise_id", continuous.exerciseId)
+                            .put("equipment_id", JSONObject.NULL)
+                            .put("recording_mode", "continuous")
+                            .put("tracking_mode", "duration")
+                            .put("data_fields", continuous.dataFields)
+                            .put("load_mode", "none")
+                            .put("rest_seconds", 0)
+                            .put("target_sets", JSONObject.NULL)
+                            .put("target_reps", JSONObject.NULL)
+                            .put("target_duration_seconds", 600)
+                            .put("target_weight_kg", JSONObject.NULL)
+                            .put("notes", "Target only"),
+                    )
+                    .put(
+                        JSONObject()
+                            .put("entry_id", "spe_22222222-2222-4222-8222-222222222222")
+                            .put("position", 1)
+                            .put("exercise_id", sets.exerciseId)
+                            .put("equipment_id", JSONObject.NULL)
+                            .put("recording_mode", "sets")
+                            .put("tracking_mode", "reps")
+                            .put("data_fields", sets.dataFields)
+                            .put("load_mode", "external")
+                            .put("rest_seconds", 90)
+                            .put("target_sets", 3)
+                            .put("target_reps", 10)
+                            .put("target_duration_seconds", JSONObject.NULL)
+                            .put("target_weight_kg", 52.0)
+                            .put("notes", JSONObject.NULL),
+                    ),
+            )
+
+            assertEquals(
+                AiSessionDraftImportResult.Applied(1, 0),
+                repository.applySessionPreparationsJson(payload.toString()),
+            )
+            assertEquals(
+                StartAiSessionDraftResult.Started,
+                repository.startPreparedSession("spd_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            )
+            val loadResult = repository.loadActiveSessionDraft()
+            assertTrue(loadResult.toString(), loadResult is ActiveDraftLoadResult.Loaded)
+            val active = loadResult as ActiveDraftLoadResult.Loaded
+            assertEquals(2, active.draft.exercises.size)
+            assertEquals(600, active.draft.exercises[0].plan?.durationSeconds)
+            assertEquals(0, active.draft.exercises[0].continuousDurationSeconds)
+            assertEquals(3, active.draft.exercises[1].plan?.sets)
+            assertEquals(10, active.draft.exercises[1].plan?.reps)
+            assertEquals(52.0, active.draft.exercises[1].plan?.weightKg)
+            assertTrue(active.draft.exercises[1].sets.isEmpty())
+            assertEquals(1, scalarInt(name, "SELECT COUNT(*) FROM active_session_draft"))
+            assertEquals(0, scalarInt(name, "SELECT COUNT(*) FROM draft_continuous_activity"))
+            assertEquals(0, scalarInt(name, "SELECT COUNT(*) FROM draft_performed_sets"))
+            assertEquals(0, scalarInt(name, "SELECT COUNT(*) FROM draft_max_results"))
+            assertEquals(0, scalarInt(name, "SELECT COUNT(*) FROM draft_exercise_feedback"))
+            assertEquals(0, scalarInt(name, "SELECT COUNT(*) FROM sessions"))
+            assertEquals("ok", scalarText(name, "PRAGMA integrity_check"))
+            assertEquals(0, scalarInt(name, "SELECT COUNT(*) FROM pragma_foreign_key_check"))
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
     fun deliveryReplaysStartsExplicitlyAndNeverOverwritesActiveDraft() {
         val name = "prepared-${System.nanoTime()}.db"
         var repository = TrainlogRepository(context, name)

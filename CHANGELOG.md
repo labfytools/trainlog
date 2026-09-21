@@ -2,6 +2,10 @@
 
 ## Unreleased — 0.1.4
 
+- Fixed Android activation of mixed session preparations containing continuous
+  duration targets and set-based exercises. Continuous target metadata now
+  remains planning-only, SQL `NULL` set counts round-trip correctly, and no
+  performed continuous activity or set is created before user capture.
 - Added Sleep Diary V1 across desktop schema v29, Android schema v26, Analyse,
   full-generation synchronization and a deterministic local vector PDF agenda.
   Entries retain causal revisions, absolute timestamped events, the five-value

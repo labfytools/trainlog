@@ -7838,6 +7838,8 @@ class TrainlogRepository(
                     exercise.recordingMode ==
                     RecordingMode.CONTINUOUS
                 ) {
+                    /* CONTRACT: a target-only continuous occurrence has no
+                     * performed row until the user records actual activity. */
                     val continuous =
                         db.query(
                             "draft_continuous_activity",
@@ -7852,30 +7854,21 @@ class TrainlogRepository(
                             null,
                             null,
                         ).use { item ->
-                            check(item.moveToFirst()) {
-                                "Activité continue du brouillon manquante."
-                            }
-
-                            SessionExerciseDraft(
+                            val base = SessionExerciseDraft(
                                 entryId = entryId,
                                 exercise = exercise,
                                 equipmentId = equipmentId,
                                 plan = plan,
-                                continuousDurationSeconds =
-                                    item.getInt(0),
-                                speedKmh =
-                                    if (item.isNull(1)) {
-                                        null
-                                    } else {
-                                        item.getDouble(1)
-                                    },
-                                distanceKm =
-                                    if (item.isNull(2)) {
-                                        null
-                                    } else {
-                                        item.getDouble(2)
-                                    },
                             )
+                            if (!item.moveToFirst()) {
+                                base
+                            } else {
+                                base.copy(
+                                    continuousDurationSeconds = item.getInt(0),
+                                    speedKmh = if (item.isNull(1)) null else item.getDouble(1),
+                                    distanceKm = if (item.isNull(2)) null else item.getDouble(2),
+                                )
+                            }
                         }
                     exercises += continuous
                 } else {
@@ -8107,28 +8100,35 @@ class TrainlogRepository(
                 exerciseDraft.exercise.recordingMode ==
                 RecordingMode.CONTINUOUS
             ) {
-                val continuousValues =
-                    ContentValues().apply {
-                        put(
-                            "draft_exercise_row_id",
-                            draftExerciseRowId,
-                        )
-                        put(
-                            "duration_seconds",
-                            exerciseDraft.continuousDurationSeconds,
-                        )
-                        exerciseDraft.speedKmh?.let {
-                            put("speed_kmh", it)
+                /*
+                 * A continuous target is planning data, not performed data.
+                 * Do not manufacture a performed activity when a planned draft
+                 * is first activated.
+                 */
+                if (exerciseDraft.continuousDurationSeconds > 0) {
+                    val continuousValues =
+                        ContentValues().apply {
+                            put(
+                                "draft_exercise_row_id",
+                                draftExerciseRowId,
+                            )
+                            put(
+                                "duration_seconds",
+                                exerciseDraft.continuousDurationSeconds,
+                            )
+                            exerciseDraft.speedKmh?.let {
+                                put("speed_kmh", it)
+                            }
+                            exerciseDraft.distanceKm?.let {
+                                put("distance_km", it)
+                            }
                         }
-                        exerciseDraft.distanceKm?.let {
-                            put("distance_km", it)
-                        }
-                    }
-                db.insertOrThrow(
-                    "draft_continuous_activity",
-                    null,
-                    continuousValues,
-                )
+                    db.insertOrThrow(
+                        "draft_continuous_activity",
+                        null,
+                        continuousValues,
+                    )
+                }
             } else {
                 exerciseDraft.sets.forEachIndexed {
                         setIndex,
@@ -9168,7 +9168,10 @@ private fun ContentValues.putSessionPlan(plan: SessionExercisePlan?) {
         putNull("target_duration_seconds")
         putNull("target_weight_kg")
     } else {
-        put("target_sets", plan.sets)
+        /* CONTRACT: continuous plans have no set count. The in-memory model
+         * uses zero for that absence, while the durable schema uses NULL and
+         * reserves positive target_sets for set-based occurrences. */
+        if (plan.sets == 0) putNull("target_sets") else put("target_sets", plan.sets)
         if (plan.reps == null) putNull("target_reps") else put("target_reps", plan.reps)
         if (plan.durationSeconds == null) putNull("target_duration_seconds")
         else put("target_duration_seconds", plan.durationSeconds)
@@ -9179,15 +9182,21 @@ private fun ContentValues.putSessionPlan(plan: SessionExercisePlan?) {
 private fun readSessionPlan(cursor: Cursor, start: Int): SessionExercisePlan? {
     val loadMode = SessionLoadMode.fromWire(cursor.getString(start))
     val restSeconds = cursor.getInt(start + 1)
-    if (cursor.isNull(start + 2)) {
-        check(loadMode == SessionLoadMode.NONE && restSeconds == 0 &&
-            cursor.isNull(start + 3) && cursor.isNull(start + 4) && cursor.isNull(start + 5)) {
+    val hasTarget =
+        !cursor.isNull(start + 2) ||
+            !cursor.isNull(start + 3) ||
+            !cursor.isNull(start + 4) ||
+            !cursor.isNull(start + 5)
+    if (!hasTarget) {
+        check(loadMode == SessionLoadMode.NONE && restSeconds == 0) {
             "Métadonnées de plan cible incohérentes"
         }
         return null
     }
+    /* INVARIANT: SQL NULL target_sets is preserved as the model's zero
+     * marker only when other target data proves that a plan exists. */
     return SessionExercisePlan(
-        sets = cursor.getInt(start + 2),
+        sets = if (cursor.isNull(start + 2)) 0 else cursor.getInt(start + 2),
         reps = if (cursor.isNull(start + 3)) null else cursor.getInt(start + 3),
         durationSeconds = if (cursor.isNull(start + 4)) null else cursor.getInt(start + 4),
         weightKg = if (cursor.isNull(start + 5)) null else cursor.getDouble(start + 5),

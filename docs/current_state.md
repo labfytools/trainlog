@@ -45,6 +45,10 @@ and an accessible send action. Draft/local advances the same preparation to a
 ready revision before delivery; ready/local delivers the current revision.
 Completed history hides the active preparation exclusively through the
 delivery's stable execution-session identity and retains all provenance.
+Starting a delivered mixed preparation preserves continuous duration targets
+and set/repetition/load/rest targets in the active singleton without creating
+performed continuous activity, performed sets, MAX results, history, or
+feedback before explicit user capture.
 
 The opt-in full-generation path is operational on the private daily
 installation. Android explicit synchronization uses a dedicated coordination
