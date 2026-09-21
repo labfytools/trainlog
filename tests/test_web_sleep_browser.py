@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / os.environ.get("TRAINLOG_WEB_E2E_BUILD", "build") / "tui"
+EXECUTABLE = Path(os.environ.get("TRAINLOG_WEB_E2E_EXECUTABLE", BUILD / "trainlog"))
 GECKO = Path(
     os.environ.get(
         "TRAINLOG_GECKODRIVER", "/home/fy59/.cache/trainlog/web-e2e-tools/geckodriver"
@@ -46,11 +47,15 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     "XDG_CACHE_HOME": str(root / "cache"),
                 }
             )
-            with socket.socket() as reserved:
-                reserved.bind(("127.0.0.1", 0))
-                port = reserved.getsockname()[1]
+            configured_port = os.environ.get("TRAINLOG_WEB_E2E_PORT")
+            if configured_port is None:
+                with socket.socket() as reserved:
+                    reserved.bind(("127.0.0.1", 0))
+                    port = reserved.getsockname()[1]
+            else:
+                port = int(configured_port)
             server = subprocess.Popen(
-                [str(BUILD / "trainlog"), "--web", "--port", str(port)],
+                [str(EXECUTABLE), "--web", "--port", str(port)],
                 env=environment,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -70,7 +75,10 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                 driver = webdriver.Firefox(options=options, service=Service(str(GECKO)))
                 driver.set_window_size(1440, 1100)
                 wait = WebDriverWait(driver, 15)
-                driver.get(f"http://127.0.0.1:{port}/analyse?section=sleep")
+                base_url = os.environ.get(
+                    "TRAINLOG_WEB_E2E_BASE_URL", f"http://127.0.0.1:{port}"
+                )
+                driver.get(f"{base_url}/analyse?section=sleep")
                 wait.until(
                     lambda current: current.find_element(
                         By.CSS_SELECTOR, "[data-testid='sleep-workspace']"
