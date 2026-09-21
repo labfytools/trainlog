@@ -1,5 +1,21 @@
 # Desktop database
 
+## Schema v29: Sleep Diary V1
+
+Schema v29 additively owns `sleep_diary_entries`, immutable
+`sleep_diary_revisions`, and revision-owned `sleep_diary_events`. An entry is
+one night and its associated day. Point events have an offset-bearing
+`start_at`; intervals additionally have an absolute `end_at` strictly after
+their start. The 18:00-to-18:00 agenda is only a projection and is never stored
+as cells.
+
+Mutations advance `current_revision_id` only when the caller supplies the
+current parent. Logical deletion advances the revision and retains the
+tombstone. Qualities preserve `TB`, `B`, `Moy`, `M`, and `TM` exactly.
+
+The absolute timestamps are the future heart-rate correlation boundary. Sleep
+Diary V1 does not store, infer, or simulate heart-rate data.
+
 ## Schema v28: terminal Program execution provenance
 
 Schema v28 extends `program_session_executions.state` with the terminal

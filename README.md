@@ -24,7 +24,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.4 development) | Display the Dashboard, the operational Programmes calendar, Sessions administration, and the desktop exercise catalogue through typed Trainlog Core/API boundaries. Exercises supports search/filter, detail, creation, editing and causal retirement; equipment is read-only. Analyse is the current implementation cursor. |
+| Local Web (0.1.4 development) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, 18:00-to-18:00 agenda and local vector PDF export. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -335,7 +335,7 @@ not contain cloud credentials and does not run `rclone`.
 As of 2026-09-18:
 
 - `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
-- desktop SQLite schema v28 and Android SQLite schema v25;
+- desktop SQLite schema v29 and Android SQLite schema v26;
 - Notcurses is the only active desktop terminal backend;
 - direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
   all-files access setting;

@@ -107,8 +107,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v28 |
-| Android SQLite | schema v25 |
+| Desktop SQLite | schema v29; Sleep Diary V1 is additive in v29 |
+| Android SQLite | schema v26; Sleep Diary V1 is additive in v26 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.4` development, synchronized across Android and desktop; latest stable release: `v0.1.3` |
@@ -129,6 +129,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
+| Sleep Diary V1 | Implemented on the 0.1.4 review branch: timestamped causal diary, Web/Android capture, full-generation companion and local vector PDF |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |

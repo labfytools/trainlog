@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.4
 
+- Added Sleep Diary V1 across desktop schema v29, Android schema v26, Analyse,
+  full-generation synchronization and a deterministic local vector PDF agenda.
+  Entries retain causal revisions, absolute timestamped events, the five-value
+  appreciation scale and user-authored notes; no medical interpretation or
+  heart-rate data is introduced.
+
 Development opened after stable v0.1.3 release.
 
 - Implemented the loopback-only Web Analyse V1 workspace and shared bounded

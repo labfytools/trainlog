@@ -1,5 +1,18 @@
 # Synchronization exchange
 
+## Sleep Diary companion
+
+`trainlog-sleep-diary`, version 1, is emitted by full generations on the 0.1.4
+Sleep Diary branch. It is optional when consuming an older generation so a
+pre-domain artifact remains replayable. It carries bounded complete entry snapshots with
+stable identities, the current immutable revision and causal parent,
+offset-bearing timestamps, appreciations, notes and logical deletion. Exact
+revision replay is unchanged; sibling revisions and resurrection after deletion
+are rejected in the generation consumption transaction.
+
+This does not change `TRAINLOG_FORMAT_V1`, manifests, ACKs, MTP or Drive
+transport ownership.
+
 ## USB-priority and private Drive transport
 
 Full-generation synchronization has one business engine and two byte

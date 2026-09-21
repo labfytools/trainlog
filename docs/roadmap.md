@@ -29,7 +29,7 @@ distinction between measured values and estimates.
 ## Current baseline
 
 Stable v0.1.2 is the release baseline for the v0.1.3 development cycle.
-Desktop schema v28, Android schema v25, Notcurses, direct `Documents/Trainlog`
+Desktop schema v29, Android schema v26, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
 Generator V1 is hidden pending V2. AI session-draft exchange retains its
@@ -57,6 +57,10 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 The v0.1.4 cursor proceeds from stable v0.1.3 and its validated Web, Program
 execution, USB/Drive generation, ACK, and causal-deletion contracts without
 reopening those completed gates.
+
+Sleep Diary V1 is implemented on `trainlog-0.1.4-sleep-diary-v1` and remains
+under grouped review before integration. Heart-rate sensor ingestion remains
+future scope; absolute diary timestamps are its prepared extension boundary.
 
 ```text
 CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_ANALYSIS_V1

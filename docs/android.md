@@ -1,5 +1,13 @@
 # Android application
 
+## Sleep Diary V1
+
+Android schema v26 additively mirrors the Sleep Diary revision/event model for
+local-first field capture. Its compact Morning and Day sections edit one
+durable night/day entry without reproducing the desktop/PDF grid. Creation,
+correction and logical deletion are revision guarded and survive repository
+reopen. Full-generation exchange transports the companion, never SQLite.
+
 ## Background USB and private Drive synchronization
 
 SyncScreen and the explicitly enabled background service invoke one

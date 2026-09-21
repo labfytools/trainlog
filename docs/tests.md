@@ -1,5 +1,10 @@
 # Tests and validation
 
+Sleep Diary coverage includes schema creation/migration, midnight and DST
+offsets, revision conflict, logical deletion/reopen, companion replay and
+rollback, Web periods/deep links, Android persistence, and vector PDF
+construction/pagination for 7, 14, 21 and 30 synthetic days.
+
 `web_analysis` covers empty history, every 7/30/90/all period selector,
 loaded and unloaded repetitions, continuous duration/distance/speed, explicit
 persisted MAX, multiple primary BODY ZONES, partial measurements, one- and
