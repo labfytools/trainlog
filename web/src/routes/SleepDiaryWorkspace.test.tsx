@@ -116,6 +116,58 @@ const persistedEntry = (
   intakes: input.intakes.map((intake) => ({ ...intake })),
 });
 
+const dayAEntry = (): SleepEntry => ({
+  entry_id: "sd_00000000-0000-4000-8000-000000000020",
+  revision_id: "sdr_00000000-0000-4000-8000-000000000020",
+  night_start_date: "2026-09-20",
+  night_end_date: "2026-09-21",
+  created_at: "2026-09-20T18:00:00+02:00",
+  updated_at: "2026-09-21T16:00:00+02:00",
+  sleep_quality: "B",
+  wake_quality: "TB",
+  day_form: "Moy",
+  treatment_and_notes: "Observation du jour A",
+  publication_status: "ready",
+  events: [
+    {
+      event_id: "sle_bed",
+      type: "bed_time",
+      start_at: "2026-09-20T22:30:00+02:00",
+      end_at: null,
+    },
+    {
+      event_id: "sle_sleep",
+      type: "sleep",
+      start_at: "2026-09-20T22:30:00+02:00",
+      end_at: "2026-09-21T03:30:00+02:00",
+    },
+    {
+      event_id: "sle_up",
+      type: "final_get_up",
+      start_at: "2026-09-21T04:45:00+02:00",
+      end_at: null,
+    },
+    {
+      event_id: "sle_sleepiness",
+      type: "daytime_sleepiness",
+      start_at: "2026-09-21T15:30:00+02:00",
+      end_at: null,
+    },
+  ],
+  intakes: [
+    {
+      intake_id: "mdi_day_a",
+      medication_id: medication.medication_id,
+      medication_name: medication.name,
+      taken_at: "2026-09-20T22:30:00+02:00",
+      dose_value: 5,
+      dose_unit: "mg",
+      note: "",
+      created_at: "2026-09-20T22:30:00+02:00",
+    },
+  ],
+});
+
 describe("SleepDiaryWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -502,5 +554,157 @@ describe("SleepDiaryWorkspace", () => {
       screen.getByTestId("sleep-agenda-event-bed_time"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("sleep-agenda-event-sleep")).toBeInTheDocument();
+  });
+
+  it("aligns ticks, events, intervals, and medication markers on one 18:00 axis", async () => {
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([dayAEntry()]));
+    api.fetchSleepMedications.mockResolvedValue([medication]);
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    const bedtime = await screen.findByTestId("sleep-agenda-event-bed_time");
+    const sleep = screen.getByTestId("sleep-agenda-event-sleep");
+    const getUp = screen.getByTestId("sleep-agenda-event-final_get_up");
+    const sleepiness = screen.getByTestId(
+      "sleep-agenda-event-daytime_sleepiness",
+    );
+    const intake = screen.getByTestId("sleep-agenda-medication");
+    expect(bedtime).toHaveStyle({ left: "18.75%" });
+    expect(sleep).toHaveStyle({ left: "18.75%" });
+    expect(Number.parseFloat(sleep.style.width)).toBeCloseTo((5 / 24) * 100, 9);
+    expect(Number.parseFloat(getUp.style.left)).toBeCloseTo(
+      (10.75 / 24) * 100,
+      9,
+    );
+    expect(Number.parseFloat(sleepiness.style.left)).toBeCloseTo(
+      (21.5 / 24) * 100,
+      9,
+    );
+    expect(intake).toHaveStyle({ left: "18.75%" });
+    expect(document.querySelectorAll(".sleep-hour-axis > span")).toHaveLength(
+      25,
+    );
+  });
+
+  it("isolates an empty active night and restores the previous night without reload", async () => {
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([dayAEntry()]));
+    api.fetchSleepMedications.mockResolvedValue([medication]);
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    expect(
+      await screen.findByTestId("sleep-agenda-event-bed_time"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("sleep-publication-status")).toHaveTextContent(
+      "Journée validée",
+    );
+    expect(screen.queryByText("Prête à synchroniser")).toBeNull();
+    expect(
+      screen.getByLabelText("Traitement et remarques particulières"),
+    ).toHaveValue("Observation du jour A");
+
+    fireEvent.change(screen.getByTestId("sleep-night-start"), {
+      target: { value: "2026-09-21" },
+    });
+    expect(screen.getByTestId("sleep-night-end")).toHaveValue("2026-09-22");
+    expect(screen.queryByTestId("sleep-event-bed_time")).toBeNull();
+    expect(screen.queryByTestId("sleep-intake-row")).toBeNull();
+    expect(screen.getByTestId("sleep-timeline")).toHaveTextContent(
+      "Aucun événement enregistré pour cette nuit.",
+    );
+    expect(
+      screen.getByText("Aucune donnée pour cette nuit."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Traitement et remarques particulières"),
+    ).toHaveValue("");
+    expect(
+      within(
+        screen.getByRole("group", { name: "Qualité du sommeil" }),
+      ).queryByRole("button", { pressed: true }),
+    ).toBeNull();
+    const summary = screen.getByRole("heading", { name: "Synthèse factuelle" })
+      .parentElement as HTMLElement;
+    expect(summary).toHaveTextContent("Sommeil déclaré—");
+    expect(summary).toHaveTextContent("Somnolence—");
+    expect(summary).toHaveTextContent("Prises—");
+
+    await waitFor(() => expect(api.fetchSleepDiary).toHaveBeenCalledTimes(2));
+    fireEvent.change(screen.getByTestId("sleep-night-start"), {
+      target: { value: "2026-09-20" },
+    });
+    expect(
+      await screen.findByTestId("sleep-event-bed_time"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("sleep-intake-row")).toHaveTextContent("TestMed");
+    expect(
+      screen.getByLabelText("Traitement et remarques particulières"),
+    ).toHaveValue("Observation du jour A");
+    expect(screen.getByTestId("sleep-publication-status")).toHaveTextContent(
+      "Journée validée",
+    );
+  });
+
+  it("does not let a slow previous-night fetch contaminate the active empty night", async () => {
+    let resolveNightA: ((value: SleepSnapshot) => void) | undefined;
+    const slowNightA = new Promise<SleepSnapshot>((resolve) => {
+      resolveNightA = resolve;
+    });
+    api.fetchSleepDiary
+      .mockImplementationOnce(async () => slowNightA)
+      .mockResolvedValue(emptySnapshot);
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    fireEvent.change(screen.getByTestId("sleep-night-start"), {
+      target: { value: "2026-09-21" },
+    });
+    await waitFor(() => expect(api.fetchSleepDiary).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("sleep-night-start")).toHaveValue("2026-09-21");
+    expect(
+      screen.getByText("Aucune donnée pour cette nuit."),
+    ).toBeInTheDocument();
+
+    resolveNightA?.(snapshotWith([dayAEntry()]));
+    await Promise.resolve();
+    expect(screen.getByTestId("sleep-night-start")).toHaveValue("2026-09-21");
+    expect(screen.queryByTestId("sleep-event-bed_time")).toBeNull();
+    expect(screen.queryByTestId("sleep-intake-row")).toBeNull();
+    expect(
+      screen.getByText("Aucune donnée pour cette nuit."),
+    ).toBeInTheDocument();
+  });
+
+  it("presents validation as a local completion state without transport wording", async () => {
+    let current: SleepEntry = {
+      ...dayAEntry(),
+      publication_status: "draft",
+    };
+    api.fetchSleepDiary.mockImplementation(async () => snapshotWith([current]));
+    api.saveSleepEntry.mockImplementation(async (input: SleepEntryInput) => {
+      current = {
+        ...persistedEntry(input, current.entry_id, current.revision_id),
+        publication_status: "draft",
+      };
+      return {
+        entry_id: current.entry_id,
+        revision_id: current.revision_id,
+      };
+    });
+    api.validateSleepEntry.mockImplementation(async () => {
+      current = { ...current, publication_status: "ready" };
+    });
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    expect(
+      await screen.findByTestId("sleep-publication-status"),
+    ).toHaveTextContent("Brouillon");
+
+    fireEvent.click(screen.getByTestId("sleep-validate-day"));
+    await waitFor(() =>
+      expect(screen.getByTestId("sleep-publication-status")).toHaveTextContent(
+        "Journée validée",
+      ),
+    );
+    expect(screen.queryByText("Prête à synchroniser")).toBeNull();
+    expect(screen.getByTestId("sleep-save-state")).toHaveTextContent(
+      "Enregistré localement",
+    );
   });
 });

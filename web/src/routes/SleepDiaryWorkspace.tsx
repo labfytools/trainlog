@@ -23,6 +23,10 @@ import {
 } from "../report/sleepDiaryPdf";
 import { formatDose, formatDuration } from "../dashboard/dashboardFormat";
 import { sleepEntryFacts } from "./sleepDiaryFacts";
+import {
+  sleepTimelineInterval,
+  sleepTimelinePosition,
+} from "./sleepTimelineGeometry";
 
 type Language = "fr" | "en";
 const q: readonly SleepQuality[] = ["TB", "B", "Moy", "M", "TM"];
@@ -57,6 +61,7 @@ const copy = {
     observations: "Observations",
     summary: "Synthèse factuelle",
     empty: "Aucune nuit enregistrée.",
+    agendaEmpty: "Aucune donnée pour cette nuit.",
     preview: "Prévisualiser",
     export: "Exporter PDF",
     medications: "Médicaments",
@@ -86,9 +91,9 @@ const copy = {
     notesPlaceholder: "Notes utiles pour cette nuit…",
     statuses: {
       draft: "Brouillon",
-      ready: "Prête à synchroniser",
-      synchronized: "Synchronisée",
-      modified: "Modifiée depuis la synchronisation",
+      ready: "Journée validée",
+      synchronized: "Journée validée",
+      modified: "Modifiée",
     },
     qualities: ["Très bon", "Bon", "Moyen", "Mauvais", "Très mauvais"],
   },
@@ -116,6 +121,7 @@ const copy = {
     observations: "Observations",
     summary: "Factual summary",
     empty: "No recorded nights.",
+    agendaEmpty: "No data for this night.",
     preview: "Preview",
     export: "Export PDF",
     medications: "Medications",
@@ -145,9 +151,9 @@ const copy = {
     continue: "Continue",
     statuses: {
       draft: "Draft",
-      ready: "Ready to sync",
-      synchronized: "Synchronized",
-      modified: "Modified since synchronization",
+      ready: "Day validated",
+      synchronized: "Day validated",
+      modified: "Modified",
     },
     qualities: ["Very good", "Good", "Average", "Bad", "Very bad"],
   },
@@ -183,28 +189,21 @@ const atClock = (value: string, startDate: string, endDate: string) => {
   const offsetRemainder = String(absoluteOffset % 60).padStart(2, "0");
   return `${date}T${value}:00${sign}${offsetHours}:${offsetRemainder}`;
 };
-const offset = (iso: string, startDate: string) => {
-  const start = new Date(`${startDate}T18:00:00`);
-  return Math.max(
-    0,
-    Math.min(
-      100,
-      ((new Date(iso).getTime() - start.getTime()) / 86_400_000) * 100,
-    ),
-  );
-};
-const blank = (): SleepEntryInput => {
-  const now = new Date();
-  const start = new Date(now);
-  if (now.getHours() < 18) start.setDate(start.getDate() - 1);
-  const end = new Date(start);
+const nextDate = (startDate: string) => {
+  const end = new Date(`${startDate}T12:00:00`);
   end.setDate(end.getDate() + 1);
-  const date = (value: Date) => value.toLocaleDateString("en-CA");
+  return end.toLocaleDateString("en-CA");
+};
+const blankForNight = (
+  startDate: string,
+  endDate = nextDate(startDate),
+): SleepEntryInput => {
+  const now = new Date();
   return {
     entry_id: "",
     expected_revision: null,
-    night_start_date: date(start),
-    night_end_date: date(end),
+    night_start_date: startDate,
+    night_end_date: endDate,
     created_at: sleepTimestamp(now),
     updated_at: sleepTimestamp(now),
     sleep_quality: null,
@@ -214,6 +213,13 @@ const blank = (): SleepEntryInput => {
     events: [],
     intakes: [],
   };
+};
+const blank = (): SleepEntryInput => {
+  const now = new Date();
+  const start = new Date(now);
+  if (now.getHours() < 18) start.setDate(start.getDate() - 1);
+  const date = (value: Date) => value.toLocaleDateString("en-CA");
+  return blankForNight(date(start));
 };
 
 function QualityPicker({
@@ -258,6 +264,7 @@ export function SleepDiaryWorkspace({
   > | null>(null);
   const entries = snapshot?.entries ?? [];
   const [draft, setDraft] = useState<SleepEntryInput>(blank);
+  const [activeNight, setActiveNight] = useState(draft.night_start_date);
   const [eventType, setEventType] = useState<SleepEventType>("sleep");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -265,9 +272,9 @@ export function SleepDiaryWorkspace({
   const [eventEnd, setEventEnd] = useState("23:30");
   const [publicationStatus, setPublicationStatus] =
     useState<SleepEntry["publication_status"]>("draft");
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">(
-    "saved",
-  );
+  const [saveState, setSaveState] = useState<
+    "idle" | "saved" | "saving" | "error"
+  >("idle");
   const [medications, setMedications] = useState<SleepMedication[]>([]);
   const [medName, setMedName] = useState("");
   const [medDose, setMedDose] = useState("");
@@ -286,6 +293,8 @@ export function SleepDiaryWorkspace({
   const mutationSequence = useRef(0);
   const diaryReadSequence = useRef(0);
   const medicationReadSequence = useRef(0);
+  const nightSelectionSequence = useRef(0);
+  const activeNightRef = useRef(activeNight);
   const range = useMemo(() => {
     if (period === "all") return {};
     const days = Number(period.slice(0, -1));
@@ -312,29 +321,37 @@ export function SleepDiaryWorkspace({
     return catalog;
   };
   const adoptEntry = (entry: SleepEntry) => {
+    activeNightRef.current = entry.night_start_date;
+    setActiveNight(entry.night_start_date);
     identity.current = {
       entry_id: entry.entry_id,
       revision_id: entry.revision_id,
     };
     setPublicationStatus(entry.publication_status);
     setDraft(canonicalInput(entry));
+    setSaveState("saved");
+  };
+  const resetNight = (startDate: string) => {
+    identity.current = null;
+    setDraft(blankForNight(startDate));
+    setPublicationStatus("draft");
+    setSaveState("idle");
   };
   const reload = async () => {
+    const requestedNight = activeNightRef.current;
+    const selection = ++nightSelectionSequence.current;
     try {
       const [diary] = await Promise.all([readDiary(), readMedications()]);
-      const current = identity.current;
-      const resume = current
-        ? diary.entries.find(
-            (entry) =>
-              entry.entry_id === current.entry_id &&
-              entry.revision_id === current.revision_id,
-          )
-        : (diary.entries.find(
-            (entry) =>
-              entry.publication_status === "draft" ||
-              entry.publication_status === "modified",
-          ) ?? diary.entries[0]);
-      if (resume) adoptEntry(resume);
+      if (
+        selection !== nightSelectionSequence.current ||
+        requestedNight !== activeNightRef.current
+      )
+        return;
+      const exact = diary.entries.find(
+        (entry) => entry.night_start_date === requestedNight,
+      );
+      if (exact) adoptEntry(exact);
+      else resetNight(requestedNight);
     } catch {
       setError("sleep_diary_unavailable");
     }
@@ -343,17 +360,47 @@ export function SleepDiaryWorkspace({
     void reload();
   }, [period]);
   const edit = (entry: SleepEntry) => {
-    identity.current = {
-      entry_id: entry.entry_id,
-      revision_id: entry.revision_id,
-    };
+    ++nightSelectionSequence.current;
     adoptEntry(entry);
   };
+  const selectNight = (startDate: string) => {
+    const selection = ++nightSelectionSequence.current;
+    ++mutationSequence.current;
+    activeNightRef.current = startDate;
+    setActiveNight(startDate);
+    resetNight(startDate);
+    setError("");
+    const cached = snapshot?.entries.find(
+      (entry) => entry.night_start_date === startDate,
+    );
+    if (cached) adoptEntry(cached);
+    void readDiary()
+      .then((diary) => {
+        if (
+          selection !== nightSelectionSequence.current ||
+          startDate !== activeNightRef.current
+        )
+          return;
+        const exact = diary.entries.find(
+          (entry) => entry.night_start_date === startDate,
+        );
+        if (exact) adoptEntry(exact);
+        else resetNight(startDate);
+      })
+      .catch(() => {
+        if (selection === nightSelectionSequence.current)
+          setError("sleep_diary_unavailable");
+      });
+  };
   const persist = (next: SleepEntryInput) => {
+    ++nightSelectionSequence.current;
     const sequence = ++mutationSequence.current;
     setSaveState("saving");
     persistence.current = persistence.current.then(async () => {
       try {
+        // CONTRACT: a queued edit belongs only to the night on which it was
+        // authored; navigating away must not apply it with another identity.
+        if (activeNightRef.current !== next.night_start_date) return;
         const current = identity.current;
         const result = await saveSleepEntry({
           ...next,
@@ -361,6 +408,7 @@ export function SleepDiaryWorkspace({
           expected_revision: current?.revision_id ?? next.expected_revision,
           updated_at: sleepTimestamp(),
         });
+        if (activeNightRef.current !== next.night_start_date) return;
         identity.current = result;
         const diary = await readDiary();
         const persisted = diary.entries.find(
@@ -375,7 +423,11 @@ export function SleepDiaryWorkspace({
           setSaveState("saved");
         }
       } catch (reason: unknown) {
-        if (sequence !== mutationSequence.current) return;
+        if (
+          sequence !== mutationSequence.current ||
+          activeNightRef.current !== next.night_start_date
+        )
+          return;
         try {
           const diary = await readDiary();
           const current = identity.current;
@@ -576,7 +628,7 @@ export function SleepDiaryWorkspace({
         revision_id: current.revision_id,
       });
       identity.current = null;
-      setDraft(blank());
+      resetNight(activeNightRef.current);
       await reload();
     } catch (reason) {
       setError(
@@ -602,6 +654,11 @@ export function SleepDiaryWorkspace({
       index,
     })),
   ].sort((a, b) => a.at.localeCompare(b.at) || a.kind.localeCompare(b.kind));
+  const activeEntry = entries.find(
+    (entry) => entry.night_start_date === activeNight,
+  );
+  const activeFacts = activeEntry ? sleepEntryFacts(activeEntry) : null;
+  const agendaEntries = activeEntry ? [activeEntry] : [];
   return (
     <div className="sleep-workspace" data-testid="sleep-workspace">
       <article className="analysis-panel analysis-wide">
@@ -638,17 +695,26 @@ export function SleepDiaryWorkspace({
             </button>
           </div>
         </div>
-        {entries.length === 0 ? (
-          <p className="analysis-empty">{t.empty}</p>
+        {agendaEntries.length === 0 ? (
+          <p className="analysis-empty">{t.agendaEmpty}</p>
         ) : (
           <div className="sleep-agenda-scroll">
             <div className="sleep-agenda" role="table">
-              <div className="sleep-hours" aria-hidden="true">
-                {Array.from({ length: 25 }, (_, index) => (
-                  <span key={index}>{(18 + index) % 24}</span>
-                ))}
+              <div className="sleep-axis-row" aria-hidden="true">
+                <span />
+                <span className="sleep-hour-axis">
+                  {Array.from({ length: 25 }, (_, index) => (
+                    <span
+                      key={index}
+                      style={{ left: `${(index / 24) * 100}%` }}
+                    >
+                      {(18 + index) % 24}
+                    </span>
+                  ))}
+                </span>
+                <span />
               </div>
-              {entries.map((entry) => {
+              {agendaEntries.map((entry) => {
                 const facts = sleepEntryFacts(entry);
                 const groupedIntakes = Object.entries(
                   entry.intakes.reduce<Record<string, MedicationIntake[]>>(
@@ -675,33 +741,46 @@ export function SleepDiaryWorkspace({
                     </strong>
                     <span className="sleep-track">
                       {entry.events.map((event) => {
-                        const left = offset(
-                          event.start_at,
-                          entry.night_start_date,
-                        );
-                        const width = event.end_at
-                          ? Math.max(
-                              1,
-                              offset(event.end_at, entry.night_start_date) -
-                                left,
+                        const geometry = event.end_at
+                          ? sleepTimelineInterval(
+                              event.start_at,
+                              event.end_at,
+                              entry.night_start_date,
+                              entry.created_at,
                             )
-                          : 1;
+                          : {
+                              left: sleepTimelinePosition(
+                                event.start_at,
+                                entry.night_start_date,
+                                entry.created_at,
+                              ),
+                              width: 0,
+                            };
                         return (
                           <i
                             key={event.event_id}
-                            className={`sleep-event sleep-${event.type}`}
+                            className={`sleep-event sleep-${event.type}${event.end_at ? "" : " sleep-point"}`}
                             data-testid={`sleep-agenda-event-${event.type}`}
-                            style={{ left: `${left}%`, width: `${width}%` }}
+                            style={{
+                              left: `${geometry.left * 100}%`,
+                              width: event.end_at
+                                ? `${geometry.width * 100}%`
+                                : undefined,
+                            }}
                             title={`${t[event.type]} ${clock(event.start_at)}${event.end_at ? ` → ${clock(event.end_at)}` : ""}`}
                           >
-                            {event.type === "bed_time"
-                              ? "↓"
-                              : event.type === "final_get_up" ||
-                                  event.type === "night_get_up"
-                                ? "↑"
-                                : event.type === "daytime_sleepiness"
-                                  ? "S"
-                                  : ""}
+                            {!event.end_at && (
+                              <span>
+                                {event.type === "bed_time"
+                                  ? "↓"
+                                  : event.type === "final_get_up" ||
+                                      event.type === "night_get_up"
+                                    ? "↑"
+                                    : event.type === "daytime_sleepiness"
+                                      ? "S"
+                                      : ""}
+                              </span>
+                            )}
                           </i>
                         );
                       })}
@@ -711,12 +790,13 @@ export function SleepDiaryWorkspace({
                           className="sleep-event sleep-medication"
                           data-testid="sleep-agenda-medication"
                           style={{
-                            left: `${offset(takenAt, entry.night_start_date)}%`,
-                            width: "1%",
+                            left: `${sleepTimelinePosition(takenAt, entry.night_start_date, entry.created_at) * 100}%`,
                           }}
                           title={`${clock(takenAt)}\n${intakes.map(intakeLabel).join("\n")}`}
                         >
-                          M{intakes.length > 1 ? ` ×${intakes.length}` : ""}
+                          <span>
+                            M{intakes.length > 1 ? ` ×${intakes.length}` : ""}
+                          </span>
                         </i>
                       ))}
                     </span>
@@ -818,20 +898,26 @@ export function SleepDiaryWorkspace({
             <div className="sleep-dates">
               <input
                 aria-label={`${t.night} — ${t.start}`}
+                data-testid="sleep-night-start"
                 type="date"
                 value={draft.night_start_date}
-                onChange={(event) =>
-                  change("night_start_date", event.target.value)
-                }
+                onChange={(event) => selectNight(event.target.value)}
               />
               <span aria-hidden="true">→</span>
               <input
                 aria-label={`${t.night} — ${t.end}`}
+                data-testid="sleep-night-end"
                 type="date"
                 value={draft.night_end_date}
-                onChange={(event) =>
-                  change("night_end_date", event.target.value)
-                }
+                onChange={(event) => {
+                  if (identity.current)
+                    change("night_end_date", event.target.value);
+                  else
+                    setDraft((current) => ({
+                      ...current,
+                      night_end_date: event.target.value,
+                    }));
+                }}
               />
             </div>
           </div>
@@ -842,17 +928,19 @@ export function SleepDiaryWorkspace({
             >
               {t.statuses[publicationStatus]}
             </strong>
-            <span
-              data-testid="sleep-save-state"
-              className={`sleep-save-state sleep-save-${saveState}`}
-              role="status"
-            >
-              {saveState === "saving"
-                ? t.saving
-                : saveState === "saved"
-                  ? t.saved
-                  : error}
-            </span>
+            {saveState !== "idle" && (
+              <span
+                data-testid="sleep-save-state"
+                className={`sleep-save-state sleep-save-${saveState}`}
+                role="status"
+              >
+                {saveState === "saving"
+                  ? t.saving
+                  : saveState === "saved"
+                    ? t.saved
+                    : error}
+              </span>
+            )}
           </div>
         </header>
 
@@ -1353,46 +1441,60 @@ export function SleepDiaryWorkspace({
               <dt>
                 {language === "fr" ? "Nuits enregistrées" : "Recorded nights"}
               </dt>
-              <dd>{entries.length}</dd>
+              <dd>{activeEntry ? 1 : 0}</dd>
             </div>
             <div>
               <dt>
                 {language === "fr" ? "Sommeil déclaré" : "Declared sleep"}
               </dt>
               <dd>
-                {formatDuration(snapshot?.summary.sleep_duration_seconds ?? 0)}
+                {activeFacts && activeFacts.sleepSeconds > 0
+                  ? formatDuration(activeFacts.sleepSeconds)
+                  : "—"}
               </dd>
             </div>
             <div>
               <dt>{language === "fr" ? "Longs réveils" : "Long awakenings"}</dt>
               <dd>
-                {countAndDuration(
-                  snapshot?.summary.long_awake_count ?? 0,
-                  snapshot?.summary.long_awake_duration_seconds ?? 0,
-                )}
+                {activeFacts
+                  ? countAndDuration(
+                      activeFacts.longAwakeCount,
+                      activeFacts.longAwakeSeconds,
+                    )
+                  : "—"}
               </dd>
             </div>
             <div>
               <dt>{language === "fr" ? "Siestes" : "Naps"}</dt>
               <dd>
-                {countAndDuration(
-                  snapshot?.summary.nap_count ?? 0,
-                  snapshot?.summary.nap_duration_seconds ?? 0,
-                )}
+                {activeFacts
+                  ? countAndDuration(
+                      activeFacts.napCount,
+                      activeFacts.napSeconds,
+                    )
+                  : "—"}
               </dd>
+            </div>
+            <div>
+              <dt>{t.daytime_sleepiness}</dt>
+              <dd>{activeFacts ? activeFacts.sleepinessCount : "—"}</dd>
+            </div>
+            <div>
+              <dt>{language === "fr" ? "Prises" : "Intakes"}</dt>
+              <dd>{activeEntry ? activeEntry.intakes.length : "—"}</dd>
             </div>
           </dl>
         </article>
         <article className="analysis-panel">
           <h2>{t.observations}</h2>
-          {entries
-            .filter((entry) => entry.treatment_and_notes)
-            .map((entry) => (
-              <p key={entry.entry_id}>
-                <strong>{entry.night_start_date}</strong> —{" "}
-                {entry.treatment_and_notes}
-              </p>
-            ))}
+          {activeEntry?.treatment_and_notes ? (
+            <p>
+              <strong>{activeEntry.night_start_date}</strong> —{" "}
+              {activeEntry.treatment_and_notes}
+            </p>
+          ) : (
+            <p className="analysis-empty">—</p>
+          )}
         </article>
       </div>
     </div>

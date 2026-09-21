@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.4
 
+- Aligned the Sleep Diary Agenda ticks, interval bands and point markers on one
+  exact 18:00-to-18:00 timestamp projection. Selecting another night now clears
+  the previous entry immediately, adopts only an exact-date result and rejects
+  stale out-of-order reads; an absent night remains unpersisted and empty until
+  the first real edit. The editor presents local completion as Draft,
+  Day validated or Modified without exposing synchronization transport state.
 - Fully localized the French Sleep Diary PDF without changing its canonical
   data source or event semantics. Column headings, timeline labels, legend,
   factual summary, draft warning, dates and plurals are now French, accented

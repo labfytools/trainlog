@@ -253,11 +253,15 @@ Sleep Diary Web tests cover canonical snapshot adoption after every successful
 autosave, ordered revision chaining, rejection of stale asynchronous reads,
 and live Agenda updates for bedtime, final get-up, split sleep, time in bed,
 long awakenings, naps, sleepiness and grouped medication intakes. They also
-cover localized dose/unit labels, same-name medications with different usual
-doses and editable intake-dose prefill. `test_web_sleep_browser.py` exercises
-the embedded production bundle in real Firefox against an isolated synthetic
-database, observes every mutation without reload, verifies HTTP success and
-browser error collectors, then reloads and compares the persisted Agenda.
+cover exact 18:00-to-18:00 timestamp geometry, active-night isolation, empty
+night state, return navigation and rejection of an earlier date response that
+finishes late. Localized dose/unit labels, same-name medications with different
+usual doses and editable intake-dose prefill remain covered.
+`test_web_sleep_browser.py` exercises the embedded production bundle in real
+Firefox against an isolated synthetic database, observes every mutation
+without reload, verifies HTTP success and browser error collectors, measures
+ticks, point markers and intervals within one rendered pixel, switches to an
+empty night and back, then reloads and compares the persisted Agenda.
 The PDF suite separately asserts complete French and English vocabularies,
 accent-preserving WinAnsi text, human-readable duration and plural forms,
 localized dates, medication dose snapshots, pagination and the exact ordered

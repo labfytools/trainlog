@@ -292,6 +292,180 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     driver.execute_script("return document.documentElement.scrollWidth"),
                     driver.execute_script("return document.documentElement.clientWidth"),
                 )
+
+                def stable_id(prefix: str) -> str:
+                    return f"{prefix}_{uuid.uuid4()}"
+
+                def post_entries(entries: list[dict]):
+                    return driver.execute_async_script(
+                        """
+                        const entries=arguments[0], done=arguments[arguments.length-1];
+                        (async () => {
+                          const status = await fetch('/api/v1/sync/status');
+                          const token = status.headers.get('X-Trainlog-CSRF-Token');
+                          const responses = [];
+                          for (const entry of entries) {
+                            const response = await fetch('/api/v1/sleep-diary', {
+                              method: 'POST',
+                              headers: {'Accept':'application/json','Content-Type':'application/json','X-Trainlog-CSRF-Token':token},
+                              body: JSON.stringify(entry),
+                            });
+                            responses.push({status: response.status, body: await response.json()});
+                          }
+                          done(responses);
+                        })().catch(error => done([{status:0, body:String(error)}]));
+                        """,
+                        entries,
+                    )
+
+                alignment_medication_id = Select(
+                    driver.find_element(
+                        By.CSS_SELECTOR, "[data-testid='sleep-intake-medication']"
+                    )
+                ).options[1].get_attribute("value")
+                alignment_entry = {
+                    "entry_id": "",
+                    "expected_revision": None,
+                    "night_start_date": "2026-09-19",
+                    "night_end_date": "2026-09-20",
+                    "created_at": "2026-09-19T18:00:00+02:00",
+                    "updated_at": "2026-09-20T16:00:00+02:00",
+                    "sleep_quality": "B",
+                    "wake_quality": "TB",
+                    "day_form": "Moy",
+                    "treatment_and_notes": "Nuit de contrôle géométrique.",
+                    "events": [
+                        {
+                            "event_id": stable_id("sle"),
+                            "type": "bed_time",
+                            "start_at": "2026-09-19T22:30:00+02:00",
+                            "end_at": None,
+                        },
+                        {
+                            "event_id": stable_id("sle"),
+                            "type": "sleep",
+                            "start_at": "2026-09-19T22:30:00+02:00",
+                            "end_at": "2026-09-20T03:30:00+02:00",
+                        },
+                        {
+                            "event_id": stable_id("sle"),
+                            "type": "final_get_up",
+                            "start_at": "2026-09-20T04:45:00+02:00",
+                            "end_at": None,
+                        },
+                        {
+                            "event_id": stable_id("sle"),
+                            "type": "daytime_sleepiness",
+                            "start_at": "2026-09-20T15:30:00+02:00",
+                            "end_at": None,
+                        },
+                    ],
+                    "intakes": [
+                        {
+                            "intake_id": stable_id("mdi"),
+                            "medication_id": alignment_medication_id,
+                            "medication_name": "venlafaxine",
+                            "taken_at": "2026-09-19T22:30:00+02:00",
+                            "dose_value": 75,
+                            "dose_unit": "mg",
+                            "note": "",
+                            "created_at": "2026-09-19T22:30:00+02:00",
+                        }
+                    ],
+                }
+                responses = post_entries([alignment_entry])
+                self.assertEqual([200], [item["status"] for item in responses])
+                set_value("sleep-night-start", "2026-09-19")
+                wait.until(
+                    lambda current: current.find_elements(
+                        By.CSS_SELECTOR, "[data-testid='sleep-agenda-event-bed_time']"
+                    )
+                )
+                geometry = driver.execute_script(
+                    """
+                    const axis=document.querySelector('.sleep-hour-axis').getBoundingClientRect();
+                    const box=id => document
+                      .querySelector(`[data-testid='${id}']`)
+                      .getBoundingClientRect();
+                    const point=id => {
+                      const value=document
+                        .querySelector(`[data-testid='${id}'] > span`)
+                        .getBoundingClientRect();
+                      return value.left + value.width / 2;
+                    };
+                    const sleep=box('sleep-agenda-event-sleep');
+                    const ticks=[...document.querySelectorAll('.sleep-hour-axis > span')]
+                      .map(value => {
+                        const tick=value.getBoundingClientRect();
+                        return {
+                          label:value.textContent,
+                          center:tick.left + tick.width / 2,
+                        };
+                      });
+                    return {
+                      left:axis.left,
+                      width:axis.width,
+                      bed:point('sleep-agenda-event-bed_time'),
+                      medication:point('sleep-agenda-medication'),
+                      sleepLeft:sleep.left,
+                      sleepRight:sleep.right,
+                      getUp:point('sleep-agenda-event-final_get_up'),
+                      sleepiness:point('sleep-agenda-event-daytime_sleepiness'),
+                      ticks,
+                    };
+                    """
+                )
+                expected_positions = {
+                    "bed": 4.5 / 24,
+                    "medication": 4.5 / 24,
+                    "sleepLeft": 4.5 / 24,
+                    "sleepRight": 9.5 / 24,
+                    "getUp": 10.75 / 24,
+                    "sleepiness": 21.5 / 24,
+                }
+                for key, fraction in expected_positions.items():
+                    expected_x = geometry["left"] + geometry["width"] * fraction
+                    self.assertAlmostEqual(
+                        expected_x, geometry[key], delta=1.0, msg=key
+                    )
+                for tick_index in (4, 9, 10, 11, 21, 22):
+                    expected_x = geometry["left"] + geometry["width"] * tick_index / 24
+                    self.assertAlmostEqual(
+                        expected_x,
+                        geometry["ticks"][tick_index]["center"],
+                        delta=1.0,
+                    )
+                self.assertTrue(
+                    driver.save_screenshot(
+                        str(EVIDENCE / "sleep-diary-alignment-firefox.png")
+                    )
+                )
+
+                set_value("sleep-night-start", "2026-09-21")
+                wait.until(
+                    lambda current: "Aucune donnée pour cette nuit."
+                    in current.page_source
+                )
+                self.assertFalse(
+                    driver.find_elements(
+                        By.CSS_SELECTOR,
+                        "[data-testid='sleep-timeline'] [data-testid^='sleep-event-']",
+                    )
+                )
+                self.assertFalse(
+                    driver.find_elements(By.CSS_SELECTOR, "[data-testid='sleep-intake-row']")
+                )
+                self.assertTrue(
+                    driver.save_screenshot(
+                        str(EVIDENCE / "sleep-diary-empty-night-firefox.png")
+                    )
+                )
+                set_value("sleep-night-start", "2026-09-19")
+                wait.until(
+                    lambda current: current.find_elements(
+                        By.CSS_SELECTOR, "[data-testid='sleep-event-bed_time']"
+                    )
+                )
                 bidi = websocket.create_connection(
                     driver.capabilities["webSocketUrl"], suppress_origin=True
                 )
@@ -342,11 +516,8 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     )
                 )
 
-                def stable_id(prefix: str) -> str:
-                    return f"{prefix}_{uuid.uuid4()}"
-
                 extra_entries = []
-                for day in range(14, 20):
+                for day in range(14, 19):
                     start_date = f"2026-09-{day:02d}"
                     end_date = f"2026-09-{day + 1:02d}"
 
@@ -419,27 +590,8 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                             "intakes": [],
                         }
                     )
-                responses = driver.execute_async_script(
-                    """
-                    const entries=arguments[0], done=arguments[arguments.length-1];
-                    (async () => {
-                      const status = await fetch('/api/v1/sync/status');
-                      const token = status.headers.get('X-Trainlog-CSRF-Token');
-                      const responses = [];
-                      for (const entry of entries) {
-                        const response = await fetch('/api/v1/sleep-diary', {
-                          method: 'POST',
-                          headers: {'Accept':'application/json','Content-Type':'application/json','X-Trainlog-CSRF-Token':token},
-                          body: JSON.stringify(entry),
-                        });
-                        responses.push({status: response.status, body: await response.json()});
-                      }
-                      done(responses);
-                    })().catch(error => done([{status:0, body:String(error)}]));
-                    """,
-                    extra_entries,
-                )
-                self.assertEqual([200] * 6, [item["status"] for item in responses])
+                responses = post_entries(extra_entries)
+                self.assertEqual([200] * 5, [item["status"] for item in responses])
                 driver.refresh()
                 wait.until(
                     lambda current: len(
@@ -447,7 +599,7 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                             By.CSS_SELECTOR, "[data-testid^='sleep-agenda-row-']"
                         )
                     )
-                    == 7
+                    == 1
                 )
                 EVIDENCE.mkdir(parents=True, exist_ok=True)
                 download_path = EVIDENCE / "trainlog-sleep-diary.pdf"

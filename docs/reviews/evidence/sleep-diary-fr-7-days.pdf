@@ -13,7 +13,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
 endobj
 5 0 obj
-<< /Length 17914 >>
+<< /Length 17659 >>
 stream
 0 G 0 g
 0 g BT /F1 14 Tf 30.0 565.0 Td (AGENDA TRAINLOG DE VIGILANCE ET DE SOMMEIL) Tj ET
@@ -124,21 +124,17 @@ stream
 0.9 G 570.3333333333333 458 m 570.3333333333333 498 l S
 0.9 G 591.1666666666667 458 m 591.1666666666667 498 l S
 0.9 G 612 458 m 612 498 l S
+0.75 g 205.75 469.00 104.17 18.00 re f 0 G 205.75 469.00 104.17 18.00 re S
+0 g BT /F1 5 Tf 207.8 475.0 Td (SOMMEIL) Tj ET
 0 g BT /F1 8 Tf 205.8 473.0 Td (v) Tj ET
-0.75 g 216.17 469.00 83.33 18.00 re f 0 G 216.17 469.00 83.33 18.00 re S
-0 g BT /F1 5 Tf 218.2 475.0 Td (SOMMEIL) Tj ET
-0.5 g 299.50 469.00 15.63 18.00 re f 0 G 299.50 469.00 15.63 18.00 re S
-0.75 g 315.13 469.00 67.71 18.00 re f 0 G 315.13 469.00 67.71 18.00 re S
-0 g BT /F1 5 Tf 317.1 475.0 Td (SOMMEIL) Tj ET
-0.87 g 382.83 469.00 3.47 18.00 re f 0 G 382.83 469.00 3.47 18.00 re S
-0 g BT /F1 8 Tf 388.0 473.0 Td (^) Tj ET
-0.93 g 528.67 469.00 12.15 18.00 re f 0 G 528.67 469.00 12.15 18.00 re S
-0 g BT /F1 8 Tf 549.5 473.0 Td (S) Tj ET
+0 g BT /F1 8 Tf 336.0 473.0 Td (^) Tj ET
+0 g BT /F1 8 Tf 559.9 473.0 Td (S) Tj ET
+0 g BT /F1 6 Tf 205.8 462.0 Td (M) Tj ET
 0 g BT /F1 7 Tf 620.0 482.0 Td (B) Tj ET
-0 g BT /F1 7 Tf 658.0 482.0 Td (Moy) Tj ET
-0 g BT /F1 7 Tf 696.0 482.0 Td (TB) Tj ET
-0 g BT /F1 4 Tf 730.0 491.0 Td (Remarque fran\347aise synth\351tique.) Tj ET
-0 g BT /F1 4 Tf 730.0 482.0 Td () Tj ET
+0 g BT /F1 7 Tf 658.0 482.0 Td (TB) Tj ET
+0 g BT /F1 7 Tf 696.0 482.0 Td (Moy) Tj ET
+0 g BT /F1 4 Tf 730.0 491.0 Td (22:30 \227 venlafaxine \227 75 mg | Nuit de co) Tj ET
+0 g BT /F1 4 Tf 730.0 482.0 Td (ntr\364le g\351om\351trique.) Tj ET
 0 g BT /F1 4 Tf 730.0 473.0 Td () Tj ET
 0 g BT /F1 4 Tf 730.0 464.0 Td () Tj ET
 0.7 G 30 418 782 40 re S
@@ -367,9 +363,9 @@ stream
 0 g BT /F1 4 Tf 730.0 273.0 Td () Tj ET
 0 g BT /F1 4 Tf 730.0 264.0 Td () Tj ET
 0 g BT /F1 9 Tf 30.0 240.0 Td (OBSERVATIONS) Tj ET
-0 g BT /F1 6 Tf 30.0 226.0 Td (7 nuits \267 Sommeil d\351clar\351 : 50 h 30 min \267 Longs r\351veils : 7 \267 Siestes : 6 \267 Somnolences : 6 \267 Prises de m\351dicaments : 2) Tj ET
+0 g BT /F1 6 Tf 30.0 226.0 Td (7 nuits \267 Sommeil d\351clar\351 : 48 h 15 min \267 Longs r\351veils : 6 \267 Siestes : 5 \267 Somnolences : 6 \267 Prises de m\351dicaments : 3) Tj ET
 0 g BT /F1 6 Tf 30.0 216.0 Td (AVERTISSEMENT : 7 jours non valid\351s dans cet export.) Tj ET
-0 g BT /F1 6 Tf 30.0 204.0 Td (19/09/2026 : Remarque fran\347aise synth\351tique.) Tj ET
+0 g BT /F1 6 Tf 30.0 204.0 Td (19/09/2026 : Nuit de contr\364le g\351om\351trique.) Tj ET
 0 g BT /F1 6 Tf 30.0 194.0 Td (18/09/2026 : Remarque fran\347aise synth\351tique.) Tj ET
 0 g BT /F1 6 Tf 30.0 184.0 Td (17/09/2026 : Remarque fran\347aise synth\351tique.) Tj ET
 0 g BT /F1 6 Tf 30.0 28.0 Td (L\351gende : v Mise au lit ; ^ Lever ; ^ Lever nocturne ; S Somnolence ; M Prise de m\351dicament.) Tj ET
@@ -387,5 +383,5 @@ xref
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-18314
+18059
 %%EOF

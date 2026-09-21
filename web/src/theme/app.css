@@ -683,14 +683,32 @@ h2 {
   display: grid;
   gap: 0.35rem;
 }
-.sleep-hours {
+.sleep-axis-row {
   display: grid;
-  grid-template-columns: 12rem repeat(25, 1fr) 25rem;
+  grid-template-columns: 12rem minmax(28rem, 1fr) 25rem;
+  align-items: end;
+  gap: 0.6rem;
+  padding: 0 0.45rem;
+  min-height: 1.2rem;
   color: var(--subtext-0);
   font-size: 0.72rem;
 }
-.sleep-hours::before {
-  content: "";
+.sleep-hour-axis {
+  position: relative;
+  width: 100%;
+  height: 1rem;
+}
+.sleep-hour-axis > span {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-variant-numeric: tabular-nums;
+}
+.sleep-hour-axis > span:first-child {
+  transform: none;
+}
+.sleep-hour-axis > span:last-child {
+  transform: translateX(-100%);
 }
 .sleep-row {
   display: grid;
@@ -755,11 +773,12 @@ h2 {
   position: relative;
   height: 1.75rem;
   background: var(--surface-0);
-  border: 1px solid var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--surface-2);
   border-radius: 0.35rem;
 }
 .sleep-event {
   position: absolute;
+  display: block;
   top: 0.15rem;
   bottom: 0.15rem;
   min-width: 0.3rem;
@@ -767,6 +786,20 @@ h2 {
   font-style: normal;
   text-align: center;
   color: var(--text);
+}
+.sleep-point,
+.sleep-medication {
+  width: 0;
+  min-width: 0;
+  overflow: visible;
+}
+.sleep-point > span,
+.sleep-medication > span {
+  position: absolute;
+  display: block;
+  left: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 .sleep-sleep,
 .sleep-nap {
@@ -788,14 +821,15 @@ h2 {
   );
 }
 .sleep-medication {
+  z-index: 2;
+}
+.sleep-medication > span {
   min-width: 1.35rem;
   padding: 0 0.2rem;
   border-radius: 0.25rem;
   background: var(--green);
   color: var(--crust);
   font-weight: 800;
-  white-space: nowrap;
-  z-index: 2;
 }
 .sleep-editor-columns {
   display: grid;
