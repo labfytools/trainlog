@@ -258,6 +258,13 @@ doses and editable intake-dose prefill. `test_web_sleep_browser.py` exercises
 the embedded production bundle in real Firefox against an isolated synthetic
 database, observes every mutation without reload, verifies HTTP success and
 browser error collectors, then reloads and compares the persisted Agenda.
+The PDF suite separately asserts complete French and English vocabularies,
+accent-preserving WinAnsi text, human-readable duration and plural forms,
+localized dates, medication dose snapshots, pagination and the exact ordered
+geometry of sleep / 45-minute long-awakening / sleep intervals. The same real
+Firefox scenario exports a seven-night French PDF from the embedded production
+bundle, extracts its text with `pdftotext` and rasterizes its A4 landscape page
+with `pdftoppm` for retained visual inspection.
 
 `WEB_DASHBOARD_TILES_V1` adds strict TypeScript parsing for every consumed
 field and Vitest fixtures confined to test sources. Coverage proves the 90-day

@@ -2,6 +2,13 @@
 
 ## Unreleased — 0.1.4
 
+- Fully localized the French Sleep Diary PDF without changing its canonical
+  data source or event semantics. Column headings, timeline labels, legend,
+  factual summary, draft warning, dates and plurals are now French, accented
+  text uses the PDF WinAnsi encoding, and durations use human-readable units.
+  Long awakenings remain proportional intervals between independent sleep
+  ranges, while medication intake snapshots retain localized dose and unit.
+  The English report keeps an independent English vocabulary.
 - Made the Sleep Diary Agenda a live projection of the latest locally
   persisted entry revision. Event and intake mutations now re-read and adopt
   the canonical Core snapshot, serialized autosaves carry the returned

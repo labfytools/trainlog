@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 
@@ -69,9 +70,17 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                             break
                     time.sleep(0.025)
 
+                EVIDENCE.mkdir(parents=True, exist_ok=True)
                 options = webdriver.FirefoxOptions()
                 options.add_argument("-headless")
                 options.set_capability("webSocketUrl", True)
+                options.set_preference("browser.download.folderList", 2)
+                options.set_preference("browser.download.dir", str(EVIDENCE))
+                options.set_preference("browser.download.useDownloadDir", True)
+                options.set_preference(
+                    "browser.helperApps.neverAsk.saveToDisk", "application/pdf"
+                )
+                options.set_preference("pdfjs.disabled", True)
                 driver = webdriver.Firefox(options=options, service=Service(str(GECKO)))
                 driver.set_window_size(1440, 1100)
                 wait = WebDriverWait(driver, 15)
@@ -327,13 +336,171 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     )
                 )
                 self.assertEqual("success", json.loads(bidi.recv())["type"])
-                bidi.close()
-                EVIDENCE.mkdir(parents=True, exist_ok=True)
                 self.assertTrue(
                     driver.save_screenshot(
                         str(EVIDENCE / "sleep-diary-live-agenda-firefox.png")
                     )
                 )
+
+                def stable_id(prefix: str) -> str:
+                    return f"{prefix}_{uuid.uuid4()}"
+
+                extra_entries = []
+                for day in range(14, 20):
+                    start_date = f"2026-09-{day:02d}"
+                    end_date = f"2026-09-{day + 1:02d}"
+
+                    def at(clock: str) -> str:
+                        date = start_date if int(clock[:2]) >= 18 else end_date
+                        return f"{date}T{clock}:00+02:00"
+
+                    extra_entries.append(
+                        {
+                            "entry_id": "",
+                            "expected_revision": None,
+                            "night_start_date": start_date,
+                            "night_end_date": end_date,
+                            "created_at": at("18:00"),
+                            "updated_at": at("18:00"),
+                            "sleep_quality": "B",
+                            "wake_quality": "Moy",
+                            "day_form": "TB",
+                            "treatment_and_notes": "Remarque française synthétique.",
+                            "events": [
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "bed_time",
+                                    "start_at": at("22:30"),
+                                    "end_at": None,
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "sleep",
+                                    "start_at": at("23:00"),
+                                    "end_at": at("03:00"),
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "long_awake",
+                                    "start_at": at("03:00"),
+                                    "end_at": at("03:45"),
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "sleep",
+                                    "start_at": at("03:45"),
+                                    "end_at": at("07:00"),
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "half_sleep",
+                                    "start_at": at("07:00"),
+                                    "end_at": at("07:10"),
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "final_get_up",
+                                    "start_at": at("07:15"),
+                                    "end_at": None,
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "nap",
+                                    "start_at": at("14:00"),
+                                    "end_at": at("14:35"),
+                                },
+                                {
+                                    "event_id": stable_id("sle"),
+                                    "type": "daytime_sleepiness",
+                                    "start_at": at("15:00"),
+                                    "end_at": None,
+                                },
+                            ],
+                            "intakes": [],
+                        }
+                    )
+                responses = driver.execute_async_script(
+                    """
+                    const entries=arguments[0], done=arguments[arguments.length-1];
+                    (async () => {
+                      const status = await fetch('/api/v1/sync/status');
+                      const token = status.headers.get('X-Trainlog-CSRF-Token');
+                      const responses = [];
+                      for (const entry of entries) {
+                        const response = await fetch('/api/v1/sleep-diary', {
+                          method: 'POST',
+                          headers: {'Accept':'application/json','Content-Type':'application/json','X-Trainlog-CSRF-Token':token},
+                          body: JSON.stringify(entry),
+                        });
+                        responses.push({status: response.status, body: await response.json()});
+                      }
+                      done(responses);
+                    })().catch(error => done([{status:0, body:String(error)}]));
+                    """,
+                    extra_entries,
+                )
+                self.assertEqual([200] * 6, [item["status"] for item in responses])
+                driver.refresh()
+                wait.until(
+                    lambda current: len(
+                        current.find_elements(
+                            By.CSS_SELECTOR, "[data-testid^='sleep-agenda-row-']"
+                        )
+                    )
+                    == 7
+                )
+                EVIDENCE.mkdir(parents=True, exist_ok=True)
+                download_path = EVIDENCE / "trainlog-sleep-diary.pdf"
+                pdf_path = EVIDENCE / "sleep-diary-fr-7-days.pdf"
+                raster_prefix = EVIDENCE / "sleep-diary-fr-7-days"
+                raster_path = EVIDENCE / "sleep-diary-fr-7-days.png"
+                numbered_download = EVIDENCE / "trainlog-sleep-diary(1).pdf"
+                for artifact in (
+                    download_path,
+                    numbered_download,
+                    pdf_path,
+                    raster_path,
+                ):
+                    if artifact.exists():
+                        artifact.unlink()
+                click(driver.find_element(By.XPATH, "//button[normalize-space()='Exporter PDF']"))
+                wait.until(
+                    lambda current: download_path.is_file()
+                    and download_path.stat().st_size > 0
+                )
+                download_path.replace(pdf_path)
+                extracted = root / "sleep-diary-fr-7-days.txt"
+                subprocess.run(
+                    ["pdftotext", str(pdf_path), str(extracted)], check=True
+                )
+                pdf_text = extracted.read_text(encoding="utf-8")
+                self.assertIn("QUALITÉ DU", pdf_text)
+                self.assertIn("LONG RÉVEIL", pdf_text.upper())
+                self.assertIn("AVERTISSEMENT : 7 jours non validés", pdf_text)
+                for forbidden in (
+                    "WAKE",
+                    "TREATMENT",
+                    "AWAKE",
+                    "sleepiness",
+                    "medication intake",
+                    "nights",
+                ):
+                    self.assertNotIn(forbidden, pdf_text)
+                subprocess.run(
+                    [
+                        "pdftoppm",
+                        "-png",
+                        "-f",
+                        "1",
+                        "-singlefile",
+                        "-r",
+                        "150",
+                        str(pdf_path),
+                        str(raster_prefix),
+                    ],
+                    check=True,
+                )
+                bidi.close()
             finally:
                 if driver is not None:
                     driver.quit()
