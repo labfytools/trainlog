@@ -342,14 +342,14 @@ fun SessionScreen(
                             label = strings.getString(R.string.modify_name, draft.exercise.name),
                             description = strings.getString(R.string.edit_exercise_description),
                             accent = colors.accent,
+                            modifier = Modifier.testTag("edit-draft-exercise-${draft.entryId}"),
                             onClick = {
                                 persistDraft(
                                     currentDraft.copy(
                                         form = formForExistingExercise(draft, index),
                                     ),
-                                    null,
+                                    strings.getString(R.string.editor_opened, draft.exercise.name),
                                 )
-                                message = strings.getString(R.string.editor_opened, draft.exercise.name)
                             },
                         )
                         if (currentDraft.form.editingEntryId == draft.entryId) {
@@ -1265,6 +1265,7 @@ private fun SessionExerciseForm(
             SessionNumberField(
                 label =
                     strings.getString(R.string.duration_minutes),
+                testTag = "session-continuous-duration",
                 value =
                     durationText,
                 onValueChange = {
@@ -1396,7 +1397,9 @@ private fun SessionExerciseForm(
                         onFailure = { error = localizedTargetError(it.message, strings) },
                     )
                 } else {
-                    onAdd(draft.copy(plan = null))
+                    /* CONTRACT: editing performed continuous facts must not
+                     * erase the independent target copied from preparation. */
+                    onAdd(draft.copy(plan = initialPlan))
                 }
             },
         )
@@ -1408,6 +1411,7 @@ private fun SessionExerciseForm(
                 strings.getString(R.string.return_catalog),
             accent =
                 colors.muted,
+            modifier = Modifier.testTag("cancel-session-exercise-editor"),
             onClick =
                 onCancel,
         )

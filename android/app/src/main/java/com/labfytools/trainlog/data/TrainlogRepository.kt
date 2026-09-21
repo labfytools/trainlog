@@ -8506,11 +8506,14 @@ class TrainlogRepository(
             draft.exercise.recordingMode
         ) {
             RecordingMode.CONTINUOUS -> {
-                if (
-                    draft.continuousDurationSeconds <= 0 ||
-                    draft.sets.isNotEmpty() || draft.plan != null
-                ) {
+                val hasPerformedActivity = draft.continuousDurationSeconds > 0
+                val targetOnly = allowTargetOnly && !hasPerformedActivity && draft.plan != null
+                if ((!hasPerformedActivity && !targetOnly) || draft.sets.isNotEmpty()) {
                     false
+                } else if (targetOnly) {
+                    /* CONTRACT: activating a continuous target creates planning
+                     * metadata only; supplemental performed facts remain absent. */
+                    draft.speedKmh == null && draft.distanceKm == null
                 } else {
                     val wantsSpeed =
                         draft.exercise.dataFields and
@@ -8572,10 +8575,17 @@ class TrainlogRepository(
 
     private fun validateSessionPlan(draft: SessionExerciseDraft): Boolean {
         val plan = draft.plan ?: return true
-        if (draft.exercise.recordingMode != RecordingMode.SETS ||
-            plan.sets !in 1..MAX_PLAN_SETS ||
-            plan.restSeconds !in 0..MAX_PLAN_REST_SECONDS ||
+        if (plan.restSeconds !in 0..MAX_PLAN_REST_SECONDS ||
             (plan.weightKg != null && (!plan.weightKg.isFinite() || plan.weightKg <= 0.0))) return false
+        if (draft.exercise.recordingMode == RecordingMode.CONTINUOUS) {
+            /* INVARIANT: the model's zero set count denotes SQL NULL for a
+             * continuous duration target; it never denotes a performed set. */
+            return plan.sets == 0 && plan.reps == null &&
+                plan.durationSeconds in 1..MAX_PLAN_DURATION_SECONDS &&
+                plan.weightKg == null && plan.loadMode == SessionLoadMode.NONE &&
+                plan.restSeconds == 0
+        }
+        if (plan.sets !in 1..MAX_PLAN_SETS) return false
         val metricValid = when (draft.exercise.trackingMode) {
             TrackingMode.REPS -> plan.reps in 1..MAX_PLAN_REPS && plan.durationSeconds == null
             TrackingMode.DURATION -> plan.durationSeconds in 1..MAX_PLAN_DURATION_SECONDS && plan.reps == null

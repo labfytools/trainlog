@@ -49,6 +49,10 @@ Starting a delivered mixed preparation preserves continuous duration targets
 and set/repetition/load/rest targets in the active singleton without creating
 performed continuous activity, performed sets, MAX results, history, or
 feedback before explicit user capture.
+The active-session editor accepts those target-only continuous occurrences:
+opening an existing stable entry renders its prefilled performed-value form,
+keeps the independent target intact on save, and leaves sibling occurrences
+unchanged on save or cancellation.
 
 The opt-in full-generation path is operational on the private daily
 installation. Android explicit synchronization uses a dedicated coordination

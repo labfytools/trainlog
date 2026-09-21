@@ -2,6 +2,11 @@
 
 ## Unreleased — 0.1.4
 
+- Fixed the Android active-session exercise editor for target-only continuous
+  preparation entries. Opening an occurrence now renders its prefilled form,
+  preserves its independent plan while editing performed values, updates only
+  the selected stable occurrence, and reports persistence failures instead of
+  displaying a false editor-opened confirmation.
 - Fixed Android activation of mixed session preparations containing continuous
   duration targets and set-based exercises. Continuous target metadata now
   remains planning-only, SQL `NULL` set counts round-trip correctly, and no
