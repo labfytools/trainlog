@@ -67,7 +67,7 @@ class DraftFeedbackUiReadbackTest {
         val completedSessionId = mutableStateOf<String?>(null)
         compose.setContent { TrainlogTheme {
             completedSessionId.value?.let { SessionDetailScreen(repository, it, {}, {}) }
-                ?: SessionScreen(repository, 0, {}, {}, {})
+                ?: SessionScreen(repository, 0, {}, {}, { _ -> }, {})
         } }
         compose.onNodeWithTag("draft-feedback-${entry.entryId}").fetchSemanticsNode()
         compose.onNodeWithText("Ressenti · texte UI durable").fetchSemanticsNode()

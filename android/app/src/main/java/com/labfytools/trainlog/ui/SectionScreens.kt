@@ -423,17 +423,29 @@ fun EquipmentDetailScreen(repository: TrainlogRepository, equipmentId: String, o
 }
 
 @Composable
-fun EquipmentCreateScreen(repository: TrainlogRepository, state: EquipmentScreenState, onCreated: () -> Unit) {
+fun EquipmentCreateScreen(
+    repository: TrainlogRepository,
+    state: EquipmentScreenState,
+    onCreated: (EquipmentCatalogEntry) -> Unit,
+) {
     val colors = LocalTrainlogColors.current
     val strings = localizedContext()
     TrainlogScreen(strings.getString(R.string.create_equipment), scrollKey = "equipment-create") {
         TrainlogFrame(strings.getString(R.string.personal_equipment)) {
-            TrainlogInputField(strings.getString(R.string.name), state.customName, { state.customName = it; state.message = null })
+            TrainlogInputField(
+                strings.getString(R.string.name),
+                state.customName,
+                { state.customName = it; state.message = null },
+                testTag = "equipment-create-name",
+            )
             TrainlogPrimaryAction(strings.getString(R.string.create), strings.getString(R.string.create_machine_description)) {
                 when (val result = repository.createCustomEquipment(state.customName)) {
                     is CreateEquipmentResult.Created -> {
                         state.selectedEquipmentId = result.equipment.equipmentId
-                        state.customName = ""; state.message = null; state.revision++; onCreated()
+                        state.customName = ""
+                        state.message = null
+                        state.revision++
+                        onCreated(result.equipment)
                     }
                     CreateEquipmentResult.Invalid -> state.message = strings.getString(R.string.equipment_name_invalid)
                     CreateEquipmentResult.Conflict -> state.message = strings.getString(R.string.equipment_name_exists)

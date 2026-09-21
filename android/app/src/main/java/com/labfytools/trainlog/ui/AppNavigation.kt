@@ -171,5 +171,11 @@ class TrainlogAppState : ViewModel() {
     val equipment = EquipmentScreenState()
     val exercise = ExerciseScreenState()
     val body = BodyScreenState()
+    /* WHY: the durable form intentionally does not serialize transient edit
+     * position, but a catalogue detour must still return to the same row.
+     * CONTRACT: this stable occurrence ID spans only that caller-aware detour;
+     * all actual form fields remain repository-owned and durable.
+     * INVARIANT: null means a new occurrence, never an inferred row. */
+    var pendingSessionEquipmentEntryId: String? = null
     val navigationController = AppNavigationController(navigation, generator, equipment, exercise, body)
 }

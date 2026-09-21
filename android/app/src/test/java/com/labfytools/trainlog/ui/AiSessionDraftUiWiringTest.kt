@@ -120,7 +120,7 @@ class AiSessionDraftUiWiringTest {
         assertEquals(ActiveDraftMutationResult.Saved, repository.startActiveSessionDraft())
         var createCalls = 0
         compose.setContent { TrainlogTheme {
-            SessionScreen(repository, 0, {}, { createCalls++ }, {})
+            SessionScreen(repository, 0, {}, { createCalls++ }, { _ -> }, {})
         } }
 
         val create = compose.onNodeWithTag("active-session-create-exercise")
@@ -173,7 +173,7 @@ class AiSessionDraftUiWiringTest {
             repository.saveActiveSessionDraft(loaded),
         )
         compose.setContent {
-            TrainlogTheme { SessionScreen(repository, 0, {}, {}, {}) }
+            TrainlogTheme { SessionScreen(repository, 0, {}, {}, { _ -> }, {}) }
         }
 
         compose.onNodeWithTag("edit-draft-exercise-${walkEntry.entryId}")

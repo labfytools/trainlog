@@ -237,6 +237,9 @@ Android currently provides:
 - exactly one durable active session draft with identity-preserving continuous
   multi-position drag reorder,
   resume, confirmed discard, and atomic completion;
+- caller-aware equipment creation from an active occurrence editor, with the
+  explicit catalogue-created ID selected on return and the occurrence identity
+  retained for in-place save;
 - completed-session consultation, transient drag reorder, and atomic factual or
   order correction while retaining session/occurrence/feedback identities for
   synchronization;

@@ -60,6 +60,7 @@ class DraftUiTestActivity : ComponentActivity() {
                             sessionVisible = false
                         },
                         onCreateExercise = {},
+                        onCreateEquipment = { _ -> },
                         /* CONTRACT: this host never writes shared export data. */
                         onSessionSaved = {},
                     )

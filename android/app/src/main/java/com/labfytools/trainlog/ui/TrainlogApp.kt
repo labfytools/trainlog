@@ -105,7 +105,21 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             )
             AppRoute.Sessions -> SessionsHub(activeDraft, pendingAiDraftCount, { open(AppRoute.SessionEditor) }, ::openManualSession,
                 { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) }, { open(AppRoute.Programs) })
-            AppRoute.SessionEditor -> SessionScreen(repository, catalogRevision, { draftRevision++; back() }, { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) }, { exportSnapshot(); draftRevision++ })
+            AppRoute.SessionEditor -> SessionScreen(
+                repository,
+                catalogRevision,
+                { draftRevision++; back() },
+                { open(AppRoute.ExerciseCreate(AppRoute.SessionEditor)) },
+                { editingEntryId ->
+                    appState.pendingSessionEquipmentEntryId = editingEntryId
+                    open(AppRoute.EquipmentCreate(AppRoute.SessionEditor))
+                },
+                { exportSnapshot(); draftRevision++ },
+                restoreEditingEntryId = appState.pendingSessionEquipmentEntryId,
+                onEditingContextRestored = {
+                    appState.pendingSessionEquipmentEntryId = null
+                },
+            )
             AppRoute.SessionGenerator -> SessionGeneratorScreen(repository, generatorState, { back() }, { generatorState.abandon(); draftRevision++; open(AppRoute.SessionEditor) }, {
                 draftMessage = strings.getString(R.string.existing_draft_warning)
                 draftRevision++
@@ -138,7 +152,45 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             is AppRoute.ExerciseEdit -> ExerciseEditorRoute(repository, exerciseState, route.exerciseId, false) { exportSnapshot(); catalogRevision++; back() }
             AppRoute.Equipment -> EquipmentScreen(repository, equipmentState, { open(AppRoute.EquipmentCreate(AppRoute.Equipment)) }, { open(AppRoute.EquipmentDetail(it)) })
             is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId) { open(AppRoute.ExerciseDetail(it)) }
-            is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exportSnapshot(); catalogRevision++; back() }
+            is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { equipment ->
+                /* WHY: equipment creation temporarily leaves the active-session editor.
+                 * CONTRACT: returning from that catalogue route preserves the durable
+                 * form and selects the exact stable ID that was just created.
+                 * INVARIANT: no equipment is synthesized; this runs only after the
+                 * explicit EquipmentCreateScreen action succeeded. */
+                if (route.caller == AppRoute.SessionEditor) {
+                    when (val loaded = repository.loadActiveSessionDraft()) {
+                        is ActiveDraftLoadResult.Loaded -> when (
+                            val saved = repository.saveActiveSessionDraft(
+                                loaded.draft.copy(
+                                    form = loaded.draft.form.copy(
+                                        editingExerciseIndex = appState.pendingSessionEquipmentEntryId
+                                            ?.let { entryId ->
+                                                loaded.draft.exercises.indexOfFirst {
+                                                    it.entryId == entryId
+                                                }.takeIf { it >= 0 }
+                                            },
+                                        editingEntryId = appState.pendingSessionEquipmentEntryId,
+                                        selectedEquipmentId = equipment.equipmentId,
+                                    ),
+                                ),
+                            )
+                        ) {
+                            ActiveDraftMutationResult.Saved -> draftRevision++
+                            is ActiveDraftMutationResult.Error -> {
+                                draftMessage = localizedRepositoryMessage(localized, saved.message)
+                            }
+                        }
+                        is ActiveDraftLoadResult.Error -> {
+                            draftMessage = localizedRepositoryMessage(localized, loaded.message)
+                        }
+                        ActiveDraftLoadResult.None -> Unit
+                    }
+                }
+                exportSnapshot()
+                catalogRevision++
+                back()
+            }
             AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exportSnapshot() }, { back() })
             AppRoute.SleepDiary -> SleepDiaryScreen(repository)
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)

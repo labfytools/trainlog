@@ -884,8 +884,11 @@ decimal input is accepted (`12,5`); one value applies to all sets or values may
 be separated with `;`. Assisted equipment is explicitly labelled
 `Assistance (kg)`. Empty load remains distinct from an entered zero.
 
-`Nouvelle machine` in that same selector creates a persistent local custom
-equipment entry with a generated stable `eq_…` ID and selects it immediately.
+`Créer un équipement` in that selector opens the existing catalogue creation
+route. An explicit successful creation returns automatically to the same
+exercise editor, restores the stable occurrence being edited, and selects the
+new persistent `eq_…` ID; the draft's other raw fields and target remain
+unchanged. No equipment is synthesized merely by opening the route.
 The shared bundled catalogue uses reserved canonical IDs. User-created IDs are
 exchanged first by definitions V1, so a V2 association can resolve them on the
 receiving side; conflicts remain explicit and are never converted to null.

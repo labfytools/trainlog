@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +49,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
-import com.labfytools.trainlog.data.CreateEquipmentResult
 import com.labfytools.trainlog.data.EquipmentLoadSemantics
 import com.labfytools.trainlog.data.FinalizeActiveDraftResult
 import com.labfytools.trainlog.data.ManualPercentMaxResult
@@ -77,7 +77,10 @@ fun SessionScreen(
     catalogRevision: Int,
     onBack: () -> Unit,
     onCreateExercise: () -> Unit,
+    onCreateEquipment: (editingEntryId: String?) -> Unit,
     onSessionSaved: () -> Unit,
+    restoreEditingEntryId: String? = null,
+    onEditingContextRestored: () -> Unit = {},
 ) {
     val colors =
         LocalTrainlogColors.current
@@ -97,12 +100,26 @@ fun SessionScreen(
 
     var activeDraft by
         remember(catalogRevision) {
+            val loadedDraft = (initialLoad as? ActiveDraftLoadResult.Loaded)?.draft
+            val restoredIndex = restoreEditingEntryId?.let { entryId ->
+                loadedDraft?.exercises?.indexOfFirst { it.entryId == entryId }
+                    ?.takeIf { it >= 0 }
+            }
             mutableStateOf(
-                (initialLoad as?
-                    ActiveDraftLoadResult.Loaded)
-                    ?.draft
+                if (restoredIndex == null) loadedDraft else loadedDraft?.let { draft ->
+                    draft.copy(
+                        form = draft.form.copy(
+                            editingExerciseIndex = restoredIndex,
+                            editingEntryId = restoreEditingEntryId,
+                        ),
+                    )
+                }
             )
         }
+
+    LaunchedEffect(restoreEditingEntryId) {
+        if (restoreEditingEntryId != null) onEditingContextRestored()
+    }
 
     var message by
         remember(catalogRevision) {
@@ -435,6 +452,9 @@ fun SessionScreen(
                     currentDraft.form,
                 initialPlan = currentDraft.form.editingExerciseIndex?.let {
                     currentDraft.exercises.getOrNull(it)?.plan
+                },
+                onCreateEquipment = {
+                    onCreateEquipment(currentDraft.form.editingEntryId)
                 },
                 onFormChanged = {
                     form ->
@@ -861,6 +881,7 @@ private fun SessionExerciseForm(
     sessionType: SessionType,
     initialForm: SessionDraftForm,
     initialPlan: SessionExercisePlan?,
+    onCreateEquipment: () -> Unit,
     onFormChanged: (SessionDraftForm) -> Unit,
     onCancel: () -> Unit,
     onAdd:
@@ -935,13 +956,11 @@ private fun SessionExerciseForm(
             )
         }
 
-    var equipmentRevision by remember(key) { mutableStateOf(0) }
-    val equipmentEntries = remember(equipmentRevision) { repository.listEquipment() }
+    val equipmentEntries = remember(key) { repository.listEquipment() }
     val fixedEquipmentId = remember(exercise.exerciseId) {
         repository.machineExerciseLegacyEquipmentId(exercise.exerciseId)
     }
     var equipmentSearch by remember(key) { mutableStateOf("") }
-    var customEquipmentName by remember(key) { mutableStateOf("") }
     var selectedEquipmentId by remember(key) {
         mutableStateOf(initialForm.selectedEquipmentId ?: fixedEquipmentId)
     }
@@ -978,34 +997,18 @@ private fun SessionExerciseForm(
                 value = equipmentSearch,
                 onValueChange = { equipmentSearch = it },
             )
-            TrainlogInputField(
-                label = strings.getString(R.string.new_historical_context),
-                value = customEquipmentName,
-                onValueChange = { customEquipmentName = it },
-            )
             TrainlogAction(
-                label = strings.getString(R.string.create_context),
-                description = strings.getString(R.string.context_compatibility),
+                label = strings.getString(R.string.create_equipment),
+                description = strings.getString(R.string.create_equipment_from_session),
                 accent = colors.success,
-                onClick = {
-                    when (val result = repository.createCustomEquipment(customEquipmentName)) {
-                        is CreateEquipmentResult.Created -> {
-                            customEquipmentName = ""
-                            equipmentRevision += 1
-                            selectedEquipmentId = result.equipment.equipmentId
-                            onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, selectedEquipmentId, weightText, maxWeightText))
-                        }
-                        CreateEquipmentResult.Invalid -> error = strings.getString(R.string.context_name_invalid)
-                        CreateEquipmentResult.Conflict -> error = strings.getString(R.string.context_exists)
-                        is CreateEquipmentResult.DatabaseError -> error = strings.getString(R.string.context_create_error, localizedRepositoryMessage(strings, result.message))
-                    }
-                },
+                modifier = Modifier.testTag("session-create-equipment"),
+                onClick = onCreateEquipment,
             )
         }
         val selectedEquipment = equipmentEntries.firstOrNull { it.equipmentId == selectedEquipmentId }
         val percentResult = remember(
             exercise.exerciseId, selectedEquipmentId, targetPercentText,
-            targetChoice, equipmentRevision,
+            targetChoice,
         ) {
             if (targetChoice == ManualTargetChoice.PERCENT_MAX)
                 repository.calculateManualPercentMaxTarget(
