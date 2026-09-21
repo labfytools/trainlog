@@ -43,6 +43,7 @@ private val drawerIcons = mapOf(
     AppSection.SESSIONS to R.drawable.ic_sessions,
     AppSection.EXERCISES to R.drawable.ic_exercises,
     AppSection.EQUIPMENT to R.drawable.ic_equipment,
+    AppSection.SLEEP to R.drawable.ic_statistics,
     AppSection.SYNC to R.drawable.ic_sync,
     AppSection.SETTINGS to R.drawable.ic_settings,
 )
@@ -60,6 +61,7 @@ fun AndroidAppShell(
     fun sectionLabel(section: AppSection): String = strings.getString(when (section) {
         AppSection.HOME -> R.string.nav_home; AppSection.SESSIONS -> R.string.nav_sessions
         AppSection.EXERCISES -> R.string.nav_exercises; AppSection.EQUIPMENT -> R.string.nav_equipment
+        AppSection.SLEEP -> R.string.nav_sleep
         AppSection.SYNC -> R.string.nav_sync; AppSection.SETTINGS -> R.string.nav_settings
     })
     fun title(): String = strings.getString(when (route) {
@@ -73,6 +75,7 @@ fun AndroidAppShell(
         AppRoute.Equipment -> R.string.nav_equipment; is AppRoute.EquipmentDetail -> R.string.route_equipment_detail
         is AppRoute.EquipmentCreate -> R.string.route_equipment_create
         AppRoute.BodyMeasurements -> R.string.route_body_measurements; AppRoute.LatestMaxima -> R.string.route_latest_maxima
+        AppRoute.SleepDiary -> R.string.nav_sleep
         AppRoute.Sync -> R.string.nav_sync; AppRoute.Settings -> R.string.nav_settings
     })
     val drawerState = rememberDrawerState(DrawerValue.Closed)

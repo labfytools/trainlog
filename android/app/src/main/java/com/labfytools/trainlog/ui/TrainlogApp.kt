@@ -140,6 +140,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             is AppRoute.EquipmentDetail -> EquipmentDetailScreen(repository, route.equipmentId) { open(AppRoute.ExerciseDetail(it)) }
             is AppRoute.EquipmentCreate -> EquipmentCreateScreen(repository, equipmentState) { exportSnapshot(); catalogRevision++; back() }
             AppRoute.BodyMeasurements -> BodyScreen(repository, bodyState, { exportSnapshot() }, { back() })
+            AppRoute.SleepDiary -> SleepDiaryScreen(repository)
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)
             AppRoute.Sync -> SyncScreen(repository, inbox, exporter, requestOutbox, { exportSnapshot(); catalogRevision++ }, { back() })
             AppRoute.Settings -> SettingsScreen(repository, inbox) { exportSnapshot(); catalogRevision++ }

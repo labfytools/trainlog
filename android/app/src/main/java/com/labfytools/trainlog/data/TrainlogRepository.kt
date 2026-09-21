@@ -42,6 +42,11 @@ import com.labfytools.trainlog.model.SyncedProgramDetail
 import com.labfytools.trainlog.model.SyncedProgramOccurrence
 import com.labfytools.trainlog.model.SyncedProgramSession
 import com.labfytools.trainlog.model.SyncedProgramSummary
+import com.labfytools.trainlog.model.SleepDiaryDraft
+import com.labfytools.trainlog.model.SleepDiaryEntry
+import com.labfytools.trainlog.model.SleepDiaryEvent
+import com.labfytools.trainlog.model.SleepEventType
+import com.labfytools.trainlog.model.SleepQuality
 import com.labfytools.trainlog.model.ProgramSessionExecutionState
 import org.json.JSONArray
 import org.json.JSONObject
@@ -466,6 +471,300 @@ class TrainlogRepository(
         database.close()
     }
 
+    sealed interface SaveSleepDiaryResult {
+        data class Saved(val entryId: String, val revisionId: String) : SaveSleepDiaryResult
+        data object Conflict : SaveSleepDiaryResult
+        data object Invalid : SaveSleepDiaryResult
+        data object DatabaseError : SaveSleepDiaryResult
+    }
+
+    sealed interface SleepDiaryImportResult {
+        data class Applied(val advanced: Int, val unchanged: Int) : SleepDiaryImportResult
+        data class Rejected(val reason: String) : SleepDiaryImportResult
+    }
+
+    private fun sleepId(prefix: String): String = "${prefix}_${UUID.randomUUID()}"
+
+    private fun sleepIdentity(value: String, prefix: String): Boolean =
+        Regex("^${prefix}_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+            .matches(value)
+
+    private fun sleepDraftValid(draft: SleepDiaryDraft): Boolean = try {
+        val startDate = LocalDate.parse(draft.nightStartDate)
+        val endDate = LocalDate.parse(draft.nightEndDate)
+        val created = OffsetDateTime.parse(draft.createdAt).toInstant()
+        val updated = OffsetDateTime.parse(draft.updatedAt).toInstant()
+        startDate < endDate && created <= updated && draft.treatmentAndNotes.toByteArray().size <= 16384 &&
+            draft.events.size <= 64 && draft.events.map { it.eventId }.filter { it.isNotEmpty() }.toSet().size ==
+            draft.events.count { it.eventId.isNotEmpty() } && draft.events.all { event ->
+                val start = OffsetDateTime.parse(event.startAt).toInstant()
+                if (event.type in setOf(SleepEventType.BED_TIME, SleepEventType.FINAL_GET_UP,
+                        SleepEventType.NIGHT_GET_UP, SleepEventType.DAYTIME_SLEEPINESS)) event.endAt == null
+                else event.endAt != null && OffsetDateTime.parse(event.endAt).toInstant() > start
+            }
+    } catch (_: RuntimeException) { false }
+
+    /** CONTRACT: one transaction appends an immutable revision and advances
+     * the guarded tip. Wall time never resolves a concurrent edit. */
+    fun saveSleepDiary(draft: SleepDiaryDraft): SaveSleepDiaryResult {
+        if (!sleepDraftValid(draft)) return SaveSleepDiaryResult.Invalid
+        val creating = draft.entryId == null && draft.expectedRevision == null
+        if (!creating && (draft.entryId == null || draft.expectedRevision == null)) return SaveSleepDiaryResult.Invalid
+        val entryId = draft.entryId ?: sleepId("sl")
+        val revisionId = sleepId("slr")
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            if (creating) {
+                db.execSQL(
+                    "INSERT INTO sleep_diary_entries VALUES(?,?,?,?,?,?,0)",
+                    arrayOf(entryId,draft.nightStartDate,draft.nightEndDate,draft.createdAt,draft.updatedAt,revisionId),
+                )
+            } else {
+                val statement = db.compileStatement("UPDATE sleep_diary_entries SET night_start_date=?,night_end_date=?,updated_at=?,current_revision_id=? WHERE entry_id=? AND current_revision_id=? AND deleted=0")
+                statement.bindString(1,draft.nightStartDate); statement.bindString(2,draft.nightEndDate)
+                statement.bindString(3,draft.updatedAt); statement.bindString(4,revisionId)
+                statement.bindString(5,entryId); statement.bindString(6,checkNotNull(draft.expectedRevision))
+                if (statement.executeUpdateDelete() != 1) return SaveSleepDiaryResult.Conflict
+            }
+            db.execSQL(
+                "INSERT INTO sleep_diary_revisions VALUES(?,?,?,?,?,?,?,?)",
+                arrayOf(revisionId,entryId,draft.expectedRevision,draft.updatedAt,draft.sleepQuality?.wireValue,
+                    draft.wakeQuality?.wireValue,draft.dayForm?.wireValue,draft.treatmentAndNotes),
+            )
+            draft.events.forEach { event -> db.execSQL(
+                "INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
+                arrayOf(revisionId,event.eventId.ifEmpty { sleepId("sle") },event.type.wireValue,event.startAt,event.endAt),
+            ) }
+            db.setTransactionSuccessful()
+            SaveSleepDiaryResult.Saved(entryId,revisionId)
+        } catch (_: android.database.sqlite.SQLiteConstraintException) {
+            SaveSleepDiaryResult.Conflict
+        } catch (_: android.database.sqlite.SQLiteException) {
+            SaveSleepDiaryResult.DatabaseError
+        } finally { db.endTransaction() }
+    }
+
+    fun listSleepDiary(limit: Int = 90): List<SleepDiaryEntry> {
+        require(limit in 1..3660)
+        val db = database.readableDatabase
+        return db.rawQuery("SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,current_revision_id FROM sleep_diary_entries WHERE deleted=0 ORDER BY night_start_date DESC,entry_id LIMIT ?", arrayOf(limit.toString())).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val revision = cursor.getString(5)
+                    val values = db.rawQuery("SELECT sleep_quality,wake_quality,day_form,treatment_and_notes FROM sleep_diary_revisions WHERE revision_id=?", arrayOf(revision)).use { detail -> check(detail.moveToFirst()); arrayOf(detail.getString(0),detail.getString(1),detail.getString(2),detail.getString(3)) }
+                    val events = db.rawQuery("SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=? ORDER BY start_at,event_id", arrayOf(revision)).use { eventCursor -> buildList { while (eventCursor.moveToNext()) add(SleepDiaryEvent(eventCursor.getString(0), SleepEventType.entries.single { it.wireValue == eventCursor.getString(1) }, eventCursor.getString(2), if (eventCursor.isNull(3)) null else eventCursor.getString(3))) } }
+                    fun quality(value: String?) = value?.let { text -> SleepQuality.entries.single { it.wireValue == text } }
+                    add(SleepDiaryEntry(cursor.getString(0),cursor.getString(1),cursor.getString(2),cursor.getString(3),cursor.getString(4),revision,quality(values[0]),quality(values[1]),quality(values[2]),values[3].orEmpty(),events))
+                }
+            }
+        }
+    }
+
+    fun deleteSleepDiary(entryId: String, expectedRevision: String, deletedAt: String): SaveSleepDiaryResult {
+        val revisionId = sleepId("slr")
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val current = db.rawQuery(
+                "SELECT current_revision_id FROM sleep_diary_entries WHERE entry_id=? AND deleted=0",
+                arrayOf(entryId),
+            ).use { if (it.moveToFirst()) it.getString(0) else null }
+            if (current != expectedRevision) return SaveSleepDiaryResult.Conflict
+            val copied = db.compileStatement(
+                "INSERT INTO sleep_diary_revisions " +
+                    "SELECT ?,entry_id,revision_id,?,sleep_quality,wake_quality,day_form,treatment_and_notes " +
+                    "FROM sleep_diary_revisions WHERE revision_id=? AND entry_id=?",
+            )
+            copied.bindString(1, revisionId)
+            copied.bindString(2, deletedAt)
+            copied.bindString(3, expectedRevision)
+            copied.bindString(4, entryId)
+            if (copied.executeInsert() < 0) return SaveSleepDiaryResult.Conflict
+            db.execSQL(
+                "INSERT INTO sleep_diary_events SELECT ?,event_id,event_type,start_at,end_at " +
+                    "FROM sleep_diary_events WHERE revision_id=?",
+                arrayOf(revisionId, expectedRevision),
+            )
+            val guarded = db.compileStatement(
+                "UPDATE sleep_diary_entries SET updated_at=?,current_revision_id=?,deleted=1 " +
+                    "WHERE entry_id=? AND current_revision_id=? AND deleted=0",
+            )
+            guarded.bindString(1, deletedAt)
+            guarded.bindString(2, revisionId)
+            guarded.bindString(3, entryId)
+            guarded.bindString(4, expectedRevision)
+            if (guarded.executeUpdateDelete() != 1) return SaveSleepDiaryResult.Conflict
+            db.setTransactionSuccessful()
+            SaveSleepDiaryResult.Saved(entryId, revisionId)
+        } catch (_: android.database.sqlite.SQLiteException) {
+            SaveSleepDiaryResult.DatabaseError
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Complete causal envelope used only inside the full-generation transaction. */
+    internal fun buildSleepDiaryV1Json(): String {
+        val entries = JSONArray()
+        val db = database.readableDatabase
+        db.rawQuery(
+            "SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,current_revision_id,deleted " +
+                "FROM sleep_diary_entries ORDER BY entry_id",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val revisionId = cursor.getString(5)
+                val revision = db.rawQuery(
+                    "SELECT parent_revision_id,sleep_quality,wake_quality,day_form,treatment_and_notes " +
+                        "FROM sleep_diary_revisions WHERE revision_id=?",
+                    arrayOf(revisionId),
+                ).use { detail -> check(detail.moveToFirst()); arrayOf(
+                    if (detail.isNull(0)) null else detail.getString(0),
+                    if (detail.isNull(1)) null else detail.getString(1),
+                    if (detail.isNull(2)) null else detail.getString(2),
+                    if (detail.isNull(3)) null else detail.getString(3),
+                    if (detail.isNull(4)) "" else detail.getString(4),
+                ) }
+                val events = JSONArray()
+                db.rawQuery(
+                    "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events " +
+                        "WHERE revision_id=? ORDER BY event_id",
+                    arrayOf(revisionId),
+                ).use { values -> while (values.moveToNext()) events.put(
+                    JSONObject().put("event_id", values.getString(0))
+                        .put("type", values.getString(1)).put("start_at", values.getString(2))
+                        .put("end_at", if (values.isNull(3)) JSONObject.NULL else values.getString(3)),
+                ) }
+                entries.put(JSONObject().put("entry_id", cursor.getString(0))
+                    .put("night_start_date", cursor.getString(1)).put("night_end_date", cursor.getString(2))
+                    .put("created_at", cursor.getString(3)).put("updated_at", cursor.getString(4))
+                    .put("revision_id", revisionId)
+                    .put("parent_revision_id", revision[0] ?: JSONObject.NULL)
+                    .put("deleted", cursor.getInt(6) != 0)
+                    .put("sleep_quality", revision[1] ?: JSONObject.NULL)
+                    .put("wake_quality", revision[2] ?: JSONObject.NULL)
+                    .put("day_form", revision[3] ?: JSONObject.NULL)
+                    .put("treatment_and_notes", revision[4]).put("events", events))
+            }
+        }
+        return JSONObject().put("format", "trainlog-sleep-diary").put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString()).put("entries", entries).toString()
+    }
+
+    internal fun applySleepDiaryV1Json(json: String): SleepDiaryImportResult {
+        val root = try { JSONObject(json) } catch (_: RuntimeException) {
+            return SleepDiaryImportResult.Rejected("invalid JSON")
+        }
+        if (!jsonHasUniqueObjectKeys(json) || root.optString("format") != "trainlog-sleep-diary" ||
+            root.opt("version") != 1 || !root.has("entries"))
+            return SleepDiaryImportResult.Rejected("invalid envelope")
+        val values = root.optJSONArray("entries") ?: return SleepDiaryImportResult.Rejected("invalid entries")
+        if (values.length() > 3660) return SleepDiaryImportResult.Rejected("entry bound exceeded")
+        val db = database.writableDatabase
+        var advanced = 0
+        var unchanged = 0
+        return try {
+            for (index in 0 until values.length()) {
+                val item = values.getJSONObject(index)
+                val entryId = item.getString("entry_id")
+                val revisionId = item.getString("revision_id")
+                val parent = if (item.isNull("parent_revision_id")) null else item.getString("parent_revision_id")
+                if (!sleepIdentity(entryId, "sl") || !sleepIdentity(revisionId, "slr") ||
+                    (parent != null && !sleepIdentity(parent, "slr")))
+                    return SleepDiaryImportResult.Rejected("invalid sleep diary identity")
+                val local = db.rawQuery(
+                    "SELECT current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
+                    arrayOf(entryId),
+                ).use { if (it.moveToFirst()) it.getString(0) to it.getInt(1) else null }
+                if (local?.first == revisionId) {
+                    val same = db.rawQuery(
+                        "SELECT e.night_start_date,e.night_end_date,e.created_at,e.updated_at,e.deleted," +
+                            "r.parent_revision_id,r.sleep_quality,r.wake_quality,r.day_form,r.treatment_and_notes," +
+                            "(SELECT COUNT(*) FROM sleep_diary_events v WHERE v.revision_id=r.revision_id) " +
+                            "FROM sleep_diary_entries e JOIN sleep_diary_revisions r " +
+                            "ON r.revision_id=e.current_revision_id WHERE e.entry_id=?",
+                        arrayOf(entryId),
+                    ).use { current ->
+                        current.moveToFirst() && current.getString(0) == item.getString("night_start_date") &&
+                            current.getString(1) == item.getString("night_end_date") &&
+                            current.getString(2) == item.getString("created_at") &&
+                            current.getString(3) == item.getString("updated_at") &&
+                            (current.getInt(4) != 0) == item.getBoolean("deleted") &&
+                            (if (current.isNull(5)) null else current.getString(5)) == parent &&
+                            (if (current.isNull(6)) null else current.getString(6)) ==
+                                (if (item.isNull("sleep_quality")) null else item.getString("sleep_quality")) &&
+                            (if (current.isNull(7)) null else current.getString(7)) ==
+                                (if (item.isNull("wake_quality")) null else item.getString("wake_quality")) &&
+                            (if (current.isNull(8)) null else current.getString(8)) ==
+                                (if (item.isNull("day_form")) null else item.getString("day_form")) &&
+                            current.getString(9).orEmpty() == item.getString("treatment_and_notes") &&
+                            current.getInt(10) == item.getJSONArray("events").length()
+                    }
+                    val replayEvents = item.getJSONArray("events")
+                    var sameEvents = same
+                    for (eventIndex in 0 until replayEvents.length()) {
+                        val event = replayEvents.getJSONObject(eventIndex)
+                        sameEvents = sameEvents && db.rawQuery(
+                            "SELECT event_type,start_at,end_at FROM sleep_diary_events " +
+                                "WHERE revision_id=? AND event_id=?",
+                            arrayOf(revisionId, event.getString("event_id")),
+                        ).use { current ->
+                            current.moveToFirst() && current.getString(0) == event.getString("type") &&
+                                current.getString(1) == event.getString("start_at") &&
+                                (if (current.isNull(2)) null else current.getString(2)) ==
+                                    (if (event.isNull("end_at")) null else event.getString("end_at"))
+                        }
+                    }
+                    if (!sameEvents) return SleepDiaryImportResult.Rejected(
+                        "sleep diary revision identity reused with different content",
+                    )
+                    unchanged++
+                    continue
+                }
+                if (local != null && parent != local.first)
+                    return SleepDiaryImportResult.Rejected("concurrent sleep diary revision")
+                if (local == null && parent != null)
+                    return SleepDiaryImportResult.Rejected("unknown sleep diary parent")
+                val deleted = item.getBoolean("deleted")
+                if (local?.second == 1 && !deleted)
+                    return SleepDiaryImportResult.Rejected("sleep diary resurrection")
+                val draft = SleepDiaryDraft(entryId, parent, item.getString("night_start_date"),
+                    item.getString("night_end_date"), item.getString("created_at"), item.getString("updated_at"),
+                    if (item.isNull("sleep_quality")) null else SleepQuality.entries.single { it.wireValue == item.getString("sleep_quality") },
+                    if (item.isNull("wake_quality")) null else SleepQuality.entries.single { it.wireValue == item.getString("wake_quality") },
+                    if (item.isNull("day_form")) null else SleepQuality.entries.single { it.wireValue == item.getString("day_form") },
+                    item.getString("treatment_and_notes"), buildList {
+                        val events = item.getJSONArray("events")
+                        if (events.length() > 64) throw IllegalArgumentException("event bound")
+                        for (eventIndex in 0 until events.length()) {
+                            val event = events.getJSONObject(eventIndex)
+                            val eventId = event.getString("event_id")
+                            if (!sleepIdentity(eventId, "sle"))
+                                throw IllegalArgumentException("invalid sleep event identity")
+                            add(SleepDiaryEvent(eventId,
+                                SleepEventType.entries.single { it.wireValue == event.getString("type") },
+                                event.getString("start_at"),
+                                if (event.isNull("end_at")) null else event.getString("end_at")))
+                        }
+                    })
+                if (!sleepDraftValid(draft)) return SleepDiaryImportResult.Rejected("invalid entry")
+                if (local == null) db.execSQL("INSERT INTO sleep_diary_entries VALUES(?,?,?,?,?,?,?)",
+                    arrayOf(entryId,draft.nightStartDate,draft.nightEndDate,draft.createdAt,draft.updatedAt,revisionId,if (deleted) 1 else 0))
+                else db.execSQL("UPDATE sleep_diary_entries SET night_start_date=?,night_end_date=?,updated_at=?,current_revision_id=?,deleted=? WHERE entry_id=? AND current_revision_id=?",
+                    arrayOf(draft.nightStartDate,draft.nightEndDate,draft.updatedAt,revisionId,if (deleted) 1 else 0,entryId,local.first))
+                db.execSQL("INSERT INTO sleep_diary_revisions VALUES(?,?,?,?,?,?,?,?)",
+                    arrayOf(revisionId,entryId,parent,draft.updatedAt,draft.sleepQuality?.wireValue,draft.wakeQuality?.wireValue,draft.dayForm?.wireValue,draft.treatmentAndNotes))
+                draft.events.forEach { event -> db.execSQL("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
+                    arrayOf(revisionId,event.eventId,event.type.wireValue,event.startAt,event.endAt)) }
+                advanced++
+            }
+            SleepDiaryImportResult.Applied(advanced, unchanged)
+        } catch (error: RuntimeException) {
+            SleepDiaryImportResult.Rejected(error.message ?: "invalid sleep diary")
+        }
+    }
+
     /** Create a transactionally consistent SQLite snapshot without exposing WAL files. */
     internal fun backupDatabaseTo(destination: File) {
         require(!destination.exists()) { "Backup snapshot destination already exists." }
@@ -511,6 +810,7 @@ class TrainlogRepository(
         artifacts["feedback"] = buildTrainingFeedbackJson(true)
         artifacts["causal-deletions"] = buildCausalDeletionExportV1Json()
         artifacts["program-executions"] = buildProgramExecutionsV1Json()
+        artifacts["sleep-diary"] = buildSleepDiaryV1Json()
         artifacts
     }
 
@@ -8754,7 +9054,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    25,
+    26,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -8804,6 +9104,7 @@ private class TrainlogDatabaseHelper(
         createSessionPreparationWithdrawalTable(db)
         createSyncedProgramTables(db)
         createProgramExecutionProvenance(db)
+        createSleepDiaryTables(db)
         seedEquipment(db)
     }
 
@@ -9009,6 +9310,14 @@ private class TrainlogDatabaseHelper(
             createProgramExecutionProvenance(db)
             version = 25
         }
+        if (version < 26 && newVersion >= 26) {
+            /* WHY: the phone captures the same minute-precise diary offline.
+             * CONTRACT: v26 mirrors the versioned sleep-domain structure; it
+             * does not change completed workout or frozen V1/V3 semantics.
+             * INVARIANT: migration creates no observation or causal ancestry. */
+            createSleepDiaryTables(db)
+            version = 26
+        }
 
         if (version != newVersion) {
             error(
@@ -9073,6 +9382,45 @@ private class TrainlogDatabaseHelper(
                 "ON sessions(source_program_id,source_program_session_id) " +
                 "WHERE source_program_id IS NOT NULL",
         )
+    }
+
+    private fun createSleepDiaryTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS sleep_diary_entries(
+                entry_id TEXT PRIMARY KEY, night_start_date TEXT NOT NULL,
+                night_end_date TEXT NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL, current_revision_id TEXT NOT NULL,
+                deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)),
+                CHECK(entry_id GLOB 'sl_*'), CHECK(night_start_date<night_end_date)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS sleep_diary_revisions(
+                revision_id TEXT PRIMARY KEY,
+                entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
+                parent_revision_id TEXT, created_at TEXT NOT NULL,
+                sleep_quality TEXT CHECK(sleep_quality IN('TB','B','Moy','M','TM')),
+                wake_quality TEXT CHECK(wake_quality IN('TB','B','Moy','M','TM')),
+                day_form TEXT CHECK(day_form IN('TB','B','Moy','M','TM')),
+                treatment_and_notes TEXT,
+                CHECK(treatment_and_notes IS NULL OR length(CAST(treatment_and_notes AS BLOB))<=16384),
+                UNIQUE(entry_id,revision_id)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS sleep_diary_events(
+                revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
+                event_id TEXT NOT NULL, event_type TEXT NOT NULL CHECK(event_type IN(
+                    'bed_time','final_get_up','night_get_up','sleep','nap','long_awake',
+                    'half_sleep','daytime_sleepiness')),
+                start_at TEXT NOT NULL, end_at TEXT,
+                CHECK((event_type IN('bed_time','final_get_up','night_get_up','daytime_sleepiness') AND end_at IS NULL)
+                    OR (event_type IN('sleep','nap','long_awake','half_sleep') AND end_at IS NOT NULL)),
+                PRIMARY KEY(revision_id,event_id)
+            )""".trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS sleep_diary_entries_dates ON sleep_diary_entries(night_start_date,deleted)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS sleep_diary_events_time ON sleep_diary_events(start_at,end_at)")
     }
 
     private fun createSyncDataLifecycleTables(db: SQLiteDatabase) {

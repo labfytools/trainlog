@@ -225,7 +225,7 @@ internal class AndroidBackupService(
                         manifest.getInt("version") == VERSION &&
                         manifest.getString("package") == context.packageName &&
                         manifest.getBoolean("plaintext") &&
-                        manifest.getInt("schema") in 17..25
+                        manifest.getInt("schema") in 17..26
                 ) {
                     "Unsupported backup."
                 }
@@ -319,7 +319,7 @@ internal class AndroidBackupService(
                 }
             )
             require(db.rawQuery("PRAGMA foreign_key_check", null).use { !it.moveToFirst() })
-            require(db.version in 17..25) { "Unsupported Android schema ${db.version}." }
+            require(db.version in 17..26) { "Unsupported Android schema ${db.version}." }
             return db.version
         } finally {
             db.close()

@@ -37,7 +37,7 @@ class AppNavigationStateTest {
     @After fun tearDown() { context.deleteDatabase(databaseName) }
 
     @Test fun captureSectionsHaveTypedRootsWithoutMobileStatistics() {
-        assertEquals(6, AppSection.entries.size)
+        assertEquals(7, AppSection.entries.size)
         assertFalse(AppSection.entries.any { it.name == "STATISTICS" })
         AppSection.entries.forEach { assertEquals(it, it.rootRoute().section) }
         assertEquals(AppSection.SESSIONS, AppRoute.SessionDetail("se_1").section)
