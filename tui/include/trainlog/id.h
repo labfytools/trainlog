@@ -45,6 +45,7 @@
  * - `pgr` for desktop Program V1 revision identities;
  * - `del` for immutable causal deletion operations.
  * - `sl`, `slr`, and `sle` for sleep diary entries, revisions, and events.
+ * - `med`, `medr`, and `mdi` for medications, medication revisions, and intakes.
  *
  * Imported v1 documents may contain other schema-valid opaque identifiers;
  * this API defines creation policy, not import validation.

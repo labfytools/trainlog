@@ -19,7 +19,11 @@ def entry(revision, parent=None, deleted=False):
             "sleep_quality": "B", "wake_quality": "Moy", "day_form": "TB",
             "treatment_and_notes": "Synthetic fixture", "events": [
                 {"event_id": "sle_30000000-0000-4000-8000-000000000003", "type": "sleep",
-                 "start_at": "2026-10-24T23:30:00+02:00", "end_at": "2026-10-25T06:30:00+01:00"}]}
+                 "start_at": "2026-10-24T23:30:00+02:00", "end_at": "2026-10-25T06:30:00+01:00"}],
+            "intakes": [{"intake_id": "mdi_70000000-0000-4000-8000-000000000007",
+                "medication_id": "med_80000000-0000-4000-8000-000000000008",
+                "medication_name": "Synthetic medication", "taken_at": "2026-10-25T05:15:00+01:00",
+                "dose_value": 10, "dose_unit": "mg", "note": "", "created_at": "2026-10-24T22:00:00+02:00"}]}
 
 
 class SleepExchangeTest(unittest.TestCase):
@@ -29,10 +33,18 @@ class SleepExchangeTest(unittest.TestCase):
           CREATE TABLE sleep_diary_entries(entry_id TEXT PRIMARY KEY,night_start_date TEXT,night_end_date TEXT,created_at TEXT,updated_at TEXT,current_revision_id TEXT,deleted INTEGER);
           CREATE TABLE sleep_diary_revisions(revision_id TEXT PRIMARY KEY,entry_id TEXT,parent_revision_id TEXT,created_at TEXT,sleep_quality TEXT,wake_quality TEXT,day_form TEXT,treatment_and_notes TEXT);
           CREATE TABLE sleep_diary_events(revision_id TEXT,event_id TEXT,event_type TEXT,start_at TEXT,end_at TEXT,PRIMARY KEY(revision_id,event_id));
+          CREATE TABLE sleep_medications(medication_id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,current_revision_id TEXT,deleted INTEGER);
+          CREATE TABLE sleep_medication_revisions(revision_id TEXT PRIMARY KEY,medication_id TEXT,parent_revision_id TEXT,created_at TEXT,name TEXT,default_dose_value REAL,default_dose_unit TEXT,form TEXT,note TEXT,active INTEGER);
+          CREATE TABLE sleep_medication_intakes(revision_id TEXT,intake_id TEXT,medication_id TEXT,medication_name TEXT,taken_at TEXT,dose_value REAL,dose_unit TEXT,note TEXT,created_at TEXT,PRIMARY KEY(revision_id,intake_id));
         """)
 
     def document(self, item):
-        return {"format": exchange.FORMAT, "version": 1, "generated_at": "2026-10-25T18:00:00+01:00", "entries": [item]}
+        medication = {"medication_id": "med_80000000-0000-4000-8000-000000000008",
+            "revision_id": "medr_90000000-0000-4000-8000-000000000009", "parent_revision_id": None,
+            "created_at": "2026-10-24T18:00:00+02:00", "updated_at": "2026-10-24T18:00:00+02:00",
+            "name": "Synthetic medication", "default_dose_value": 5, "default_dose_unit": "mg",
+            "form": "tablet", "note": "", "active": True, "deleted": False}
+        return {"format": exchange.FORMAT, "version": 1, "generated_at": "2026-10-25T18:00:00+01:00", "entries": [item], "medications": [medication]}
 
     def test_roundtrip_replay_conflict_and_non_resurrection(self):
         first = "slr_20000000-0000-4000-8000-000000000002"

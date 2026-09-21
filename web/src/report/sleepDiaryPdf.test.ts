@@ -8,11 +8,13 @@ const entry = (index: number): SleepEntry => ({
   updated_at: '2026-09-01T18:00:00+02:00', revision_id: `slr_${index}`, sleep_quality: 'B',
   wake_quality: 'Moy', day_form: 'TB', treatment_and_notes: 'Synthetic observation', events: [
     { event_id: `sle_${index}`, type: 'sleep', start_at: '2026-09-01T23:30:00+02:00', end_at: '2026-09-02T06:30:00+02:00' },
-  ],
+  ], intakes: [{ intake_id: `mdi_${index}`, medication_id: `med_${index}`,
+    medication_name: 'Synthetic medication', taken_at: '2026-09-01T22:30:00+02:00',
+    dose_value: 5, dose_unit: 'mg', note: '', created_at: '2026-09-01T18:00:00+02:00' }],
 })
 const snapshot = (count: number): SleepSnapshot => ({ api_version: 1,
   entries: Array.from({ length: count }, (_, index) => entry(index)), summary: { nights: count,
-    long_awake_count: 1, nap_count: 1, sleepiness_count: 1, sleep_duration_seconds: 25_200,
+    long_awake_count: 1, nap_count: 1, sleepiness_count: 1, intake_count: count, sleep_duration_seconds: 25_200,
     long_awake_duration_seconds: 1_800, nap_duration_seconds: 1_200, average_bed_minute: 330,
     average_get_up_minute: 750 } })
 

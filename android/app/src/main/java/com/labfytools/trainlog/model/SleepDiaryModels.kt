@@ -7,15 +7,26 @@ enum class SleepEventType(val wireValue: String) {
     DAYTIME_SLEEPINESS("daytime_sleepiness"),
 }
 data class SleepDiaryEvent(val eventId: String, val type: SleepEventType, val startAt: String, val endAt: String?)
+data class SleepMedication(
+    val medicationId: String, val revisionId: String, val createdAt: String, val updatedAt: String,
+    val name: String, val defaultDoseValue: Double?, val defaultDoseUnit: String?,
+    val form: String, val note: String, val active: Boolean,
+)
+data class MedicationIntake(
+    val intakeId: String, val medicationId: String, val medicationName: String,
+    val takenAt: String, val doseValue: Double?, val doseUnit: String?, val note: String,
+    val createdAt: String,
+)
 data class SleepDiaryEntry(
     val entryId: String, val nightStartDate: String, val nightEndDate: String,
     val createdAt: String, val updatedAt: String, val revisionId: String,
     val sleepQuality: SleepQuality?, val wakeQuality: SleepQuality?, val dayForm: SleepQuality?,
-    val treatmentAndNotes: String, val events: List<SleepDiaryEvent>,
+    val treatmentAndNotes: String, val events: List<SleepDiaryEvent>, val intakes: List<MedicationIntake>,
 )
 data class SleepDiaryDraft(
     val entryId: String? = null, val expectedRevision: String? = null,
     val nightStartDate: String, val nightEndDate: String, val createdAt: String,
     val updatedAt: String, val sleepQuality: SleepQuality?, val wakeQuality: SleepQuality?,
     val dayForm: SleepQuality?, val treatmentAndNotes: String, val events: List<SleepDiaryEvent>,
+    val intakes: List<MedicationIntake> = emptyList(),
 )

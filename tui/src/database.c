@@ -1307,7 +1307,61 @@ static const char *const MIGRATE_V28_TO_V29_SQL =
     "CREATE INDEX IF NOT EXISTS sleep_diary_entries_dates ON "
     "sleep_diary_entries(night_start_date,deleted);"
     "CREATE INDEX IF NOT EXISTS sleep_diary_events_time ON sleep_diary_events(start_at,end_at);"
+    "CREATE TABLE IF NOT EXISTS sleep_medications("
+    "medication_id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"
+    "current_revision_id TEXT NOT NULL,deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)),"
+    "CHECK(medication_id GLOB 'med_*'));"
+    "CREATE TABLE IF NOT EXISTS sleep_medication_revisions("
+    "revision_id TEXT PRIMARY KEY,medication_id TEXT NOT NULL REFERENCES sleep_medications("
+    "medication_id) ON DELETE RESTRICT,parent_revision_id TEXT,created_at TEXT NOT NULL,"
+    "name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 160),"
+    "default_dose_value REAL CHECK(default_dose_value IS NULL OR default_dose_value>0),"
+    "default_dose_unit TEXT,form TEXT,note TEXT,active INTEGER NOT NULL CHECK(active IN(0,1)),"
+    "CHECK((default_dose_value IS NULL AND default_dose_unit IS NULL) OR "
+    "(default_dose_value IS NOT NULL AND length(trim(default_dose_unit)) BETWEEN 1 AND 32)));"
+    "CREATE TABLE IF NOT EXISTS sleep_medication_intakes("
+    "revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,"
+    "intake_id TEXT NOT NULL,medication_id TEXT NOT NULL,medication_name TEXT NOT NULL,"
+    "taken_at TEXT NOT NULL,dose_value REAL,dose_unit TEXT,note TEXT,created_at TEXT NOT NULL,"
+    "PRIMARY KEY(revision_id,intake_id),CHECK(intake_id GLOB 'mdi_*'),"
+    "CHECK(length(trim(medication_name)) BETWEEN 1 AND 160),"
+    "CHECK((dose_value IS NULL AND dose_unit IS NULL) OR "
+    "(dose_value>0 AND length(trim(dose_unit)) BETWEEN 1 AND 32)));"
+    "CREATE INDEX IF NOT EXISTS sleep_medications_active ON sleep_medications(deleted,updated_at);"
+    "CREATE INDEX IF NOT EXISTS sleep_medication_intakes_time ON "
+    "sleep_medication_intakes(taken_at,medication_id);"
     "PRAGMA user_version=29;COMMIT;";
+
+/* WHY: schema v29 was already opened on the private 0.1.4 review installation
+ * before medication capture joined the same unreleased migration. CONTRACT:
+ * this additive repair is identical to the tail of v28 -> v29 and runs only
+ * while v29 remains the development schema. INVARIANT: existing diary rows
+ * are never rewritten and the transaction is safe to repeat on every open. */
+static const char *const ENSURE_V29_SLEEP_MEDICATION_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS sleep_medications("
+    "medication_id TEXT PRIMARY KEY,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,"
+    "current_revision_id TEXT NOT NULL,deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)),"
+    "CHECK(medication_id GLOB 'med_*'));"
+    "CREATE TABLE IF NOT EXISTS sleep_medication_revisions("
+    "revision_id TEXT PRIMARY KEY,medication_id TEXT NOT NULL REFERENCES sleep_medications("
+    "medication_id) ON DELETE RESTRICT,parent_revision_id TEXT,created_at TEXT NOT NULL,"
+    "name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 160),"
+    "default_dose_value REAL CHECK(default_dose_value IS NULL OR default_dose_value>0),"
+    "default_dose_unit TEXT,form TEXT,note TEXT,active INTEGER NOT NULL CHECK(active IN(0,1)),"
+    "CHECK((default_dose_value IS NULL AND default_dose_unit IS NULL) OR "
+    "(default_dose_value IS NOT NULL AND length(trim(default_dose_unit)) BETWEEN 1 AND 32)));"
+    "CREATE TABLE IF NOT EXISTS sleep_medication_intakes("
+    "revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,"
+    "intake_id TEXT NOT NULL,medication_id TEXT NOT NULL,medication_name TEXT NOT NULL,"
+    "taken_at TEXT NOT NULL,dose_value REAL,dose_unit TEXT,note TEXT,created_at TEXT NOT NULL,"
+    "PRIMARY KEY(revision_id,intake_id),CHECK(intake_id GLOB 'mdi_*'),"
+    "CHECK(length(trim(medication_name)) BETWEEN 1 AND 160),"
+    "CHECK((dose_value IS NULL AND dose_unit IS NULL) OR "
+    "(dose_value>0 AND length(trim(dose_unit)) BETWEEN 1 AND 32)));"
+    "CREATE INDEX IF NOT EXISTS sleep_medications_active ON sleep_medications(deleted,updated_at);"
+    "CREATE INDEX IF NOT EXISTS sleep_medication_intakes_time ON "
+    "sleep_medication_intakes(taken_at,medication_id);COMMIT;";
 
 /* CONTRACT: migration fixtures may retain additive v25 columns while
  * deliberately lowering user_version. Add each provenance column only when
@@ -2242,6 +2296,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     }
     if (status == TRAINLOG_STATUS_OK && version < 29) {
         status = execute_sql(database, MIGRATE_V28_TO_V29_SQL);
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = execute_sql(database, ENSURE_V29_SLEEP_MEDICATION_SQL);
     }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);

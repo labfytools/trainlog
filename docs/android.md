@@ -3,6 +3,11 @@
 ## Sleep Diary V1
 
 Android schema v26 additively mirrors the Sleep Diary revision/event model for
+local-first capture. The unreleased schema-v26 contract also includes the
+revisioned medication catalog and entry-revision-owned intake snapshots. A
+catalog default dose is only a form default; each intake retains its actual
+optional positive dose and unit. Existing development databases already at
+v26 receive the missing additive tables during the normal open transaction.
 local-first field capture. Its compact Morning and Day sections edit one
 durable night/day entry without reproducing the desktop/PDF grid. Creation,
 correction and logical deletion are revision guarded and survive repository

@@ -9,11 +9,44 @@
 #include "trainlog/status.h"
 
 #define TRAINLOG_SLEEP_EVENTS_MAX 64U
+#define TRAINLOG_SLEEP_INTAKES_MAX 32U
 #define TRAINLOG_SLEEP_NOTES_MAX 16384U
 #define TRAINLOG_SLEEP_ENTRY_ID_CAPACITY 40U
 #define TRAINLOG_SLEEP_REVISION_ID_CAPACITY 41U
 #define TRAINLOG_SLEEP_EVENT_ID_CAPACITY 41U
 #define TRAINLOG_SLEEP_TIMESTAMP_CAPACITY 64U
+#define TRAINLOG_MEDICATION_NAME_CAPACITY 161U
+#define TRAINLOG_MEDICATION_UNIT_CAPACITY 33U
+#define TRAINLOG_MEDICATION_FORM_CAPACITY 65U
+#define TRAINLOG_MEDICATION_NOTE_CAPACITY 513U
+
+typedef struct TrainlogMedication {
+    char medication_id[41];
+    char revision_id[42];
+    char parent_revision_id[42];
+    char created_at[TRAINLOG_SLEEP_TIMESTAMP_CAPACITY];
+    char updated_at[TRAINLOG_SLEEP_TIMESTAMP_CAPACITY];
+    char name[TRAINLOG_MEDICATION_NAME_CAPACITY];
+    bool has_default_dose;
+    double default_dose_value;
+    char default_dose_unit[TRAINLOG_MEDICATION_UNIT_CAPACITY];
+    char form[TRAINLOG_MEDICATION_FORM_CAPACITY];
+    char note[TRAINLOG_MEDICATION_NOTE_CAPACITY];
+    bool active;
+    bool deleted;
+} TrainlogMedication;
+
+typedef struct TrainlogMedicationIntake {
+    char intake_id[42];
+    char medication_id[41];
+    char medication_name[TRAINLOG_MEDICATION_NAME_CAPACITY];
+    char taken_at[TRAINLOG_SLEEP_TIMESTAMP_CAPACITY];
+    bool has_dose;
+    double dose_value;
+    char dose_unit[TRAINLOG_MEDICATION_UNIT_CAPACITY];
+    char note[TRAINLOG_MEDICATION_NOTE_CAPACITY];
+    char created_at[TRAINLOG_SLEEP_TIMESTAMP_CAPACITY];
+} TrainlogMedicationIntake;
 
 typedef enum TrainlogSleepQuality {
     TRAINLOG_SLEEP_QUALITY_UNSET = 0,
@@ -56,6 +89,8 @@ typedef struct TrainlogSleepDiaryEntry {
     char treatment_and_notes[TRAINLOG_SLEEP_NOTES_MAX + 1U];
     TrainlogSleepEvent events[TRAINLOG_SLEEP_EVENTS_MAX];
     size_t event_count;
+    TrainlogMedicationIntake intakes[TRAINLOG_SLEEP_INTAKES_MAX];
+    size_t intake_count;
     bool deleted;
 } TrainlogSleepDiaryEntry;
 
@@ -96,5 +131,24 @@ trainlog_sleep_diary_delete(TrainlogDatabase *database,
                             const char *expected_revision,
                             const char *deleted_at,
                             char output_revision[TRAINLOG_SLEEP_REVISION_ID_CAPACITY]);
+
+typedef TrainlogStatus (*TrainlogMedicationVisitor)(void *context,
+                                                    const TrainlogMedication *medication);
+
+bool trainlog_medication_validate(const TrainlogMedication *medication);
+TrainlogStatus trainlog_medication_create(TrainlogDatabase *database,
+                                          TrainlogMedication *medication);
+TrainlogStatus trainlog_medication_update(TrainlogDatabase *database,
+                                          const char *expected_revision,
+                                          TrainlogMedication *medication);
+TrainlogStatus trainlog_medication_get(TrainlogDatabase *database,
+                                       const char *medication_id,
+                                       bool include_deleted,
+                                       TrainlogMedication *output);
+TrainlogStatus trainlog_medication_list(TrainlogDatabase *database,
+                                        bool include_inactive,
+                                        size_t limit,
+                                        TrainlogMedicationVisitor visitor,
+                                        void *context);
 
 #endif

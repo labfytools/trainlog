@@ -8,9 +8,9 @@ const labels: Record<SleepEventType, string> = { bed_time: 'v', final_get_up: '^
   sleep: 'SLEEP', nap: 'NAP', long_awake: 'AWAKE', half_sleep: 'HALF', daytime_sleepiness: 'S' }
 
 function row(stream: string[], entry: SleepEntry, y: number) {
-  const timelineX = 112; const width = 530
+  const timelineX = 112; const width = 500
   stream.push(`0.7 G 30 ${y - 40} 782 40 re S\n`)
-  stream.push(text(33, y - 16, 7, `${entry.night_start_date} > ${entry.night_end_date}`))
+  stream.push(text(33, y - 16, 5, `${entry.night_start_date} > ${entry.night_end_date}`))
   for (let hour = 0; hour <= 24; hour++) { const x = timelineX + hour / 24 * width; stream.push(`0.9 G ${x} ${y - 40} m ${x} ${y} l S\n`) }
   entry.events.forEach((event) => {
     const x = timelineX + minute(event.start_at, entry.night_start_date) / 1440 * width
@@ -21,20 +21,26 @@ function row(stream: string[], entry: SleepEntry, y: number) {
       if (eventWidth > 24) stream.push(text(x + 2, y - 23, 5, labels[event.type]))
     } else stream.push(text(x, y - 25, 8, labels[event.type]))
   })
-  stream.push(text(648, y - 16, 7, entry.sleep_quality ?? '-')); stream.push(text(680, y - 16, 7, entry.wake_quality ?? '-'))
-  stream.push(text(712, y - 16, 7, entry.day_form ?? '-')); stream.push(text(744, y - 13, 5, entry.treatment_and_notes.slice(0, 24)))
-  stream.push(text(744, y - 22, 5, entry.treatment_and_notes.slice(24, 48)))
+  entry.intakes.forEach((intake) => {
+    const x = timelineX + minute(intake.taken_at, entry.night_start_date) / 1440 * width
+    stream.push(text(x, y - 36, 6, 'M'))
+  })
+  stream.push(text(620, y - 16, 7, entry.sleep_quality ?? '-')); stream.push(text(658, y - 16, 7, entry.wake_quality ?? '-'))
+  const medicationText = entry.intakes.map((intake) => `${intake.taken_at.slice(11, 16)} ${intake.medication_name}${intake.dose_value === null ? '' : ` ${intake.dose_value} ${intake.dose_unit}`}`).join('; ')
+  const notes = [medicationText, entry.treatment_and_notes].filter(Boolean).join(' | ')
+  stream.push(text(696, y - 16, 7, entry.day_form ?? '-')); stream.push(text(730, y - 13, 4, notes.slice(0, 32)))
+  stream.push(text(730, y - 22, 4, notes.slice(32, 64)))
 }
 
 function page(snapshot: SleepSnapshot, entries: SleepEntry[], index: number, count: number, language: 'fr' | 'en') {
   const stream = ['0 G 0 g\n', text(30, 565, 14, language === 'fr' ? 'AGENDA TRAINLOG DE VIGILANCE ET DE SOMMEIL' : 'TRAINLOG SLEEP AND ALERTNESS DIARY'), text(740, 565, 7, `${index + 1}/${count}`), text(30, 548, 7, 'DATE')]
-  for (let hour = 0; hour <= 24; hour++) stream.push(text(112 + hour / 24 * 530, 548, 5, String((18 + hour) % 24)))
-  stream.push(text(646, 548, 5, 'SLEEP'), text(678, 548, 5, 'WAKE'), text(710, 548, 5, 'DAY'), text(744, 548, 5, 'NOTES'))
+  for (let hour = 0; hour <= 24; hour++) stream.push(text(112 + hour / 24 * 500, 548, 4, String((18 + hour) % 24)))
+  stream.push(text(618, 548, 4, 'SLEEP'), text(656, 548, 4, 'WAKE'), text(694, 548, 4, 'DAY'), text(730, 548, 4, 'TREATMENT / NOTES'))
   entries.forEach((entry, rowIndex) => row(stream, entry, 538 - rowIndex * 40))
   const y = 520 - entries.length * 40
-  stream.push(text(30, y, 9, 'OBSERVATIONS'), text(30, y - 14, 6, `${snapshot.summary.nights} nights; sleep ${Math.round(snapshot.summary.sleep_duration_seconds / 60)} min; long awake ${snapshot.summary.long_awake_count}; naps ${snapshot.summary.nap_count}; sleepiness ${snapshot.summary.sleepiness_count}`))
+  stream.push(text(30, y, 9, 'OBSERVATIONS'), text(30, y - 14, 6, `${snapshot.summary.nights} nights; sleep ${Math.round(snapshot.summary.sleep_duration_seconds / 60)} min; long awake ${snapshot.summary.long_awake_count}; naps ${snapshot.summary.nap_count}; sleepiness ${snapshot.summary.sleepiness_count}; intakes ${snapshot.summary.intake_count}`))
   entries.filter((entry) => entry.treatment_and_notes).slice(0, 3).forEach((entry, noteIndex) => stream.push(text(30, y - 27 - noteIndex * 10, 6, `${entry.night_start_date}: ${entry.treatment_and_notes.slice(0, 110)}`)))
-  stream.push(text(30, 18, 6, 'Legend: v bedtime; ^ get-up; S sleepiness; SLEEP sleep; NAP nap; AWAKE long awakening; HALF half-sleep.'))
+  stream.push(text(30, 18, 6, 'Legend: v bedtime; ^ get-up; S sleepiness; M medication intake; SLEEP sleep; NAP nap; AWAKE long awakening; HALF half-sleep.'))
   return stream.join('')
 }
 

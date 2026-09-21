@@ -1471,6 +1471,49 @@ static enum MHD_Result handle_request(void *closure,
         free(json);
         return queued;
     }
+    if (strcmp(url, "/api/v1/sleep-medications") == 0) {
+        char *json = NULL;
+        size_t json_size = 0U;
+        TrainlogStatus status;
+        enum MHD_Result queued;
+        if (is_get) {
+            status = trainlog_web_medication_list_json(context->database, &json, &json_size);
+        } else if (strcmp(method, MHD_HTTP_METHOD_POST) == 0) {
+            if (!program_mutation_allowed(context, connection)) {
+                return queue_json(
+                    connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+            }
+            status = trainlog_web_medication_save_json(
+                context->database, state->body, state->body_size, &json, &json_size);
+        } else {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET, POST");
+        }
+        if (status == TRAINLOG_STATUS_CONFLICT) {
+            free(json);
+            return queue_json(
+                connection, MHD_HTTP_CONFLICT, "{\"error\":\"revision_conflict\"}\n", NULL);
+        }
+        if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_UNPROCESSABLE_CONTENT,
+                              "{\"error\":\"invalid_sleep_medication\"}\n",
+                              NULL);
+        }
+        if (status != TRAINLOG_STATUS_OK || json == NULL || json_size == 0U) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"sleep_medications_unavailable\"}\n",
+                              NULL);
+        }
+        queued = queue_json(connection, MHD_HTTP_OK, json, NULL);
+        free(json);
+        return queued;
+    }
     if (strcmp(url, "/api/v1/dashboard") == 0) {
         TrainlogWebDashboardQuery query;
         TrainlogWebDashboardSnapshot snapshot;

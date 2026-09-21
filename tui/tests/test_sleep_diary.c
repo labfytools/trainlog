@@ -58,6 +58,16 @@ static TrainlogStatus count_visitor(void *context, const TrainlogSleepDiaryEntry
     return TRAINLOG_STATUS_OK;
 }
 
+static TrainlogStatus medication_count_visitor(void *context,
+                                               const TrainlogMedication *medication) {
+    size_t *count = context;
+    if (medication == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    ++*count;
+    return TRAINLOG_STATUS_OK;
+}
+
 int main(void) {
     TrainlogDatabase *database = NULL;
     TrainlogSleepDiaryEntry entry = sample();
@@ -69,8 +79,47 @@ int main(void) {
     char first_revision[TRAINLOG_SLEEP_REVISION_ID_CAPACITY];
     char deleted_revision[TRAINLOG_SLEEP_REVISION_ID_CAPACITY];
     size_t count = 0U;
+    size_t medication_count = 0U;
+    TrainlogMedication medication = {0};
+
+    (void)snprintf(
+        medication.created_at, sizeof(medication.created_at), "2026-10-24T18:00:00+02:00");
+    (void)snprintf(
+        medication.updated_at, sizeof(medication.updated_at), "%s", medication.created_at);
+    (void)snprintf(medication.name, sizeof(medication.name), "Synthetic medication");
+    medication.has_default_dose = true;
+    medication.default_dose_value = 5.0;
+    (void)snprintf(medication.default_dose_unit, sizeof(medication.default_dose_unit), "mg");
+    medication.active = true;
 
     CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_medication_create(database, &medication) == TRAINLOG_STATUS_OK);
+    entry.intake_count = 2U;
+    (void)trainlog_id_generate(
+        "mdi", entry.intakes[0].intake_id, sizeof(entry.intakes[0].intake_id));
+    (void)snprintf(entry.intakes[0].medication_id,
+                   sizeof(entry.intakes[0].medication_id),
+                   "%s",
+                   medication.medication_id);
+    (void)snprintf(entry.intakes[0].medication_name,
+                   sizeof(entry.intakes[0].medication_name),
+                   "%s",
+                   medication.name);
+    (void)snprintf(
+        entry.intakes[0].taken_at, sizeof(entry.intakes[0].taken_at), "2026-10-24T22:30:00+02:00");
+    (void)snprintf(entry.intakes[0].created_at,
+                   sizeof(entry.intakes[0].created_at),
+                   "%s",
+                   medication.created_at);
+    entry.intakes[0].has_dose = true;
+    entry.intakes[0].dose_value = 5.0;
+    (void)snprintf(entry.intakes[0].dose_unit, sizeof(entry.intakes[0].dose_unit), "mg");
+    entry.intakes[1] = entry.intakes[0];
+    (void)trainlog_id_generate(
+        "mdi", entry.intakes[1].intake_id, sizeof(entry.intakes[1].intake_id));
+    (void)snprintf(
+        entry.intakes[1].taken_at, sizeof(entry.intakes[1].taken_at), "2026-10-25T05:15:00+01:00");
+    entry.intakes[1].dose_value = 10.0;
     CHECK(trainlog_sleep_diary_validate(&entry));
     CHECK(trainlog_sleep_diary_create(database, &entry) == TRAINLOG_STATUS_OK);
     second = sample();
@@ -85,7 +134,24 @@ int main(void) {
     free(json);
     json = NULL;
     CHECK(trainlog_sleep_diary_get(database, entry.entry_id, false, &loaded) == TRAINLOG_STATUS_OK);
-    CHECK(loaded.event_count == 4U && loaded.sleep_quality == TRAINLOG_SLEEP_QUALITY_B);
+    CHECK(loaded.event_count == 4U && loaded.intake_count == 2U &&
+          loaded.intakes[0].dose_value == 5.0 && loaded.intakes[1].dose_value == 10.0 &&
+          loaded.sleep_quality == TRAINLOG_SLEEP_QUALITY_B);
+    (void)snprintf(
+        medication.updated_at, sizeof(medication.updated_at), "2026-10-26T12:00:00+01:00");
+    (void)snprintf(medication.name, sizeof(medication.name), "Renamed medication");
+    CHECK(trainlog_medication_update(database, medication.revision_id, &medication) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strcmp(loaded.intakes[0].medication_name, "Synthetic medication") == 0);
+    medication.active = false;
+    (void)snprintf(
+        medication.updated_at, sizeof(medication.updated_at), "2026-10-26T13:00:00+01:00");
+    CHECK(trainlog_medication_update(database, medication.revision_id, &medication) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(trainlog_medication_list(
+              database, false, 10U, medication_count_visitor, &medication_count) ==
+              TRAINLOG_STATUS_OK &&
+          medication_count == 0U);
     (void)snprintf(first_revision, sizeof(first_revision), "%s", loaded.revision_id);
     stale = loaded;
     loaded.day_form = TRAINLOG_SLEEP_QUALITY_TB;

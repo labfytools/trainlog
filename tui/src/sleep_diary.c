@@ -102,7 +102,8 @@ bool trainlog_sleep_diary_validate(const TrainlogSleepDiaryEntry *entry) {
         entry->wake_quality > TRAINLOG_SLEEP_QUALITY_TM ||
         entry->day_form > TRAINLOG_SLEEP_QUALITY_TM ||
         strlen(entry->treatment_and_notes) > TRAINLOG_SLEEP_NOTES_MAX ||
-        entry->event_count > TRAINLOG_SLEEP_EVENTS_MAX) {
+        entry->event_count > TRAINLOG_SLEEP_EVENTS_MAX ||
+        entry->intake_count > TRAINLOG_SLEEP_INTAKES_MAX) {
         return false;
     }
     for (index = 0U; index < entry->event_count; ++index) {
@@ -122,6 +123,25 @@ bool trainlog_sleep_diary_validate(const TrainlogSleepDiaryEntry *entry) {
             }
         }
     }
+    for (index = 0U; index < entry->intake_count; ++index) {
+        const TrainlogMedicationIntake *intake = &entry->intakes[index];
+        TrainlogTimestampKey taken, intake_created;
+        if (!id_valid(intake->intake_id, "mdi", sizeof(intake->intake_id)) ||
+            !id_valid(intake->medication_id, "med", sizeof(intake->medication_id)) ||
+            intake->medication_name[0] == '\0' ||
+            strlen(intake->medication_name) >= TRAINLOG_MEDICATION_NAME_CAPACITY ||
+            !timestamp_valid(intake->taken_at, &taken) ||
+            !timestamp_valid(intake->created_at, &intake_created) ||
+            (intake->has_dose && (!(intake->dose_value > 0.0) || intake->dose_unit[0] == '\0')) ||
+            (!intake->has_dose && (intake->dose_value != 0.0 || intake->dose_unit[0] != '\0'))) {
+            return false;
+        }
+        for (other = index + 1U; other < entry->intake_count; ++other) {
+            if (strcmp(intake->intake_id, entry->intakes[other].intake_id) == 0) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -137,6 +157,10 @@ static TrainlogStatus insert_revision(TrainlogDatabase *database,
     static const char event_sql[] =
         "INSERT INTO sleep_diary_events(revision_id,event_id,event_type,start_at,end_at) "
         "VALUES(?1,?2,?3,?4,?5)";
+    static const char intake_sql[] =
+        "INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,"
+        "medication_name,taken_at,dose_value,dose_unit,note,created_at) "
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)";
     sqlite3_stmt *statement = NULL;
     size_t index;
     int result = sqlite3_prepare_v2(database->connection, revision_sql, -1, &statement, NULL);
@@ -208,6 +232,43 @@ static TrainlogStatus insert_revision(TrainlogDatabase *database,
                          ? sqlite3_bind_null(statement, 5)
                          : sqlite3_bind_text(statement, 5, event->end_at, -1, SQLITE_TRANSIENT);
         }
+        if (result == SQLITE_OK) {
+            result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
+                                                            : sqlite3_errcode(database->connection);
+        }
+        if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_OK) {
+            result = SQLITE_ERROR;
+        }
+        if (result != SQLITE_OK) {
+            return result == SQLITE_CONSTRAINT ? TRAINLOG_STATUS_CONFLICT
+                                               : TRAINLOG_STATUS_DATABASE_ERROR;
+        }
+    }
+    for (index = 0U; index < entry->intake_count; ++index) {
+        const TrainlogMedicationIntake *intake = &entry->intakes[index];
+        statement = NULL;
+        result = sqlite3_prepare_v2(database->connection, intake_sql, -1, &statement, NULL);
+#define BIND_INTAKE_TEXT(position, value)                                                          \
+    if (result == SQLITE_OK) {                                                                     \
+        result = sqlite3_bind_text(statement, position, value, -1, SQLITE_TRANSIENT);              \
+    }
+        BIND_INTAKE_TEXT(1, entry->revision_id);
+        BIND_INTAKE_TEXT(2, intake->intake_id);
+        BIND_INTAKE_TEXT(3, intake->medication_id);
+        BIND_INTAKE_TEXT(4, intake->medication_name);
+        BIND_INTAKE_TEXT(5, intake->taken_at);
+        if (result == SQLITE_OK) {
+            result = intake->has_dose ? sqlite3_bind_double(statement, 6, intake->dose_value)
+                                      : sqlite3_bind_null(statement, 6);
+        }
+        if (result == SQLITE_OK) {
+            result = intake->has_dose
+                         ? sqlite3_bind_text(statement, 7, intake->dose_unit, -1, SQLITE_TRANSIENT)
+                         : sqlite3_bind_null(statement, 7);
+        }
+        BIND_INTAKE_TEXT(8, intake->note);
+        BIND_INTAKE_TEXT(9, intake->created_at);
+#undef BIND_INTAKE_TEXT
         if (result == SQLITE_OK) {
             result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
                                                             : sqlite3_errcode(database->connection);
@@ -363,6 +424,10 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
     static const char events_sql[] =
         "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=?1 "
         "ORDER BY start_at COLLATE BINARY,event_id COLLATE BINARY";
+    static const char intakes_sql[] =
+        "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,"
+        "created_at FROM sleep_medication_intakes WHERE revision_id=?1 "
+        "ORDER BY taken_at COLLATE BINARY,intake_id COLLATE BINARY";
     sqlite3_stmt *statement = NULL;
     int result;
     memset(output, 0, sizeof(*output));
@@ -438,6 +503,46 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
                        sqlite3_column_text(statement, 3) == NULL
                            ? ""
                            : (const char *)sqlite3_column_text(statement, 3));
+        result = sqlite3_step(statement);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_DONE) {
+        result = SQLITE_ERROR;
+    }
+    if (result != SQLITE_DONE) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    statement = NULL;
+    result = sqlite3_prepare_v2(database->connection, intakes_sql, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, output->revision_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    while (result == SQLITE_ROW) {
+        TrainlogMedicationIntake *intake;
+        if (output->intake_count == TRAINLOG_SLEEP_INTAKES_MAX) {
+            result = SQLITE_TOOBIG;
+            break;
+        }
+        intake = &output->intakes[output->intake_count++];
+#define COPY_INTAKE(field, column)                                                                 \
+    (void)snprintf(intake->field,                                                                  \
+                   sizeof(intake->field),                                                          \
+                   "%s",                                                                           \
+                   sqlite3_column_text(statement, column) == NULL                                  \
+                       ? ""                                                                        \
+                       : (const char *)sqlite3_column_text(statement, column))
+        COPY_INTAKE(intake_id, 0);
+        COPY_INTAKE(medication_id, 1);
+        COPY_INTAKE(medication_name, 2);
+        COPY_INTAKE(taken_at, 3);
+        intake->has_dose = sqlite3_column_type(statement, 4) != SQLITE_NULL;
+        intake->dose_value = intake->has_dose ? sqlite3_column_double(statement, 4) : 0.0;
+        COPY_INTAKE(dose_unit, 5);
+        COPY_INTAKE(note, 6);
+        COPY_INTAKE(created_at, 7);
+#undef COPY_INTAKE
         result = sqlite3_step(statement);
     }
     if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_DONE) {
@@ -583,4 +688,290 @@ trainlog_sleep_diary_delete(TrainlogDatabase *database,
     }
     rollback(database->connection);
     return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_DATABASE_ERROR : status;
+}
+
+bool trainlog_medication_validate(const TrainlogMedication *medication) {
+    TrainlogTimestampKey created, updated;
+    return medication != NULL && medication->name[0] != '\0' &&
+           strlen(medication->name) < TRAINLOG_MEDICATION_NAME_CAPACITY &&
+           timestamp_valid(medication->created_at, &created) &&
+           timestamp_valid(medication->updated_at, &updated) &&
+           trainlog_timestamp_compare(&updated, &created) >= 0 &&
+           ((!medication->has_default_dose && medication->default_dose_value == 0.0 &&
+             medication->default_dose_unit[0] == '\0') ||
+            (medication->has_default_dose && medication->default_dose_value > 0.0 &&
+             medication->default_dose_unit[0] != '\0'));
+}
+
+static TrainlogStatus insert_medication_revision(TrainlogDatabase *database,
+                                                 const TrainlogMedication *medication) {
+    static const char sql[] =
+        "INSERT INTO sleep_medication_revisions(revision_id,medication_id,parent_revision_id,"
+        "created_at,name,default_dose_value,default_dose_unit,form,note,active) "
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)";
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+#define BIND_MED_TEXT(position, value)                                                             \
+    if (result == SQLITE_OK) {                                                                     \
+        result = sqlite3_bind_text(statement, position, value, -1, SQLITE_TRANSIENT);              \
+    }
+    BIND_MED_TEXT(1, medication->revision_id);
+    BIND_MED_TEXT(2, medication->medication_id);
+    if (result == SQLITE_OK) {
+        result = medication->parent_revision_id[0] == '\0'
+                     ? sqlite3_bind_null(statement, 3)
+                     : sqlite3_bind_text(
+                           statement, 3, medication->parent_revision_id, -1, SQLITE_TRANSIENT);
+    }
+    BIND_MED_TEXT(4, medication->updated_at);
+    BIND_MED_TEXT(5, medication->name);
+    if (result == SQLITE_OK) {
+        result = medication->has_default_dose
+                     ? sqlite3_bind_double(statement, 6, medication->default_dose_value)
+                     : sqlite3_bind_null(statement, 6);
+    }
+    if (result == SQLITE_OK) {
+        result = medication->has_default_dose
+                     ? sqlite3_bind_text(
+                           statement, 7, medication->default_dose_unit, -1, SQLITE_TRANSIENT)
+                     : sqlite3_bind_null(statement, 7);
+    }
+    BIND_MED_TEXT(8, medication->form);
+    BIND_MED_TEXT(9, medication->note);
+#undef BIND_MED_TEXT
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(statement, 10, medication->active ? 1 : 0);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
+                                                        : sqlite3_errcode(database->connection);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_OK) {
+        result = SQLITE_ERROR;
+    }
+    return result == SQLITE_OK           ? TRAINLOG_STATUS_OK
+           : result == SQLITE_CONSTRAINT ? TRAINLOG_STATUS_CONFLICT
+                                         : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_medication_create(TrainlogDatabase *database,
+                                          TrainlogMedication *medication) {
+    static const char sql[] =
+        "INSERT INTO sleep_medications(medication_id,created_at,updated_at,current_revision_id,"
+        "deleted) VALUES(?1,?2,?3,?4,0)";
+    sqlite3_stmt *statement = NULL;
+    TrainlogStatus status;
+    int result;
+    if (database == NULL || medication == NULL || medication->medication_id[0] != '\0' ||
+        medication->revision_id[0] != '\0' || medication->deleted ||
+        trainlog_id_generate("med", medication->medication_id, sizeof(medication->medication_id)) !=
+            TRAINLOG_STATUS_OK ||
+        trainlog_id_generate("medr", medication->revision_id, sizeof(medication->revision_id)) !=
+            TRAINLOG_STATUS_OK ||
+        !trainlog_medication_validate(medication)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    if (sqlite3_exec(database->connection, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    result = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, medication->medication_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 2, medication->created_at, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 3, medication->updated_at, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 4, medication->revision_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
+                                                        : sqlite3_errcode(database->connection);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_OK) {
+        result = SQLITE_ERROR;
+    }
+    status = result == SQLITE_OK ? insert_medication_revision(database, medication)
+                                 : (result == SQLITE_CONSTRAINT ? TRAINLOG_STATUS_CONFLICT
+                                                                : TRAINLOG_STATUS_DATABASE_ERROR);
+    if (status == TRAINLOG_STATUS_OK &&
+        sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) {
+        return status;
+    }
+    rollback(database->connection);
+    return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_DATABASE_ERROR : status;
+}
+
+static TrainlogStatus load_medication(TrainlogDatabase *database,
+                                      const char *medication_id,
+                                      bool include_deleted,
+                                      TrainlogMedication *output) {
+    static const char sql[] =
+        "SELECT m.medication_id,m.created_at,m.updated_at,m.current_revision_id,m.deleted,"
+        "r.parent_revision_id,r.name,r.default_dose_value,r.default_dose_unit,r.form,r.note,"
+        "r.active FROM sleep_medications m JOIN sleep_medication_revisions r ON "
+        "r.revision_id=m.current_revision_id WHERE m.medication_id=?1 AND (?2 OR m.deleted=0)";
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+    memset(output, 0, sizeof(*output));
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, medication_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(statement, 2, include_deleted ? 1 : 0);
+    }
+    if (result != SQLITE_OK || sqlite3_step(statement) != SQLITE_ROW) {
+        if (statement != NULL) {
+            (void)sqlite3_finalize(statement);
+        }
+        return result == SQLITE_OK ? TRAINLOG_STATUS_NOT_FOUND : TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+#define COPY_MED(field, column)                                                                    \
+    (void)snprintf(output->field,                                                                  \
+                   sizeof(output->field),                                                          \
+                   "%s",                                                                           \
+                   sqlite3_column_text(statement, column) == NULL                                  \
+                       ? ""                                                                        \
+                       : (const char *)sqlite3_column_text(statement, column))
+    COPY_MED(medication_id, 0);
+    COPY_MED(created_at, 1);
+    COPY_MED(updated_at, 2);
+    COPY_MED(revision_id, 3);
+    output->deleted = sqlite3_column_int(statement, 4) != 0;
+    COPY_MED(parent_revision_id, 5);
+    COPY_MED(name, 6);
+    output->has_default_dose = sqlite3_column_type(statement, 7) != SQLITE_NULL;
+    output->default_dose_value =
+        output->has_default_dose ? sqlite3_column_double(statement, 7) : 0.0;
+    COPY_MED(default_dose_unit, 8);
+    COPY_MED(form, 9);
+    COPY_MED(note, 10);
+    output->active = sqlite3_column_int(statement, 11) != 0;
+#undef COPY_MED
+    result = sqlite3_finalize(statement);
+    return result == SQLITE_OK && trainlog_medication_validate(output)
+               ? TRAINLOG_STATUS_OK
+               : TRAINLOG_STATUS_DATABASE_ERROR;
+}
+
+TrainlogStatus trainlog_medication_get(TrainlogDatabase *database,
+                                       const char *medication_id,
+                                       bool include_deleted,
+                                       TrainlogMedication *output) {
+    if (database == NULL || output == NULL ||
+        !id_valid(medication_id, "med", sizeof(output->medication_id))) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    return load_medication(database, medication_id, include_deleted, output);
+}
+
+TrainlogStatus trainlog_medication_update(TrainlogDatabase *database,
+                                          const char *expected_revision,
+                                          TrainlogMedication *medication) {
+    static const char sql[] =
+        "UPDATE sleep_medications SET updated_at=?1,current_revision_id=?2 WHERE "
+        "medication_id=?3 AND current_revision_id=?4 AND deleted=0";
+    sqlite3_stmt *statement = NULL;
+    TrainlogStatus status;
+    char next[sizeof(medication->revision_id)];
+    char expected[sizeof(medication->revision_id)];
+    int result;
+    if (database == NULL || medication == NULL || medication->deleted ||
+        !id_valid(medication->medication_id, "med", sizeof(medication->medication_id)) ||
+        !id_valid(expected_revision, "medr", sizeof(medication->revision_id)) ||
+        strcmp(medication->revision_id, expected_revision) != 0 ||
+        trainlog_id_generate("medr", next, sizeof(next)) != TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    (void)snprintf(expected, sizeof(expected), "%s", expected_revision);
+    (void)snprintf(
+        medication->parent_revision_id, sizeof(medication->parent_revision_id), "%s", expected);
+    (void)snprintf(medication->revision_id, sizeof(medication->revision_id), "%s", next);
+    if (!trainlog_medication_validate(medication)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    if (sqlite3_exec(database->connection, "BEGIN IMMEDIATE", NULL, NULL, NULL) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    status = insert_medication_revision(database, medication);
+    result = status == TRAINLOG_STATUS_OK
+                 ? sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL)
+                 : SQLITE_ERROR;
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, medication->updated_at, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 2, medication->revision_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 3, medication->medication_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 4, expected, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
+                                                        : sqlite3_errcode(database->connection);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_OK) {
+        result = SQLITE_ERROR;
+    }
+    if (status == TRAINLOG_STATUS_OK) {
+        status = result != SQLITE_OK
+                     ? TRAINLOG_STATUS_DATABASE_ERROR
+                     : (sqlite3_changes(database->connection) == 1 ? TRAINLOG_STATUS_OK
+                                                                   : TRAINLOG_STATUS_CONFLICT);
+    }
+    if (status == TRAINLOG_STATUS_OK &&
+        sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) {
+        return status;
+    }
+    rollback(database->connection);
+    return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_DATABASE_ERROR : status;
+}
+
+TrainlogStatus trainlog_medication_list(TrainlogDatabase *database,
+                                        bool include_inactive,
+                                        size_t limit,
+                                        TrainlogMedicationVisitor visitor,
+                                        void *context) {
+    static const char sql[] =
+        "SELECT m.medication_id FROM sleep_medications m JOIN sleep_medication_revisions r ON "
+        "r.revision_id=m.current_revision_id WHERE m.deleted=0 AND (?1 OR r.active=1) "
+        "ORDER BY r.name COLLATE NOCASE,m.medication_id COLLATE BINARY LIMIT ?2";
+    sqlite3_stmt *statement = NULL;
+    int result;
+    if (database == NULL || visitor == NULL || limit == 0U || limit > 1000U) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    result = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(statement, 1, include_inactive ? 1 : 0);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int64(statement, 2, (sqlite3_int64)limit);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    while (result == SQLITE_ROW) {
+        TrainlogMedication medication;
+        TrainlogStatus status = load_medication(
+            database, (const char *)sqlite3_column_text(statement, 0), false, &medication);
+        if (status == TRAINLOG_STATUS_OK) {
+            status = visitor(context, &medication);
+        }
+        if (status != TRAINLOG_STATUS_OK) {
+            (void)sqlite3_finalize(statement);
+            return status;
+        }
+        result = sqlite3_step(statement);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_DONE) {
+        result = SQLITE_ERROR;
+    }
+    return result == SQLITE_DONE ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
 }

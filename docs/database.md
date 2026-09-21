@@ -9,6 +9,15 @@ one night and its associated day. Point events have an offset-bearing
 their start. The 18:00-to-18:00 agenda is only a projection and is never stored
 as cells.
 
+The same unreleased migration owns `sleep_medications`, immutable
+`sleep_medication_revisions`, and revision-owned `sleep_medication_intakes`.
+Catalog defaults assist capture but do not own historical facts: every intake
+stores the displayed medication name and effective optional positive dose/unit
+snapshot. Renaming or deactivating a catalog item therefore cannot rewrite a
+past entry. Development databases that had already opened the earlier v29
+draft are completed idempotently on open; `user_version` remains 29 and no
+existing row is rewritten.
+
 Mutations advance `current_revision_id` only when the caller supplies the
 current parent. Logical deletion advances the revision and retains the
 tombstone. Qualities preserve `TB`, `B`, `Moy`, `M`, and `TM` exactly.

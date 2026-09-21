@@ -16,10 +16,15 @@ VERSION = 1
 MAX_BYTES = 16 * 1024 * 1024
 MAX_ENTRIES = 3660
 MAX_EVENTS = 64
+MAX_INTAKES = 32
+MAX_MEDICATIONS = 1000
 UUID4 = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
 ENTRY_ID = re.compile(rf"^sl_{UUID4}$")
 REVISION_ID = re.compile(rf"^slr_{UUID4}$")
 EVENT_ID = re.compile(rf"^sle_{UUID4}$")
+MEDICATION_ID = re.compile(rf"^med_{UUID4}$")
+MEDICATION_REVISION_ID = re.compile(rf"^medr_{UUID4}$")
+INTAKE_ID = re.compile(rf"^mdi_{UUID4}$")
 POINTS = {"bed_time", "final_get_up", "night_get_up", "daytime_sleepiness"}
 INTERVALS = {"sleep", "nap", "long_awake", "half_sleep"}
 QUALITIES = {"TB", "B", "Moy", "M", "TM"}
@@ -51,7 +56,7 @@ def timestamp(value: object) -> str:
 
 
 def validate(root: object) -> dict:
-    if not isinstance(root, dict) or set(root) != {"format", "version", "generated_at", "entries"}:
+    if not isinstance(root, dict) or set(root) != {"format", "version", "generated_at", "entries", "medications"}:
         fail("invalid sleep diary envelope")
     if root["format"] != FORMAT or type(root["version"]) is not int or root["version"] != VERSION:
         fail("unsupported sleep diary format")
@@ -63,7 +68,7 @@ def validate(root: object) -> dict:
     for item in entries:
         keys = {"entry_id", "night_start_date", "night_end_date", "created_at", "updated_at",
                 "revision_id", "parent_revision_id", "deleted", "sleep_quality", "wake_quality",
-                "day_form", "treatment_and_notes", "events"}
+                "day_form", "treatment_and_notes", "events", "intakes"}
         if not isinstance(item, dict) or set(item) != keys:
             fail("invalid sleep diary entry")
         if not ENTRY_ID.fullmatch(item["entry_id"]) or item["entry_id"] in seen_entries:
@@ -111,6 +116,49 @@ def validate(root: object) -> dict:
                     fail("sleep interval is not positive in absolute time")
             else:
                 fail("unknown sleep diary event type")
+        intakes = item["intakes"]
+        if not isinstance(intakes, list) or len(intakes) > MAX_INTAKES:
+            fail("medication intake bound exceeded")
+        seen_intakes = set()
+        for intake in intakes:
+            keys = {"intake_id", "medication_id", "medication_name", "taken_at",
+                    "dose_value", "dose_unit", "note", "created_at"}
+            if not isinstance(intake, dict) or set(intake) != keys:
+                fail("invalid medication intake")
+            if (not INTAKE_ID.fullmatch(intake["intake_id"]) or
+                    intake["intake_id"] in seen_intakes or
+                    not MEDICATION_ID.fullmatch(intake["medication_id"])):
+                fail("invalid medication intake identity")
+            seen_intakes.add(intake["intake_id"])
+            timestamp(intake["taken_at"]); timestamp(intake["created_at"])
+            if not isinstance(intake["medication_name"], str) or not intake["medication_name"].strip():
+                fail("invalid medication snapshot name")
+            has_dose = intake["dose_value"] is not None
+            if has_dose != (intake["dose_unit"] is not None) or (has_dose and
+                    (type(intake["dose_value"]) not in (int, float) or intake["dose_value"] <= 0 or
+                     not isinstance(intake["dose_unit"], str) or not intake["dose_unit"].strip())):
+                fail("invalid medication intake dose")
+    medications = root["medications"]
+    if not isinstance(medications, list) or len(medications) > MAX_MEDICATIONS:
+        fail("medication catalog bound exceeded")
+    seen_medications = set()
+    for medication in medications:
+        keys = {"medication_id", "revision_id", "parent_revision_id", "created_at", "updated_at",
+                "name", "default_dose_value", "default_dose_unit", "form", "note", "active", "deleted"}
+        if not isinstance(medication, dict) or set(medication) != keys:
+            fail("invalid medication")
+        if (not MEDICATION_ID.fullmatch(medication["medication_id"]) or medication["medication_id"] in seen_medications or
+                not MEDICATION_REVISION_ID.fullmatch(medication["revision_id"])):
+            fail("invalid medication identity")
+        seen_medications.add(medication["medication_id"])
+        parent = medication["parent_revision_id"]
+        if parent is not None and not MEDICATION_REVISION_ID.fullmatch(parent): fail("invalid medication parent")
+        timestamp(medication["created_at"]); timestamp(medication["updated_at"])
+        if not isinstance(medication["name"], str) or not medication["name"].strip(): fail("invalid medication name")
+        has_dose = medication["default_dose_value"] is not None
+        if has_dose != (medication["default_dose_unit"] is not None) or (has_dose and
+                (type(medication["default_dose_value"]) not in (int, float) or medication["default_dose_value"] <= 0)):
+            fail("invalid default medication dose")
     return root
 
 
@@ -142,19 +190,46 @@ def build(db: sqlite3.Connection) -> dict:
                 "WHERE revision_id=? ORDER BY event_id", (revision_id,)
             )
         ]
+        intakes = [{"intake_id": row[0], "medication_id": row[1], "medication_name": row[2],
+                    "taken_at": row[3], "dose_value": row[4], "dose_unit": row[5],
+                    "note": row[6], "created_at": row[7]}
+                   for row in db.execute("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id", (revision_id,))]
         entries.append({"entry_id": entry_id, "night_start_date": night_start,
             "night_end_date": night_end, "created_at": created_at, "updated_at": updated_at,
             "revision_id": revision_id, "parent_revision_id": revision[0], "deleted": bool(deleted),
             "sleep_quality": revision[1], "wake_quality": revision[2], "day_form": revision[3],
-            "treatment_and_notes": revision[4] or "", "events": events})
+            "treatment_and_notes": revision[4] or "", "events": events, "intakes": intakes})
+    medications = []
+    for row in db.execute("SELECT m.medication_id,m.created_at,m.updated_at,m.current_revision_id,m.deleted,r.parent_revision_id,r.name,r.default_dose_value,r.default_dose_unit,r.form,r.note,r.active FROM sleep_medications m JOIN sleep_medication_revisions r ON r.revision_id=m.current_revision_id ORDER BY m.medication_id"):
+        medications.append({"medication_id": row[0], "created_at": row[1], "updated_at": row[2],
+            "revision_id": row[3], "deleted": bool(row[4]), "parent_revision_id": row[5],
+            "name": row[6], "default_dose_value": row[7], "default_dose_unit": row[8],
+            "form": row[9], "note": row[10], "active": bool(row[11])})
     return validate({"format": FORMAT, "version": VERSION,
-                     "generated_at": datetime.now().astimezone().isoformat(), "entries": entries})
+                     "generated_at": datetime.now().astimezone().isoformat(), "entries": entries,
+                     "medications": medications})
 
 
 def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
     validate(root)
     applied = 0
     unchanged = 0
+    for medication in root["medications"]:
+        local = db.execute("SELECT current_revision_id,deleted FROM sleep_medications WHERE medication_id=?", (medication["medication_id"],)).fetchone()
+        if local is not None and local[0] == medication["revision_id"]:
+            persisted = next(value for value in build(db)["medications"]
+                             if value["medication_id"] == medication["medication_id"])
+            if persisted != medication:
+                fail("medication revision identity reused with different content")
+            continue
+        if local is not None and medication["parent_revision_id"] != local[0]: fail("concurrent medication revision")
+        if local is None and medication["parent_revision_id"] is not None: fail("unknown medication parent")
+        if local is not None and local[1] and not medication["deleted"]: fail("medication resurrection")
+        if local is None:
+            db.execute("INSERT INTO sleep_medications VALUES(?,?,?,?,?)", (medication["medication_id"], medication["created_at"], medication["updated_at"], medication["revision_id"], int(medication["deleted"])))
+        else:
+            db.execute("UPDATE sleep_medications SET updated_at=?,current_revision_id=?,deleted=? WHERE medication_id=? AND current_revision_id=?", (medication["updated_at"], medication["revision_id"], int(medication["deleted"]), medication["medication_id"], local[0]))
+        db.execute("INSERT INTO sleep_medication_revisions VALUES(?,?,?,?,?,?,?,?,?,?)", (medication["revision_id"], medication["medication_id"], medication["parent_revision_id"], medication["updated_at"], medication["name"], medication["default_dose_value"], medication["default_dose_unit"], medication["form"], medication["note"], int(medication["active"])))
     for item in root["entries"]:
         local = db.execute(
             "SELECT current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
@@ -189,6 +264,11 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
         db.executemany("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
                        [(item["revision_id"], event["event_id"], event["type"], event["start_at"], event["end_at"])
                         for event in item["events"]])
+        db.executemany("INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?)",
+                       [(item["revision_id"], intake["intake_id"], intake["medication_id"],
+                         intake["medication_name"], intake["taken_at"], intake["dose_value"],
+                         intake["dose_unit"], intake["note"], intake["created_at"])
+                        for intake in item["intakes"]])
         applied += 1
     return applied, unchanged
 

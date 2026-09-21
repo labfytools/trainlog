@@ -468,4 +468,11 @@
     <string name="settings_backup_complete">Sauvegarde complète exportée.</string>
     <string name="settings_backup_failed">Échec de la sauvegarde ; toute copie privée créée est conservée.</string>
     <string name="settings_restore_failed">Sauvegarde invalide ou restauration impossible.</string>
+    <string name="sleep_medications">Médicaments</string>
+    <string name="sleep_add_medication">Ajouter un médicament</string>
+    <string name="sleep_add_intake">Ajouter une prise</string>
+    <string name="sleep_dose">Dosage</string>
+    <string name="sleep_unit">Unité</string>
+    <string name="sleep_deactivate">Désactiver</string>
+    <string name="sleep_edit">Modifier</string>
 </resources>

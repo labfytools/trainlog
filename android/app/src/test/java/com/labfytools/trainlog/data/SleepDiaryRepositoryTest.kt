@@ -6,6 +6,8 @@ import com.labfytools.trainlog.model.SleepDiaryDraft
 import com.labfytools.trainlog.model.SleepDiaryEvent
 import com.labfytools.trainlog.model.SleepEventType
 import com.labfytools.trainlog.model.SleepQuality
+import com.labfytools.trainlog.model.MedicationIntake
+import com.labfytools.trainlog.model.SleepMedication
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -23,15 +25,28 @@ class SleepDiaryRepositoryTest {
         val name = "sleep-${UUID.randomUUID()}.db"
         var repository = TrainlogRepository(context, name)
         try {
+            val catalogTime = "2026-10-24T18:00:00+02:00"
+            val medicationResult = repository.saveSleepMedication(SleepMedication("", "", catalogTime,
+                catalogTime, "Synthetic medication", 5.0, "mg", "tablet", "", true)) as
+                TrainlogRepository.SaveSleepDiaryResult.Saved
             val initial = SleepDiaryDraft(nightStartDate = "2026-10-24", nightEndDate = "2026-10-25",
                 createdAt = "2026-10-24T23:30:00+02:00", updatedAt = "2026-10-24T23:30:00+02:00",
                 sleepQuality = SleepQuality.B, wakeQuality = null, dayForm = null,
                 treatmentAndNotes = "Synthetic fixture", events = listOf(
                     SleepDiaryEvent("", SleepEventType.SLEEP, "2026-10-24T23:30:00+02:00", "2026-10-25T06:30:00+01:00"),
-                    SleepDiaryEvent("", SleepEventType.DAYTIME_SLEEPINESS, "2026-10-25T14:00:00+01:00", null)))
+                    SleepDiaryEvent("", SleepEventType.DAYTIME_SLEEPINESS, "2026-10-25T14:00:00+01:00", null)),
+                intakes = listOf(MedicationIntake("", medicationResult.entryId,
+                    "Synthetic medication", "2026-10-25T05:15:00+01:00", 10.0, "mg", "", catalogTime)))
             val created = repository.saveSleepDiary(initial) as TrainlogRepository.SaveSleepDiaryResult.Saved
             val loaded = repository.listSleepDiary().single()
             assertEquals(2, loaded.events.size)
+            assertEquals(10.0, loaded.intakes.single().doseValue!!, 0.0)
+            val medication = repository.listSleepMedications().single()
+            assertEquals(5.0, medication.defaultDoseValue!!, 0.0)
+            assertTrue(repository.saveSleepMedication(medication.copy(name = "Renamed medication",
+                updatedAt = "2026-10-25T12:00:00+01:00")) is
+                TrainlogRepository.SaveSleepDiaryResult.Saved)
+            assertEquals("Synthetic medication", loaded.intakes.single().medicationName)
             val edited = repository.saveSleepDiary(initial.copy(entryId = created.entryId,
                 expectedRevision = created.revisionId, updatedAt = "2026-10-25T18:00:00+01:00",
                 wakeQuality = SleepQuality.MOY, dayForm = SleepQuality.TB))

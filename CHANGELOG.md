@@ -6,7 +6,10 @@
   full-generation synchronization and a deterministic local vector PDF agenda.
   Entries retain causal revisions, absolute timestamped events, the five-value
   appreciation scale and user-authored notes; no medical interpretation or
-  heart-rate data is introduced.
+  heart-rate data is introduced. Sleep Diary also includes a revisioned local
+  medication catalog and timestamped intake snapshots with optional positive
+  dose/unit, synchronized and rendered factually in the agenda and PDF without
+  efficacy, interaction, causality, dosage, or clinical advice.
 
 Development opened after stable v0.1.3 release.
 

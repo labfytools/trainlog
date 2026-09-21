@@ -20,6 +20,7 @@ typedef struct SleepListContext {
     size_t long_awake_count;
     size_t nap_count;
     size_t sleepiness_count;
+    size_t intake_count;
     size_t quality[3][5];
     int64_t bed_minute_total;
     int64_t get_up_minute_total;
@@ -121,8 +122,9 @@ static bool
 add_entry(yyjson_mut_doc *document, yyjson_mut_val *items, const TrainlogSleepDiaryEntry *entry) {
     yyjson_mut_val *object = yyjson_mut_obj(document);
     yyjson_mut_val *events = yyjson_mut_arr(document);
+    yyjson_mut_val *intakes = yyjson_mut_arr(document);
     size_t index;
-    if (object == NULL || events == NULL ||
+    if (object == NULL || events == NULL || intakes == NULL ||
         !yyjson_mut_obj_add_strcpy(document, object, "entry_id", entry->entry_id) ||
         !yyjson_mut_obj_add_strcpy(document, object, "night_start_date", entry->night_start_date) ||
         !yyjson_mut_obj_add_strcpy(document, object, "night_end_date", entry->night_end_date) ||
@@ -150,7 +152,29 @@ add_entry(yyjson_mut_doc *document, yyjson_mut_val *items, const TrainlogSleepDi
             return false;
         }
     }
+    for (index = 0U; index < entry->intake_count; ++index) {
+        const TrainlogMedicationIntake *intake = &entry->intakes[index];
+        yyjson_mut_val *item = yyjson_mut_obj(document);
+        if (item == NULL ||
+            !yyjson_mut_obj_add_strcpy(document, item, "intake_id", intake->intake_id) ||
+            !yyjson_mut_obj_add_strcpy(document, item, "medication_id", intake->medication_id) ||
+            !yyjson_mut_obj_add_strcpy(
+                document, item, "medication_name", intake->medication_name) ||
+            !yyjson_mut_obj_add_strcpy(document, item, "taken_at", intake->taken_at) ||
+            !(intake->has_dose
+                  ? yyjson_mut_obj_add_real(document, item, "dose_value", intake->dose_value)
+                  : yyjson_mut_obj_add_null(document, item, "dose_value")) ||
+            !(intake->has_dose
+                  ? yyjson_mut_obj_add_strcpy(document, item, "dose_unit", intake->dose_unit)
+                  : yyjson_mut_obj_add_null(document, item, "dose_unit")) ||
+            !yyjson_mut_obj_add_strcpy(document, item, "note", intake->note) ||
+            !yyjson_mut_obj_add_strcpy(document, item, "created_at", intake->created_at) ||
+            !yyjson_mut_arr_add_val(intakes, item)) {
+            return false;
+        }
+    }
     return yyjson_mut_obj_add_val(document, object, "events", events) &&
+           yyjson_mut_obj_add_val(document, object, "intakes", intakes) &&
            yyjson_mut_arr_add_val(items, object);
 }
 
@@ -161,6 +185,7 @@ static TrainlogStatus list_visitor(void *opaque, const TrainlogSleepDiaryEntry *
         return TRAINLOG_STATUS_SYSTEM_ERROR;
     }
     ++context->count;
+    context->intake_count += entry->intake_count;
     if (entry->sleep_quality != TRAINLOG_SLEEP_QUALITY_UNSET) {
         ++context->quality[0][entry->sleep_quality - 1];
     }
@@ -260,6 +285,7 @@ TrainlogStatus trainlog_web_sleep_list_json(TrainlogDatabase *database,
         !yyjson_mut_obj_add_uint(document, summary, "long_awake_count", context.long_awake_count) ||
         !yyjson_mut_obj_add_uint(document, summary, "nap_count", context.nap_count) ||
         !yyjson_mut_obj_add_uint(document, summary, "sleepiness_count", context.sleepiness_count) ||
+        !yyjson_mut_obj_add_uint(document, summary, "intake_count", context.intake_count) ||
         !yyjson_mut_obj_add_sint(
             document, summary, "sleep_duration_seconds", context.sleep_seconds) ||
         !yyjson_mut_obj_add_sint(
@@ -339,6 +365,7 @@ static bool parse_entry(const char *body,
         yyjson_read_opts((char *)body, body_size, YYJSON_READ_NOFLAG, NULL, &error);
     yyjson_val *root = document == NULL ? NULL : yyjson_doc_get_root(document);
     yyjson_val *events;
+    yyjson_val *intakes;
     size_t index, count;
     bool valid =
         root != NULL && yyjson_is_obj(root) &&
@@ -384,6 +411,45 @@ static bool parse_entry(const char *body,
         }
     }
     entry->event_count = count;
+    intakes = valid ? yyjson_obj_get(root, "intakes") : NULL;
+    count = yyjson_is_arr(intakes) ? yyjson_arr_size(intakes) : TRAINLOG_SLEEP_INTAKES_MAX + 1U;
+    if (count > TRAINLOG_SLEEP_INTAKES_MAX) {
+        valid = false;
+    }
+    for (index = 0U; valid && index < count; ++index) {
+        yyjson_val *value = yyjson_arr_get(intakes, index);
+        yyjson_val *dose_value = yyjson_obj_get(value, "dose_value");
+        yyjson_val *dose_unit = yyjson_obj_get(value, "dose_unit");
+        TrainlogMedicationIntake *intake = &entry->intakes[index];
+        valid =
+            yyjson_is_obj(value) &&
+            copy_string(value, "intake_id", intake->intake_id, sizeof(intake->intake_id), true) &&
+            copy_string(value,
+                        "medication_id",
+                        intake->medication_id,
+                        sizeof(intake->medication_id),
+                        false) &&
+            copy_string(value,
+                        "medication_name",
+                        intake->medication_name,
+                        sizeof(intake->medication_name),
+                        false) &&
+            copy_string(value, "taken_at", intake->taken_at, sizeof(intake->taken_at), false) &&
+            copy_string(value, "note", intake->note, sizeof(intake->note), false) &&
+            copy_string(
+                value, "created_at", intake->created_at, sizeof(intake->created_at), false) &&
+            ((yyjson_is_null(dose_value) && yyjson_is_null(dose_unit)) ||
+             (yyjson_is_num(dose_value) && yyjson_get_real(dose_value) > 0.0 &&
+              copy_string(
+                  value, "dose_unit", intake->dose_unit, sizeof(intake->dose_unit), false)));
+        intake->has_dose = yyjson_is_num(dose_value);
+        intake->dose_value = intake->has_dose ? yyjson_get_real(dose_value) : 0.0;
+        if (valid && intake->intake_id[0] == '\0') {
+            valid = trainlog_id_generate("mdi", intake->intake_id, sizeof(intake->intake_id)) ==
+                    TRAINLOG_STATUS_OK;
+        }
+    }
+    entry->intake_count = count;
     yyjson_doc_free(document);
     return valid;
 }
@@ -485,4 +551,135 @@ TrainlogStatus trainlog_web_sleep_delete_request_json(TrainlogDatabase *database
         database, entry_id, revision, deleted_at, output_json, output_size);
     yyjson_doc_free(document);
     return status;
+}
+
+typedef struct MedicationListContext {
+    yyjson_mut_doc *document;
+    yyjson_mut_val *items;
+} MedicationListContext;
+
+static TrainlogStatus medication_list_visitor(void *opaque, const TrainlogMedication *medication) {
+    MedicationListContext *context = opaque;
+    yyjson_mut_val *item = yyjson_mut_obj(context->document);
+    if (item == NULL ||
+        !yyjson_mut_obj_add_strcpy(
+            context->document, item, "medication_id", medication->medication_id) ||
+        !yyjson_mut_obj_add_strcpy(
+            context->document, item, "revision_id", medication->revision_id) ||
+        !yyjson_mut_obj_add_strcpy(context->document, item, "name", medication->name) ||
+        !(medication->has_default_dose
+              ? yyjson_mut_obj_add_real(
+                    context->document, item, "default_dose_value", medication->default_dose_value)
+              : yyjson_mut_obj_add_null(context->document, item, "default_dose_value")) ||
+        !(medication->has_default_dose
+              ? yyjson_mut_obj_add_strcpy(
+                    context->document, item, "default_dose_unit", medication->default_dose_unit)
+              : yyjson_mut_obj_add_null(context->document, item, "default_dose_unit")) ||
+        !yyjson_mut_obj_add_strcpy(context->document, item, "form", medication->form) ||
+        !yyjson_mut_obj_add_strcpy(context->document, item, "note", medication->note) ||
+        !yyjson_mut_obj_add_bool(context->document, item, "active", medication->active) ||
+        !yyjson_mut_arr_add_val(context->items, item)) {
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_web_medication_list_json(TrainlogDatabase *database,
+                                                 char **output_json,
+                                                 size_t *output_size) {
+    yyjson_mut_doc *document = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = document == NULL ? NULL : yyjson_mut_obj(document);
+    MedicationListContext context = {document, document == NULL ? NULL : yyjson_mut_arr(document)};
+    TrainlogStatus status;
+    if (database == NULL || output_json == NULL || output_size == NULL || root == NULL ||
+        context.items == NULL) {
+        yyjson_mut_doc_free(document);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    yyjson_mut_doc_set_root(document, root);
+    status = trainlog_medication_list(database, true, 1000U, medication_list_visitor, &context);
+    if (status != TRAINLOG_STATUS_OK ||
+        !yyjson_mut_obj_add_uint(document, root, "api_version", 1U) ||
+        !yyjson_mut_obj_add_val(document, root, "medications", context.items)) {
+        yyjson_mut_doc_free(document);
+        return status == TRAINLOG_STATUS_OK ? TRAINLOG_STATUS_SYSTEM_ERROR : status;
+    }
+    return write_document(document, output_json, output_size);
+}
+
+TrainlogStatus trainlog_web_medication_save_json(TrainlogDatabase *database,
+                                                 const char *body,
+                                                 size_t body_size,
+                                                 char **output_json,
+                                                 size_t *output_size) {
+    yyjson_read_err error;
+    yyjson_doc *input;
+    yyjson_val *root;
+    yyjson_val *dose;
+    yyjson_val *active;
+    TrainlogMedication medication = {0};
+    char expected[sizeof(medication.revision_id)] = "";
+    TrainlogStatus status;
+    yyjson_mut_doc *document;
+    yyjson_mut_val *result;
+    if (database == NULL || body == NULL || body_size == 0U ||
+        body_size > TRAINLOG_WEB_SLEEP_BYTES_MAX) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    input = yyjson_read_opts((char *)body, body_size, YYJSON_READ_NOFLAG, NULL, &error);
+    root = input == NULL ? NULL : yyjson_doc_get_root(input);
+    dose = yyjson_is_obj(root) ? yyjson_obj_get(root, "default_dose_value") : NULL;
+    active = yyjson_is_obj(root) ? yyjson_obj_get(root, "active") : NULL;
+    if (!yyjson_is_obj(root) ||
+        !copy_string(root,
+                     "medication_id",
+                     medication.medication_id,
+                     sizeof(medication.medication_id),
+                     true) ||
+        !copy_string(root, "expected_revision", expected, sizeof(expected), true) ||
+        !copy_string(
+            root, "created_at", medication.created_at, sizeof(medication.created_at), false) ||
+        !copy_string(
+            root, "updated_at", medication.updated_at, sizeof(medication.updated_at), false) ||
+        !copy_string(root, "name", medication.name, sizeof(medication.name), false) ||
+        !copy_string(root, "form", medication.form, sizeof(medication.form), false) ||
+        !copy_string(root, "note", medication.note, sizeof(medication.note), false) ||
+        !yyjson_is_bool(active) ||
+        !((yyjson_is_null(dose) && copy_string(root,
+                                               "default_dose_unit",
+                                               medication.default_dose_unit,
+                                               sizeof(medication.default_dose_unit),
+                                               true)) ||
+          (yyjson_is_num(dose) && yyjson_get_real(dose) > 0.0 &&
+           copy_string(root,
+                       "default_dose_unit",
+                       medication.default_dose_unit,
+                       sizeof(medication.default_dose_unit),
+                       false)))) {
+        yyjson_doc_free(input);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    medication.has_default_dose = yyjson_is_num(dose);
+    medication.default_dose_value = medication.has_default_dose ? yyjson_get_real(dose) : 0.0;
+    medication.active = yyjson_get_bool(active);
+    if (expected[0] == '\0') {
+        status = trainlog_medication_create(database, &medication);
+    } else {
+        (void)snprintf(medication.revision_id, sizeof(medication.revision_id), "%s", expected);
+        status = trainlog_medication_update(database, expected, &medication);
+    }
+    yyjson_doc_free(input);
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+    document = yyjson_mut_doc_new(NULL);
+    result = document == NULL ? NULL : yyjson_mut_obj(document);
+    if (result == NULL ||
+        !yyjson_mut_obj_add_strcpy(document, result, "medication_id", medication.medication_id) ||
+        !yyjson_mut_obj_add_strcpy(document, result, "revision_id", medication.revision_id)) {
+        yyjson_mut_doc_free(document);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    yyjson_mut_doc_set_root(document, result);
+    return write_document(document, output_json, output_size);
 }

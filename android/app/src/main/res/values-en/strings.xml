@@ -468,4 +468,11 @@
     <string name="settings_backup_complete">Complete backup exported.</string>
     <string name="settings_backup_failed">Backup failed; any private staged copy was retained.</string>
     <string name="settings_restore_failed">The backup is invalid or could not be restored.</string>
+    <string name="sleep_medications">Medications</string>
+    <string name="sleep_add_medication">Add medication</string>
+    <string name="sleep_add_intake">Add intake</string>
+    <string name="sleep_dose">Dose</string>
+    <string name="sleep_unit">Unit</string>
+    <string name="sleep_deactivate">Deactivate</string>
+    <string name="sleep_edit">Edit</string>
 </resources>

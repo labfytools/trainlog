@@ -29,6 +29,8 @@ import com.labfytools.trainlog.model.SleepDiaryEntry
 import com.labfytools.trainlog.model.SleepDiaryEvent
 import com.labfytools.trainlog.model.SleepEventType
 import com.labfytools.trainlog.model.SleepQuality
+import com.labfytools.trainlog.model.MedicationIntake
+import com.labfytools.trainlog.model.SleepMedication
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
@@ -44,6 +46,16 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
     var dayForm by remember(selected) { mutableStateOf(selected?.dayForm) }
     var notes by remember(selected) { mutableStateOf(selected?.treatmentAndNotes.orEmpty()) }
     var events by remember(selected) { mutableStateOf(selected?.events.orEmpty()) }
+    var intakes by remember(selected) { mutableStateOf(selected?.intakes.orEmpty()) }
+    val catalog = remember(revision) { repository.listSleepMedications() }
+    val medications = catalog.filter { it.active }
+    var intakeMedication by remember(medications) { mutableStateOf(medications.firstOrNull()) }
+    var intakeDose by remember(intakeMedication) { mutableStateOf(intakeMedication?.defaultDoseValue?.toString().orEmpty()) }
+    var intakeUnit by remember(intakeMedication) { mutableStateOf(intakeMedication?.defaultDoseUnit.orEmpty()) }
+    var medicationName by remember { mutableStateOf("") }
+    var medicationDose by remember { mutableStateOf("") }
+    var medicationUnit by remember { mutableStateOf("mg") }
+    var editingMedication by remember { mutableStateOf<SleepMedication?>(null) }
     val entries = remember(revision) { repository.listSleepDiary() }
 
     LazyColumn(
@@ -100,11 +112,86 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
                             }
                         }
                     }
+                    Text(stringResource(R.string.sleep_medications))
+                    OutlinedTextField(medicationName, { medicationName = it },
+                        label = { Text(stringResource(R.string.sleep_medications)) }, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(medicationDose, { medicationDose = it },
+                            label = { Text(stringResource(R.string.sleep_dose)) }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(medicationUnit, { medicationUnit = it },
+                            label = { Text(stringResource(R.string.sleep_unit)) }, modifier = Modifier.weight(1f))
+                    }
+                    Button(onClick = {
+                        val now = OffsetDateTime.now().toString()
+                        val dose = medicationDose.toDoubleOrNull()
+                        if (medicationName.isNotBlank() && (medicationDose.isEmpty() || dose != null && dose > 0.0)) {
+                            val current = editingMedication
+                            repository.saveSleepMedication(SleepMedication(current?.medicationId.orEmpty(),
+                                current?.revisionId.orEmpty(), current?.createdAt ?: now, now,
+                                medicationName.trim(), dose, if (dose == null) null else medicationUnit,
+                                current?.form.orEmpty(), current?.note.orEmpty(), current?.active ?: true))
+                            medicationName = ""; editingMedication = null; revision++
+                        }
+                    }) { Text(stringResource(R.string.sleep_add_medication)) }
+                    medications.forEach { medication ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = intakeMedication?.medicationId == medication.medicationId,
+                                onClick = { intakeMedication = medication
+                                    intakeDose = medication.defaultDoseValue?.toString().orEmpty()
+                                    intakeUnit = medication.defaultDoseUnit.orEmpty() },
+                                label = { Text(medication.name) })
+                            Button(onClick = { editingMedication = medication; medicationName = medication.name
+                                medicationDose = medication.defaultDoseValue?.toString().orEmpty()
+                                medicationUnit = medication.defaultDoseUnit.orEmpty() }) {
+                                Text(stringResource(R.string.sleep_edit))
+                            }
+                            Button(onClick = { repository.saveSleepMedication(medication.copy(
+                                updatedAt = OffsetDateTime.now().toString(), active = false)); revision++ }) {
+                                Text(stringResource(R.string.sleep_deactivate))
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(intakeDose, { intakeDose = it },
+                            label = { Text(stringResource(R.string.sleep_dose)) }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(intakeUnit, { intakeUnit = it },
+                            label = { Text(stringResource(R.string.sleep_unit)) }, modifier = Modifier.weight(1f))
+                    }
+                    Button(onClick = {
+                        intakeMedication?.let { medication ->
+                            val dose = intakeDose.toDoubleOrNull()
+                            if (intakeDose.isEmpty() || dose != null && dose > 0.0) {
+                                val now = OffsetDateTime.now().toString()
+                                intakes = intakes + MedicationIntake("", medication.medicationId,
+                                    medication.name, now, dose, if (dose == null) null else intakeUnit,
+                                    "", now)
+                            }
+                        }
+                    }) { Text(stringResource(R.string.sleep_add_intake)) }
+                    intakes.forEachIndexed { index, intake -> Card {
+                        Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(intake.medicationName)
+                            TimeButton(intake.takenAt) { value -> intakes = intakes.mapIndexed { item, current ->
+                                if (item == index) current.copy(takenAt = value) else current } }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(intake.doseValue?.toString().orEmpty(), { value ->
+                                    intakes = intakes.mapIndexed { item, current -> if (item == index) current.copy(
+                                        doseValue = value.toDoubleOrNull(), doseUnit = if (value.isEmpty()) null else current.doseUnit ?: "mg") else current }
+                                }, label = { Text(stringResource(R.string.sleep_dose)) }, modifier = Modifier.weight(1f))
+                                OutlinedTextField(intake.doseUnit.orEmpty(), { value -> intakes = intakes.mapIndexed { item, current ->
+                                    if (item == index) current.copy(doseUnit = value) else current }
+                                }, label = { Text(stringResource(R.string.sleep_unit)) }, modifier = Modifier.weight(1f))
+                            }
+                            Button(onClick = { intakes = intakes.filterIndexed { item, _ -> item != index } }) {
+                                Text(stringResource(R.string.sleep_delete))
+                            }
+                        }
+                    } }
                     OutlinedTextField(notes, { notes = it }, label = { Text(stringResource(R.string.sleep_notes)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
                     Button(onClick = {
                         val now = OffsetDateTime.now().toString()
                         val current = selected
-                        val result = repository.saveSleepDiary(SleepDiaryDraft(current?.entryId,current?.revisionId,startDate,endDate,current?.createdAt ?: now,now,sleepQuality,wakeQuality,dayForm,notes,events))
+                        val result = repository.saveSleepDiary(SleepDiaryDraft(current?.entryId,current?.revisionId,startDate,endDate,current?.createdAt ?: now,now,sleepQuality,wakeQuality,dayForm,notes,events,intakes))
                         if (result is TrainlogRepository.SaveSleepDiaryResult.Saved) { revision++; selected = repository.listSleepDiary().firstOrNull { it.entryId == result.entryId } }
                     }) { Text(stringResource(R.string.sleep_save)) }
                     selected?.let { entry -> Button(onClick = { repository.deleteSleepDiary(entry.entryId,entry.revisionId,OffsetDateTime.now().toString()); selected = null; revision++ }) { Text(stringResource(R.string.sleep_delete)) } }
