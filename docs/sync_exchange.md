@@ -9,6 +9,16 @@ siblings and resurrection, and treats an exact revision replay as idempotent.
 This completion happened before publication or freezing of the companion;
 `TRAINLOG_FORMAT_V1` remains unchanged and frozen.
 
+Every field edit commits locally as a new immutable diary revision but does
+not itself enter a generation. Explicit day validation marks only the guarded
+current tip publishable and starts no transport. Generation capture exports
+validated current tips, records each exact generation/revision relation, and
+only a correlated consumed ACK advances the acknowledged marker. A correction
+after ACK therefore remains local and appears as modified until it is
+revalidated and acknowledged by a later generation. Imported tips are already
+validated and acknowledged because their containing generation was durably
+consumed. Draft and synchronized state are not inferred from wall-clock time.
+
 `trainlog-sleep-diary`, version 1, is emitted by full generations on the 0.1.4
 Sleep Diary branch. It is optional when consuming an older generation so a
 pre-domain artifact remains replayable. It carries bounded complete entry snapshots with

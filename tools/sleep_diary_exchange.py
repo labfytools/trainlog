@@ -170,9 +170,13 @@ def load(path: Path) -> dict:
 
 def build(db: sqlite3.Connection) -> dict:
     entries = []
+    # CONTRACT: local durability does not publish a draft. A generation may
+    # capture only the current tip explicitly validated by the user.
     rows = db.execute(
-        "SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,current_revision_id,deleted "
-        "FROM sleep_diary_entries ORDER BY entry_id"
+        "SELECT e.entry_id,e.night_start_date,e.night_end_date,e.created_at,e.updated_at,"
+        "e.current_revision_id,e.deleted FROM sleep_diary_entries e JOIN "
+        "sleep_diary_publication_state p ON p.entry_id=e.entry_id AND "
+        "p.validated_revision_id=e.current_revision_id ORDER BY e.entry_id"
     ).fetchall()
     if len(rows) > MAX_ENTRIES:
         fail("sleep diary entry bound exceeded")
@@ -241,6 +245,15 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             )
             if persisted != item:
                 fail("sleep diary revision identity reused with different content")
+            db.execute(
+                "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at,"
+                "acknowledged_revision_id,acknowledged_at) VALUES(?,?,?,?,?) ON CONFLICT(entry_id) "
+                "DO UPDATE SET validated_revision_id=excluded.validated_revision_id,"
+                "validated_at=excluded.validated_at,acknowledged_revision_id=excluded.acknowledged_revision_id,"
+                "acknowledged_at=excluded.acknowledged_at",
+                (item["entry_id"], item["revision_id"], root["generated_at"],
+                 item["revision_id"], root["generated_at"]),
+            )
             unchanged += 1
             continue
         if local is not None and item["parent_revision_id"] != local[0]:
@@ -269,6 +282,17 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
                          intake["medication_name"], intake["taken_at"], intake["dose_value"],
                          intake["dose_unit"], intake["note"], intake["created_at"])
                         for intake in item["intakes"]])
+        # An imported revision has already crossed the synchronization
+        # boundary; recording both markers prevents it appearing as a draft.
+        db.execute(
+            "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at,"
+            "acknowledged_revision_id,acknowledged_at) VALUES(?,?,?,?,?) ON CONFLICT(entry_id) "
+            "DO UPDATE SET validated_revision_id=excluded.validated_revision_id,"
+            "validated_at=excluded.validated_at,acknowledged_revision_id=excluded.acknowledged_revision_id,"
+            "acknowledged_at=excluded.acknowledged_at",
+            (item["entry_id"], item["revision_id"], root["generated_at"],
+             item["revision_id"], root["generated_at"]),
+        )
         applied += 1
     return applied, unchanged
 

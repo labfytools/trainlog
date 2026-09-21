@@ -456,6 +456,15 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                     )
                     if cursor.rowcount != 1:
                         raise GenerationError("program deletion changed during capture")
+            sleep_path = stage / "sleep-diary-v1.json"
+            if sleep_path.is_file():
+                captured_sleep = sleep_diary_exchange.load(sleep_path)
+                db.executemany(
+                    "INSERT INTO sleep_diary_generation_entries(generation_id,entry_id,revision_id) "
+                    "VALUES(?,?,?)",
+                    [(generation, item["entry_id"], item["revision_id"])
+                     for item in captured_sleep["entries"]],
+                )
             db.commit()
         return stage, manifest, checksum
     except Exception:
@@ -730,6 +739,18 @@ def accept_ack(database: Path, path: Path) -> str:
         db.execute("UPDATE sync_generations SET status=?,acknowledged_at=? WHERE generation_id=?",
                    (status, ack["consumed_at"], ack["generation_id"]))
         if status == "acknowledged":
+            # The relation was captured from the immutable staged artifact;
+            # ACK therefore advances exactly those revisions and never a
+            # later local edit.
+            if db.execute("PRAGMA user_version").fetchone()[0] >= 29:
+                db.execute(
+                    "UPDATE sleep_diary_publication_state SET acknowledged_revision_id=(SELECT "
+                    "m.revision_id FROM sleep_diary_generation_entries m WHERE "
+                    "m.generation_id=? AND m.entry_id=sleep_diary_publication_state.entry_id),"
+                    "acknowledged_at=? WHERE EXISTS(SELECT 1 FROM sleep_diary_generation_entries m "
+                    "WHERE m.generation_id=? AND m.entry_id=sleep_diary_publication_state.entry_id)",
+                    (ack["generation_id"], ack["consumed_at"], ack["generation_id"]),
+                )
             db.execute(
                 "UPDATE session_preparation_deliveries SET state='acknowledged',acknowledged_at=? "
                 "WHERE generation_id=? AND state IN('pending','remote_unknown')",

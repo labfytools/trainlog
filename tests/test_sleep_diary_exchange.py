@@ -36,6 +36,7 @@ class SleepExchangeTest(unittest.TestCase):
           CREATE TABLE sleep_medications(medication_id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,current_revision_id TEXT,deleted INTEGER);
           CREATE TABLE sleep_medication_revisions(revision_id TEXT PRIMARY KEY,medication_id TEXT,parent_revision_id TEXT,created_at TEXT,name TEXT,default_dose_value REAL,default_dose_unit TEXT,form TEXT,note TEXT,active INTEGER);
           CREATE TABLE sleep_medication_intakes(revision_id TEXT,intake_id TEXT,medication_id TEXT,medication_name TEXT,taken_at TEXT,dose_value REAL,dose_unit TEXT,note TEXT,created_at TEXT,PRIMARY KEY(revision_id,intake_id));
+          CREATE TABLE sleep_diary_publication_state(entry_id TEXT PRIMARY KEY,validated_revision_id TEXT,validated_at TEXT,acknowledged_revision_id TEXT,acknowledged_at TEXT);
         """)
 
     def document(self, item):
@@ -66,6 +67,20 @@ class SleepExchangeTest(unittest.TestCase):
         invalid["events"][0]["end_at"] = "2026-10-24T22:30:00+02:00"
         with self.assertRaisesRegex(ValueError, "positive"):
             exchange.validate(self.document(invalid))
+
+    def test_draft_is_durable_but_not_exported_until_validated(self):
+        revision = "slr_20000000-0000-4000-8000-000000000002"
+        item = entry(revision)
+        self.db.execute("INSERT INTO sleep_diary_entries VALUES(?,?,?,?,?,?,?)",
+            (item["entry_id"], item["night_start_date"], item["night_end_date"],
+             item["created_at"], item["updated_at"], revision, 0))
+        self.db.execute("INSERT INTO sleep_diary_revisions VALUES(?,?,?,?,?,?,?,?)",
+            (revision, item["entry_id"], None, item["updated_at"], "B", "Moy", "TB",
+             item["treatment_and_notes"]))
+        self.assertEqual([], exchange.build(self.db)["entries"])
+        self.db.execute("INSERT INTO sleep_diary_publication_state VALUES(?,?,?,NULL,NULL)",
+            (item["entry_id"], revision, item["updated_at"]))
+        self.assertEqual(revision, exchange.build(self.db)["entries"][0]["revision_id"])
 
 
 if __name__ == "__main__":

@@ -26,6 +26,11 @@
     <string name="sleep_notes">Treatment and notes</string>
     <string name="sleep_add_event">Add event</string>
     <string name="sleep_save">Save</string>
+    <string name="sleep_validate">Validate day</string>
+    <string name="sleep_status_draft">Draft</string>
+    <string name="sleep_status_ready">Ready to sync</string>
+    <string name="sleep_status_synchronized">Synchronized</string>
+    <string name="sleep_status_modified">Modified since synchronization</string>
     <string name="sleep_delete">Delete</string>
     <string name="sleep_choose_time">Choose time</string>
     <string name="route_session_editor">Current session</string>

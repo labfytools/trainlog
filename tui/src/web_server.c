@@ -1407,12 +1407,20 @@ static enum MHD_Result handle_request(void *closure,
         }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
     }
-    if (strcmp(url, "/api/v1/sleep-diary") == 0) {
+    if (strcmp(url, "/api/v1/sleep-diary") == 0 ||
+        strcmp(url, "/api/v1/sleep-diary/validate") == 0) {
         char *json = NULL;
         size_t json_size = 0U;
         TrainlogStatus status;
         enum MHD_Result queued;
-        if (is_get) {
+        if (strcmp(url, "/api/v1/sleep-diary/validate") == 0 &&
+            strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "POST");
+        }
+        if (is_get && strcmp(url, "/api/v1/sleep-diary") == 0) {
             const char *start =
                 MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "start_date");
             const char *end =
@@ -1438,8 +1446,17 @@ static enum MHD_Result handle_request(void *closure,
                     connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
             }
             status = strcmp(method, MHD_HTTP_METHOD_POST) == 0
-                         ? trainlog_web_sleep_save_json(
-                               context->database, state->body, state->body_size, &json, &json_size)
+                         ? (strcmp(url, "/api/v1/sleep-diary/validate") == 0
+                                ? trainlog_web_sleep_validate_json(context->database,
+                                                                   state->body,
+                                                                   state->body_size,
+                                                                   &json,
+                                                                   &json_size)
+                                : trainlog_web_sleep_save_json(context->database,
+                                                               state->body,
+                                                               state->body_size,
+                                                               &json,
+                                                               &json_size))
                          : trainlog_web_sleep_delete_request_json(
                                context->database, state->body, state->body_size, &json, &json_size);
         } else {

@@ -63,6 +63,14 @@ static const char *quality_text(TrainlogSleepQuality quality) {
                : NULL;
 }
 
+static const char *publication_text(TrainlogSleepPublicationStatus status) {
+    static const char *const values[] = {"draft", "ready", "synchronized", "modified"};
+    return status >= TRAINLOG_SLEEP_PUBLICATION_DRAFT &&
+                   status <= TRAINLOG_SLEEP_PUBLICATION_MODIFIED
+               ? values[status]
+               : NULL;
+}
+
 static bool quality_value(yyjson_val *value, TrainlogSleepQuality *output) {
     int index;
     if (yyjson_is_null(value)) {
@@ -131,6 +139,8 @@ add_entry(yyjson_mut_doc *document, yyjson_mut_val *items, const TrainlogSleepDi
         !yyjson_mut_obj_add_strcpy(document, object, "created_at", entry->created_at) ||
         !yyjson_mut_obj_add_strcpy(document, object, "updated_at", entry->updated_at) ||
         !yyjson_mut_obj_add_strcpy(document, object, "revision_id", entry->revision_id) ||
+        !yyjson_mut_obj_add_strcpy(
+            document, object, "publication_status", publication_text(entry->publication_status)) ||
         !add_nullable_quality(document, object, "sleep_quality", entry->sleep_quality) ||
         !add_nullable_quality(document, object, "wake_quality", entry->wake_quality) ||
         !add_nullable_quality(document, object, "day_form", entry->day_form) ||
@@ -551,6 +561,62 @@ TrainlogStatus trainlog_web_sleep_delete_request_json(TrainlogDatabase *database
         database, entry_id, revision, deleted_at, output_json, output_size);
     yyjson_doc_free(document);
     return status;
+}
+
+TrainlogStatus trainlog_web_sleep_validate_json(TrainlogDatabase *database,
+                                                const char *body,
+                                                size_t body_size,
+                                                char **output_json,
+                                                size_t *output_size) {
+    yyjson_read_err error;
+    yyjson_doc *input;
+    yyjson_val *root;
+    const char *entry_id;
+    const char *revision;
+    const char *validated_at;
+    char entry_id_copy[TRAINLOG_SLEEP_ENTRY_ID_CAPACITY];
+    char revision_copy[TRAINLOG_SLEEP_REVISION_ID_CAPACITY];
+    TrainlogStatus status;
+    yyjson_mut_doc *output;
+    yyjson_mut_val *object;
+    if (database == NULL || body == NULL || body_size == 0U ||
+        body_size > TRAINLOG_WEB_SLEEP_BYTES_MAX || output_json == NULL || output_size == NULL) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    input = yyjson_read_opts((char *)body, body_size, YYJSON_READ_NOFLAG, NULL, &error);
+    root = input == NULL ? NULL : yyjson_doc_get_root(input);
+    entry_id = yyjson_is_obj(root) && yyjson_is_str(yyjson_obj_get(root, "entry_id"))
+                   ? yyjson_get_str(yyjson_obj_get(root, "entry_id"))
+                   : NULL;
+    revision = yyjson_is_obj(root) && yyjson_is_str(yyjson_obj_get(root, "expected_revision"))
+                   ? yyjson_get_str(yyjson_obj_get(root, "expected_revision"))
+                   : NULL;
+    validated_at = yyjson_is_obj(root) && yyjson_is_str(yyjson_obj_get(root, "validated_at"))
+                       ? yyjson_get_str(yyjson_obj_get(root, "validated_at"))
+                       : NULL;
+    if (entry_id == NULL || revision == NULL || validated_at == NULL ||
+        yyjson_obj_size(root) != 3U) {
+        yyjson_doc_free(input);
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    status = trainlog_sleep_diary_validate_revision(database, entry_id, revision, validated_at);
+    (void)snprintf(entry_id_copy, sizeof(entry_id_copy), "%s", entry_id);
+    (void)snprintf(revision_copy, sizeof(revision_copy), "%s", revision);
+    yyjson_doc_free(input);
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+    output = yyjson_mut_doc_new(NULL);
+    object = output == NULL ? NULL : yyjson_mut_obj(output);
+    if (output == NULL || object == NULL ||
+        !yyjson_mut_obj_add_strcpy(output, object, "entry_id", entry_id_copy) ||
+        !yyjson_mut_obj_add_strcpy(output, object, "revision_id", revision_copy) ||
+        !yyjson_mut_obj_add_strcpy(output, object, "publication_status", "ready")) {
+        yyjson_mut_doc_free(output);
+        return TRAINLOG_STATUS_SYSTEM_ERROR;
+    }
+    yyjson_mut_doc_set_root(output, object);
+    return write_document(output, output_json, output_size);
 }
 
 typedef struct MedicationListContext {

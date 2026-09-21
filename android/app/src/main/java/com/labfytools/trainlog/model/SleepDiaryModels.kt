@@ -6,6 +6,7 @@ enum class SleepEventType(val wireValue: String) {
     SLEEP("sleep"), NAP("nap"), LONG_AWAKE("long_awake"), HALF_SLEEP("half_sleep"),
     DAYTIME_SLEEPINESS("daytime_sleepiness"),
 }
+enum class SleepPublicationStatus { DRAFT, READY, SYNCHRONIZED, MODIFIED }
 data class SleepDiaryEvent(val eventId: String, val type: SleepEventType, val startAt: String, val endAt: String?)
 data class SleepMedication(
     val medicationId: String, val revisionId: String, val createdAt: String, val updatedAt: String,
@@ -22,6 +23,7 @@ data class SleepDiaryEntry(
     val createdAt: String, val updatedAt: String, val revisionId: String,
     val sleepQuality: SleepQuality?, val wakeQuality: SleepQuality?, val dayForm: SleepQuality?,
     val treatmentAndNotes: String, val events: List<SleepDiaryEvent>, val intakes: List<MedicationIntake>,
+    val publicationStatus: SleepPublicationStatus,
 )
 data class SleepDiaryDraft(
     val entryId: String? = null, val expectedRevision: String? = null,

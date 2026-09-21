@@ -50,7 +50,13 @@ int main(void) {
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(scalar(raw, "PRAGMA user_version") == 29);
-    CHECK(scalar(raw, "SELECT COUNT(*) FROM sqlite_master WHERE name LIKE 'sleep_diary_%'") == 5);
+    CHECK(scalar(raw,
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
+                 "('sleep_diary_entries','sleep_diary_revisions','sleep_diary_events',"
+                 "'sleep_diary_publication_state','sleep_diary_generation_entries')") == 5);
+    CHECK(scalar(raw,
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND "
+                 "name='sleep_diary_one_night'") == 1);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
                  "('sleep_medications','sleep_medication_revisions',"

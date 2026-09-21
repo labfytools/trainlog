@@ -419,8 +419,10 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
         "SELECT "
         "e.entry_id,e.night_start_date,e.night_end_date,e.created_at,e.updated_at,e.current_"
         "revision_id,e.deleted,r.parent_revision_id,r.sleep_quality,r.wake_quality,r.day_form,r."
-        "treatment_and_notes FROM sleep_diary_entries e JOIN sleep_diary_revisions r ON "
-        "r.revision_id=e.current_revision_id WHERE e.entry_id=?1 AND (?2 OR e.deleted=0)";
+        "treatment_and_notes,p.validated_revision_id,p.acknowledged_revision_id FROM "
+        "sleep_diary_entries e JOIN sleep_diary_revisions r ON "
+        "r.revision_id=e.current_revision_id LEFT JOIN sleep_diary_publication_state p ON "
+        "p.entry_id=e.entry_id WHERE e.entry_id=?1 AND (?2 OR e.deleted=0)";
     static const char events_sql[] =
         "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=?1 "
         "ORDER BY start_at COLLATE BINARY,event_id COLLATE BINARY";
@@ -472,6 +474,31 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
                    sqlite3_column_text(statement, 11) == NULL
                        ? ""
                        : (const char *)sqlite3_column_text(statement, 11));
+    (void)snprintf(output->validated_revision_id,
+                   sizeof(output->validated_revision_id),
+                   "%s",
+                   sqlite3_column_text(statement, 12) == NULL
+                       ? ""
+                       : (const char *)sqlite3_column_text(statement, 12));
+    (void)snprintf(output->acknowledged_revision_id,
+                   sizeof(output->acknowledged_revision_id),
+                   "%s",
+                   sqlite3_column_text(statement, 13) == NULL
+                       ? ""
+                       : (const char *)sqlite3_column_text(statement, 13));
+    /* INVARIANT: durable local edits are independent from publication. An ACK only
+     * describes the exact revision captured by a completed generation. */
+    if (output->acknowledged_revision_id[0] != '\0' &&
+        strcmp(output->acknowledged_revision_id, output->revision_id) == 0) {
+        output->publication_status = TRAINLOG_SLEEP_PUBLICATION_SYNCHRONIZED;
+    } else if (output->acknowledged_revision_id[0] != '\0') {
+        output->publication_status = TRAINLOG_SLEEP_PUBLICATION_MODIFIED;
+    } else if (output->validated_revision_id[0] != '\0' &&
+               strcmp(output->validated_revision_id, output->revision_id) == 0) {
+        output->publication_status = TRAINLOG_SLEEP_PUBLICATION_READY;
+    } else {
+        output->publication_status = TRAINLOG_SLEEP_PUBLICATION_DRAFT;
+    }
     if (sqlite3_finalize(statement) != SQLITE_OK) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
@@ -553,6 +580,47 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
                : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
+TrainlogStatus trainlog_sleep_diary_validate_revision(TrainlogDatabase *database,
+                                                      const char *entry_id,
+                                                      const char *expected_revision,
+                                                      const char *validated_at) {
+    static const char sql[] =
+        "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at) "
+        "SELECT entry_id,current_revision_id,?1 FROM sleep_diary_entries WHERE entry_id=?2 AND "
+        "current_revision_id=?3 AND deleted=0 ON CONFLICT(entry_id) DO UPDATE SET "
+        "validated_revision_id=excluded.validated_revision_id,validated_at=excluded.validated_at";
+    sqlite3_stmt *statement = NULL;
+    TrainlogTimestampKey timestamp;
+    int result;
+    if (database == NULL || !id_valid(entry_id, "sl", TRAINLOG_SLEEP_ENTRY_ID_CAPACITY) ||
+        !id_valid(expected_revision, "slr", TRAINLOG_SLEEP_REVISION_ID_CAPACITY) ||
+        !timestamp_valid(validated_at, &timestamp)) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    result = sqlite3_prepare_v2(database->connection, sql, -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, validated_at, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 2, entry_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 3, expected_revision, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
+                                                        : sqlite3_errcode(database->connection);
+    }
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_OK) {
+        result = SQLITE_ERROR;
+    }
+    if (result != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return sqlite3_changes(database->connection) == 1 ? TRAINLOG_STATUS_OK
+                                                      : TRAINLOG_STATUS_CONFLICT;
+}
+
 TrainlogStatus trainlog_sleep_diary_get(TrainlogDatabase *database,
                                         const char *entry_id,
                                         bool include_deleted,
@@ -626,6 +694,10 @@ trainlog_sleep_diary_delete(TrainlogDatabase *database,
     static const char sql[] =
         "UPDATE sleep_diary_entries SET deleted=1,updated_at=?1,current_revision_id=?2 WHERE "
         "entry_id=?3 AND current_revision_id=?4 AND deleted=0";
+    static const char publication_sql[] =
+        "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at) "
+        "VALUES(?1,?2,?3) ON CONFLICT(entry_id) DO UPDATE SET "
+        "validated_revision_id=excluded.validated_revision_id,validated_at=excluded.validated_at";
     sqlite3_stmt *statement = NULL;
     TrainlogSleepDiaryEntry entry;
     TrainlogStatus status;
@@ -679,6 +751,31 @@ trainlog_sleep_diary_delete(TrainlogDatabase *database,
         status = result != SQLITE_OK                          ? TRAINLOG_STATUS_DATABASE_ERROR
                  : sqlite3_changes(database->connection) == 1 ? TRAINLOG_STATUS_OK
                                                               : TRAINLOG_STATUS_CONFLICT;
+    }
+    /* Deletion is itself an explicit publication decision. Capturing its
+     * immutable tombstone preserves causal non-resurrection on the peer. */
+    if (status == TRAINLOG_STATUS_OK) {
+        statement = NULL;
+        result = sqlite3_prepare_v2(database->connection, publication_sql, -1, &statement, NULL);
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 1, entry_id, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 2, entry.revision_id, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_text(statement, 3, deleted_at, -1, SQLITE_TRANSIENT);
+        }
+        if (result == SQLITE_OK) {
+            result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
+                                                            : sqlite3_errcode(database->connection);
+        }
+        if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && result == SQLITE_OK) {
+            result = SQLITE_ERROR;
+        }
+        if (result != SQLITE_OK) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR;
+        }
     }
     if (status == TRAINLOG_STATUS_OK &&
         sqlite3_exec(database->connection, "COMMIT", NULL, NULL, NULL) == SQLITE_OK) {

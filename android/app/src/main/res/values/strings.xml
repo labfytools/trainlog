@@ -26,6 +26,11 @@
     <string name="sleep_notes">Traitement et remarques</string>
     <string name="sleep_add_event">Ajouter un événement</string>
     <string name="sleep_save">Enregistrer</string>
+    <string name="sleep_validate">Valider la journée</string>
+    <string name="sleep_status_draft">Brouillon</string>
+    <string name="sleep_status_ready">Prête à synchroniser</string>
+    <string name="sleep_status_synchronized">Synchronisée</string>
+    <string name="sleep_status_modified">Modifiée depuis la synchronisation</string>
     <string name="sleep_delete">Supprimer</string>
     <string name="sleep_choose_time">Choisir l’heure</string>
     <string name="route_session_editor">Séance en cours</string>

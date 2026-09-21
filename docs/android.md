@@ -12,6 +12,11 @@ local-first field capture. Its compact Morning and Day sections edit one
 durable night/day entry without reproducing the desktop/PDF grid. Creation,
 correction and logical deletion are revision guarded and survive repository
 reopen. Full-generation exchange transports the companion, never SQLite.
+Each event, intake, appreciation, date or note edit is saved locally at once;
+closing the screen or killing the process does not require validation or sync.
+The screen resumes the most recent entry and distinguishes draft, ready,
+synchronized and modified tips. “Validate day” marks the current revision for
+the existing global synchronization action and never makes it immutable.
 
 ## Background USB and private Drive synchronization
 

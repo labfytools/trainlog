@@ -37,6 +37,12 @@ TrainlogStatus trainlog_web_sleep_delete_request_json(TrainlogDatabase *database
                                                       char **output_json,
                                                       size_t *output_size);
 
+TrainlogStatus trainlog_web_sleep_validate_json(TrainlogDatabase *database,
+                                                const char *body,
+                                                size_t body_size,
+                                                char **output_json,
+                                                size_t *output_size);
+
 TrainlogStatus trainlog_web_medication_list_json(TrainlogDatabase *database,
                                                  char **output_json,
                                                  size_t *output_size);

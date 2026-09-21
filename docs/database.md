@@ -22,6 +22,14 @@ Mutations advance `current_revision_id` only when the caller supplies the
 current parent. Logical deletion advances the revision and retains the
 tombstone. Qualities preserve `TB`, `B`, `Moy`, `M`, and `TM` exactly.
 
+`sleep_diary_publication_state` separates the durable local tip from the tip
+explicitly validated for publication and the exact revision covered by a
+full-generation ACK. `sleep_diary_generation_entries` binds captured revisions
+to immutable generation identities. Consequently a new entry is a draft, a
+validated tip is ready, an ACKed tip is synchronized, and any later local tip
+is modified without rewriting its acknowledged ancestor. One stable entry is
+owned by each `night_start_date`; old drafts remain editable indefinitely.
+
 The absolute timestamps are the future heart-rate correlation boundary. Sleep
 Diary V1 does not store, infer, or simulate heart-rate data.
 

@@ -10,6 +10,10 @@
   medication catalog and timestamped intake snapshots with optional positive
   dose/unit, synchronized and rendered factually in the agenda and PDF without
   efficacy, interaction, causality, dosage, or clinical advice.
+  Progressive daily capture now persists every edit locally while keeping
+  draft, ready, synchronized, and post-sync modified states distinct. Explicit
+  validation publishes only the guarded current revision through the existing
+  full-generation/ACK path; validation never makes a day immutable.
 
 Development opened after stable v0.1.3 release.
 

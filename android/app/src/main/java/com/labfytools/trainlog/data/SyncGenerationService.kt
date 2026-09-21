@@ -412,6 +412,16 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                         arrayOf(operationId, generationId, if (existed) 0 else 1),
                     )
                 }
+                val sleep = JSONObject(checkNotNull(artifacts["sleep-diary"]))
+                val sleepEntries = sleep.getJSONArray("entries")
+                for (index in 0 until sleepEntries.length()) {
+                    val entry = sleepEntries.getJSONObject(index)
+                    db.execSQL(
+                        "INSERT INTO sleep_diary_generation_entries(generation_id,entry_id,revision_id) " +
+                            "VALUES(?,?,?)",
+                        arrayOf(generationId, entry.getString("entry_id"), entry.getString("revision_id")),
+                    )
+                }
             }
             return CapturedSyncGeneration(generationId, runId, digest, stage)
         } catch (error: Exception) {
@@ -1039,6 +1049,17 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                             ack.getString("generation_id"),
                         ),
                     )
+                    if (target == "acknowledged") {
+                        db.execSQL(
+                            "UPDATE sleep_diary_publication_state SET acknowledged_revision_id=(SELECT " +
+                                "m.revision_id FROM sleep_diary_generation_entries m WHERE " +
+                                "m.generation_id=? AND m.entry_id=sleep_diary_publication_state.entry_id)," +
+                                "acknowledged_at=? WHERE EXISTS(SELECT 1 FROM sleep_diary_generation_entries m " +
+                                "WHERE m.generation_id=? AND m.entry_id=sleep_diary_publication_state.entry_id)",
+                            arrayOf(ack.getString("generation_id"), ack.getString("consumed_at"),
+                                ack.getString("generation_id")),
+                        )
+                    }
                     target
                 }
         }

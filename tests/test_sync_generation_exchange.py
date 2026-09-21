@@ -71,6 +71,38 @@ class GenerationTest(unittest.TestCase):
         with closing(sqlite3.connect(destination)) as reopened:
             self.assertEqual(ack,generation.record_consumed(reopened,manifest,checksum));self.assertEqual(1,reopened.execute("SELECT count(*) FROM facts WHERE id='imported'").fetchone()[0])
 
+    def test_sleep_revision_becomes_acknowledged_only_after_correlated_ack(self):
+        stage, manifest, checksum = self.capture()
+        self.publish()
+        entry = "sl_10000000-0000-4000-8000-000000000001"
+        revision = "slr_20000000-0000-4000-8000-000000000002"
+        with closing(sqlite3.connect(self.database)) as db:
+            db.executescript("""
+              CREATE TABLE sleep_diary_publication_state(entry_id TEXT PRIMARY KEY,validated_revision_id TEXT,validated_at TEXT,acknowledged_revision_id TEXT,acknowledged_at TEXT);
+              CREATE TABLE sleep_diary_generation_entries(generation_id TEXT,entry_id TEXT,revision_id TEXT,PRIMARY KEY(generation_id,entry_id));
+              CREATE TABLE program_deletions(generation_id TEXT,acknowledged_at TEXT);
+              PRAGMA user_version=29;
+            """)
+            db.execute("INSERT INTO sleep_diary_publication_state VALUES(?,?,?,NULL,NULL)",
+                       (entry, revision, "2026-09-21T17:30:00+02:00"))
+            db.execute("INSERT INTO sleep_diary_generation_entries VALUES(?,?,?)",
+                       (GEN, entry, revision))
+            db.execute("UPDATE sync_generations SET status='waiting_acknowledgement' WHERE generation_id=?", (GEN,))
+            db.commit()
+        ack = generation.ack_document(
+            manifest["run_id"], manifest["generation_id"], manifest["producer"]["peer_id"],
+            manifest["consumer_peer_id"], checksum, "consumed",
+            "2026-09-21T18:00:00+02:00",
+        )
+        ack_path = self.root / "sleep-ack.json"
+        ack_path.write_bytes(generation.canonical(ack))
+        self.assertEqual("acknowledged", generation.accept_ack(self.database, ack_path))
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual((revision,), db.execute(
+                "SELECT acknowledged_revision_id FROM sleep_diary_publication_state WHERE entry_id=?",
+                (entry,),
+            ).fetchone())
+
     def test_withdrawal_generation_relation_is_durable_until_ack(self):
         withdrawal = "spw_77777777-7777-4777-8777-777777777777"
         preparation = "sp_88888888-8888-4888-8888-888888888888"

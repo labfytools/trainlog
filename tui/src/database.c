@@ -1330,6 +1330,17 @@ static const char *const MIGRATE_V28_TO_V29_SQL =
     "CREATE INDEX IF NOT EXISTS sleep_medications_active ON sleep_medications(deleted,updated_at);"
     "CREATE INDEX IF NOT EXISTS sleep_medication_intakes_time ON "
     "sleep_medication_intakes(taken_at,medication_id);"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_publication_state("
+    "entry_id TEXT PRIMARY KEY REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,"
+    "validated_revision_id TEXT,validated_at TEXT,acknowledged_revision_id TEXT,"
+    "acknowledged_at TEXT,"
+    "CHECK((validated_revision_id IS NULL)=(validated_at IS NULL)),"
+    "CHECK((acknowledged_revision_id IS NULL)=(acknowledged_at IS NULL)));"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_generation_entries("
+    "generation_id TEXT NOT NULL REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,"
+    "entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,"
+    "revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,"
+    "PRIMARY KEY(generation_id,entry_id));"
     "PRAGMA user_version=29;COMMIT;";
 
 /* WHY: schema v29 was already opened on the private 0.1.4 review installation
@@ -1361,7 +1372,20 @@ static const char *const ENSURE_V29_SLEEP_MEDICATION_SQL =
     "(dose_value>0 AND length(trim(dose_unit)) BETWEEN 1 AND 32)));"
     "CREATE INDEX IF NOT EXISTS sleep_medications_active ON sleep_medications(deleted,updated_at);"
     "CREATE INDEX IF NOT EXISTS sleep_medication_intakes_time ON "
-    "sleep_medication_intakes(taken_at,medication_id);COMMIT;";
+    "sleep_medication_intakes(taken_at,medication_id);"
+    "CREATE UNIQUE INDEX IF NOT EXISTS sleep_diary_one_night ON "
+    "sleep_diary_entries(night_start_date);"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_publication_state("
+    "entry_id TEXT PRIMARY KEY REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,"
+    "validated_revision_id TEXT,validated_at TEXT,acknowledged_revision_id TEXT,"
+    "acknowledged_at TEXT,"
+    "CHECK((validated_revision_id IS NULL)=(validated_at IS NULL)),"
+    "CHECK((acknowledged_revision_id IS NULL)=(acknowledged_at IS NULL)));"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_generation_entries("
+    "generation_id TEXT NOT NULL REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,"
+    "entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,"
+    "revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,"
+    "PRIMARY KEY(generation_id,entry_id));COMMIT;";
 
 /* CONTRACT: migration fixtures may retain additive v25 columns while
  * deliberately lowering user_version. Add each provenance column only when

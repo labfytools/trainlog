@@ -14,6 +14,7 @@ export interface SleepEntry {
   created_at: string; updated_at: string; revision_id: string
   sleep_quality: SleepQuality | null; wake_quality: SleepQuality | null; day_form: SleepQuality | null
   treatment_and_notes: string; events: SleepEvent[]; intakes: MedicationIntake[]
+  publication_status: 'draft' | 'ready' | 'synchronized' | 'modified'
 }
 export interface SleepSnapshot {
   api_version: 1; entries: SleepEntry[]
@@ -21,7 +22,9 @@ export interface SleepSnapshot {
     sleep_duration_seconds: number; long_awake_duration_seconds: number; nap_duration_seconds: number
     average_bed_minute: number | null; average_get_up_minute: number | null }
 }
-export type SleepEntryInput = Omit<SleepEntry, 'revision_id'> & { expected_revision: string | null }
+export type SleepEntryInput = Omit<SleepEntry, 'revision_id' | 'publication_status'> & {
+  expected_revision: string | null
+}
 
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -34,6 +37,7 @@ function validEntry(value: unknown): value is SleepEntry {
   return object(value) && typeof value.entry_id === 'string' && typeof value.night_start_date === 'string' &&
     typeof value.night_end_date === 'string' && typeof value.created_at === 'string' &&
     typeof value.updated_at === 'string' && typeof value.revision_id === 'string' &&
+    ['draft', 'ready', 'synchronized', 'modified'].includes(String(value.publication_status)) &&
     quality(value.sleep_quality) && quality(value.wake_quality) && quality(value.day_form) &&
     typeof value.treatment_and_notes === 'string' && Array.isArray(value.events) && value.events.length <= 64 &&
     value.events.every((event) => object(event) && typeof event.event_id === 'string' &&
@@ -74,6 +78,15 @@ async function mutation(method: 'POST' | 'DELETE', body: unknown): Promise<{ ent
 }
 
 export const saveSleepEntry = async (entry: SleepEntryInput) => await mutation('POST', entry)
+export async function validateSleepEntry(entryId: string, revisionId: string): Promise<void> {
+  const csrf = await mutationCsrfToken()
+  const response = await fetch('/api/v1/sleep-diary/validate', {
+    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json',
+      'X-Trainlog-CSRF-Token': csrf }, body: JSON.stringify({ entry_id: entryId,
+      expected_revision: revisionId, validated_at: new Date().toISOString() }),
+  })
+  if (!response.ok) throw new Error('sleep_diary_validation_failed')
+}
 export const deleteSleepEntry = async (entry: SleepEntry) => await mutation('DELETE', {
   entry_id: entry.entry_id, expected_revision: entry.revision_id, deleted_at: new Date().toISOString(),
 })

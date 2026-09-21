@@ -45,6 +45,7 @@ import com.labfytools.trainlog.model.SyncedProgramSummary
 import com.labfytools.trainlog.model.SleepDiaryDraft
 import com.labfytools.trainlog.model.SleepDiaryEntry
 import com.labfytools.trainlog.model.SleepDiaryEvent
+import com.labfytools.trainlog.model.SleepPublicationStatus
 import com.labfytools.trainlog.model.MedicationIntake
 import com.labfytools.trainlog.model.SleepMedication
 import com.labfytools.trainlog.model.SleepEventType
@@ -563,7 +564,11 @@ class TrainlogRepository(
     fun listSleepDiary(limit: Int = 90): List<SleepDiaryEntry> {
         require(limit in 1..3660)
         val db = database.readableDatabase
-        return db.rawQuery("SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,current_revision_id FROM sleep_diary_entries WHERE deleted=0 ORDER BY night_start_date DESC,entry_id LIMIT ?", arrayOf(limit.toString())).use { cursor ->
+        return db.rawQuery("SELECT e.entry_id,e.night_start_date,e.night_end_date,e.created_at," +
+            "e.updated_at,e.current_revision_id,p.validated_revision_id,p.acknowledged_revision_id " +
+            "FROM sleep_diary_entries e LEFT JOIN sleep_diary_publication_state p ON " +
+            "p.entry_id=e.entry_id WHERE e.deleted=0 ORDER BY e.night_start_date DESC,e.entry_id LIMIT ?",
+            arrayOf(limit.toString())).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) {
                     val revision = cursor.getString(5)
@@ -571,10 +576,39 @@ class TrainlogRepository(
                     val events = db.rawQuery("SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=? ORDER BY start_at,event_id", arrayOf(revision)).use { eventCursor -> buildList { while (eventCursor.moveToNext()) add(SleepDiaryEvent(eventCursor.getString(0), SleepEventType.entries.single { it.wireValue == eventCursor.getString(1) }, eventCursor.getString(2), if (eventCursor.isNull(3)) null else eventCursor.getString(3))) } }
                     val intakes = db.rawQuery("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY taken_at,intake_id", arrayOf(revision)).use { intakeCursor -> buildList { while (intakeCursor.moveToNext()) add(MedicationIntake(intakeCursor.getString(0), intakeCursor.getString(1), intakeCursor.getString(2), intakeCursor.getString(3), if (intakeCursor.isNull(4)) null else intakeCursor.getDouble(4), if (intakeCursor.isNull(5)) null else intakeCursor.getString(5), intakeCursor.getString(6), intakeCursor.getString(7))) } }
                     fun quality(value: String?) = value?.let { text -> SleepQuality.entries.single { it.wireValue == text } }
-                    add(SleepDiaryEntry(cursor.getString(0),cursor.getString(1),cursor.getString(2),cursor.getString(3),cursor.getString(4),revision,quality(values[0]),quality(values[1]),quality(values[2]),values[3].orEmpty(),events,intakes))
+                    val validated = if (cursor.isNull(6)) null else cursor.getString(6)
+                    val acknowledged = if (cursor.isNull(7)) null else cursor.getString(7)
+                    val status = when {
+                        acknowledged == revision -> SleepPublicationStatus.SYNCHRONIZED
+                        acknowledged != null -> SleepPublicationStatus.MODIFIED
+                        validated == revision -> SleepPublicationStatus.READY
+                        else -> SleepPublicationStatus.DRAFT
+                    }
+                    add(SleepDiaryEntry(cursor.getString(0),cursor.getString(1),cursor.getString(2),cursor.getString(3),cursor.getString(4),revision,quality(values[0]),quality(values[1]),quality(values[2]),values[3].orEmpty(),events,intakes,status))
                 }
             }
         }
+    }
+
+    /** Marks only the guarded local tip publishable; transport remains owned
+     * by the existing full-generation synchronization action. */
+    fun validateSleepDiary(entryId: String, expectedRevision: String, validatedAt: String): SaveSleepDiaryResult {
+        if (!sleepIdentity(entryId, "sl") || !sleepIdentity(expectedRevision, "slr") ||
+            try { OffsetDateTime.parse(validatedAt); false } catch (_: RuntimeException) { true }) {
+            return SaveSleepDiaryResult.Invalid
+        }
+        val statement = database.writableDatabase.compileStatement(
+            "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at) " +
+                "SELECT entry_id,current_revision_id,? FROM sleep_diary_entries WHERE entry_id=? " +
+                "AND current_revision_id=? AND deleted=0 ON CONFLICT(entry_id) DO UPDATE SET " +
+                "validated_revision_id=excluded.validated_revision_id,validated_at=excluded.validated_at",
+        )
+        statement.bindString(1, validatedAt); statement.bindString(2, entryId)
+        statement.bindString(3, expectedRevision)
+        return try {
+            if (statement.executeInsert() < 0L) SaveSleepDiaryResult.Conflict
+            else SaveSleepDiaryResult.Saved(entryId, expectedRevision)
+        } catch (_: android.database.sqlite.SQLiteException) { SaveSleepDiaryResult.Conflict }
     }
 
     fun listSleepMedications(includeInactive: Boolean = true): List<SleepMedication> {
@@ -670,6 +704,12 @@ class TrainlogRepository(
             guarded.bindString(3, entryId)
             guarded.bindString(4, expectedRevision)
             if (guarded.executeUpdateDelete() != 1) return SaveSleepDiaryResult.Conflict
+            db.execSQL(
+                "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at) " +
+                    "VALUES(?,?,?) ON CONFLICT(entry_id) DO UPDATE SET " +
+                    "validated_revision_id=excluded.validated_revision_id,validated_at=excluded.validated_at",
+                arrayOf(entryId, revisionId, deletedAt),
+            )
             db.setTransactionSuccessful()
             SaveSleepDiaryResult.Saved(entryId, revisionId)
         } catch (_: android.database.sqlite.SQLiteException) {
@@ -684,8 +724,10 @@ class TrainlogRepository(
         val entries = JSONArray()
         val db = database.readableDatabase
         db.rawQuery(
-            "SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,current_revision_id,deleted " +
-                "FROM sleep_diary_entries ORDER BY entry_id",
+            "SELECT e.entry_id,e.night_start_date,e.night_end_date,e.created_at,e.updated_at," +
+                "e.current_revision_id,e.deleted FROM sleep_diary_entries e JOIN " +
+                "sleep_diary_publication_state p ON p.entry_id=e.entry_id AND " +
+                "p.validated_revision_id=e.current_revision_id ORDER BY e.entry_id",
             null,
         ).use { cursor ->
             while (cursor.moveToNext()) {
@@ -881,6 +923,7 @@ class TrainlogRepository(
                     if (!sameEvents) return SleepDiaryImportResult.Rejected(
                         "sleep diary revision identity reused with different content",
                     )
+                    markSleepDiaryImported(db, entryId, revisionId, root.getString("generated_at"))
                     unchanged++
                     continue
                 }
@@ -936,12 +979,29 @@ class TrainlogRepository(
                         intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
                         intake.note, intake.createdAt),
                 ) }
+                markSleepDiaryImported(db, entryId, revisionId, root.getString("generated_at"))
                 advanced++
             }
             SleepDiaryImportResult.Applied(advanced, unchanged)
         } catch (error: RuntimeException) {
             SleepDiaryImportResult.Rejected(error.message ?: "invalid sleep diary")
         }
+    }
+
+    private fun markSleepDiaryImported(
+        db: SQLiteDatabase,
+        entryId: String,
+        revisionId: String,
+        synchronizedAt: String,
+    ) {
+        db.execSQL(
+            "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at," +
+                "acknowledged_revision_id,acknowledged_at) VALUES(?,?,?,?,?) ON CONFLICT(entry_id) " +
+                "DO UPDATE SET validated_revision_id=excluded.validated_revision_id," +
+                "validated_at=excluded.validated_at,acknowledged_revision_id=excluded.acknowledged_revision_id," +
+                "acknowledged_at=excluded.acknowledged_at",
+            arrayOf(entryId, revisionId, synchronizedAt, revisionId, synchronizedAt),
+        )
     }
 
     /** Create a transactionally consistent SQLite snapshot without exposing WAL files. */
@@ -9602,6 +9662,7 @@ private class TrainlogDatabaseHelper(
             )""".trimIndent(),
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS sleep_diary_entries_dates ON sleep_diary_entries(night_start_date,deleted)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS sleep_diary_one_night ON sleep_diary_entries(night_start_date)")
         db.execSQL("CREATE INDEX IF NOT EXISTS sleep_diary_events_time ON sleep_diary_events(start_at,end_at)")
         db.execSQL("""CREATE TABLE IF NOT EXISTS sleep_medications(
             medication_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -9624,6 +9685,17 @@ private class TrainlogDatabaseHelper(
                 (dose_value>0 AND length(trim(dose_unit)) BETWEEN 1 AND 32)))""".trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS sleep_medications_active ON sleep_medications(deleted,updated_at)")
         db.execSQL("CREATE INDEX IF NOT EXISTS sleep_medication_intakes_time ON sleep_medication_intakes(taken_at,medication_id)")
+        db.execSQL("""CREATE TABLE IF NOT EXISTS sleep_diary_publication_state(
+            entry_id TEXT PRIMARY KEY REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
+            validated_revision_id TEXT, validated_at TEXT, acknowledged_revision_id TEXT,
+            acknowledged_at TEXT,
+            CHECK((validated_revision_id IS NULL)=(validated_at IS NULL)),
+            CHECK((acknowledged_revision_id IS NULL)=(acknowledged_at IS NULL)))""".trimIndent())
+        db.execSQL("""CREATE TABLE IF NOT EXISTS sleep_diary_generation_entries(
+            generation_id TEXT NOT NULL REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,
+            entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
+            revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
+            PRIMARY KEY(generation_id,entry_id))""".trimIndent())
     }
 
     private fun createSyncDataLifecycleTables(db: SQLiteDatabase) {

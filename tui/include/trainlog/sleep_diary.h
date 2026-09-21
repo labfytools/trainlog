@@ -68,6 +68,13 @@ typedef enum TrainlogSleepEventType {
     TRAINLOG_SLEEP_EVENT_DAYTIME_SLEEPINESS
 } TrainlogSleepEventType;
 
+typedef enum TrainlogSleepPublicationStatus {
+    TRAINLOG_SLEEP_PUBLICATION_DRAFT = 0,
+    TRAINLOG_SLEEP_PUBLICATION_READY,
+    TRAINLOG_SLEEP_PUBLICATION_SYNCHRONIZED,
+    TRAINLOG_SLEEP_PUBLICATION_MODIFIED
+} TrainlogSleepPublicationStatus;
+
 typedef struct TrainlogSleepEvent {
     char event_id[TRAINLOG_SLEEP_EVENT_ID_CAPACITY];
     TrainlogSleepEventType type;
@@ -91,6 +98,9 @@ typedef struct TrainlogSleepDiaryEntry {
     size_t event_count;
     TrainlogMedicationIntake intakes[TRAINLOG_SLEEP_INTAKES_MAX];
     size_t intake_count;
+    char validated_revision_id[TRAINLOG_SLEEP_REVISION_ID_CAPACITY];
+    char acknowledged_revision_id[TRAINLOG_SLEEP_REVISION_ID_CAPACITY];
+    TrainlogSleepPublicationStatus publication_status;
     bool deleted;
 } TrainlogSleepDiaryEntry;
 
@@ -131,6 +141,13 @@ trainlog_sleep_diary_delete(TrainlogDatabase *database,
                             const char *expected_revision,
                             const char *deleted_at,
                             char output_revision[TRAINLOG_SLEEP_REVISION_ID_CAPACITY]);
+
+/* Marks the guarded current revision as complete enough for the existing
+ * full-generation publisher. It remains editable and no transport is started. */
+TrainlogStatus trainlog_sleep_diary_validate_revision(TrainlogDatabase *database,
+                                                      const char *entry_id,
+                                                      const char *expected_revision,
+                                                      const char *validated_at);
 
 typedef TrainlogStatus (*TrainlogMedicationVisitor)(void *context,
                                                     const TrainlogMedication *medication);

@@ -14,6 +14,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,10 +30,12 @@ import com.labfytools.trainlog.model.SleepDiaryEntry
 import com.labfytools.trainlog.model.SleepDiaryEvent
 import com.labfytools.trainlog.model.SleepEventType
 import com.labfytools.trainlog.model.SleepQuality
+import com.labfytools.trainlog.model.SleepPublicationStatus
 import com.labfytools.trainlog.model.MedicationIntake
 import com.labfytools.trainlog.model.SleepMedication
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.util.UUID
 
 @Composable
 fun SleepDiaryScreen(repository: TrainlogRepository) {
@@ -56,7 +59,22 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
     var medicationDose by remember { mutableStateOf("") }
     var medicationUnit by remember { mutableStateOf("mg") }
     var editingMedication by remember { mutableStateOf<SleepMedication?>(null) }
-    val entries = remember(revision) { repository.listSleepDiary() }
+    var editSerial by remember { mutableStateOf(0) }
+    val entries = repository.listSleepDiary()
+    fun changed() { editSerial++ }
+
+    LaunchedEffect(editSerial) {
+        if (editSerial > 0) {
+            val now = OffsetDateTime.now().toString()
+            val current = selected
+            val result = repository.saveSleepDiary(SleepDiaryDraft(current?.entryId,
+                current?.revisionId,startDate,endDate,current?.createdAt ?: now,now,sleepQuality,
+                wakeQuality,dayForm,notes,events,intakes))
+            if (result is TrainlogRepository.SaveSleepDiaryResult.Saved) {
+                selected = repository.listSleepDiary().firstOrNull { it.entryId == result.entryId }
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(12.dp),
@@ -67,6 +85,12 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
             Card(onClick = { selected = entry }) {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("${entry.nightStartDate} → ${entry.nightEndDate}")
+                    Text(stringResource(when (entry.publicationStatus) {
+                        SleepPublicationStatus.DRAFT -> R.string.sleep_status_draft
+                        SleepPublicationStatus.READY -> R.string.sleep_status_ready
+                        SleepPublicationStatus.SYNCHRONIZED -> R.string.sleep_status_synchronized
+                        SleepPublicationStatus.MODIFIED -> R.string.sleep_status_modified
+                    }))
                     Text("${entry.events.size} · ${entry.sleepQuality?.wireValue ?: "—"} / ${entry.wakeQuality?.wireValue ?: "—"}")
                 }
             }
@@ -76,18 +100,19 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.sleep_morning))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(startDate, { startDate = it }, label = { Text("YYYY-MM-DD") }, modifier = Modifier.weight(1f))
-                        OutlinedTextField(endDate, { endDate = it }, label = { Text("YYYY-MM-DD") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(startDate, { startDate = it; changed() }, label = { Text("YYYY-MM-DD") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(endDate, { endDate = it; changed() }, label = { Text("YYYY-MM-DD") }, modifier = Modifier.weight(1f))
                     }
-                    QualityRow(stringResource(R.string.sleep_quality), sleepQuality) { sleepQuality = it }
-                    QualityRow(stringResource(R.string.sleep_wake_quality), wakeQuality) { wakeQuality = it }
+                    QualityRow(stringResource(R.string.sleep_quality), sleepQuality) { sleepQuality = it; changed() }
+                    QualityRow(stringResource(R.string.sleep_wake_quality), wakeQuality) { wakeQuality = it; changed() }
                     Text(stringResource(R.string.sleep_day))
-                    QualityRow(stringResource(R.string.sleep_day_form), dayForm) { dayForm = it }
+                    QualityRow(stringResource(R.string.sleep_day_form), dayForm) { dayForm = it; changed() }
                     SleepEventType.entries.forEach { type ->
                         Button(onClick = {
                             val start = OffsetDateTime.now()
-                            events = events + SleepDiaryEvent("", type, start.toString(),
+                            events = events + SleepDiaryEvent("sle_${UUID.randomUUID()}", type, start.toString(),
                                 if (type in pointTypes) null else start.plusHours(1).toString())
+                            changed()
                         }) { Text(eventLabel(type)) }
                     }
                     events.forEachIndexed { index, event ->
@@ -98,17 +123,19 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
                                     events = events.mapIndexed { item, current ->
                                         if (item == index) current.copy(startAt = value) else current
                                     }
+                                    changed()
                                 }
-                                OutlinedTextField(event.startAt, { value -> events = events.mapIndexed { item, current -> if (item == index) current.copy(startAt = value) else current } }, label = { Text("ISO-8601") })
+                                OutlinedTextField(event.startAt, { value -> events = events.mapIndexed { item, current -> if (item == index) current.copy(startAt = value) else current }; changed() }, label = { Text("ISO-8601") })
                                 event.endAt?.let { end ->
                                     TimeButton(end) { value ->
                                         events = events.mapIndexed { item, current ->
                                             if (item == index) current.copy(endAt = value) else current
                                         }
+                                        changed()
                                     }
-                                    OutlinedTextField(end, { value -> events = events.mapIndexed { item, current -> if (item == index) current.copy(endAt = value) else current } }, label = { Text("ISO-8601 →") })
+                                    OutlinedTextField(end, { value -> events = events.mapIndexed { item, current -> if (item == index) current.copy(endAt = value) else current }; changed() }, label = { Text("ISO-8601 →") })
                                 }
-                                Button(onClick = { events = events.filterIndexed { item, _ -> item != index } }) { Text(stringResource(R.string.sleep_delete)) }
+                                Button(onClick = { events = events.filterIndexed { item, _ -> item != index }; changed() }) { Text(stringResource(R.string.sleep_delete)) }
                             }
                         }
                     }
@@ -162,9 +189,10 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
                             val dose = intakeDose.toDoubleOrNull()
                             if (intakeDose.isEmpty() || dose != null && dose > 0.0) {
                                 val now = OffsetDateTime.now().toString()
-                                intakes = intakes + MedicationIntake("", medication.medicationId,
+                                intakes = intakes + MedicationIntake("mdi_${UUID.randomUUID()}", medication.medicationId,
                                     medication.name, now, dose, if (dose == null) null else intakeUnit,
                                     "", now)
+                                changed()
                             }
                         }
                     }) { Text(stringResource(R.string.sleep_add_intake)) }
@@ -172,28 +200,35 @@ fun SleepDiaryScreen(repository: TrainlogRepository) {
                         Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(intake.medicationName)
                             TimeButton(intake.takenAt) { value -> intakes = intakes.mapIndexed { item, current ->
-                                if (item == index) current.copy(takenAt = value) else current } }
+                                if (item == index) current.copy(takenAt = value) else current }; changed() }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedTextField(intake.doseValue?.toString().orEmpty(), { value ->
                                     intakes = intakes.mapIndexed { item, current -> if (item == index) current.copy(
                                         doseValue = value.toDoubleOrNull(), doseUnit = if (value.isEmpty()) null else current.doseUnit ?: "mg") else current }
+                                    changed()
                                 }, label = { Text(stringResource(R.string.sleep_dose)) }, modifier = Modifier.weight(1f))
                                 OutlinedTextField(intake.doseUnit.orEmpty(), { value -> intakes = intakes.mapIndexed { item, current ->
                                     if (item == index) current.copy(doseUnit = value) else current }
+                                    changed()
                                 }, label = { Text(stringResource(R.string.sleep_unit)) }, modifier = Modifier.weight(1f))
                             }
-                            Button(onClick = { intakes = intakes.filterIndexed { item, _ -> item != index } }) {
+                            Button(onClick = { intakes = intakes.filterIndexed { item, _ -> item != index }; changed() }) {
                                 Text(stringResource(R.string.sleep_delete))
                             }
                         }
                     } }
-                    OutlinedTextField(notes, { notes = it }, label = { Text(stringResource(R.string.sleep_notes)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+                    OutlinedTextField(notes, { notes = it; changed() }, label = { Text(stringResource(R.string.sleep_notes)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
                     Button(onClick = {
                         val now = OffsetDateTime.now().toString()
                         val current = selected
                         val result = repository.saveSleepDiary(SleepDiaryDraft(current?.entryId,current?.revisionId,startDate,endDate,current?.createdAt ?: now,now,sleepQuality,wakeQuality,dayForm,notes,events,intakes))
                         if (result is TrainlogRepository.SaveSleepDiaryResult.Saved) { revision++; selected = repository.listSleepDiary().firstOrNull { it.entryId == result.entryId } }
                     }) { Text(stringResource(R.string.sleep_save)) }
+                    selected?.let { entry -> Button(onClick = {
+                        repository.validateSleepDiary(entry.entryId, entry.revisionId,
+                            OffsetDateTime.now().toString())
+                        selected = repository.listSleepDiary().firstOrNull { it.entryId == entry.entryId }
+                    }) { Text(stringResource(R.string.sleep_validate)) } }
                     selected?.let { entry -> Button(onClick = { repository.deleteSleepDiary(entry.entryId,entry.revisionId,OffsetDateTime.now().toString()); selected = null; revision++ }) { Text(stringResource(R.string.sleep_delete)) } }
                 }
             }

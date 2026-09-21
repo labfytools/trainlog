@@ -136,7 +136,19 @@ int main(void) {
     CHECK(trainlog_sleep_diary_get(database, entry.entry_id, false, &loaded) == TRAINLOG_STATUS_OK);
     CHECK(loaded.event_count == 4U && loaded.intake_count == 2U &&
           loaded.intakes[0].dose_value == 5.0 && loaded.intakes[1].dose_value == 10.0 &&
-          loaded.sleep_quality == TRAINLOG_SLEEP_QUALITY_B);
+          loaded.sleep_quality == TRAINLOG_SLEEP_QUALITY_B &&
+          loaded.publication_status == TRAINLOG_SLEEP_PUBLICATION_DRAFT);
+    CHECK(trainlog_sleep_diary_validate_revision(
+              database, entry.entry_id, loaded.revision_id, "2026-10-25T18:00:00+01:00") ==
+          TRAINLOG_STATUS_OK);
+    CHECK(trainlog_sleep_diary_get(database, entry.entry_id, false, &loaded) ==
+              TRAINLOG_STATUS_OK &&
+          loaded.publication_status == TRAINLOG_SLEEP_PUBLICATION_READY);
+    CHECK(trainlog_sleep_diary_validate_revision(database,
+                                                 entry.entry_id,
+                                                 "slr_00000000-0000-4000-8000-000000000000",
+                                                 "2026-10-25T18:00:00+01:00") ==
+          TRAINLOG_STATUS_CONFLICT);
     (void)snprintf(
         medication.updated_at, sizeof(medication.updated_at), "2026-10-26T12:00:00+01:00");
     (void)snprintf(medication.name, sizeof(medication.name), "Renamed medication");
@@ -157,6 +169,9 @@ int main(void) {
     loaded.day_form = TRAINLOG_SLEEP_QUALITY_TB;
     (void)snprintf(loaded.updated_at, sizeof(loaded.updated_at), "2026-10-25T19:00:00+01:00");
     CHECK(trainlog_sleep_diary_update(database, first_revision, &loaded) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_sleep_diary_get(database, entry.entry_id, false, &loaded) ==
+              TRAINLOG_STATUS_OK &&
+          loaded.publication_status == TRAINLOG_SLEEP_PUBLICATION_DRAFT);
     stale.day_form = TRAINLOG_SLEEP_QUALITY_TM;
     (void)snprintf(stale.updated_at, sizeof(stale.updated_at), "2026-10-25T20:00:00+01:00");
     CHECK(trainlog_sleep_diary_update(database, first_revision, &stale) ==

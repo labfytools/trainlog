@@ -3,6 +3,7 @@ import { buildSleepDiaryPdf } from './sleepDiaryPdf'
 import type { SleepEntry, SleepSnapshot } from '../api/sleepDiary'
 
 const entry = (index: number): SleepEntry => ({
+  publication_status: index === 0 ? 'draft' : 'synchronized',
   entry_id: `sl_${index}`, night_start_date: `2026-09-${String(index + 1).padStart(2, '0')}`,
   night_end_date: `2026-09-${String(index + 2).padStart(2, '0')}`, created_at: '2026-09-01T18:00:00+02:00',
   updated_at: '2026-09-01T18:00:00+02:00', revision_id: `slr_${index}`, sleep_quality: 'B',

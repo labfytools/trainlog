@@ -39,7 +39,11 @@ function page(snapshot: SleepSnapshot, entries: SleepEntry[], index: number, cou
   entries.forEach((entry, rowIndex) => row(stream, entry, 538 - rowIndex * 40))
   const y = 520 - entries.length * 40
   stream.push(text(30, y, 9, 'OBSERVATIONS'), text(30, y - 14, 6, `${snapshot.summary.nights} nights; sleep ${Math.round(snapshot.summary.sleep_duration_seconds / 60)} min; long awake ${snapshot.summary.long_awake_count}; naps ${snapshot.summary.nap_count}; sleepiness ${snapshot.summary.sleepiness_count}; intakes ${snapshot.summary.intake_count}`))
-  entries.filter((entry) => entry.treatment_and_notes).slice(0, 3).forEach((entry, noteIndex) => stream.push(text(30, y - 27 - noteIndex * 10, 6, `${entry.night_start_date}: ${entry.treatment_and_notes.slice(0, 110)}`)))
+  const unvalidated = snapshot.entries.filter((entry) => entry.publication_status === 'draft' || entry.publication_status === 'modified').length
+  if (unvalidated > 0) stream.push(text(30, y - 24, 6, language === 'fr'
+    ? `AVERTISSEMENT: ${unvalidated} jour(s) non valide(s) dans cet export.`
+    : `WARNING: ${unvalidated} unvalidated day(s) in this export.`))
+  entries.filter((entry) => entry.treatment_and_notes).slice(0, 3).forEach((entry, noteIndex) => stream.push(text(30, y - 36 - noteIndex * 10, 6, `${entry.night_start_date}: ${entry.treatment_and_notes.slice(0, 110)}`)))
   stream.push(text(30, 18, 6, 'Legend: v bedtime; ^ get-up; S sleepiness; M medication intake; SLEEP sleep; NAP nap; AWAKE long awakening; HALF half-sleep.'))
   return stream.join('')
 }
