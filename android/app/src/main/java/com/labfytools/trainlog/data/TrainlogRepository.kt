@@ -841,7 +841,11 @@ class TrainlogRepository(
                     continue
                 }
                 if (local != null && local.first != parent) return SleepDiaryImportResult.Rejected("concurrent medication revision")
-                if (local == null && parent != null) return SleepDiaryImportResult.Rejected("unknown medication parent")
+                /* CONTRACT: this companion is a current-state snapshot, not a
+                 * revision log. A fresh peer may therefore seed the current
+                 * revision while retaining an unavailable parent identity;
+                 * subsequent advances must still name the locally current
+                 * revision exactly. */
                 if (local?.second == 1 && !medication.getBoolean("deleted")) return SleepDiaryImportResult.Rejected("medication resurrection")
                 val dose = if (medication.isNull("default_dose_value")) null else medication.getDouble("default_dose_value")
                 val unit = if (medication.isNull("default_dose_unit")) null else medication.getString("default_dose_unit")
@@ -929,8 +933,9 @@ class TrainlogRepository(
                 }
                 if (local != null && parent != local.first)
                     return SleepDiaryImportResult.Rejected("concurrent sleep diary revision")
-                if (local == null && parent != null)
-                    return SleepDiaryImportResult.Rejected("unknown sleep diary parent")
+                /* The snapshot may start at a non-root current revision on a
+                 * fresh peer. Preserve its causal parent identity even though
+                 * the historical parent payload is intentionally absent. */
                 val deleted = item.getBoolean("deleted")
                 if (local?.second == 1 && !deleted)
                     return SleepDiaryImportResult.Rejected("sleep diary resurrection")
@@ -4878,7 +4883,27 @@ class TrainlogRepository(
                         val sessionExerciseRowId = exerciseCursor.getLong(0)
                         val recording = exerciseCursor.getString(3)
                         val tracking = exerciseCursor.getString(4)
-                        val exportPlan = readSessionPlan(exerciseCursor, 10)
+                        val storedPlan = readSessionPlan(exerciseCursor, 10)
+                        /* WHY: a delivered continuous occurrence can retain a
+                         * local duration target, but mobile history represents
+                         * its completed fact exclusively through `continuous`.
+                         * CONTRACT: validate that local-only plan without
+                         * inventing a set-based target the Desktop schema
+                         * forbids. INVARIANT: performed duration, speed and
+                         * distance are still exported unchanged below. */
+                        if (recording == "continuous" && storedPlan != null) {
+                            check(
+                                tracking == "duration" &&
+                                    exerciseCursor.isNull(9) &&
+                                    storedPlan.sets == 0 &&
+                                    storedPlan.reps == null &&
+                                    storedPlan.durationSeconds in 1..MAX_PLAN_DURATION_SECONDS &&
+                                    storedPlan.weightKg == null &&
+                                    storedPlan.loadMode == SessionLoadMode.NONE &&
+                                    storedPlan.restSeconds == 0,
+                            ) { "Plan continu SQLite incohérent" }
+                        }
+                        val exportPlan = if (recording == "continuous") null else storedPlan
                         val hasPlan = exportPlan != null
                         if (version < 3 && exportPlan != null) {
                             error("Un plan de séance exige l'export mobile V3.")

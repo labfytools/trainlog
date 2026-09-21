@@ -541,6 +541,12 @@ internal class SyncGenerationCoordinator(
             phase(currentRunId, "cancelled", result = "interrupted")
             ForegroundGenerationResult.Cancelled(currentRunId)
         } catch (error: Exception) {
+            Log.e(
+                "TrainlogSyncGeneration",
+                "run_id=${currentRunId ?: "pending"} phase=error " +
+                    "type=${error.javaClass.name} message=${error.message}",
+                error,
+            )
             if (error.message == "generation retention capacity exhausted") {
                 try {
                     val request = JSONObject(File(directory, "request-v1.json").readText())

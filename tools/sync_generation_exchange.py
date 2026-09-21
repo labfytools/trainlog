@@ -430,7 +430,34 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                         (generation, delivery["delivery_id"], delivery["revision_id"]),
                     )
                     if cursor.rowcount != 1:
-                        raise GenerationError("preparation delivery changed during capture")
+                        # WHY: Program-provenance recovery republishes an
+                        # already acknowledged legacy delivery as
+                        # remote_unknown until its canonical execution comes
+                        # back. CONTRACT: this exception is allowed only for
+                        # the exact immutable delivery/revision/execution and
+                        # Program identities captured in the artifact.
+                        # INVARIANT: no delivery lifecycle or generation
+                        # relation is rewritten by the recovery emission.
+                        recovery = db.execute(
+                            "SELECT 1 FROM session_preparation_deliveries d "
+                            "JOIN session_preparations p ON p.preparation_id=d.preparation_id "
+                            "WHERE d.delivery_id=? AND d.revision_id=? "
+                            "AND d.execution_session_id=? AND d.state='acknowledged' "
+                            "AND p.source_program_id=? AND p.source_program_session_id=? "
+                            "AND NOT EXISTS(SELECT 1 FROM program_session_executions x "
+                            "WHERE x.program_id=p.source_program_id "
+                            "AND x.program_session_id=p.source_program_session_id "
+                            "AND x.session_id=d.execution_session_id)",
+                            (
+                                delivery["delivery_id"],
+                                delivery["revision_id"],
+                                delivery["execution_session_id"],
+                                delivery.get("source_program_id"),
+                                delivery.get("source_program_session_id"),
+                            ),
+                        ).fetchone()
+                        if recovery is None:
+                            raise GenerationError("preparation delivery changed during capture")
                 for withdrawal in captured_preparations["withdrawals"]:
                     cursor = db.execute(
                         "UPDATE session_preparation_withdrawals SET generation_id=? "

@@ -168,6 +168,60 @@ class GenerationTest(unittest.TestCase):
                     "SELECT acknowledged_at FROM session_preparation_withdrawals",
                 ).fetchone()[0],
             )
+
+    def test_acknowledged_program_recovery_keeps_original_generation_relation(self):
+        delivery = "spd_55555555-5555-4555-8555-555555555555"
+        preparation = "sp_66666666-6666-4666-8666-666666666666"
+        revision = "spr_77777777-7777-4777-8777-777777777777"
+        execution = "se_88888888-8888-4888-8888-888888888888"
+        program = "pg_99999999-9999-4999-8999-999999999999"
+        program_session = "pgs_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        original_generation = "gen_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("ALTER TABLE session_preparations ADD COLUMN source_program_id TEXT")
+            db.execute("ALTER TABLE session_preparations ADD COLUMN source_program_session_id TEXT")
+            db.execute(
+                "CREATE TABLE program_session_executions(program_session_id TEXT PRIMARY KEY,"
+                "program_id TEXT,session_id TEXT UNIQUE,state TEXT,observed_at TEXT)"
+            )
+            db.execute(
+                "INSERT INTO session_preparations VALUES(?,?,?,?,?,?)",
+                (preparation, revision, "acknowledged", None, program, program_session),
+            )
+            db.execute(
+                "INSERT INTO session_preparation_deliveries VALUES(?,?,?,?,?,?,?,?)",
+                (delivery, preparation, revision, execution, "acknowledged",
+                 "2026-09-21T12:00:00Z", original_generation, "2026-09-21T12:05:00Z"),
+            )
+            db.commit()
+        artifacts = (("session-preparations", "trainlog-session-preparations", 2,
+                      "session-preparations-v2.json", False, "controlled.py", ()),)
+        payload = {
+            "format": "trainlog-session-preparations", "version": 2,
+            "generated_at": "2026-09-21T12:10:00Z", "withdrawals": [],
+            "deliveries": [{
+                "delivery_id": delivery, "preparation_id": preparation,
+                "revision_id": revision, "execution_session_id": execution,
+                "state": "remote_unknown", "source_program_id": program,
+                "source_program_session_id": program_session,
+            }],
+        }
+        def exporter(_tool, _extra, output, _snapshot):
+            output.write_text(json.dumps(payload))
+        with mock.patch.object(generation, "ARTIFACTS", artifacts), \
+             mock.patch.object(generation, "SUPPORTED", {("trainlog-session-preparations", 2)}), \
+             mock.patch.object(generation, "run_export", exporter):
+            generation.capture_desktop(
+                self.database, self.root / "program-recovery", PEER_B, RUN, GEN,
+            )
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(
+                ("acknowledged", original_generation),
+                db.execute(
+                    "SELECT state,generation_id FROM session_preparation_deliveries "
+                    "WHERE delivery_id=?", (delivery,),
+                ).fetchone(),
+            )
     def test_substitution_and_transaction_failure_leave_no_consumption(self):
         _,manifest,checksum=self.capture();published=self.publish()
         (published/"history.json").write_text("{}")

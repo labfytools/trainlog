@@ -254,6 +254,11 @@ For Program-owned manual preparations, an acknowledged delivery is republished
 while its matching canonical execution evidence is absent on the PC. This
 bounded recovery lets Android enrich legacy deliveries with Program provenance
 and stops automatically when the execution returns through this companion.
+The recovery emission retains the delivery's original acknowledged generation
+relation and requires exact delivery, revision, execution and Program
+identities. A current-state Sleep Diary snapshot may initialize a fresh peer
+from a non-root current revision while retaining the unavailable parent
+identity for subsequent causal advances.
 
 Desktop schema v28 adds terminal `deleted` provenance for a completed session
 removed through causal history deletion. A retained older

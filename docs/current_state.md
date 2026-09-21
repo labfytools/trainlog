@@ -436,6 +436,10 @@ strict same-delivery enrichment repairs completed sessions produced from the
 earlier omission without changing workout facts. Android and Web therefore
 derive the completed count and per-session state from the same execution
 identity after synchronization and restart.
+The historical S1 A delivery was recovered onto its original completed
+`session_id`; Android and Web now both report one completed session out of 24.
+Generation capture also accepts its valid local continuous duration plans
+without projecting them as unsupported set targets.
 
 The private Programs rollout migrated desktop schema v25 to v26 and Android
 schema v23 to v24 after verified backups, then installed the signed

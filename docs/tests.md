@@ -15,6 +15,11 @@ removes `crypto.randomUUID()` and proves the HTTP-origin-compatible UUIDv4
 path. A real Firefox run through the production C server and `trainlog.perf`
 creates events, medications and intakes, reloads their durable state, checks a
 responsive viewport and captures console errors and unhandled rejections.
+Program recovery coverage starts from an acknowledged legacy preparation,
+repairs the same completed Android `session_id`, publishes one completed
+execution and verifies Web `1 / 24` presentation. Related regressions cover
+planned continuous activity capture and fresh-peer Sleep Diary bootstrap from
+non-root current revisions.
 
 `web_analysis` covers empty history, every 7/30/90/all period selector,
 loaded and unloaded repetitions, continuous duration/distance/speed, explicit

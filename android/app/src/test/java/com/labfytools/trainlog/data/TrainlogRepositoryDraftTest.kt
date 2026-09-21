@@ -2696,6 +2696,46 @@ class TrainlogRepositoryDraftTest {
     }
 
     @Test
+    fun completedContinuousPlanKeepsPerformedFactAndExportsWithoutSetTarget() {
+        val repo = openRepository()
+        val exercise = createExercise(
+            repo,
+            "Marche planifiée",
+            RecordingMode.CONTINUOUS,
+            TrackingMode.DURATION,
+        )
+        val plan = SessionExercisePlan(sets = 0, durationSeconds = 600)
+        assertEquals(
+            ActiveDraftMutationResult.Saved,
+            repo.saveActiveSessionDraft(
+                ActiveSessionDraft(
+                    exercises = listOf(
+                        SessionExerciseDraft(
+                            exercise = exercise,
+                            plan = plan,
+                            continuousDurationSeconds = 540,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val result = repo.finalizeActiveSessionDraft() as FinalizeActiveDraftResult.Saved
+
+        val detail = repo.getSessionDetail(result.sessionId)!!
+        assertEquals(plan, detail.exercises.single().plan)
+        val exported =
+            JSONObject(repo.buildMobileExportV4Json())
+                .getJSONArray("sessions")
+                .getJSONObject(0)
+                .getJSONArray("exercises")
+                .getJSONObject(0)
+        assertTrue(exported.isNull("target"))
+        assertEquals(540, exported.getJSONObject("continuous").getInt("duration_seconds"))
+        assertTrue(!exported.getJSONObject("continuous").has("speed_kmh"))
+        assertTrue(!exported.getJSONObject("continuous").has("distance_km"))
+    }
+
+    @Test
     fun targetOnlyDraftPersistsButCannotFinalizeWithoutActualWork() {
         val repo = openRepository()
         val exercise = createExercise(repo, "Plan seul", RecordingMode.SETS, TrackingMode.REPS)

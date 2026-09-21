@@ -47,6 +47,10 @@ active draft and completed session. A legacy stored delivery may receive those
 two omitted fields later only when its revision, complete prior payload and
 reserved execution identity match exactly; this repairs provenance without
 altering performed workout facts.
+Acknowledged historical deliveries use the same exact-identity recovery. A
+local continuous duration target is validated during generation capture while
+the completed duration, speed and distance remain represented by the existing
+`continuous` history payload rather than an invented set target.
 
 Android schema v23 adds the durable manual-preparation withdrawal ledger. The
 schema is unchanged by Web proposal withdrawal: the existing durable AI draft

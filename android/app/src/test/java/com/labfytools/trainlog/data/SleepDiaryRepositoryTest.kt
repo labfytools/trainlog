@@ -72,4 +72,93 @@ class SleepDiaryRepositoryTest {
             assertTrue(repository.listSleepDiary().isEmpty())
         } finally { repository.close(); context.deleteDatabase(name) }
     }
+
+    @Test
+    fun currentSnapshotSeedsFreshPeerFromNonRootRevisions() {
+        val sourceName = "sleep-source-${UUID.randomUUID()}.db"
+        val destinationName = "sleep-destination-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        try {
+            val time = "2026-09-21T20:00:00+02:00"
+            val createdMedication =
+                source.saveSleepMedication(
+                    SleepMedication("", "", time, time, "Medication", 5.0, "mg", "", "", true),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            val medication = source.listSleepMedications().single()
+            source.saveSleepMedication(
+                medication.copy(name = "Medication revised", updatedAt = "2026-09-21T20:05:00+02:00"),
+            )
+            val createdEntry =
+                source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        nightStartDate = "2026-09-20",
+                        nightEndDate = "2026-09-21",
+                        createdAt = time,
+                        updatedAt = time,
+                        sleepQuality = null,
+                        wakeQuality = null,
+                        dayForm = null,
+                        treatmentAndNotes = "",
+                        events = listOf(
+                            SleepDiaryEvent(
+                                "",
+                                SleepEventType.SLEEP,
+                                "2026-09-20T23:00:00+02:00",
+                                "2026-09-21T07:00:00+02:00",
+                            ),
+                        ),
+                        intakes = listOf(
+                            MedicationIntake(
+                                "",
+                                createdMedication.entryId,
+                                "Medication",
+                                "2026-09-20T22:00:00+02:00",
+                                5.0,
+                                "mg",
+                                "",
+                                time,
+                            ),
+                        ),
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            val current = source.listSleepDiary().single()
+            val edited =
+                source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        entryId = current.entryId,
+                        expectedRevision = createdEntry.revisionId,
+                        nightStartDate = current.nightStartDate,
+                        nightEndDate = current.nightEndDate,
+                        createdAt = current.createdAt,
+                        updatedAt = "2026-09-21T20:10:00+02:00",
+                        sleepQuality = current.sleepQuality,
+                        wakeQuality = current.wakeQuality,
+                        dayForm = SleepQuality.B,
+                        treatmentAndNotes = current.treatmentAndNotes,
+                        events = current.events,
+                        intakes = current.intakes,
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    current.entryId,
+                    edited.revisionId,
+                    "2026-09-21T20:15:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
+            )
+
+            assertEquals(
+                TrainlogRepository.SleepDiaryImportResult.Applied(1, 0),
+                destination.applySleepDiaryV1Json(source.buildSleepDiaryV1Json()),
+            )
+            assertEquals("Medication revised", destination.listSleepMedications().single().name)
+            assertEquals(SleepQuality.B, destination.listSleepDiary().single().dayForm)
+        } finally {
+            source.close()
+            destination.close()
+            context.deleteDatabase(sourceName)
+            context.deleteDatabase(destinationName)
+        }
+    }
 }
