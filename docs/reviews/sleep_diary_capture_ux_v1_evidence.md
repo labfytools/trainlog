@@ -57,5 +57,30 @@ whose saved item becomes immediately selectable for an intake.
 - The retained post-reload screenshot is
   [`evidence/sleep-diary-v1-final-firefox.png`](evidence/sleep-diary-v1-final-firefox.png).
 
-Deployment-specific commit, bundle and process evidence is added only after the
-authorized private service switch.
+## Private deployment evidence
+
+The functional bundle was built from
+`915728cec4ffbb2c90eb3f4b47d349a6ebd17fe9`. Its embedded desktop binary has
+SHA-256 `e45c2fd8807dd9c28128206ee57e2869b64726397ae6072d521a903d3d4afdc9`.
+Before the switch, the live schema-v29 database was backed up as
+`trainlog-before-915728c97f420f824c7831024d61ee9c08645321.db`, SHA-256
+`9579e1365164a082e328c4c5bc1ffc7b45bf234a1f5bf1812842837c8ecc05f7`;
+its integrity check was `ok` and its foreign-key check was empty.
+
+The versioned installation is
+`~/.local/share/trainlog/installations/915728cec4ffbb2c90eb3f4b47d349a6ebd17fe9`.
+After the atomic user-bin switch and service restart,
+`trainlog-web.service` was active as PID `2322898`, and
+`/proc/2322898/exe` resolved to that installation's `libexec/trainlog`.
+The deployed executable and footer both reported version `0.1.4`.
+
+Real Firefox 156 then used the actual deployed profile to create `TestMed A`
+5 mg and `TestMed B` 25 mg intakes at 22:00, bedtime at 22:30, sleep from
+23:00 to 03:00, a long awakening from 03:00 to 03:30, sleep from 03:30 to
+06:30 and final get-up at 07:00. Reload retained entry
+`sl_71b9c7a5-cabe-4d22-86fc-bde8a34590f9` at revision
+`slr_c1e8f641-4db7-43f1-8a9c-e7ef15b2c1df`, with five events and two
+intakes. All nine mutations returned HTTP 200. Browser console errors,
+network fetch errors and unhandled rejections were all zero. The exact
+390×844 viewport had zero document overflow. No main merge, tag or release
+was created.
