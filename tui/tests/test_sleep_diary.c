@@ -68,6 +68,26 @@ static TrainlogStatus medication_count_visitor(void *context,
     return TRAINLOG_STATUS_OK;
 }
 
+static int check_integer_medication_json(void) {
+    static const char request[] = "{\"medication_id\":null,\"expected_revision\":null,"
+                                  "\"created_at\":\"2026-10-24T18:00:00+02:00\","
+                                  "\"updated_at\":\"2026-10-24T18:00:00+02:00\","
+                                  "\"name\":\"Synthetic integer dose\",\"default_dose_value\":5,"
+                                  "\"default_dose_unit\":\"mg\",\"form\":\"\",\"note\":\"\","
+                                  "\"active\":true}";
+    TrainlogDatabase *database = NULL;
+    char *json = NULL;
+    size_t json_size = 0U;
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_web_medication_save_json(
+              database, request, strlen(request), &json, &json_size) == TRAINLOG_STATUS_OK);
+    CHECK(json != NULL && json_size > 0U && strstr(json, "\"medication_id\":\"med_") != NULL);
+    free(json);
+    trainlog_database_close(database);
+    return 0;
+}
+
 int main(void) {
     TrainlogDatabase *database = NULL;
     TrainlogSleepDiaryEntry entry = sample();
@@ -81,6 +101,8 @@ int main(void) {
     size_t count = 0U;
     size_t medication_count = 0U;
     TrainlogMedication medication = {0};
+
+    CHECK(check_integer_medication_json() == 0);
 
     (void)snprintf(
         medication.created_at, sizeof(medication.created_at), "2026-10-24T18:00:00+02:00");

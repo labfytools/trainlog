@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { deleteSleepEntry, fetchSleepDiary, fetchSleepMedications, saveSleepEntry, saveSleepMedication, validateSleepEntry,
+  sleepTimestamp,
   type MedicationIntake, type SleepEntry, type SleepEntryInput, type SleepEvent, type SleepEventType,
   type SleepMedication, type SleepQuality } from '../api/sleepDiary'
 import type { AnalysisPeriod } from '../api/analysis'
@@ -16,7 +17,8 @@ const copy = {
     save: 'Enregistrer', remove: 'Supprimer', observations: 'Observations', summary: 'Synthèse factuelle', empty: 'Aucune nuit enregistrée.',
     preview: 'Prévisualiser', export: 'Exporter PDF', medications: 'Médicaments', addMedication: 'Ajouter un médicament',
     medication: 'Médicament', usualDose: 'Dosage habituel', unit: 'Unité', deactivate: 'Désactiver', intake: 'Ajouter une prise',
-    time: 'Heure', dose: 'Dosage', modify: 'Modifier', validate: 'Valider la journée', continue: 'Continuer',
+    time: 'Heure', start: 'Début', end: 'Fin', dose: 'Dosage', modify: 'Modifier', validate: 'Valider la journée', continue: 'Continuer',
+    saved: 'Enregistré localement', saving: 'Enregistrement…', registeredMedications: 'Médicaments enregistrés', timeline: 'Chronologie',
     statuses: { draft: 'Brouillon', ready: 'Prête à synchroniser', synchronized: 'Synchronisée', modified: 'Modifiée depuis la synchronisation' },
     qualities: ['Très bon', 'Bon', 'Moyen', 'Mauvais', 'Très mauvais'] },
   en: { agenda: 'Diary', edit: 'Entry editor', morning: 'Morning', day: 'Day / Evening', night: 'Night from',
@@ -25,14 +27,25 @@ const copy = {
     wakeQuality: 'Wake quality', dayForm: 'Day form', notes: 'Treatment and notes', add: 'Add', save: 'Save', remove: 'Delete',
     observations: 'Observations', summary: 'Factual summary', empty: 'No recorded nights.', preview: 'Preview', export: 'Export PDF',
     medications: 'Medications', addMedication: 'Add a medication', medication: 'Medication', usualDose: 'Usual dose',
-    unit: 'Unit', deactivate: 'Deactivate', intake: 'Add an intake', time: 'Time', dose: 'Dose', modify: 'Edit',
+    unit: 'Unit', deactivate: 'Deactivate', intake: 'Add an intake', time: 'Time', start: 'Start', end: 'End', dose: 'Dose', modify: 'Edit',
+    saved: 'Saved locally', saving: 'Saving…', registeredMedications: 'Saved medications', timeline: 'Timeline',
     validate: 'Validate day', continue: 'Continue', statuses: { draft: 'Draft', ready: 'Ready to sync',
       synchronized: 'Synchronized', modified: 'Modified since synchronization' },
     qualities: ['Very good', 'Good', 'Average', 'Bad', 'Very bad'] },
 } as const
 
-const localInput = (iso: string) => iso ? iso.slice(0, 16) : ''
-const absolute = (value: string) => value ? new Date(value).toISOString() : ''
+const clock = (iso: string) => iso ? iso.slice(11, 16) : ''
+const atClock = (value: string, startDate: string, endDate: string) => {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return ''
+  const hour = Number(value.slice(0, 2)); const date = hour >= 18 ? startDate : endDate
+  const local = new Date(`${date}T${value}:00`)
+  const offsetMinutes = -local.getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absoluteOffset = Math.abs(offsetMinutes)
+  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, '0')
+  const offsetRemainder = String(absoluteOffset % 60).padStart(2, '0')
+  return `${date}T${value}:00${sign}${offsetHours}:${offsetRemainder}`
+}
 const offset = (iso: string, startDate: string) => {
   const start = new Date(`${startDate}T18:00:00`)
   return Math.max(0, Math.min(100, ((new Date(iso).getTime() - start.getTime()) / 86_400_000) * 100))
@@ -42,7 +55,7 @@ const blank = (): SleepEntryInput => {
   const end = new Date(start); end.setDate(end.getDate() + 1)
   const date = (value: Date) => value.toLocaleDateString('en-CA')
   return { entry_id: '', expected_revision: null, night_start_date: date(start), night_end_date: date(end),
-    created_at: now.toISOString(), updated_at: now.toISOString(), sleep_quality: null, wake_quality: null,
+    created_at: sleepTimestamp(now), updated_at: sleepTimestamp(now), sleep_quality: null, wake_quality: null,
     day_form: null, treatment_and_notes: '', events: [], intakes: [] }
 }
 
@@ -56,57 +69,76 @@ function QualityPicker({ label, value, onChange, language }: { label: string; va
 export function SleepDiaryWorkspace({ period, language }: { period: AnalysisPeriod; language: Language }) {
   const t = copy[language]; const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof fetchSleepDiary>> | null>(null); const entries = snapshot?.entries ?? []; const [draft, setDraft] = useState<SleepEntryInput>(blank)
   const [eventType, setEventType] = useState<SleepEventType>('sleep'); const [pending, setPending] = useState(false); const [error, setError] = useState('')
+  const [eventStart, setEventStart] = useState('22:30'); const [eventEnd, setEventEnd] = useState('23:30')
+  const [publicationStatus, setPublicationStatus] = useState<SleepEntry['publication_status']>('draft')
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved')
   const [medications, setMedications] = useState<SleepMedication[]>([])
   const [medName, setMedName] = useState(''); const [medDose, setMedDose] = useState(''); const [medUnit, setMedUnit] = useState('mg')
   const [editingMedication, setEditingMedication] = useState<SleepMedication | null>(null)
-  const [intakeMedication, setIntakeMedication] = useState(''); const [intakeTime, setIntakeTime] = useState('')
+  const [intakeMedication, setIntakeMedication] = useState(''); const [intakeTime, setIntakeTime] = useState('22:00')
   const [intakeDose, setIntakeDose] = useState(''); const [intakeUnit, setIntakeUnit] = useState('mg')
   const identity = useRef<{ entry_id: string; revision_id: string } | null>(null)
   const persistence = useRef<Promise<void>>(Promise.resolve())
   const range = useMemo(() => { if (period === 'all') return {}; const days = Number(period.slice(0, -1)); const end = new Date(); const start = new Date(); start.setDate(end.getDate() - days + 1)
     return { startDate: start.toLocaleDateString('en-CA'), endDate: end.toLocaleDateString('en-CA') } }, [period])
   const reload = () => Promise.all([fetchSleepDiary(range.startDate, range.endDate), fetchSleepMedications()])
-    .then(([diary, catalog]) => { setSnapshot(diary); setMedications(catalog) }).catch(() => setError('sleep_diary_unavailable'))
+    .then(([diary, catalog]) => { setSnapshot(diary); setMedications(catalog)
+      if (identity.current === null) { const resume = diary.entries.find((entry) => entry.publication_status === 'draft' || entry.publication_status === 'modified') ?? diary.entries[0]
+        if (resume) { identity.current = { entry_id: resume.entry_id, revision_id: resume.revision_id }; setPublicationStatus(resume.publication_status)
+          setDraft({ ...resume, expected_revision: resume.revision_id, events: resume.events.map((event) => ({ ...event })), intakes: resume.intakes.map((intake) => ({ ...intake })) }) } }
+    }).catch(() => setError('sleep_diary_unavailable'))
   useEffect(() => { void reload() }, [period])
-  const edit = (entry: SleepEntry) => { identity.current = { entry_id: entry.entry_id, revision_id: entry.revision_id }
+  const edit = (entry: SleepEntry) => { identity.current = { entry_id: entry.entry_id, revision_id: entry.revision_id }; setPublicationStatus(entry.publication_status)
     setDraft({ ...entry, expected_revision: entry.revision_id,
       events: entry.events.map((event) => ({ ...event })), intakes: entry.intakes.map((intake) => ({ ...intake })) }) }
-  const persist = (next: SleepEntryInput) => { persistence.current = persistence.current.then(async () => {
+  const persist = (next: SleepEntryInput) => { setSaveState('saving'); persistence.current = persistence.current.then(async () => {
     const current = identity.current; const result = await saveSleepEntry({ ...next,
       entry_id: current?.entry_id ?? next.entry_id, expected_revision: current?.revision_id ?? next.expected_revision,
-      updated_at: new Date().toISOString() })
+      updated_at: sleepTimestamp() })
     identity.current = result
+    setPublicationStatus((status) => status === 'synchronized' || status === 'modified' ? 'modified' : 'draft')
+    setSaveState('saved')
     setDraft((value) => ({ ...value, entry_id: result.entry_id, expected_revision: result.revision_id }))
-  }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'sleep_diary_mutation_failed')) }
+  }).catch((reason: unknown) => { setSaveState('error'); setError(reason instanceof Error ? reason.message : 'sleep_diary_mutation_failed') }) }
   const mutate = (transform: (current: SleepEntryInput) => SleepEntryInput) => setDraft((current) => {
     const next = transform(current); persist(next); return next
   })
   const change = <K extends keyof SleepEntryInput>(key: K, value: SleepEntryInput[K]) =>
     mutate((current) => ({ ...current, [key]: value }))
-  const addEvent = () => mutate((current) => ({ ...current, events: [...current.events, { event_id: `sle_${crypto.randomUUID()}`, type: eventType,
-    start_at: new Date().toISOString(), end_at: pointTypes.includes(eventType) ? null : new Date(Date.now() + 3_600_000).toISOString() }] }))
+  const addEvent = () => { const start = atClock(eventStart, draft.night_start_date, draft.night_end_date)
+    const end = pointTypes.includes(eventType) ? null : atClock(eventEnd, draft.night_start_date, draft.night_end_date)
+    if (!start || end !== null && new Date(end) <= new Date(start)) { setError('sleep_diary_invalid_time'); return }
+    mutate((current) => ({ ...current, events: [...current.events, { event_id: `sle_${crypto.randomUUID()}`, type: eventType,
+      start_at: start, end_at: end }].sort((a, b) => a.start_at.localeCompare(b.start_at)) })) }
   const changeEvent = (index: number, patch: Partial<SleepEvent>) => mutate((current) => ({ ...current,
     events: current.events.map((event, currentIndex) => currentIndex === index ? { ...event, ...patch } : event) }))
   const selectMedication = (id: string) => { setIntakeMedication(id); const item = medications.find((med) => med.medication_id === id)
     setIntakeDose(item?.default_dose_value?.toString() ?? ''); setIntakeUnit(item?.default_dose_unit ?? 'mg') }
-  const addIntake = () => { const medication = medications.find((item) => item.medication_id === intakeMedication); if (!medication || !intakeTime) return
+  const addIntake = () => { const medication = medications.find((item) => item.medication_id === intakeMedication); const takenAt = atClock(intakeTime, draft.night_start_date, draft.night_end_date); if (!medication || !takenAt) return
     const dose = intakeDose === '' ? null : Number(intakeDose); if (dose !== null && !(dose > 0)) return
     const intake: MedicationIntake = { intake_id: `mdi_${crypto.randomUUID()}`, medication_id: medication.medication_id,
-      medication_name: medication.name, taken_at: absolute(intakeTime), dose_value: dose,
-      dose_unit: dose === null ? null : intakeUnit, note: '', created_at: new Date().toISOString() }
+      medication_name: medication.name, taken_at: takenAt, dose_value: dose,
+      dose_unit: dose === null ? null : intakeUnit, note: '', created_at: sleepTimestamp() }
     change('intakes', [...draft.intakes, intake].sort((a, b) => a.taken_at.localeCompare(b.taken_at))) }
-  const addMedication = async () => { if (!medName.trim()) return; const now = new Date().toISOString()
+  const addMedication = async () => { if (!medName.trim()) return; const now = sleepTimestamp(); const savedName = medName.trim()
     await saveSleepMedication({ medication_id: editingMedication?.medication_id ?? '',
       expected_revision: editingMedication?.revision_id ?? null, created_at: now, updated_at: now,
       name: medName.trim(), default_dose_value: medDose === '' ? null : Number(medDose),
       default_dose_unit: medDose === '' ? null : medUnit, form: editingMedication?.form ?? '',
       note: editingMedication?.note ?? '', active: editingMedication?.active ?? true });
-    setMedName(''); setEditingMedication(null); await reload() }
+    const catalog = await fetchSleepMedications(); setMedications(catalog)
+    const saved = catalog.find((item) => item.medication_id === editingMedication?.medication_id) ?? catalog.find((item) => item.name === savedName)
+    if (saved) { setIntakeMedication(saved.medication_id); setIntakeDose(saved.default_dose_value?.toString() ?? '')
+      setIntakeUnit(saved.default_dose_unit ?? 'mg') }
+    setMedName(''); setEditingMedication(null) }
   const save = async () => { setPending(true); setError(''); persist(draft); await persistence.current; await reload(); setPending(false) }
   const validate = async () => { setPending(true); setError(''); persist(draft); await persistence.current
     const current = identity.current; if (current) await validateSleepEntry(current.entry_id, current.revision_id)
-    await reload(); setPending(false) }
-  return <div className="sleep-workspace">
+    setPublicationStatus('ready'); await reload(); setPending(false) }
+  const timeline = [...draft.events.map((event, index) => ({ kind: 'event' as const, at: event.start_at, event, index })),
+    ...draft.intakes.map((intake, index) => ({ kind: 'intake' as const, at: intake.taken_at, intake, index }))]
+    .sort((a, b) => a.at.localeCompare(b.at) || a.kind.localeCompare(b.kind))
+  return <div className="sleep-workspace" data-testid="sleep-workspace">
     <article className="analysis-panel analysis-wide"><div className="sleep-heading"><h2>{t.agenda}</h2><div><button type="button" disabled={!snapshot} onClick={() => snapshot && presentSleepDiaryPdf(buildSleepDiaryPdf(snapshot, language), false)}>{t.preview}</button><button type="button" disabled={!snapshot} onClick={() => snapshot && presentSleepDiaryPdf(buildSleepDiaryPdf(snapshot, language), true)}>{t.export}</button></div></div>
       {entries.length === 0 ? <p className="analysis-empty">{t.empty}</p> : <div className="sleep-agenda-scroll"><div className="sleep-agenda" role="table">
         <div className="sleep-hours" aria-hidden="true">{Array.from({ length: 25 }, (_, index) => <span key={index}>{(18 + index) % 24}</span>)}</div>
@@ -117,17 +149,16 @@ export function SleepDiaryWorkspace({ period, language }: { period: AnalysisPeri
               title={`${t[event.type]} ${event.start_at}${event.end_at ? ` – ${event.end_at}` : ''}`}>{event.type === 'bed_time' ? '↓' : event.type === 'final_get_up' || event.type === 'night_get_up' ? '↑' : event.type === 'daytime_sleepiness' ? 'S' : ''}</i>})}{entry.intakes.map((intake) => <i key={intake.intake_id} className="sleep-event sleep-medication" style={{ left: `${offset(intake.taken_at, entry.night_start_date)}%`, width: '1%' }} title={`${t.medication}: ${intake.medication_name} — ${intake.dose_value === null ? '—' : `${intake.dose_value} ${intake.dose_unit}`} — ${intake.taken_at}`}>M</i>)}</span>
           <span>{entry.sleep_quality ?? '—'} / {entry.wake_quality ?? '—'} / {entry.day_form ?? '—'}</span></button>)}</div></div>}
     </article>
-    <article className="analysis-panel analysis-wide"><h2>{t.edit}</h2><div className="sleep-dates"><label>{t.night}<input type="date" value={draft.night_start_date} onChange={(e) => change('night_start_date', e.target.value)} /></label><label>→<input type="date" value={draft.night_end_date} onChange={(e) => change('night_end_date', e.target.value)} /></label></div>
+    <article className="analysis-panel analysis-wide"><div className="sleep-heading"><div><h2>{t.edit}</h2><strong data-testid="sleep-publication-status" className={`sleep-status sleep-status-${publicationStatus}`}>{t.statuses[publicationStatus]}</strong></div><span data-testid="sleep-save-state" className={`sleep-save-state sleep-save-${saveState}`} role="status">{saveState === 'saving' ? t.saving : saveState === 'saved' ? t.saved : error}</span></div><div className="sleep-dates"><label>{t.night}<input type="date" value={draft.night_start_date} onChange={(e) => change('night_start_date', e.target.value)} /></label><label>→<input type="date" value={draft.night_end_date} onChange={(e) => change('night_end_date', e.target.value)} /></label></div>
       <div className="sleep-editor-columns"><section><h3>{t.morning}</h3><QualityPicker label={t.sleepQuality} value={draft.sleep_quality} onChange={(value) => change('sleep_quality', value)} language={language}/><QualityPicker label={t.wakeQuality} value={draft.wake_quality} onChange={(value) => change('wake_quality', value)} language={language}/></section>
       <section><h3>{t.day}</h3><QualityPicker label={t.dayForm} value={draft.day_form} onChange={(value) => change('day_form', value)} language={language}/></section></div>
-      <div className="sleep-event-add"><label>{t.add}<select value={eventType} onChange={(e) => setEventType(e.target.value as SleepEventType)}>{(['bed_time','sleep','long_awake','night_get_up','final_get_up','half_sleep','nap','daytime_sleepiness'] as const).map((type) => <option key={type} value={type}>{t[type]}</option>)}</select></label><button type="button" onClick={addEvent}>{t.add}</button></div>
-      <ul className="sleep-event-list">{draft.events.map((event, index) => <li key={`${event.event_id}-${index}`}><strong>{t[event.type]}</strong><label>{t[event.type]}<input type="datetime-local" value={localInput(event.start_at)} onChange={(e) => changeEvent(index, { start_at: absolute(e.target.value) })}/></label>{event.end_at !== null && <label>→<input type="datetime-local" value={localInput(event.end_at)} onChange={(e) => changeEvent(index, { end_at: absolute(e.target.value) })}/></label>}<button type="button" aria-label={`${t.remove} ${t[event.type]}`} onClick={() => change('events', draft.events.filter((_, item) => item !== index))}>×</button></li>)}</ul>
-      <section><h3>{t.medications}</h3><div className="sleep-event-add"><label>{t.medication}<select value={intakeMedication} onChange={(e) => selectMedication(e.target.value)}><option value="" />{medications.filter((item) => item.active).map((item) => <option key={item.medication_id} value={item.medication_id}>{item.name}</option>)}</select></label><label>{t.time}<input type="datetime-local" value={intakeTime} onChange={(e) => setIntakeTime(e.target.value)}/></label><label>{t.dose}<input type="number" min="0" step="any" value={intakeDose} onChange={(e) => setIntakeDose(e.target.value)}/></label><label>{t.unit}<input value={intakeUnit} onChange={(e) => setIntakeUnit(e.target.value)}/></label><button type="button" onClick={addIntake}>{t.intake}</button></div>
-      <ul className="sleep-event-list">{draft.intakes.map((intake, index) => <li key={`${intake.intake_id}-${index}`}><strong>{intake.medication_name}</strong><label>{t.time}<input type="datetime-local" value={localInput(intake.taken_at)} onChange={(e) => change('intakes', draft.intakes.map((item, position) => position === index ? { ...item, taken_at: absolute(e.target.value) } : item))}/></label><label>{t.dose}<input type="number" min="0" step="any" value={intake.dose_value ?? ''} onChange={(e) => change('intakes', draft.intakes.map((item, position) => position === index ? { ...item, dose_value: e.target.value === '' ? null : Number(e.target.value), dose_unit: e.target.value === '' ? null : item.dose_unit ?? 'mg' } : item))}/></label><label>{t.unit}<input value={intake.dose_unit ?? ''} disabled={intake.dose_value === null} onChange={(e) => change('intakes', draft.intakes.map((item, position) => position === index ? { ...item, dose_unit: e.target.value } : item))}/></label><button type="button" aria-label={`${t.remove} ${intake.medication_name}`} onClick={() => change('intakes', draft.intakes.filter((_, item) => item !== index))}>×</button></li>)}</ul></section>
+      <div className="sleep-event-add"><label>{t.add}<select data-testid="sleep-event-type" value={eventType} onChange={(e) => setEventType(e.target.value as SleepEventType)}>{(['bed_time','sleep','long_awake','night_get_up','final_get_up','half_sleep','nap','daytime_sleepiness'] as const).map((type) => <option key={type} value={type}>{t[type]}</option>)}</select></label><label>{pointTypes.includes(eventType) ? t.time : t.start}<input data-testid="sleep-event-start" type="time" value={eventStart} onChange={(e) => setEventStart(e.target.value)}/></label>{!pointTypes.includes(eventType) && <label>{t.end}<input data-testid="sleep-event-end" type="time" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)}/></label>}<button data-testid="sleep-add-event" type="button" onClick={addEvent}>{t.add}</button></div>
+      <section><h3>{t.medications}</h3><div className="sleep-event-add"><label>{t.medication}<select data-testid="sleep-intake-medication" value={intakeMedication} onChange={(e) => selectMedication(e.target.value)}><option value="" />{medications.filter((item) => item.active).map((item) => <option key={item.medication_id} value={item.medication_id}>{item.name}</option>)}</select></label><label>{t.time}<input data-testid="sleep-intake-time" type="time" value={intakeTime} onChange={(e) => setIntakeTime(e.target.value)}/></label><label>{t.dose}<input data-testid="sleep-intake-dose" type="number" min="0" step="any" value={intakeDose} onChange={(e) => setIntakeDose(e.target.value)}/></label><label>{t.unit}<input data-testid="sleep-intake-unit" value={intakeUnit} onChange={(e) => setIntakeUnit(e.target.value)}/></label><button data-testid="sleep-add-intake" type="button" onClick={addIntake}>{t.intake}</button></div></section>
+      <section className="sleep-timeline-editor" data-testid="sleep-timeline"><h3>{t.timeline}</h3>{timeline.length === 0 ? <p className="analysis-empty">{t.empty}</p> : <ul className="sleep-event-list">{timeline.map((item) => item.kind === 'event' ? <li key={item.event.event_id}><time>{clock(item.event.start_at)}{item.event.end_at ? ` → ${clock(item.event.end_at)}` : ''}</time><strong>{t[item.event.type]}</strong><label>{pointTypes.includes(item.event.type) ? t.time : t.start}<input type="time" value={clock(item.event.start_at)} onChange={(e) => changeEvent(item.index, { start_at: atClock(e.target.value, draft.night_start_date, draft.night_end_date) })}/></label>{item.event.end_at && <label>{t.end}<input type="time" value={clock(item.event.end_at)} onChange={(e) => changeEvent(item.index, { end_at: atClock(e.target.value, draft.night_start_date, draft.night_end_date) })}/></label>}<button type="button" onClick={() => changeEvent(item.index, { ...item.event })}>{t.modify}</button><button type="button" aria-label={`${t.remove} ${t[item.event.type]}`} onClick={() => change('events', draft.events.filter((_, position) => position !== item.index))}>{t.remove}</button></li> : <li key={item.intake.intake_id}><time>{clock(item.intake.taken_at)}</time><strong>{item.intake.medication_name}</strong><label>{t.time}<input type="time" value={clock(item.intake.taken_at)} onChange={(e) => change('intakes', draft.intakes.map((value, position) => position === item.index ? { ...value, taken_at: atClock(e.target.value, draft.night_start_date, draft.night_end_date) } : value))}/></label><label>{t.dose}<input type="number" min="0" step="any" value={item.intake.dose_value ?? ''} onChange={(e) => change('intakes', draft.intakes.map((value, position) => position === item.index ? { ...value, dose_value: e.target.value === '' ? null : Number(e.target.value), dose_unit: e.target.value === '' ? null : value.dose_unit ?? 'mg' } : value))}/></label><span>{item.intake.dose_unit ?? ''}</span><button type="button" onClick={() => change('intakes', [...draft.intakes])}>{t.modify}</button><button type="button" aria-label={`${t.remove} ${item.intake.medication_name}`} onClick={() => change('intakes', draft.intakes.filter((_, position) => position !== item.index))}>{t.remove}</button></li>)}</ul>}</section>
       <label className="sleep-notes">{t.notes}<textarea value={draft.treatment_and_notes} maxLength={16384} onChange={(e) => change('treatment_and_notes', e.target.value)}/></label>
-      {error && <p role="alert" className="error-panel">{error}</p>}<div className="sleep-actions"><button type="button" disabled={pending} onClick={() => void save()}>{t.save}</button><button type="button" disabled={pending} onClick={() => void validate()}>{t.validate}</button>{draft.expected_revision && <button type="button" disabled={pending} onClick={async () => { const entry = entries.find((item) => item.entry_id === draft.entry_id); if (entry) { await deleteSleepEntry(entry); identity.current = null; setDraft(blank()); await reload() } }}>{t.remove}</button>}</div>
+      {error && <p role="alert" className="error-panel">{error}</p>}<div className="sleep-actions"><button type="button" disabled={pending} onClick={() => void save()}>{t.save}</button><button data-testid="sleep-validate-day" type="button" disabled={pending} onClick={() => void validate()}>{t.validate}</button>{draft.expected_revision && <button type="button" disabled={pending} onClick={async () => { const entry = entries.find((item) => item.entry_id === draft.entry_id); if (entry) { await deleteSleepEntry(entry); identity.current = null; setDraft(blank()); await reload() } }}>{t.remove}</button>}</div>
     </article>
-    <article className="analysis-panel analysis-wide"><h2>{t.medications}</h2><div className="sleep-event-add"><label>{t.medication}<input value={medName} onChange={(e) => setMedName(e.target.value)}/></label><label>{t.usualDose}<input type="number" min="0" step="any" value={medDose} onChange={(e) => setMedDose(e.target.value)}/></label><label>{t.unit}<input value={medUnit} onChange={(e) => setMedUnit(e.target.value)}/></label><button type="button" onClick={() => void addMedication()}>{editingMedication ? t.save : t.addMedication}</button></div><ul className="sleep-event-list">{medications.map((item) => <li key={item.medication_id}><strong>{item.name}</strong><span>{item.default_dose_value === null ? '—' : `${item.default_dose_value} ${item.default_dose_unit}`}</span><button type="button" onClick={() => { setEditingMedication(item); setMedName(item.name); setMedDose(item.default_dose_value?.toString() ?? ''); setMedUnit(item.default_dose_unit ?? 'mg') }}>{t.modify}</button>{item.active && <button type="button" onClick={async () => { const now = new Date().toISOString(); await saveSleepMedication({ ...item, expected_revision: item.revision_id, created_at: now, updated_at: now, active: false }); await reload() }}>{t.deactivate}</button>}</li>)}</ul></article>
+    <article className="analysis-panel analysis-wide"><h2>{t.registeredMedications}</h2><div className="sleep-event-add"><label>{t.medication}<input data-testid="sleep-medication-name" value={medName} onChange={(e) => setMedName(e.target.value)}/></label><label>{t.usualDose}<input data-testid="sleep-medication-dose" type="number" min="0" step="any" value={medDose} onChange={(e) => setMedDose(e.target.value)}/></label><label>{t.unit}<input data-testid="sleep-medication-unit" value={medUnit} onChange={(e) => setMedUnit(e.target.value)}/></label><button data-testid="sleep-add-medication" type="button" onClick={() => void addMedication()}>{editingMedication ? t.save : t.addMedication}</button></div><div className="sleep-medication-head"><span>{t.medication}</span><span>{t.usualDose}</span><span>{t.unit}</span><span /></div><ul data-testid="sleep-medication-list" className="sleep-event-list">{medications.map((item) => <li key={item.medication_id}><strong>{item.name}</strong><span>{item.default_dose_value ?? '—'}</span><span>{item.default_dose_unit ?? '—'}</span><button type="button" onClick={() => { setEditingMedication(item); setMedName(item.name); setMedDose(item.default_dose_value?.toString() ?? ''); setMedUnit(item.default_dose_unit ?? 'mg') }}>{t.modify}</button>{item.active && <button type="button" onClick={async () => { const now = sleepTimestamp(); await saveSleepMedication({ ...item, expected_revision: item.revision_id, created_at: now, updated_at: now, active: false }); const catalog = await fetchSleepMedications(); setMedications(catalog) }}>{t.deactivate}</button>}</li>)}</ul></article>
     <div className="analysis-section-grid"><article className="analysis-panel"><h2>{t.summary}</h2><dl className="analysis-facts"><div><dt>{language === 'fr' ? 'Nuits enregistrées' : 'Recorded nights'}</dt><dd>{entries.length}</dd></div><div><dt>{language === 'fr' ? 'Sommeil déclaré' : 'Declared sleep'}</dt><dd>{Math.round((snapshot?.summary.sleep_duration_seconds ?? 0) / 60)} min</dd></div><div><dt>{language === 'fr' ? 'Longs réveils' : 'Long awakenings'}</dt><dd>{snapshot?.summary.long_awake_count ?? 0}</dd></div><div><dt>{language === 'fr' ? 'Siestes' : 'Naps'}</dt><dd>{snapshot?.summary.nap_count ?? 0}</dd></div></dl></article><article className="analysis-panel"><h2>{t.observations}</h2>{entries.filter((entry) => entry.treatment_and_notes).map((entry) => <p key={entry.entry_id}><strong>{entry.night_start_date}</strong> — {entry.treatment_and_notes}</p>)}</article></div>
   </div>
 }

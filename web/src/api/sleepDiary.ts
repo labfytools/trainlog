@@ -26,6 +26,11 @@ export type SleepEntryInput = Omit<SleepEntry, 'revision_id' | 'publication_stat
   expected_revision: string | null
 }
 
+// The C17 timestamp parser intentionally accepts second-precision RFC 3339.
+// Keep browser-created causal timestamps on that public boundary.
+export const sleepTimestamp = (date = new Date()): string =>
+  date.toISOString().replace(/\.\d{3}Z$/, 'Z')
+
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 const quality = (value: unknown): value is SleepQuality | null =>
@@ -83,12 +88,12 @@ export async function validateSleepEntry(entryId: string, revisionId: string): P
   const response = await fetch('/api/v1/sleep-diary/validate', {
     method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json',
       'X-Trainlog-CSRF-Token': csrf }, body: JSON.stringify({ entry_id: entryId,
-      expected_revision: revisionId, validated_at: new Date().toISOString() }),
+      expected_revision: revisionId, validated_at: sleepTimestamp() }),
   })
   if (!response.ok) throw new Error('sleep_diary_validation_failed')
 }
 export const deleteSleepEntry = async (entry: SleepEntry) => await mutation('DELETE', {
-  entry_id: entry.entry_id, expected_revision: entry.revision_id, deleted_at: new Date().toISOString(),
+  entry_id: entry.entry_id, expected_revision: entry.revision_id, deleted_at: sleepTimestamp(),
 })
 
 export async function fetchSleepMedications(): Promise<SleepMedication[]> {

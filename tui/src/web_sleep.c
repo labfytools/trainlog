@@ -449,11 +449,11 @@ static bool parse_entry(const char *body,
             copy_string(
                 value, "created_at", intake->created_at, sizeof(intake->created_at), false) &&
             ((yyjson_is_null(dose_value) && yyjson_is_null(dose_unit)) ||
-             (yyjson_is_num(dose_value) && yyjson_get_real(dose_value) > 0.0 &&
+             (yyjson_is_num(dose_value) && yyjson_get_num(dose_value) > 0.0 &&
               copy_string(
                   value, "dose_unit", intake->dose_unit, sizeof(intake->dose_unit), false)));
         intake->has_dose = yyjson_is_num(dose_value);
-        intake->dose_value = intake->has_dose ? yyjson_get_real(dose_value) : 0.0;
+        intake->dose_value = intake->has_dose ? yyjson_get_num(dose_value) : 0.0;
         if (valid && intake->intake_id[0] == '\0') {
             valid = trainlog_id_generate("mdi", intake->intake_id, sizeof(intake->intake_id)) ==
                     TRAINLOG_STATUS_OK;
@@ -716,7 +716,7 @@ TrainlogStatus trainlog_web_medication_save_json(TrainlogDatabase *database,
                                                medication.default_dose_unit,
                                                sizeof(medication.default_dose_unit),
                                                true)) ||
-          (yyjson_is_num(dose) && yyjson_get_real(dose) > 0.0 &&
+          (yyjson_is_num(dose) && yyjson_get_num(dose) > 0.0 &&
            copy_string(root,
                        "default_dose_unit",
                        medication.default_dose_unit,
@@ -726,7 +726,7 @@ TrainlogStatus trainlog_web_medication_save_json(TrainlogDatabase *database,
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
     medication.has_default_dose = yyjson_is_num(dose);
-    medication.default_dose_value = medication.has_default_dose ? yyjson_get_real(dose) : 0.0;
+    medication.default_dose_value = medication.has_default_dose ? yyjson_get_num(dose) : 0.0;
     medication.active = yyjson_get_bool(active);
     if (expected[0] == '\0') {
         status = trainlog_medication_create(database, &medication);

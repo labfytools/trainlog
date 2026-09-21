@@ -603,7 +603,13 @@ h2 {
 
 .sleep-workspace { display: grid; gap: 1rem; }
 .sleep-heading, .sleep-actions, .sleep-event-add, .sleep-dates { display: flex; gap: .75rem; align-items: center; justify-content: space-between; }
-.sleep-heading > div { display: flex; gap: .5rem; }
+.sleep-heading > div { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.sleep-status { display: inline-flex; align-items: center; min-height: 1.75rem; padding: 0 .55rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: .78rem; }
+.sleep-status-ready, .sleep-status-synchronized { border-color: var(--lavender); color: var(--lavender); }
+.sleep-status-modified { border-color: var(--warning); color: var(--warning); }
+.sleep-save-state { color: var(--text-muted); font-size: .78rem; }
+.sleep-save-saving { color: var(--lavender); }
+.sleep-save-error { color: var(--danger); }
 .sleep-agenda-scroll { overflow-x: auto; max-width: 100%; }
 .sleep-agenda { min-width: 900px; display: grid; gap: .25rem; }
 .sleep-hours { display: grid; grid-template-columns: 13rem repeat(25, 1fr) 9rem; color: var(--text-muted); font-size: .72rem; }
@@ -620,11 +626,22 @@ h2 {
 .sleep-event-list { display: grid; gap: .5rem; padding: 0; list-style: none; }
 .sleep-event-list li { display: grid; grid-template-columns: 10rem 1fr 1fr auto; gap: .5rem; align-items: end; padding: .65rem; background: var(--surface-raised); border-radius: var(--radius-md); }
 .sleep-event-list label, .sleep-notes { display: grid; gap: .25rem; }
+.sleep-timeline-editor { margin-top: 1rem; }
+.sleep-timeline-editor .sleep-event-list li { grid-template-columns: 5rem minmax(8rem, 1fr) repeat(2, minmax(6rem, .7fr)) auto auto; align-items: center; }
+.sleep-timeline-editor time { color: var(--lavender); font-variant-numeric: tabular-nums; font-weight: 700; }
+.sleep-medication-head { display: grid; grid-template-columns: 2fr 1fr 1fr 10rem; gap: .5rem; padding: .75rem .65rem .25rem; color: var(--text-muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
 .sleep-notes textarea { min-height: 6rem; resize: vertical; }
 @media (max-width: 760px) {
   .sleep-editor-columns { grid-template-columns: 1fr; }
   .sleep-event-list li { grid-template-columns: 1fr; }
+  .sleep-timeline-editor .sleep-event-list li, .sleep-medication-head { grid-template-columns: 1fr; }
+  .sleep-medication-head { display: none; }
   .sleep-heading { align-items: flex-start; flex-direction: column; }
+  .sleep-event-add, .sleep-actions, .sleep-dates { flex-wrap: wrap; justify-content: flex-start; }
+  .sleep-event-add > label { flex: 1 1 8rem; min-width: 0; }
+  .sleep-event-add input, .sleep-event-add select { width: 100%; min-width: 0; }
+  .sleep-event-add > button { flex: 1 1 100%; }
+  .sleep-timeline-editor .sleep-event-list button { width: 100%; }
 }
 .analysis-delta dd {
   color: var(--lavender);
