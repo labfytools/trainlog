@@ -13,10 +13,22 @@ import { analysisMessages, type AnalysisLanguage } from "../analysis/messages";
 import { BodyZoneFigure } from "../dashboard/BodyZoneFigure";
 import { formatDuration } from "../dashboard/dashboardFormat";
 import { SleepDiaryWorkspace } from "./SleepDiaryWorkspace";
+import { SectionErrorBoundary } from "../components/SectionErrorBoundary";
 
-type AnalysisSection = "overview" | "exercise" | "body-zones" | "measurements" | "sleep";
+type AnalysisSection =
+  | "overview"
+  | "exercise"
+  | "body-zones"
+  | "measurements"
+  | "sleep";
 type ExerciseMetric =
-  "duration" | "distance" | "speed" | "load" | "reps" | "volume" | "max";
+  | "duration"
+  | "distance"
+  | "speed"
+  | "load"
+  | "reps"
+  | "volume"
+  | "max";
 interface ChartPoint {
   timestamp: string;
   value: number;
@@ -875,7 +887,16 @@ export function AnalysisPage() {
             </article>
           )}
           {section === "sleep" && (
-            <SleepDiaryWorkspace period={period} language={language} />
+            <SectionErrorBoundary
+              fallbackTitle={
+                language === "fr"
+                  ? "Impossible d’afficher cette section."
+                  : "Unable to display this section."
+              }
+              retryLabel={language === "fr" ? "Réessayer" : "Try again"}
+            >
+              <SleepDiaryWorkspace period={period} language={language} />
+            </SectionErrorBoundary>
           )}
         </>
       )}

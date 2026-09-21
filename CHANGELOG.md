@@ -2,6 +2,16 @@
 
 ## Unreleased — 0.1.4
 
+- Fixed the Sleep Diary Web workspace becoming entirely blank after adding an
+  event or medication intake on the loopback-routed HTTP origin. Sleep event
+  and intake UUIDv4 identities now use secure random bytes without depending
+  on the secure-context-only `crypto.randomUUID()` API, and a section-local
+  error boundary preserves the Trainlog shell if an unrelated render failure
+  occurs. The capture workspace now reuses Trainlog cards, controls, status,
+  primary/secondary/danger actions and responsive spacing for a structured
+  night header, appreciations, event timeline, medication catalog and intake
+  editor. Domain data, schemas, revisions, synchronization and PDF semantics
+  are unchanged.
 - Fixed equipment creation from the Android active-session exercise editor.
   The selector now exposes the complete catalogue in a bounded scrollable
   list, reuses the catalogue creation route, returns to the same stable

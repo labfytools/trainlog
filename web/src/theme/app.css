@@ -244,7 +244,7 @@
 .eyebrow {
   margin: 0 0 0.5rem;
   color: var(--lavender);
-  font: 700 var(--font-size-xs)/1.25 var(--font-mono);
+  font: 700 var(--font-size-xs) / 1.25 var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -601,47 +601,375 @@ h2 {
   cursor: pointer;
 }
 
-.sleep-workspace { display: grid; gap: 1rem; }
-.sleep-heading, .sleep-actions, .sleep-event-add, .sleep-dates { display: flex; gap: .75rem; align-items: center; justify-content: space-between; }
-.sleep-heading > div { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-.sleep-status { display: inline-flex; align-items: center; min-height: 1.75rem; padding: 0 .55rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: .78rem; }
-.sleep-status-ready, .sleep-status-synchronized { border-color: var(--lavender); color: var(--lavender); }
-.sleep-status-modified { border-color: var(--warning); color: var(--warning); }
-.sleep-save-state { color: var(--text-muted); font-size: .78rem; }
-.sleep-save-saving { color: var(--lavender); }
-.sleep-save-error { color: var(--danger); }
-.sleep-agenda-scroll { overflow-x: auto; max-width: 100%; }
-.sleep-agenda { min-width: 900px; display: grid; gap: .25rem; }
-.sleep-hours { display: grid; grid-template-columns: 13rem repeat(25, 1fr) 9rem; color: var(--text-muted); font-size: .72rem; }
-.sleep-hours::before { content: ''; }
-.sleep-row { display: grid; grid-template-columns: 13rem 1fr 9rem; align-items: center; gap: .5rem; min-height: 2.6rem; text-align: left; border-radius: var(--radius-md); }
-.sleep-track { position: relative; height: 1.65rem; background: color-mix(in srgb, var(--surface-raised) 80%, transparent); border: 1px solid var(--border-subtle); }
-.sleep-event { position: absolute; top: .15rem; bottom: .15rem; min-width: .3rem; overflow: visible; font-style: normal; text-align: center; color: var(--text-primary); }
-.sleep-sleep, .sleep-nap { background: repeating-linear-gradient(135deg, var(--accent) 0 3px, transparent 3px 6px); }
-.sleep-long_awake { border: 2px solid var(--warning); background: transparent; }
-.sleep-half_sleep { background: repeating-linear-gradient(90deg, var(--lavender) 0 2px, transparent 2px 5px); }
-.sleep-editor-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.sleep-quality { border: 0; padding: .25rem 0; display: flex; flex-wrap: wrap; gap: .35rem; }
-.sleep-quality button[aria-pressed="true"] { border-color: var(--lavender); color: var(--lavender); background: var(--surface-raised); }
-.sleep-event-list { display: grid; gap: .5rem; padding: 0; list-style: none; }
-.sleep-event-list li { display: grid; grid-template-columns: 10rem 1fr 1fr auto; gap: .5rem; align-items: end; padding: .65rem; background: var(--surface-raised); border-radius: var(--radius-md); }
-.sleep-event-list label, .sleep-notes { display: grid; gap: .25rem; }
-.sleep-timeline-editor { margin-top: 1rem; }
-.sleep-timeline-editor .sleep-event-list li { grid-template-columns: 5rem minmax(8rem, 1fr) repeat(2, minmax(6rem, .7fr)) auto auto; align-items: center; }
-.sleep-timeline-editor time { color: var(--lavender); font-variant-numeric: tabular-nums; font-weight: 700; }
-.sleep-medication-head { display: grid; grid-template-columns: 2fr 1fr 1fr 10rem; gap: .5rem; padding: .75rem .65rem .25rem; color: var(--text-muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
-.sleep-notes textarea { min-height: 6rem; resize: vertical; }
+.sleep-workspace {
+  display: grid;
+  gap: 1rem;
+}
+.sleep-heading,
+.sleep-actions,
+.sleep-entry-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.sleep-heading > div,
+.sleep-medication-list li > div {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sleep-entry-card {
+  display: grid;
+  gap: 1rem;
+}
+.sleep-entry-header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--surface-1);
+}
+.sleep-night-block {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--subtext-0);
+  font-size: var(--font-size-sm);
+}
+.sleep-entry-state {
+  display: grid;
+  justify-items: end;
+  gap: 0.35rem;
+}
+.sleep-dates {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  color: var(--lavender);
+}
+.sleep-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--surface-2);
+  border-radius: 0.45rem;
+  color: var(--subtext-0);
+  font-size: 0.78rem;
+}
+.sleep-status-ready,
+.sleep-status-synchronized {
+  border-color: var(--lavender);
+  color: var(--lavender);
+}
+.sleep-status-modified {
+  border-color: var(--peach);
+  color: var(--peach);
+}
+.sleep-save-state {
+  color: var(--subtext-0);
+  font-size: 0.78rem;
+}
+.sleep-save-saving {
+  color: var(--lavender);
+}
+.sleep-save-error {
+  color: var(--red);
+}
+.sleep-agenda-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.sleep-agenda {
+  min-width: 900px;
+  display: grid;
+  gap: 0.35rem;
+}
+.sleep-hours {
+  display: grid;
+  grid-template-columns: 13rem repeat(25, 1fr) 9rem;
+  color: var(--subtext-0);
+  font-size: 0.72rem;
+}
+.sleep-hours::before {
+  content: "";
+}
+.sleep-row {
+  display: grid;
+  grid-template-columns: 13rem 1fr 9rem;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3rem;
+  padding: 0.3rem 0.45rem;
+  color: var(--text);
+  text-align: left;
+  background: var(--base);
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+}
+.sleep-row:hover,
+.sleep-row:focus-visible {
+  border-color: var(--lavender);
+}
+.sleep-row strong {
+  display: grid;
+  gap: 0.15rem;
+}
+.sleep-row small {
+  color: var(--subtext-0);
+  font-weight: 500;
+}
+.sleep-track {
+  position: relative;
+  height: 1.75rem;
+  background: var(--surface-0);
+  border: 1px solid var(--surface-2);
+  border-radius: 0.35rem;
+}
+.sleep-event {
+  position: absolute;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  min-width: 0.3rem;
+  overflow: visible;
+  font-style: normal;
+  text-align: center;
+  color: var(--text);
+}
+.sleep-sleep,
+.sleep-nap {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--lavender) 0 3px,
+    transparent 3px 6px
+  );
+}
+.sleep-long_awake {
+  border: 2px solid var(--peach);
+  background: transparent;
+}
+.sleep-half_sleep {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--mauve) 0 2px,
+    transparent 2px 5px
+  );
+}
+.sleep-medication {
+  background: var(--green);
+}
+.sleep-editor-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.sleep-subcard {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--base);
+  border: 1px solid var(--surface-1);
+  border-radius: 0.65rem;
+}
+.sleep-subcard h3 {
+  color: var(--subtext-0);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sleep-quality {
+  margin: 0 0 0.8rem;
+  border: 0;
+  padding: 0.25rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.sleep-quality legend {
+  margin-bottom: 0.3rem;
+  color: var(--subtext-0);
+  font-size: var(--font-size-xs);
+}
+.sleep-quality button {
+  min-height: 2.5rem;
+  min-width: 3.2rem;
+  padding: 0.5rem 0.7rem;
+  color: var(--text);
+  background: var(--mantle);
+  border: 1px solid var(--surface-2);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.sleep-quality button[aria-pressed="true"] {
+  border-color: var(--lavender);
+  color: var(--crust);
+  background: var(--lavender);
+  font-weight: 700;
+}
+.sleep-quality button:focus-visible,
+.sleep-control:focus-visible {
+  outline: 3px solid var(--lavender);
+  outline-offset: 2px;
+}
+.sleep-event-add {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+}
+.sleep-event-add label,
+.sleep-medication-form label,
+.sleep-event-list label,
+.sleep-notes {
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+  color: var(--subtext-0);
+  font-size: var(--font-size-xs);
+}
+.sleep-event-add label:first-child {
+  flex: 2 1 15rem;
+}
+.sleep-event-add label:not(:first-child) {
+  flex: 1 1 7rem;
+}
+.sleep-event-add button {
+  flex: 0 0 auto;
+}
+.sleep-entry-card input,
+.sleep-entry-card select,
+.sleep-entry-card textarea,
+.sleep-medication-form input {
+  width: 100%;
+  min-height: 2.7rem;
+  padding: 0.6rem 0.7rem;
+  color: var(--text);
+  background: var(--mantle);
+  border: 1px solid var(--surface-2);
+  border-radius: 0.5rem;
+  font: inherit;
+}
+.sleep-entry-card input:focus-visible,
+.sleep-entry-card select:focus-visible,
+.sleep-entry-card textarea:focus-visible,
+.sleep-medication-form input:focus-visible {
+  outline: 3px solid var(--lavender);
+  outline-offset: 1px;
+  border-color: var(--lavender);
+}
+.sleep-event-list {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0;
+  list-style: none;
+}
+.sleep-event-list li {
+  display: grid;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.7rem;
+  background: var(--mantle);
+  border-left: 3px solid var(--lavender);
+  border-radius: 0.5rem;
+}
+.sleep-timeline-editor .sleep-event-list li {
+  grid-template-columns: 6.5rem minmax(8rem, 1.4fr) repeat(
+      2,
+      minmax(6rem, 0.75fr)
+    ) auto auto;
+}
+.sleep-timeline-editor time {
+  color: var(--lavender);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.sleep-notes textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+.sleep-actions {
+  padding-top: 0.25rem;
+}
+.sleep-actions .danger-action {
+  margin-left: auto;
+}
+.sleep-medication-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+.sleep-medication-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.sleep-medication-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem;
+  background: var(--base);
+  border: 1px solid var(--surface-1);
+  border-radius: 0.55rem;
+}
+.sleep-medication-list li > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+.sleep-medication-list span {
+  color: var(--subtext-0);
+  font-size: var(--font-size-sm);
+}
+.section-error {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+}
 @media (max-width: 760px) {
-  .sleep-editor-columns { grid-template-columns: 1fr; }
-  .sleep-event-list li { grid-template-columns: 1fr; }
-  .sleep-timeline-editor .sleep-event-list li, .sleep-medication-head { grid-template-columns: 1fr; }
-  .sleep-medication-head { display: none; }
-  .sleep-heading { align-items: flex-start; flex-direction: column; }
-  .sleep-event-add, .sleep-actions, .sleep-dates { flex-wrap: wrap; justify-content: flex-start; }
-  .sleep-event-add > label { flex: 1 1 8rem; min-width: 0; }
-  .sleep-event-add input, .sleep-event-add select { width: 100%; min-width: 0; }
-  .sleep-event-add > button { flex: 1 1 100%; }
-  .sleep-timeline-editor .sleep-event-list button { width: 100%; }
+  .sleep-editor-columns {
+    grid-template-columns: 1fr;
+  }
+  .sleep-timeline-editor .sleep-event-list li,
+  .sleep-medication-form {
+    grid-template-columns: 1fr;
+  }
+  .sleep-heading,
+  .sleep-entry-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .sleep-entry-state {
+    justify-items: start;
+  }
+  .sleep-event-add,
+  .sleep-actions,
+  .sleep-dates {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .sleep-event-add > label {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+  .sleep-event-add input,
+  .sleep-event-add select {
+    width: 100%;
+    min-width: 0;
+  }
+  .sleep-event-add > button {
+    flex: 1 1 100%;
+  }
+  .sleep-timeline-editor .sleep-event-list button {
+    width: 100%;
+  }
+  .sleep-medication-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .sleep-actions .danger-action {
+    margin-left: 0;
+  }
 }
 .analysis-delta dd {
   color: var(--lavender);
@@ -1585,7 +1913,7 @@ h2 {
   max-height: 32rem;
   overflow: auto;
   color: var(--subtext-0);
-  font: var(--font-size-sm)/1.6 var(--font-mono);
+  font: var(--font-size-sm) / 1.6 var(--font-mono);
   white-space: pre-wrap;
 }
 @media (max-width: 52rem) {
@@ -1668,7 +1996,7 @@ h2 {
 .layout-breakpoint-note {
   margin: 0 auto 0 0;
   color: var(--subtext-0);
-  font: 550 var(--font-size-xs)/1.4 var(--font-mono);
+  font: 550 var(--font-size-xs) / 1.4 var(--font-mono);
 }
 .layout-breakpoint-note {
   flex-basis: 100%;
@@ -1828,7 +2156,7 @@ h2 {
 .tile-state {
   flex: none;
   color: var(--subtext-0);
-  font: 650 var(--font-size-xs)/1 var(--font-mono);
+  font: 650 var(--font-size-xs) / 1 var(--font-mono);
   letter-spacing: 0.06em;
   padding: 0.48rem 0.62rem;
   background: var(--surface-0);
@@ -2039,7 +2367,7 @@ h2 {
 }
 .fact-list dt {
   color: var(--overlay-1);
-  font: 650 var(--font-size-xs)/1.25 var(--font-mono);
+  font: 650 var(--font-size-xs) / 1.25 var(--font-mono);
   letter-spacing: 0.035em;
   text-transform: uppercase;
 }
@@ -2356,7 +2684,7 @@ h2 {
 }
 .status-label {
   color: var(--overlay-1);
-  font: 700 var(--font-size-xs)/1.15 var(--font-mono);
+  font: 700 var(--font-size-xs) / 1.15 var(--font-mono);
   letter-spacing: 0.08em;
 }
 .status-value {
@@ -2372,7 +2700,7 @@ h2 {
   align-items: center;
   gap: 0.42rem;
   color: var(--green);
-  font: 650 var(--font-size-xs)/1.2 var(--font-mono);
+  font: 650 var(--font-size-xs) / 1.2 var(--font-mono);
   white-space: nowrap;
 }
 .backend-state.is-error {

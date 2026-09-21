@@ -7,6 +7,14 @@ construction/pagination for 7, 14, 21 and 30 synthetic days.
 Lifecycle regressions additionally cover durable drafts excluded from export,
 guarded validation, reopen, post-validation correction, exact
 generation-to-revision capture and ACK-only acknowledgement.
+Web component regressions add each point/interval capture type, verify that a
+successful mutation rerenders without losing the workspace, preserve one entry
+identity while advancing revisions, and exercise medication creation, immediate
+intake availability, event/intake editing and deletion. The UUID regression
+removes `crypto.randomUUID()` and proves the HTTP-origin-compatible UUIDv4
+path. A real Firefox run through the production C server and `trainlog.perf`
+creates events, medications and intakes, reloads their durable state, checks a
+responsive viewport and captures console errors and unhandled rejections.
 
 `web_analysis` covers empty history, every 7/30/90/all period selector,
 loaded and unloaded repetitions, continuous duration/distance/speed, explicit
