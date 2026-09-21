@@ -119,7 +119,7 @@ static int run_test(void) {
 
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(production, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 28);
+    CHECK(version == TRAINLOG_DATABASE_SCHEMA_VERSION);
     trainlog_database_close(production);
     production = NULL;
 

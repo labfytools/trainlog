@@ -44,6 +44,7 @@
  *   occurrence, delivery, and withdrawal identities;
  * - `pgr` for desktop Program V1 revision identities;
  * - `del` for immutable causal deletion operations.
+ * - `sl`, `slr`, and `sle` for sleep diary entries, revisions, and events.
  *
  * Imported v1 documents may contain other schema-valid opaque identifiers;
  * this API defines creation policy, not import validation.

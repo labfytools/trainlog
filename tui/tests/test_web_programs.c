@@ -219,7 +219,7 @@ static bool import_archive_and_prepare(void) {
     char *second_entry;
 
     CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
-    CHECK(scalar(database, "PRAGMA user_version") == 28);
+    CHECK(scalar(database, "PRAGMA user_version") == TRAINLOG_DATABASE_SCHEMA_VERSION);
     CHECK(scalar(database,
                  "SELECT COUNT(*) FROM pragma_table_info('program_deletions') WHERE "
                  "name IN('generation_id','acknowledged_at')") == 2);

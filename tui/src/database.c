@@ -1274,6 +1274,41 @@ static const char *const MIGRATE_V27_TO_V28_SQL =
     "ON program_session_executions(program_id,state);"
     "PRAGMA user_version=28;COMMIT;PRAGMA foreign_keys=ON;";
 
+/* WHY: sleep observations need minute-precise, timezone-aware facts that can
+ * later be correlated with physiological samples; a rendered 18:00 timeline
+ * is not a persistence model. CONTRACT: one stable diary identity owns a
+ * bounded causal revision chain and zero or more typed points/intervals.
+ * INVARIANT: wall-clock timestamps never order concurrent peer revisions and
+ * logical deletion retains the last revision for causal replay protection. */
+static const char *const MIGRATE_V28_TO_V29_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_entries("
+    "entry_id TEXT PRIMARY KEY,night_start_date TEXT NOT NULL,night_end_date TEXT NOT NULL,"
+    "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,current_revision_id TEXT NOT NULL,"
+    "deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)),"
+    "CHECK(entry_id GLOB 'sl_*'),CHECK(night_start_date<night_end_date));"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_revisions("
+    "revision_id TEXT PRIMARY KEY,entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) "
+    "ON DELETE RESTRICT,parent_revision_id TEXT,created_at TEXT NOT NULL,"
+    "sleep_quality TEXT CHECK(sleep_quality IN('TB','B','Moy','M','TM')),"
+    "wake_quality TEXT CHECK(wake_quality IN('TB','B','Moy','M','TM')),"
+    "day_form TEXT CHECK(day_form IN('TB','B','Moy','M','TM')),"
+    "treatment_and_notes TEXT,"
+    "CHECK(treatment_and_notes IS NULL OR length(CAST(treatment_and_notes AS BLOB))<=16384),"
+    "UNIQUE(entry_id,revision_id));"
+    "CREATE TABLE IF NOT EXISTS sleep_diary_events("
+    "revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,"
+    "event_id TEXT NOT NULL,event_type TEXT NOT NULL CHECK(event_type IN("
+    "'bed_time','final_get_up','night_get_up','sleep','nap','long_awake','half_sleep',"
+    "'daytime_sleepiness')),start_at TEXT NOT NULL,end_at TEXT,"
+    "CHECK((event_type IN('bed_time','final_get_up','night_get_up','daytime_sleepiness') AND "
+    "end_at IS NULL) OR (event_type IN('sleep','nap','long_awake','half_sleep') AND "
+    "end_at IS NOT NULL)),PRIMARY KEY(revision_id,event_id));"
+    "CREATE INDEX IF NOT EXISTS sleep_diary_entries_dates ON "
+    "sleep_diary_entries(night_start_date,deleted);"
+    "CREATE INDEX IF NOT EXISTS sleep_diary_events_time ON sleep_diary_events(start_at,end_at);"
+    "PRAGMA user_version=29;COMMIT;";
+
 /* CONTRACT: migration fixtures may retain additive v25 columns while
  * deliberately lowering user_version. Add each provenance column only when
  * absent; a genuine v24 database still receives both before opening returns. */
@@ -2063,7 +2098,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     } else if (version == 11 || version == 12 || version == 13 || version == 14 || version == 15 ||
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
-               version == 26 || version == 27 || version == 28) {
+               version == 26 || version == 27 || version == 28 || version == 29) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2205,6 +2240,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 28) {
         status = execute_sql(database, MIGRATE_V27_TO_V28_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 29) {
+        status = execute_sql(database, MIGRATE_V28_TO_V29_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2224,7 +2262,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v28" : "migrate database to schema v28",
+                            version == 0 ? "create schema v29" : "migrate database to schema v29",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

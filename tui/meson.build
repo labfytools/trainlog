@@ -48,6 +48,7 @@ if web_assets_enabled
     '../web/src/api/health.ts',
     '../web/src/api/dashboard.ts',
     '../web/src/api/analysis.ts',
+    '../web/src/api/sleepDiary.ts',
     '../web/src/api/analysis.test.ts',
     '../web/src/analysis/messages.ts',
     '../web/src/api/dashboardLayout.ts',
@@ -77,6 +78,9 @@ if web_assets_enabled
     '../web/src/presentation/dateFormat.ts',
     '../web/src/routes/DashboardPage.tsx',
     '../web/src/routes/AnalysisPage.tsx',
+    '../web/src/routes/SleepDiaryWorkspace.tsx',
+    '../web/src/report/sleepDiaryPdf.ts',
+    '../web/src/report/sleepDiaryPdf.test.ts',
     '../web/src/routes/AnalysisPage.test.tsx',
     '../web/src/routes/PlaceholderPage.tsx',
     '../web/src/routes/SessionsPage.tsx',
@@ -219,6 +223,7 @@ trainlog_core_sources = files(
   'src/web_sessions.c',
   'src/web_session_deletions.c',
   'src/web_programs.c',
+  'src/web_sleep.c',
   'src/web_exercises.c',
   'src/duration.c',
   'src/id.c',
@@ -229,6 +234,7 @@ trainlog_core_sources = files(
   'src/generation_mtp.c',
   'src/reps.c',
   'src/session_generation.c',
+  'src/sleep_diary.c',
   'src/statistics.c',
   'src/measured_max.c',
   'src/sync.c',
@@ -801,6 +807,22 @@ test_schema_v28_migration = executable(
 
 test('schema_v28_migration', test_schema_v28_migration)
 
+test_sleep_diary = executable(
+  'test_sleep_diary',
+  'tests/test_sleep_diary.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('sleep_diary', test_sleep_diary)
+
+test_schema_v29_migration = executable(
+  'test_schema_v29_migration',
+  'tests/test_schema_v29_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('schema_v29_migration', test_schema_v29_migration)
+
 test_schema_v7_migration = executable(
   'test_schema_v7_migration',
   'tests/test_schema_v7_migration.c',
@@ -874,6 +896,11 @@ test(
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_sync_generation_exchange.py'],
   timeout: 120,
+)
+test(
+  'sleep_diary_exchange',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_sleep_diary_exchange.py'],
 )
 test(
   'session_preparation_export',
