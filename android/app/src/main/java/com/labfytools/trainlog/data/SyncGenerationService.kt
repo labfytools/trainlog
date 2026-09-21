@@ -68,6 +68,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     Kind("trainlog-causal-deletions", 1, "causal-deletions-v1.json"),
                 "program-executions" to
                     Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
+                "sleep-diary" to Kind("trainlog-sleep-diary", 1, "sleep-diary-v1.json", false),
             )
         private val SUPPORTED =
             (ANDROID_KINDS.values +
@@ -664,6 +665,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
             is ProgramsImportResult.Applied,
             is CausalDeleteResult.Applied,
             is CausalDeleteResult.Unchanged -> null
+            is TrainlogRepository.SleepDiaryImportResult.Applied -> null
             else -> result.toString()
         }
 
@@ -840,6 +842,10 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 apply("execution-drafts") {
                     repository.applyExecutionDraftExportV1Json(checkNotNull(a["execution-drafts"]))
                 }
+                if ("sleep-diary" in a)
+                    apply("sleep-diary") {
+                        repository.applySleepDiaryV1Json(checkNotNull(a["sleep-diary"]))
+                    }
                 if ("ai-proposals" in a)
                     apply("ai-proposals") {
                         repository.applyAiSessionDraftsJson(checkNotNull(a["ai-proposals"]))

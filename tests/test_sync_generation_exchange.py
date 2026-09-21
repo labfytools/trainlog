@@ -203,6 +203,8 @@ class GenerationTest(unittest.TestCase):
             self.assertEqual([operation["payload_sha256"] for operation in operations],[row[0] for row in db.execute("SELECT payload_sha256 FROM sync_causal_operations ORDER BY operation_id")])
 
     def test_real_consumer_rolls_back_earlier_domain_write_on_late_failure(self):
+        # A pre-Sleep-Diary generation remains consumable after the companion
+        # is introduced; the late-domain failure still rolls everything back.
         names=("catalog","history","execution-drafts","exercise-aliases","exercise-profile-state","equipment-definitions","equipment-associations","body-zones","feedback","causal-deletions")
         directory=self.root/"incoming";directory.mkdir()
         artifacts=[]

@@ -16,6 +16,7 @@ RUNTIME_TOOLS = [
     "sync_peer_worker.py",
     "sync_drive_transport.py",
     "sync_generation_exchange.py",
+    "sleep_diary_exchange.py",
     "trainlog_sqlite.py",
     "validate_json.py",
     "validate_training_knowledge.py",
