@@ -3,10 +3,11 @@
 ## Unreleased — 0.1.4
 
 - Fixed equipment creation from the Android active-session exercise editor.
-  The editor now reuses the catalogue creation route, returns to the same
-  stable occurrence with all draft fields intact, selects the explicitly
-  created equipment, and saves the edit in place rather than appending a
-  duplicate occurrence.
+  The selector now exposes the complete catalogue in a bounded scrollable
+  list, reuses the catalogue creation route, returns to the same stable
+  occurrence with all draft fields intact, and selects the explicitly created
+  equipment. Target-only prepared occurrences can save that equipment in
+  place without fabricating performed sets or appending a duplicate occurrence.
 - Fixed the Android active-session exercise editor for target-only continuous
   preparation entries. Opening an occurrence now renders its prefilled form,
   preserves its independent plan while editing performed values, updates only

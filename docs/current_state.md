@@ -49,10 +49,11 @@ Starting a delivered mixed preparation preserves continuous duration targets
 and set/repetition/load/rest targets in the active singleton without creating
 performed continuous activity, performed sets, MAX results, history, or
 feedback before explicit user capture.
-The active-session editor accepts those target-only continuous occurrences:
-opening an existing stable entry renders its prefilled performed-value form,
+The active-session editor accepts target-only continuous and set-based
+occurrences: opening an existing stable entry renders its prefilled form,
 keeps the independent target intact on save, and leaves sibling occurrences
-unchanged on save or cancellation.
+unchanged on save or cancellation. A set-based target-only occurrence can add
+or change equipment without fabricating a performed set.
 
 The opt-in full-generation path is operational on the private daily
 installation. Android explicit synchronization uses a dedicated coordination
@@ -237,9 +238,10 @@ Android currently provides:
 - exactly one durable active session draft with identity-preserving continuous
   multi-position drag reorder,
   resume, confirmed discard, and atomic completion;
-- caller-aware equipment creation from an active occurrence editor, with the
-  explicit catalogue-created ID selected on return and the occurrence identity
-  retained for in-place save;
+- complete scrollable equipment selection and caller-aware creation from an
+  active occurrence editor, with the explicit catalogue-created ID selected on
+  return and the occurrence identity, plan, raw form and siblings retained for
+  in-place save;
 - completed-session consultation, transient drag reorder, and atomic factual or
   order correction while retaining session/occurrence/feedback identities for
   synchronization;

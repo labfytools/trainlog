@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
@@ -133,18 +134,31 @@ class TrainlogAppNavigationCallbackTest {
         ) as CreateExerciseResult.Created).exercise
         val occurrence = SessionExerciseDraft(
             exercise = exercise,
-            sets = listOf(SessionSetDraft(reps = 10, weightKg = 8.0)),
             plan = SessionExercisePlan(
-                sets = 1,
+                sets = 3,
                 reps = 10,
                 weightKg = 8.0,
                 loadMode = SessionLoadMode.EXTERNAL,
+                restSeconds = 90,
             ),
         )
+        val before = SessionExerciseDraft(
+            exercise = (repository.createExercise(
+                NewExerciseProfile("Marche témoin", RecordingMode.CONTINUOUS, TrackingMode.DURATION, 0),
+            ) as CreateExerciseResult.Created).exercise,
+            continuousDurationSeconds = 600,
+        )
+        val after = SessionExerciseDraft(
+            exercise = (repository.createExercise(
+                NewExerciseProfile("Presse témoin", RecordingMode.SETS, TrackingMode.REPS, 0),
+            ) as CreateExerciseResult.Created).exercise,
+            sets = listOf(SessionSetDraft(reps = 12)),
+        )
+        repository.createCustomEquipment("ZZZ équipement témoin")
         assertEquals(
             ActiveDraftMutationResult.Saved,
             repository.saveActiveSessionDraft(
-                ActiveSessionDraft(exercises = listOf(occurrence)),
+                ActiveSessionDraft(exercises = listOf(before, occurrence, after)),
             ),
         )
         val editorState = TrainlogAppState().also {
@@ -167,6 +181,8 @@ class TrainlogAppNavigationCallbackTest {
         compose.onNodeWithText("SAISIE — Goblet squat haltère")
             .performScrollTo()
             .assertIsDisplayed()
+        compose.onNodeWithTag("session-equipment-results")
+            .performScrollToNode(hasText("ZZZ équipement témoin"))
         compose.onNodeWithTag("session-create-equipment")
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
@@ -182,18 +198,26 @@ class TrainlogAppNavigationCallbackTest {
         compose.onNodeWithText("SAISIE — Goblet squat haltère")
             .performScrollTo()
             .assertIsDisplayed()
-        compose.onNodeWithText("✓ Haltère").performScrollTo().assertIsDisplayed()
+        compose.onNode(
+            hasText("✓ Haltère") and hasText("Équipement sélectionné."),
+        ).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("add-to-session")
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.runOnIdle {
             val loaded = repository.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded
-            assertEquals(1, loaded.draft.exercises.size)
-            assertEquals(occurrence.entryId, loaded.draft.exercises.single().entryId)
-            assertEquals(8.0, loaded.draft.exercises.single().plan?.weightKg)
+            assertEquals(3, loaded.draft.exercises.size)
+            assertEquals(before, loaded.draft.exercises[0])
+            assertEquals(occurrence.entryId, loaded.draft.exercises[1].entryId)
+            assertTrue(loaded.draft.exercises[1].sets.isEmpty())
+            assertEquals(3, loaded.draft.exercises[1].plan?.sets)
+            assertEquals(10, loaded.draft.exercises[1].plan?.reps)
+            assertEquals(90, loaded.draft.exercises[1].plan?.restSeconds)
+            assertEquals(8.0, loaded.draft.exercises[1].plan?.weightKg)
+            assertEquals(after, loaded.draft.exercises[2])
             assertEquals(
                 "Haltère",
                 repository.listEquipment().single {
-                    it.equipmentId == loaded.draft.exercises.single().equipmentId
+                    it.equipmentId == loaded.draft.exercises[1].equipmentId
                 }.displayName,
             )
         }

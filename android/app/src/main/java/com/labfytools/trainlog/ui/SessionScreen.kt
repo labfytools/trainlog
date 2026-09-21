@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -450,8 +452,8 @@ fun SessionScreen(
                 sessionType = currentDraft.sessionType,
                 initialForm =
                     currentDraft.form,
-                initialPlan = currentDraft.form.editingExerciseIndex?.let {
-                    currentDraft.exercises.getOrNull(it)?.plan
+                initialOccurrence = currentDraft.form.editingExerciseIndex?.let {
+                    currentDraft.exercises.getOrNull(it)
                 },
                 onCreateEquipment = {
                     onCreateEquipment(currentDraft.form.editingEntryId)
@@ -880,7 +882,7 @@ private fun SessionExerciseForm(
     exercise: ExerciseProfile,
     sessionType: SessionType,
     initialForm: SessionDraftForm,
-    initialPlan: SessionExercisePlan?,
+    initialOccurrence: SessionExerciseDraft?,
     onCreateEquipment: () -> Unit,
     onFormChanged: (SessionDraftForm) -> Unit,
     onCancel: () -> Unit,
@@ -891,6 +893,7 @@ private fun SessionExerciseForm(
     val colors =
         LocalTrainlogColors.current
     val strings = localizedContext()
+    val initialPlan = initialOccurrence?.plan
 
     var setCountText by
         remember(key) {
@@ -1028,16 +1031,29 @@ private fun SessionExerciseForm(
                 },
             )
         }
-        if (fixedEquipmentId == null) repository.searchEquipment(equipmentSearch).take(8).forEach { equipment ->
-            TrainlogAction(
-                label = if (equipment.equipmentId == selectedEquipmentId) "✓ ${equipment.displayName}" else equipment.displayName,
-                description = equipment.labelName.ifBlank { equipment.type },
-                accent = if (equipment.equipmentId == selectedEquipmentId) colors.success else colors.muted,
-                onClick = {
-                    selectedEquipmentId = equipment.equipmentId
-                    onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, equipment.equipmentId, weightText, maxWeightText))
-                },
-            )
+        if (fixedEquipmentId == null) {
+            /* WHY: alphabetical truncation made valid equipment beyond the
+             * eighth row impossible to select. CONTRACT: the bounded nested
+             * viewport exposes every search result while the surrounding
+             * exercise editor remains independently scrollable. */
+            Column(
+                Modifier
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState())
+                    .testTag("session-equipment-results"),
+            ) {
+                repository.searchEquipment(equipmentSearch).forEach { equipment ->
+                    TrainlogAction(
+                        label = if (equipment.equipmentId == selectedEquipmentId) "✓ ${equipment.displayName}" else equipment.displayName,
+                        description = equipment.labelName.ifBlank { equipment.type },
+                        accent = if (equipment.equipmentId == selectedEquipmentId) colors.success else colors.muted,
+                        onClick = {
+                            selectedEquipmentId = equipment.equipmentId
+                            onFormChanged(currentForm(exercise, setCountText, repsText, durationText, speedText, distanceText, equipment.equipmentId, weightText, maxWeightText))
+                        },
+                    )
+                }
+            }
         }
 
         if (sessionType == SessionType.MAX_TEST) {
@@ -1355,7 +1371,7 @@ private fun SessionExerciseForm(
             modifier = Modifier.fillMaxWidth().testTag("add-to-session"),
             containerColor = colors.success,
             onClick = {
-                val draft =
+                val capturedDraft =
                     buildSessionExerciseDraft(
                         exercise =
                             exercise,
@@ -1376,6 +1392,26 @@ private fun SessionExerciseForm(
                         entryId = initialForm.editingEntryId,
                         rawSetRows = setRows,
                     )
+
+                /* WHY: a prepared occurrence may legitimately have a target
+                 * but no performed sets yet. CONTRACT: changing its equipment
+                 * edits planning metadata in place without fabricating actual
+                 * work. INVARIANT: any nonblank partial performed row still
+                 * follows normal validation and can never be discarded here. */
+                val targetOnlyDraft = initialOccurrence?.takeIf {
+                    sessionType == SessionType.TRAINING &&
+                        it.plan != null &&
+                        it.sets.isEmpty() &&
+                        it.maxWeightKg == null &&
+                        it.continuousDurationSeconds == 0 &&
+                        setRows.all { row ->
+                            row.repsText.isBlank() && row.weightText.isBlank()
+                        }
+                }?.copy(
+                    exercise = exercise,
+                    equipmentId = selectedEquipmentId,
+                )
+                val draft = capturedDraft ?: targetOnlyDraft
 
                 if (draft == null) {
                     error =

@@ -889,6 +889,13 @@ route. An explicit successful creation returns automatically to the same
 exercise editor, restores the stable occurrence being edited, and selects the
 new persistent `eq_…` ID; the draft's other raw fields and target remain
 unchanged. No equipment is synthesized merely by opening the route.
+The selector presents every matching catalogue entry inside a bounded,
+independently scrollable result list; it does not truncate the selectable
+catalogue to its first rows. An existing target-only prepared occurrence may
+therefore change or create its equipment association and save in place while
+retaining its `entry_id`, plan and sibling occurrences. This operation does not
+fabricate a performed set; a partially entered performed row still follows the
+normal validation path and is never silently discarded.
 The shared bundled catalogue uses reserved canonical IDs. User-created IDs are
 exchanged first by definitions V1, so a V2 association can resolve them on the
 receiving side; conflicts remain explicit and are never converted to null.
