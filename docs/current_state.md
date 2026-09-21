@@ -138,7 +138,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
-| Sleep Diary V1 | Implemented on the 0.1.4 review branch: timestamped causal diary, stable Web/Android capture, full-generation companion and local vector PDF; the Web capture workspace has real-Firefox mutation/reload coverage and a section-local error boundary |
+| Sleep Diary V1 | Implemented on the 0.1.4 review branch: timestamped causal diary, stable Web/Android capture, full-generation companion and local vector PDF; the Web Agenda, Chronology and factual summary adopt the latest persisted revision without reload, medication choices expose dose/unit, and real-Firefox mutation/reload coverage plus a section-local error boundary protect capture |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |

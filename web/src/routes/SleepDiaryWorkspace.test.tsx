@@ -6,7 +6,12 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SleepMedication, SleepSnapshot } from "../api/sleepDiary";
+import type {
+  SleepEntry,
+  SleepEntryInput,
+  SleepMedication,
+  SleepSnapshot,
+} from "../api/sleepDiary";
 import { SleepDiaryWorkspace } from "./SleepDiaryWorkspace";
 
 const api = vi.hoisted(() => ({
@@ -61,6 +66,55 @@ const medication: SleepMedication = {
   note: "",
   active: true,
 };
+
+const snapshotWith = (entries: SleepEntry[]): SleepSnapshot => {
+  const duration = (start: string, end: string | null) =>
+    end === null ? 0 : (Date.parse(end) - Date.parse(start)) / 1000;
+  const events = entries.flatMap((entry) => entry.events);
+  const selected = (type: string) =>
+    events.filter((event) => event.type === type);
+  return {
+    api_version: 1,
+    entries,
+    summary: {
+      nights: entries.length,
+      long_awake_count: selected("long_awake").length,
+      nap_count: selected("nap").length,
+      sleepiness_count: selected("daytime_sleepiness").length,
+      intake_count: entries.reduce(
+        (total, entry) => total + entry.intakes.length,
+        0,
+      ),
+      sleep_duration_seconds: selected("sleep").reduce(
+        (total, event) => total + duration(event.start_at, event.end_at),
+        0,
+      ),
+      long_awake_duration_seconds: selected("long_awake").reduce(
+        (total, event) => total + duration(event.start_at, event.end_at),
+        0,
+      ),
+      nap_duration_seconds: selected("nap").reduce(
+        (total, event) => total + duration(event.start_at, event.end_at),
+        0,
+      ),
+      average_bed_minute: null,
+      average_get_up_minute: null,
+    },
+  };
+};
+
+const persistedEntry = (
+  input: SleepEntryInput,
+  entryId: string,
+  revisionId: string,
+): SleepEntry => ({
+  ...input,
+  entry_id: entryId,
+  revision_id: revisionId,
+  publication_status: "draft",
+  events: input.events.map((event) => ({ ...event })),
+  intakes: input.intakes.map((intake) => ({ ...intake })),
+});
 
 describe("SleepDiaryWorkspace", () => {
   beforeEach(() => {
@@ -184,5 +238,269 @@ describe("SleepDiaryWorkspace", () => {
     );
     expect(screen.getByTestId("sleep-workspace")).toBeInTheDocument();
     expect(screen.getByTestId("sleep-add-event")).toBeEnabled();
+  });
+
+  it("projects every persisted revision live and keeps distinct medication doses", async () => {
+    let persisted: SleepEntry[] = [];
+    let catalog: SleepMedication[] = [];
+    let revision = 0;
+    api.fetchSleepDiary.mockImplementation(async () => snapshotWith(persisted));
+    api.fetchSleepMedications.mockImplementation(async () => catalog);
+    api.saveSleepEntry.mockImplementation(async (input: SleepEntryInput) => {
+      const entryId =
+        input.entry_id || "sd_00000000-0000-4000-8000-000000000001";
+      const revisionId = `sdr_00000000-0000-4000-8000-${String(++revision).padStart(12, "0")}`;
+      persisted = [persistedEntry(input, entryId, revisionId)];
+      return { entry_id: entryId, revision_id: revisionId };
+    });
+    api.saveSleepMedication.mockImplementation(async (input) => {
+      const index = catalog.length + 1;
+      const saved: SleepMedication = {
+        ...input,
+        medication_id: `med_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        revision_id: `mr_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      };
+      catalog = [...catalog, saved];
+      return {
+        medication_id: saved.medication_id,
+        revision_id: saved.revision_id,
+      };
+    });
+
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    await screen.findByText("Aucun médicament enregistré.");
+
+    const addMedication = async (dose: string) => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "+ Ajouter un médicament" }),
+      );
+      fireEvent.change(screen.getByTestId("sleep-medication-name"), {
+        target: { value: "venlafaxine" },
+      });
+      fireEvent.change(screen.getByTestId("sleep-medication-dose"), {
+        target: { value: dose },
+      });
+      fireEvent.click(screen.getByTestId("sleep-add-medication"));
+      await waitFor(() =>
+        expect(screen.queryByTestId("sleep-medication-name")).toBeNull(),
+      );
+    };
+    await addMedication("75");
+    await addMedication("37.5");
+
+    const medicationSelect = screen.getByTestId("sleep-intake-medication");
+    expect(medicationSelect).toHaveTextContent("venlafaxine — 75 mg");
+    expect(medicationSelect).toHaveTextContent("venlafaxine — 37,5 mg");
+    expect(screen.getAllByText("venlafaxine")).toHaveLength(2);
+
+    const addIntake = async (medicationId: string, expectedDose: string) => {
+      const calls = api.saveSleepEntry.mock.calls.length;
+      fireEvent.change(medicationSelect, { target: { value: medicationId } });
+      expect(screen.getByTestId("sleep-intake-dose")).toHaveValue(
+        Number(expectedDose),
+      );
+      fireEvent.click(screen.getByTestId("sleep-add-intake"));
+      await waitFor(() =>
+        expect(api.saveSleepEntry).toHaveBeenCalledTimes(calls + 1),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("sleep-save-state")).toHaveTextContent(
+          "Enregistré localement",
+        ),
+      );
+    };
+    await addIntake(catalog[0].medication_id, "75");
+    await addIntake(catalog[1].medication_id, "37.5");
+    expect(screen.getByTestId("sleep-agenda-medication")).toHaveTextContent(
+      "M ×2",
+    );
+    expect(screen.getByTestId("sleep-agenda-medication")).toHaveAttribute(
+      "title",
+      expect.stringContaining("venlafaxine — 37,5 mg"),
+    );
+
+    const addEvent = async (type: string, start: string, end?: string) => {
+      const calls = api.saveSleepEntry.mock.calls.length;
+      fireEvent.change(screen.getByTestId("sleep-event-type"), {
+        target: { value: type },
+      });
+      fireEvent.change(screen.getByTestId("sleep-event-start"), {
+        target: { value: start },
+      });
+      if (end !== undefined)
+        fireEvent.change(screen.getByTestId("sleep-event-end"), {
+          target: { value: end },
+        });
+      fireEvent.click(screen.getByTestId("sleep-add-event"));
+      await waitFor(() =>
+        expect(api.saveSleepEntry).toHaveBeenCalledTimes(calls + 1),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("sleep-save-state")).toHaveTextContent(
+          "Enregistré localement",
+        ),
+      );
+    };
+    await addEvent("bed_time", "22:45");
+    expect(screen.getByTestId("sleep-agenda-bed-time")).toHaveTextContent(
+      "22:45",
+    );
+    await addEvent("sleep", "23:15", "03:00");
+    expect(screen.getByTestId("sleep-agenda-sleep-duration")).toHaveTextContent(
+      "3 h 45 min",
+    );
+    await addEvent("long_awake", "03:00", "03:30");
+    expect(screen.getByTestId("sleep-agenda-long-awake")).toHaveTextContent(
+      "1 · 30 min",
+    );
+    await addEvent("sleep", "03:30", "06:45");
+    expect(screen.getByTestId("sleep-agenda-sleep-duration")).toHaveTextContent(
+      "7 h 00 min",
+    );
+    await addEvent("final_get_up", "07:10");
+    expect(screen.getByTestId("sleep-agenda-final-get-up")).toHaveTextContent(
+      "07:10",
+    );
+    expect(screen.getByTestId("sleep-agenda-time-in-bed")).toHaveTextContent(
+      "8 h 25 min",
+    );
+
+    const getUpRow = screen.getByTestId("sleep-event-final_get_up");
+    fireEvent.change(within(getUpRow).getByLabelText("Heure"), {
+      target: { value: "07:30" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("sleep-agenda-time-in-bed")).toHaveTextContent(
+        "8 h 45 min",
+      ),
+    );
+
+    const sleepRows = screen.getAllByTestId("sleep-event-sleep");
+    fireEvent.change(within(sleepRows[1]).getByLabelText("Fin"), {
+      target: { value: "07:00" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("sleep-agenda-sleep-duration"),
+      ).toHaveTextContent("7 h 15 min"),
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId("sleep-event-long_awake")).getByRole("button", {
+        name: "Supprimer Long réveil",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("sleep-agenda-long-awake")).toBeNull(),
+    );
+    expect(screen.queryByTestId("sleep-event-long_awake")).toBeNull();
+    await addEvent("nap", "14:00", "14:35");
+    expect(screen.getByTestId("sleep-agenda-naps")).toHaveTextContent(
+      "1 · 35 min",
+    );
+    await addEvent("daytime_sleepiness", "15:00");
+    expect(screen.getByTestId("sleep-agenda-sleepiness")).toHaveTextContent(
+      "1 occurrence",
+    );
+    expect(screen.getByTestId("sleep-workspace")).toBeInTheDocument();
+  });
+
+  it("ignores a stale diary read that finishes after a newer persisted revision", async () => {
+    let resolveInitial: ((value: SleepSnapshot) => void) | undefined;
+    const initial = new Promise<SleepSnapshot>((resolve) => {
+      resolveInitial = resolve;
+    });
+    let persisted: SleepEntry[] = [];
+    api.fetchSleepDiary
+      .mockImplementationOnce(async () => initial)
+      .mockImplementation(async () => snapshotWith(persisted));
+    api.saveSleepEntry.mockImplementation(async (input: SleepEntryInput) => {
+      const result = {
+        entry_id: "sd_00000000-0000-4000-8000-000000000001",
+        revision_id: "sdr_00000000-0000-4000-8000-000000000099",
+      };
+      persisted = [persistedEntry(input, result.entry_id, result.revision_id)];
+      return result;
+    });
+
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    fireEvent.change(screen.getByTestId("sleep-event-type"), {
+      target: { value: "bed_time" },
+    });
+    fireEvent.change(screen.getByTestId("sleep-event-start"), {
+      target: { value: "22:45" },
+    });
+    fireEvent.click(screen.getByTestId("sleep-add-event"));
+    expect(
+      await screen.findByTestId("sleep-agenda-event-bed_time"),
+    ).toBeInTheDocument();
+
+    resolveInitial?.(emptySnapshot);
+    await Promise.resolve();
+    expect(screen.getByTestId("sleep-agenda-bed-time")).toHaveTextContent(
+      "22:45",
+    );
+  });
+
+  it("serializes autosaves so the next mutation uses the returned revision", async () => {
+    let resolveFirst:
+      ((value: { entry_id: string; revision_id: string }) => void) | undefined;
+    let persisted: SleepEntry[] = [];
+    const first = new Promise<{ entry_id: string; revision_id: string }>(
+      (resolve) => {
+        resolveFirst = resolve;
+      },
+    );
+    api.fetchSleepDiary.mockImplementation(async () => snapshotWith(persisted));
+    api.saveSleepEntry
+      .mockImplementationOnce(async () => first)
+      .mockImplementationOnce(async (input: SleepEntryInput) => {
+        const result = {
+          entry_id: input.entry_id,
+          revision_id: "sdr_00000000-0000-4000-8000-000000000002",
+        };
+        persisted = [
+          persistedEntry(input, result.entry_id, result.revision_id),
+        ];
+        return result;
+      });
+
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    await screen.findByTestId("sleep-workspace");
+    fireEvent.change(screen.getByTestId("sleep-event-type"), {
+      target: { value: "bed_time" },
+    });
+    fireEvent.click(screen.getByTestId("sleep-add-event"));
+    fireEvent.change(screen.getByTestId("sleep-event-type"), {
+      target: { value: "sleep" },
+    });
+    fireEvent.click(screen.getByTestId("sleep-add-event"));
+    await waitFor(() => expect(api.saveSleepEntry).toHaveBeenCalledTimes(1));
+    expect(api.saveSleepEntry).toHaveBeenCalledTimes(1);
+
+    const firstInput = api.saveSleepEntry.mock.calls[0][0] as SleepEntryInput;
+    const firstResult = {
+      entry_id: "sd_00000000-0000-4000-8000-000000000001",
+      revision_id: "sdr_00000000-0000-4000-8000-000000000001",
+    };
+    persisted = [
+      persistedEntry(firstInput, firstResult.entry_id, firstResult.revision_id),
+    ];
+    resolveFirst?.(firstResult);
+
+    await waitFor(() => expect(api.saveSleepEntry).toHaveBeenCalledTimes(2));
+    expect(api.saveSleepEntry.mock.calls[1][0]).toMatchObject({
+      entry_id: firstResult.entry_id,
+      expected_revision: firstResult.revision_id,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("sleep-save-state")).toHaveTextContent(
+        "Enregistré localement",
+      ),
+    );
+    expect(
+      screen.getByTestId("sleep-agenda-event-bed_time"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("sleep-agenda-event-sleep")).toBeInTheDocument();
   });
 });

@@ -21,6 +21,8 @@ import {
   buildSleepDiaryPdf,
   presentSleepDiaryPdf,
 } from "../report/sleepDiaryPdf";
+import { formatDose, formatDuration } from "../dashboard/dashboardFormat";
+import { sleepEntryFacts } from "./sleepDiaryFacts";
 
 type Language = "fr" | "en";
 const q: readonly SleepQuality[] = ["TB", "B", "Moy", "M", "TM"];
@@ -152,6 +154,23 @@ const copy = {
 } as const;
 
 const clock = (iso: string) => (iso ? iso.slice(11, 16) : "");
+const medicationLabel = (medication: SleepMedication) =>
+  medication.default_dose_value === null
+    ? medication.name
+    : `${medication.name} — ${formatDose(medication.default_dose_value)} ${medication.default_dose_unit ?? ""}`.trim();
+const intakeLabel = (intake: MedicationIntake) =>
+  intake.dose_value === null
+    ? intake.medication_name
+    : `${intake.medication_name} — ${formatDose(intake.dose_value)} ${intake.dose_unit ?? ""}`.trim();
+const countAndDuration = (count: number, seconds: number) =>
+  `${count} · ${formatDuration(seconds)}`;
+
+const canonicalInput = (entry: SleepEntry): SleepEntryInput => ({
+  ...entry,
+  expected_revision: entry.revision_id,
+  events: entry.events.map((event) => ({ ...event })),
+  intakes: entry.intakes.map((intake) => ({ ...intake })),
+});
 const atClock = (value: string, startDate: string, endDate: string) => {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return "";
   const hour = Number(value.slice(0, 2));
@@ -264,6 +283,9 @@ export function SleepDiaryWorkspace({
     null,
   );
   const persistence = useRef<Promise<void>>(Promise.resolve());
+  const mutationSequence = useRef(0);
+  const diaryReadSequence = useRef(0);
+  const medicationReadSequence = useRef(0);
   const range = useMemo(() => {
     if (period === "all") return {};
     const days = Number(period.slice(0, -1));
@@ -275,37 +297,48 @@ export function SleepDiaryWorkspace({
       endDate: end.toLocaleDateString("en-CA"),
     };
   }, [period]);
-  const reload = () =>
-    Promise.all([
-      fetchSleepDiary(range.startDate, range.endDate),
-      fetchSleepMedications(),
-    ])
-      .then(([diary, catalog]) => {
-        setSnapshot(diary);
-        setMedications(catalog);
-        if (identity.current === null) {
-          const resume =
-            diary.entries.find(
-              (entry) =>
-                entry.publication_status === "draft" ||
-                entry.publication_status === "modified",
-            ) ?? diary.entries[0];
-          if (resume) {
-            identity.current = {
-              entry_id: resume.entry_id,
-              revision_id: resume.revision_id,
-            };
-            setPublicationStatus(resume.publication_status);
-            setDraft({
-              ...resume,
-              expected_revision: resume.revision_id,
-              events: resume.events.map((event) => ({ ...event })),
-              intakes: resume.intakes.map((intake) => ({ ...intake })),
-            });
-          }
-        }
-      })
-      .catch(() => setError("sleep_diary_unavailable"));
+  const readDiary = async () => {
+    const read = ++diaryReadSequence.current;
+    const diary = await fetchSleepDiary(range.startDate, range.endDate);
+    // INVARIANT: an older GET may finish after a newer mutation/reload GET;
+    // only the newest requested snapshot can replace the visible projection.
+    if (read === diaryReadSequence.current) setSnapshot(diary);
+    return diary;
+  };
+  const readMedications = async () => {
+    const read = ++medicationReadSequence.current;
+    const catalog = await fetchSleepMedications();
+    if (read === medicationReadSequence.current) setMedications(catalog);
+    return catalog;
+  };
+  const adoptEntry = (entry: SleepEntry) => {
+    identity.current = {
+      entry_id: entry.entry_id,
+      revision_id: entry.revision_id,
+    };
+    setPublicationStatus(entry.publication_status);
+    setDraft(canonicalInput(entry));
+  };
+  const reload = async () => {
+    try {
+      const [diary] = await Promise.all([readDiary(), readMedications()]);
+      const current = identity.current;
+      const resume = current
+        ? diary.entries.find(
+            (entry) =>
+              entry.entry_id === current.entry_id &&
+              entry.revision_id === current.revision_id,
+          )
+        : (diary.entries.find(
+            (entry) =>
+              entry.publication_status === "draft" ||
+              entry.publication_status === "modified",
+          ) ?? diary.entries[0]);
+      if (resume) adoptEntry(resume);
+    } catch {
+      setError("sleep_diary_unavailable");
+    }
+  };
   useEffect(() => {
     void reload();
   }, [period]);
@@ -314,18 +347,13 @@ export function SleepDiaryWorkspace({
       entry_id: entry.entry_id,
       revision_id: entry.revision_id,
     };
-    setPublicationStatus(entry.publication_status);
-    setDraft({
-      ...entry,
-      expected_revision: entry.revision_id,
-      events: entry.events.map((event) => ({ ...event })),
-      intakes: entry.intakes.map((intake) => ({ ...intake })),
-    });
+    adoptEntry(entry);
   };
   const persist = (next: SleepEntryInput) => {
+    const sequence = ++mutationSequence.current;
     setSaveState("saving");
-    persistence.current = persistence.current
-      .then(async () => {
+    persistence.current = persistence.current.then(async () => {
+      try {
         const current = identity.current;
         const result = await saveSleepEntry({
           ...next,
@@ -334,26 +362,43 @@ export function SleepDiaryWorkspace({
           updated_at: sleepTimestamp(),
         });
         identity.current = result;
-        setPublicationStatus((status) =>
-          status === "synchronized" || status === "modified"
-            ? "modified"
-            : "draft",
+        const diary = await readDiary();
+        const persisted = diary.entries.find(
+          (entry) =>
+            entry.entry_id === result.entry_id &&
+            entry.revision_id === result.revision_id,
         );
-        setSaveState("saved");
-        setDraft((value) => ({
-          ...value,
-          entry_id: result.entry_id,
-          expected_revision: result.revision_id,
-        }));
-      })
-      .catch((reason: unknown) => {
+        if (!persisted) throw new TypeError("sleep_diary_revision_unavailable");
+        if (sequence === mutationSequence.current) {
+          adoptEntry(persisted);
+          setError("");
+          setSaveState("saved");
+        }
+      } catch (reason: unknown) {
+        if (sequence !== mutationSequence.current) return;
+        try {
+          const diary = await readDiary();
+          const current = identity.current;
+          const persisted = current
+            ? diary.entries.find(
+                (entry) =>
+                  entry.entry_id === current.entry_id &&
+                  entry.revision_id === current.revision_id,
+              )
+            : undefined;
+          if (persisted) adoptEntry(persisted);
+        } catch {
+          // Preserve the original mutation diagnostic when reconciliation also
+          // fails; the stale Agenda remains visibly distinct from the draft.
+        }
         setSaveState("error");
         setError(
           reason instanceof Error
             ? reason.message
             : "sleep_diary_mutation_failed",
         );
-      });
+      }
+    });
   };
   const mutate = (transform: (current: SleepEntryInput) => SleepEntryInput) =>
     setDraft((current) => {
@@ -444,11 +489,10 @@ export function SleepDiaryWorkspace({
   const addMedication = async () => {
     if (!medName.trim()) return;
     const now = sleepTimestamp();
-    const savedName = medName.trim();
     setPending(true);
     setError("");
     try {
-      await saveSleepMedication({
+      const result = await saveSleepMedication({
         medication_id: editingMedication?.medication_id ?? "",
         expected_revision: editingMedication?.revision_id ?? null,
         created_at: now,
@@ -460,12 +504,10 @@ export function SleepDiaryWorkspace({
         note: editingMedication?.note ?? "",
         active: editingMedication?.active ?? true,
       });
-      const catalog = await fetchSleepMedications();
-      setMedications(catalog);
-      const saved =
-        catalog.find(
-          (item) => item.medication_id === editingMedication?.medication_id,
-        ) ?? catalog.find((item) => item.name === savedName);
+      const catalog = await readMedications();
+      const saved = catalog.find(
+        (item) => item.medication_id === result.medication_id,
+      );
       if (saved) {
         setIntakeMedication(saved.medication_id);
         setIntakeDose(saved.default_dose_value?.toString() ?? "");
@@ -606,69 +648,164 @@ export function SleepDiaryWorkspace({
                   <span key={index}>{(18 + index) % 24}</span>
                 ))}
               </div>
-              {entries.map((entry) => (
-                <button
-                  type="button"
-                  className="sleep-row"
-                  key={entry.entry_id}
-                  onClick={() => edit(entry)}
-                >
-                  <strong>
-                    {t.night} {entry.night_start_date}
-                    <small>
-                      {t.statuses[entry.publication_status]} · {t.continue}
-                    </small>
-                  </strong>
-                  <span className="sleep-track">
-                    {entry.events.map((event) => {
-                      const left = offset(
-                        event.start_at,
-                        entry.night_start_date,
-                      );
-                      const width = event.end_at
-                        ? Math.max(
-                            1,
-                            offset(event.end_at, entry.night_start_date) - left,
-                          )
-                        : 1;
-                      return (
+              {entries.map((entry) => {
+                const facts = sleepEntryFacts(entry);
+                const groupedIntakes = Object.entries(
+                  entry.intakes.reduce<Record<string, MedicationIntake[]>>(
+                    (groups, intake) => {
+                      (groups[intake.taken_at] ??= []).push(intake);
+                      return groups;
+                    },
+                    {},
+                  ),
+                );
+                return (
+                  <button
+                    type="button"
+                    className="sleep-row"
+                    data-testid={`sleep-agenda-row-${entry.entry_id}`}
+                    key={entry.entry_id}
+                    onClick={() => edit(entry)}
+                  >
+                    <strong>
+                      {t.night} {entry.night_start_date}
+                      <small>
+                        {t.statuses[entry.publication_status]} · {t.continue}
+                      </small>
+                    </strong>
+                    <span className="sleep-track">
+                      {entry.events.map((event) => {
+                        const left = offset(
+                          event.start_at,
+                          entry.night_start_date,
+                        );
+                        const width = event.end_at
+                          ? Math.max(
+                              1,
+                              offset(event.end_at, entry.night_start_date) -
+                                left,
+                            )
+                          : 1;
+                        return (
+                          <i
+                            key={event.event_id}
+                            className={`sleep-event sleep-${event.type}`}
+                            data-testid={`sleep-agenda-event-${event.type}`}
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                            title={`${t[event.type]} ${clock(event.start_at)}${event.end_at ? ` → ${clock(event.end_at)}` : ""}`}
+                          >
+                            {event.type === "bed_time"
+                              ? "↓"
+                              : event.type === "final_get_up" ||
+                                  event.type === "night_get_up"
+                                ? "↑"
+                                : event.type === "daytime_sleepiness"
+                                  ? "S"
+                                  : ""}
+                          </i>
+                        );
+                      })}
+                      {groupedIntakes.map(([takenAt, intakes]) => (
                         <i
-                          key={event.event_id}
-                          className={`sleep-event sleep-${event.type}`}
-                          style={{ left: `${left}%`, width: `${width}%` }}
-                          title={`${t[event.type]} ${event.start_at}${event.end_at ? ` – ${event.end_at}` : ""}`}
+                          key={takenAt}
+                          className="sleep-event sleep-medication"
+                          data-testid="sleep-agenda-medication"
+                          style={{
+                            left: `${offset(takenAt, entry.night_start_date)}%`,
+                            width: "1%",
+                          }}
+                          title={`${clock(takenAt)}\n${intakes.map(intakeLabel).join("\n")}`}
                         >
-                          {event.type === "bed_time"
-                            ? "↓"
-                            : event.type === "final_get_up" ||
-                                event.type === "night_get_up"
-                              ? "↑"
-                              : event.type === "daytime_sleepiness"
-                                ? "S"
-                                : ""}
+                          M{intakes.length > 1 ? ` ×${intakes.length}` : ""}
                         </i>
-                      );
-                    })}
-                    {entry.intakes.map((intake) => (
-                      <i
-                        key={intake.intake_id}
-                        className="sleep-event sleep-medication"
-                        style={{
-                          left: `${offset(intake.taken_at, entry.night_start_date)}%`,
-                          width: "1%",
-                        }}
-                        title={`${t.medication}: ${intake.medication_name}`}
-                      >
-                        M
-                      </i>
-                    ))}
-                  </span>
-                  <span>
-                    {entry.sleep_quality ?? "—"} / {entry.wake_quality ?? "—"} /{" "}
-                    {entry.day_form ?? "—"}
-                  </span>
-                </button>
-              ))}
+                      ))}
+                    </span>
+                    <span className="sleep-row-summary">
+                      <span className="sleep-row-facts">
+                        <span data-testid="sleep-agenda-bed-time">
+                          <small>{t.bed_time}</small>
+                          <b>{facts.bedTime ?? "—"}</b>
+                        </span>
+                        <span data-testid="sleep-agenda-final-get-up">
+                          <small>{t.final_get_up}</small>
+                          <b>{facts.finalGetUp ?? "—"}</b>
+                        </span>
+                        <span data-testid="sleep-agenda-sleep-duration">
+                          <small>{t.sleep}</small>
+                          <b>
+                            {facts.sleepSeconds > 0
+                              ? formatDuration(facts.sleepSeconds)
+                              : "—"}
+                          </b>
+                        </span>
+                        <span data-testid="sleep-agenda-time-in-bed">
+                          <small>
+                            {language === "fr" ? "Temps au lit" : "Time in bed"}
+                          </small>
+                          <b>
+                            {facts.timeInBedSeconds === null
+                              ? "—"
+                              : formatDuration(facts.timeInBedSeconds)}
+                          </b>
+                        </span>
+                        {facts.longAwakeCount > 0 && (
+                          <span data-testid="sleep-agenda-long-awake">
+                            <small>
+                              {language === "fr" ? "Réveils" : "Awakenings"}
+                            </small>
+                            <b>
+                              {countAndDuration(
+                                facts.longAwakeCount,
+                                facts.longAwakeSeconds,
+                              )}
+                            </b>
+                          </span>
+                        )}
+                        {facts.napCount > 0 && (
+                          <span data-testid="sleep-agenda-naps">
+                            <small>{t.nap}</small>
+                            <b>
+                              {countAndDuration(
+                                facts.napCount,
+                                facts.napSeconds,
+                              )}
+                            </b>
+                          </span>
+                        )}
+                        {facts.sleepinessCount > 0 && (
+                          <span data-testid="sleep-agenda-sleepiness">
+                            <small>{t.daytime_sleepiness}</small>
+                            <b>
+                              {facts.sleepinessCount}{" "}
+                              {language === "fr"
+                                ? facts.sleepinessCount === 1
+                                  ? "occurrence"
+                                  : "occurrences"
+                                : facts.sleepinessCount === 1
+                                  ? "occurrence"
+                                  : "occurrences"}
+                            </b>
+                          </span>
+                        )}
+                      </span>
+                      <span className="sleep-row-qualities">
+                        <span>
+                          <small>{t.sleep}</small>
+                          <b>{entry.sleep_quality ?? "—"}</b>
+                        </span>
+                        <span>
+                          <small>{language === "fr" ? "Réveil" : "Wake"}</small>
+                          <b>{entry.wake_quality ?? "—"}</b>
+                        </span>
+                        <span>
+                          <small>{language === "fr" ? "Journée" : "Day"}</small>
+                          <b>{entry.day_form ?? "—"}</b>
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -984,7 +1121,7 @@ export function SleepDiaryWorkspace({
                   .filter((item) => item.active)
                   .map((item) => (
                     <option key={item.medication_id} value={item.medication_id}>
-                      {item.name}
+                      {medicationLabel(item)}
                     </option>
                   ))}
               </select>
@@ -1156,7 +1293,7 @@ export function SleepDiaryWorkspace({
                   <span>
                     {item.default_dose_value === null
                       ? "—"
-                      : `${item.default_dose_value} ${item.default_dose_unit ?? ""}`}{" "}
+                      : `${formatDose(item.default_dose_value)} ${item.default_dose_unit ?? ""}`}{" "}
                     {language === "fr" ? "habituel" : "usual"}
                   </span>
                 </div>
@@ -1223,19 +1360,26 @@ export function SleepDiaryWorkspace({
                 {language === "fr" ? "Sommeil déclaré" : "Declared sleep"}
               </dt>
               <dd>
-                {Math.round(
-                  (snapshot?.summary.sleep_duration_seconds ?? 0) / 60,
-                )}{" "}
-                min
+                {formatDuration(snapshot?.summary.sleep_duration_seconds ?? 0)}
               </dd>
             </div>
             <div>
               <dt>{language === "fr" ? "Longs réveils" : "Long awakenings"}</dt>
-              <dd>{snapshot?.summary.long_awake_count ?? 0}</dd>
+              <dd>
+                {countAndDuration(
+                  snapshot?.summary.long_awake_count ?? 0,
+                  snapshot?.summary.long_awake_duration_seconds ?? 0,
+                )}
+              </dd>
             </div>
             <div>
               <dt>{language === "fr" ? "Siestes" : "Naps"}</dt>
-              <dd>{snapshot?.summary.nap_count ?? 0}</dd>
+              <dd>
+                {countAndDuration(
+                  snapshot?.summary.nap_count ?? 0,
+                  snapshot?.summary.nap_duration_seconds ?? 0,
+                )}
+              </dd>
             </div>
           </dl>
         </article>

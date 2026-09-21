@@ -249,6 +249,16 @@ clients, CSRF/Origin rejection and `trainlog.perf` Origin acceptance. Vitest
 covers default/persisted/invalid sources, ETag/token parsing, canonical-only
 PUT, conflict translation, loading, local cancel/reset and durable Save.
 
+Sleep Diary Web tests cover canonical snapshot adoption after every successful
+autosave, ordered revision chaining, rejection of stale asynchronous reads,
+and live Agenda updates for bedtime, final get-up, split sleep, time in bed,
+long awakenings, naps, sleepiness and grouped medication intakes. They also
+cover localized dose/unit labels, same-name medications with different usual
+doses and editable intake-dose prefill. `test_web_sleep_browser.py` exercises
+the embedded production bundle in real Firefox against an isolated synthetic
+database, observes every mutation without reload, verifies HTTP success and
+browser error collectors, then reloads and compares the persisted Agenda.
+
 `WEB_DASHBOARD_TILES_V1` adds strict TypeScript parsing for every consumed
 field and Vitest fixtures confined to test sources. Coverage proves the 90-day
 activity map and direct totals, all compact/medium/large disclosure levels,

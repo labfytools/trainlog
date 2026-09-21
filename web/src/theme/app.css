@@ -679,13 +679,13 @@ h2 {
   max-width: 100%;
 }
 .sleep-agenda {
-  min-width: 900px;
+  min-width: 1120px;
   display: grid;
   gap: 0.35rem;
 }
 .sleep-hours {
   display: grid;
-  grid-template-columns: 13rem repeat(25, 1fr) 9rem;
+  grid-template-columns: 12rem repeat(25, 1fr) 25rem;
   color: var(--subtext-0);
   font-size: 0.72rem;
 }
@@ -694,7 +694,7 @@ h2 {
 }
 .sleep-row {
   display: grid;
-  grid-template-columns: 13rem 1fr 9rem;
+  grid-template-columns: 12rem minmax(28rem, 1fr) 25rem;
   align-items: center;
   gap: 0.6rem;
   min-height: 3rem;
@@ -716,6 +716,40 @@ h2 {
 .sleep-row small {
   color: var(--subtext-0);
   font-weight: 500;
+}
+.sleep-row-summary,
+.sleep-row-facts,
+.sleep-row-qualities,
+.sleep-row-facts > span,
+.sleep-row-qualities > span {
+  display: flex;
+}
+.sleep-row-summary {
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sleep-row-facts,
+.sleep-row-qualities {
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+.sleep-row-facts > span,
+.sleep-row-qualities > span {
+  min-width: 4.2rem;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.sleep-row-summary small {
+  font-size: 0.68rem;
+}
+.sleep-row-summary b {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.sleep-row-qualities {
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--surface-1);
 }
 .sleep-track {
   position: relative;
@@ -754,7 +788,14 @@ h2 {
   );
 }
 .sleep-medication {
+  min-width: 1.35rem;
+  padding: 0 0.2rem;
+  border-radius: 0.25rem;
   background: var(--green);
+  color: var(--crust);
+  font-weight: 800;
+  white-space: nowrap;
+  z-index: 2;
 }
 .sleep-editor-columns {
   display: grid;
@@ -869,10 +910,9 @@ h2 {
   border-radius: 0.5rem;
 }
 .sleep-timeline-editor .sleep-event-list li {
-  grid-template-columns: 6.5rem minmax(8rem, 1.4fr) repeat(
-      2,
-      minmax(6rem, 0.75fr)
-    ) auto auto;
+  grid-template-columns:
+    6.5rem minmax(8rem, 1.4fr) repeat(2, minmax(6rem, 0.75fr))
+    auto auto;
 }
 .sleep-timeline-editor time {
   color: var(--lavender);

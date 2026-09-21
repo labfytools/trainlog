@@ -2,6 +2,17 @@
 
 ## Unreleased — 0.1.4
 
+- Made the Sleep Diary Agenda a live projection of the latest locally
+  persisted entry revision. Event and intake mutations now re-read and adopt
+  the canonical Core snapshot, serialized autosaves carry the returned
+  revision forward, and stale asynchronous reads cannot regress the visible
+  state. The Agenda shows factual bedtime, final get-up, declared-sleep and
+  time-in-bed durations, long awakenings, naps, sleepiness and grouped
+  medication markers without requiring reload or publication. Medication
+  catalog entries and selectors now include their usual localized dose and
+  unit, keep same-name/different-dose records distinct, and prefill editable
+  intake doses. Schemas, domain semantics, synchronization and PDF generation
+  are unchanged.
 - Fixed the Sleep Diary Web workspace becoming entirely blank after adding an
   event or medication intake on the loopback-routed HTTP origin. Sleep event
   and intake UUIDv4 identities now use secure random bytes without depending

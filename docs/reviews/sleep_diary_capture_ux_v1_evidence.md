@@ -84,3 +84,30 @@ intakes. All nine mutations returned HTTP 200. Browser console errors,
 network fetch errors and unhandled rejections were all zero. The exact
 390×844 viewport had zero document overflow. No main merge, tag or release
 was created.
+
+## Live persisted Agenda follow-up
+
+The Agenda now consumes the same canonical entry revision returned by Core as
+the Chronology, factual summary, PDF and synchronization surfaces. After a
+successful mutation the existing persistence queue re-reads the diary, finds
+the exact returned `entry_id` and `revision_id`, and only then marks the entry
+as locally saved. Request sequencing prevents an older GET from replacing a
+newer projection, while the serialized mutation queue supplies each returned
+revision to the next write.
+
+The compact row derives bedtime, final get-up, declared sleep, time in bed,
+long-awakening totals, naps and sleepiness directly from the canonical event
+list. Medication intakes at one timestamp use one grouped marker and retain
+their factual dose snapshots. Catalog and selector labels use stable
+medication identities and display localized usual dose/unit, so
+same-name/different-dose records remain independently selectable.
+
+The isolated real-Firefox scenario observed, without reload, two venlafaxine
+intakes at 22:00 (75 mg and 37.5 mg), bedtime at 22:45, sleep from 23:15 to
+03:00, a long awakening from 03:00 to 03:30, sleep from 03:30 to 06:45 and
+final get-up at 07:10. The Agenda immediately reported 7 h 00 min declared
+sleep, 8 h 25 min in bed, one 30-minute long awakening and one grouped `M ×2`
+marker. All captured requests returned HTTP 200, browser error and unhandled
+rejection collectors stayed empty, and reload reproduced the same Agenda row.
+The retained capture is
+[`evidence/sleep-diary-live-agenda-firefox.png`](evidence/sleep-diary-live-agenda-firefox.png).

@@ -284,7 +284,7 @@ export async function saveSleepMedication(
     created_at: string;
     updated_at: string;
   },
-): Promise<void> {
+): Promise<{ medication_id: string; revision_id: string }> {
   const csrf = await mutationCsrfToken();
   const response = await fetch("/api/v1/sleep-medications", {
     method: "POST",
@@ -295,5 +295,13 @@ export async function saveSleepMedication(
     },
     body: JSON.stringify(input),
   });
-  if (!response.ok) throw new Error("sleep_medication_mutation_failed");
+  const value: unknown = await response.json();
+  if (
+    !response.ok ||
+    !object(value) ||
+    typeof value.medication_id !== "string" ||
+    typeof value.revision_id !== "string"
+  )
+    throw new Error("sleep_medication_mutation_failed");
+  return value as { medication_id: string; revision_id: string };
 }
