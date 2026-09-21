@@ -130,6 +130,13 @@ through Program deletion, restart and old-generation replay without duplication
 or resurrection. The desktop populated migration test now continues through
 schema v27 and proves the new execution ledger starts empty.
 
+The delivered-Program regression covers the previously omitted provenance
+pair end to end: legacy preparation receipt, start, performed capture,
+finalization, exact-payload enrichment, completed Android projection, execution
+companion output and restart. Export tests assert both stable IDs, the C Web API
+asserts `completed`, and the Web component verifies `1/24`, `Effectuée` and the
+absence of a preparation action on the completed session.
+
 `schema_v28_migration` migrates a populated v27 fixture, preserves Program,
 session and execution identities byte-for-byte, admits the terminal deleted
 state, reports `integrity_check=ok` and an empty foreign-key check, and proves

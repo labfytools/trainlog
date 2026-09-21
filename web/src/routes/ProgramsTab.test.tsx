@@ -206,4 +206,56 @@ describe('Programs tab', () => {
     expect(fetchMock.mock.calls.filter(([, options]) =>
       (options as RequestInit | undefined)?.method === 'POST')).toHaveLength(1)
   })
+
+  it('counts a completed program session and no longer offers to prepare it', async () => {
+    const sessions = Array.from({ length: 24 }, (_, index) => ({
+      program_session_id: `pgs_${index}`,
+      position: index,
+      title: index === 0 ? 'S1 A — Ceinture abdominale + jambes' : `Séance ${index + 1}`,
+      session_type: 'training',
+      planned_for: null,
+      note: null,
+      execution_state: index === 0 ? 'completed' : 'todo',
+      execution_session_id: index === 0 ? 'se_completed' : null,
+      occurrences: [],
+    }))
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/v1/sessions/program/pg_test') {
+        return jsonResponse({
+          api_version: 1,
+          program_id: 'pg_test',
+          title: 'Programme 24 séances',
+          note: null,
+          state: 'active',
+          start_date: null,
+          end_date: null,
+          created_at: '2026-09-18T12:00:00Z',
+          updated_at: '2026-09-21T12:00:00Z',
+          revision_id: 'revision',
+          source_format: 'trainlog-program',
+          source_version: 1,
+          source_payload_sha256: 'a'.repeat(64),
+          sessions,
+        })
+      }
+      throw new Error(`unexpected request ${url}`)
+    }))
+
+    render(<ProgramsTab detailProgramId="pg_test" onOpen={vi.fn()} onBack={vi.fn()} />)
+
+    expect(await screen.findByText('1/24')).toBeInTheDocument()
+    expect(screen.getByText('4% effectué')).toBeInTheDocument()
+    const completed = screen
+      .getByText(/S1 A — Ceinture abdominale \+ jambes/)
+      .closest('li')
+    expect(completed).not.toBeNull()
+    expect(within(completed as HTMLElement).getByText('Effectuée')).toBeInTheDocument()
+    expect(
+      within(completed as HTMLElement).queryByRole('button', {
+        name: 'Créer une préparation',
+      }),
+    ).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Créer une préparation' })).toHaveLength(23)
+  })
 })

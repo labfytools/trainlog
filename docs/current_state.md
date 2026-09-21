@@ -430,6 +430,13 @@ ACK without duplicating the execution or resurrecting the Program. A final
 correlated exchange remained completed with no missing capability. The real
 Program remains active and unique with 24 sessions and 164 ordered entries.
 
+Program-owned manual preparations now carry their stable Program provenance to
+Android. Starting and finalizing such a delivery retains both identities, and a
+strict same-delivery enrichment repairs completed sessions produced from the
+earlier omission without changing workout facts. Android and Web therefore
+derive the completed count and per-session state from the same execution
+identity after synchronization and restart.
+
 The private Programs rollout migrated desktop schema v25 to v26 and Android
 schema v23 to v24 after verified backups, then installed the signed
 non-debuggable versionCode 16 APK without uninstalling or clearing data. The

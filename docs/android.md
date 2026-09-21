@@ -41,7 +41,12 @@ Android schema v22 adds a pending manual-preparation store which is separate
 from AI proposals and the exactly-one active-session singleton. A received
 preparation is inert until explicit start; an occupied singleton is never
 overwritten. Starting preserves the desktop-reserved execution `session_id`,
-copies targets only and creates no performed facts.
+copies targets only and creates no performed facts. A Program-owned preparation
+also preserves `source_program_id` and `source_program_session_id` through the
+active draft and completed session. A legacy stored delivery may receive those
+two omitted fields later only when its revision, complete prior payload and
+reserved execution identity match exactly; this repairs provenance without
+altering performed workout facts.
 
 Android schema v23 adds the durable manual-preparation withdrawal ledger. The
 schema is unchanged by Web proposal withdrawal: the existing durable AI draft

@@ -22,12 +22,21 @@ def build_export(connection: sqlite3.Connection) -> dict:
         raise ValueError("desktop schema v24, v25, v26, v27, v28 or v29 required")
     deliveries = []
     rows = connection.execute(
-        "SELECT d.delivery_id,d.preparation_id,d.revision_id,d.execution_session_id,d.state,"
-        "r.title,r.session_type,r.planned_for,r.notes,p.source_proposal_id,p.source_payload_sha256 "
+        "SELECT d.delivery_id,d.preparation_id,d.revision_id,d.execution_session_id,"
+        "CASE WHEN d.state='acknowledged' THEN 'remote_unknown' ELSE d.state END,"
+        "r.title,r.session_type,r.planned_for,r.notes,p.source_proposal_id,p.source_payload_sha256,"
+        "p.source_program_id,p.source_program_session_id "
         "FROM session_preparation_deliveries d "
         "JOIN session_preparations p ON p.preparation_id=d.preparation_id "
         "JOIN session_preparation_revisions r ON r.revision_id=d.revision_id "
-        "WHERE p.withdrawn_at IS NULL AND d.state IN('pending','remote_unknown') "
+        "WHERE p.withdrawn_at IS NULL AND ("
+        "d.state IN('pending','remote_unknown') OR ("
+        "d.state='acknowledged' AND p.source_program_id IS NOT NULL AND "
+        "p.source_program_session_id IS NOT NULL AND NOT EXISTS("
+        "SELECT 1 FROM program_session_executions x "
+        "WHERE x.program_session_id=p.source_program_session_id "
+        "AND x.program_id=p.source_program_id AND x.session_id=d.execution_session_id"
+        "))) "
         "ORDER BY d.created_at,d.delivery_id LIMIT ?",
         (MAX_DELIVERIES + 1,),
     ).fetchall()
@@ -48,6 +57,7 @@ def build_export(connection: sqlite3.Connection) -> dict:
             "execution_session_id": row[3], "state": row[4], "title": row[5],
             "session_type": row[6], "planned_for": row[7], "notes": row[8],
             "source_proposal_id": row[9], "source_payload_sha256": row[10],
+            "source_program_id": row[11], "source_program_session_id": row[12],
             "occurrences": [{
                 "entry_id": entry[0], "position": entry[1], "exercise_id": entry[2],
                 "equipment_id": entry[3], "recording_mode": entry[4],

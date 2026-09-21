@@ -70,6 +70,57 @@ class ProgramsProjectionRepositoryTest {
             .put("deletions", deletions)
             .toString()
 
+    private fun preparationArtifact(
+        includeProgramProvenance: Boolean = true,
+        deliveryState: String = "pending",
+    ): String {
+        val occurrence =
+            JSONObject()
+                .put("entry_id", "spe_11111111-1111-4111-8111-111111111111")
+                .put("position", 0)
+                .put("exercise_id", "ex_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+                .put("equipment_id", JSONObject.NULL)
+                .put("recording_mode", "sets")
+                .put("tracking_mode", "reps")
+                .put("data_fields", 0)
+                .put("load_mode", "external")
+                .put("rest_seconds", 90)
+                .put("target_sets", 3)
+                .put("target_reps", 8)
+                .put("target_duration_seconds", JSONObject.NULL)
+                .put("target_weight_kg", 40.0)
+                .put("notes", JSONObject.NULL)
+        val delivery =
+            JSONObject()
+                .put("delivery_id", "spd_22222222-2222-4222-8222-222222222222")
+                .put("preparation_id", "sp_33333333-3333-4333-8333-333333333333")
+                .put("revision_id", "spr_44444444-4444-4444-8444-444444444444")
+                .put("execution_session_id", "se_55555555-5555-4555-8555-555555555555")
+                .put("state", deliveryState)
+                .put("title", "Séance A")
+                .put("session_type", "training")
+                .put("planned_for", JSONObject.NULL)
+                .put("notes", JSONObject.NULL)
+                .put("source_proposal_id", JSONObject.NULL)
+                .put("source_payload_sha256", JSONObject.NULL)
+                .put("occurrences", JSONArray().put(occurrence))
+        if (includeProgramProvenance) {
+            delivery
+                .put("source_program_id", "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+                .put(
+                    "source_program_session_id",
+                    "pgs_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                )
+        }
+        return JSONObject()
+            .put("format", "trainlog-session-preparations")
+            .put("version", 2)
+            .put("generated_at", "2026-09-18T12:05:00Z")
+            .put("deliveries", JSONArray().put(delivery))
+            .put("withdrawals", JSONArray())
+            .toString()
+    }
+
     private fun deletion(): JSONObject =
         JSONObject()
             .put("deletion_id", "pgd_ffffffff-ffff-4fff-8fff-ffffffffffff")
@@ -189,6 +240,105 @@ class ProgramsProjectionRepositoryTest {
             assertEquals(1, detail.sessionCount)
             assertTrue(repository.loadActiveSessionDraft() is ActiveDraftLoadResult.None)
             assertEquals(1, repository.listSessions().size)
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun deliveredProgramPreparationCompletesProgramProgressAcrossRestart() {
+        val name = "program-delivery-${UUID.randomUUID()}.db"
+        var repository = TrainlogRepository(context, name)
+        try {
+            val catalog =
+                JSONObject()
+                    .put("format", "trainlog-pc-catalog")
+                    .put("version", 1)
+                    .put(
+                        "exercises",
+                        JSONArray().put(
+                            JSONObject()
+                                .put("exercise_id", "ex_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+                                .put("name", "Exercise fixture")
+                                .put("recording_mode", "sets")
+                                .put("tracking_mode", "reps")
+                                .put("data_fields", 0),
+                        ),
+                    )
+                    .toString()
+            assertTrue(repository.applyPcCatalogJson(catalog) is PcCatalogImportResult.Applied)
+            assertEquals(
+                ProgramsImportResult.Applied(1, 0, 0),
+                repository.applyProgramsV1Json(artifact(JSONArray().put(program()))),
+            )
+            assertEquals(
+                AiSessionDraftImportResult.Applied(1, 0),
+                repository.applySessionPreparationsJson(
+                    preparationArtifact(includeProgramProvenance = false),
+                ),
+            )
+            assertEquals(
+                StartAiSessionDraftResult.Started,
+                repository.startPreparedSession("spd_22222222-2222-4222-8222-222222222222"),
+            )
+            val active =
+                (repository.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded).draft
+            assertEquals(null, active.sourceProgramId)
+            assertEquals(null, active.sourceProgramSessionId)
+            val performed =
+                active.copy(
+                    exercises =
+                        active.exercises.map { occurrence ->
+                            occurrence.copy(
+                                sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0)),
+                            )
+                        },
+                )
+            assertEquals(
+                ActiveDraftMutationResult.Saved,
+                repository.saveActiveSessionDraft(performed),
+            )
+            assertTrue(repository.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+            assertEquals(
+                ProgramSessionExecutionState.TODO,
+                repository.getSyncedProgram("pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!!
+                    .sessions.single().executionState,
+            )
+            assertEquals(
+                AiSessionDraftImportResult.Applied(0, 1),
+                repository.applySessionPreparationsJson(
+                    preparationArtifact(deliveryState = "remote_unknown"),
+                ),
+            )
+            val detail = repository.getSyncedProgram("pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!!
+            assertEquals(ProgramSessionExecutionState.COMPLETED, detail.sessions.single().executionState)
+            val execution =
+                JSONObject(repository.buildProgramExecutionsV1Json())
+                    .getJSONArray("executions")
+                    .getJSONObject(0)
+            assertEquals("completed", execution.getString("state"))
+            assertEquals(
+                "pgs_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                execution.getString("program_session_id"),
+            )
+        } finally {
+            repository.close()
+        }
+
+        repository = TrainlogRepository(context, name)
+        try {
+            val detail = repository.getSyncedProgram("pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!!
+            assertEquals(1, detail.sessions.count {
+                it.executionState == ProgramSessionExecutionState.COMPLETED
+            })
+            assertEquals(
+                StartProgramSessionResult.AlreadyCompleted,
+                repository.startSyncedProgramSession(
+                    "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    "pgs_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                ),
+            )
         } finally {
             repository.close()
             context.deleteDatabase(name)

@@ -317,6 +317,26 @@ static bool import_archive_and_prepare(void) {
     free(response);
     response = NULL;
 
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO program_session_executions("
+                       "program_session_id,program_id,session_id,state,observed_at) VALUES("
+                       "'pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',"
+                       "'pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',"
+                       "'se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','completed',"
+                       "'2026-09-21T12:00:00Z')",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_programs_detail_json(
+              database, "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", &response, &response_size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(response, "\"execution_state\":\"completed\"") != NULL);
+    CHECK(strstr(response,
+                 "\"execution_session_id\":"
+                 "\"se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee\"") != NULL);
+    free(response);
+    response = NULL;
+
     CHECK(trainlog_web_programs_archive_json(database,
                                              "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                                              revision,

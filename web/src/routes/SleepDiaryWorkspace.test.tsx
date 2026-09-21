@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   SleepEntry,
   SleepEntryInput,
@@ -170,6 +170,8 @@ const dayAEntry = (): SleepEntry => ({
 
 describe("SleepDiaryWorkspace", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-21T16:00:00+02:00"));
     vi.clearAllMocks();
     api.nextId = 0;
     api.fetchSleepDiary.mockResolvedValue(emptySnapshot);
@@ -179,6 +181,10 @@ describe("SleepDiaryWorkspace", () => {
       entry_id: input.entry_id || "sd_00000000-0000-4000-8000-000000000001",
       revision_id: `sdr_00000000-0000-4000-8000-${String(++revision).padStart(12, "0")}`,
     }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it.each([

@@ -71,7 +71,11 @@ full run, generation, peer, hash and ACK envelope and never starts a workout.
 `trainlog-session-preparations` V2 is a separate optional desktop-to-Android
 generation artifact. It carries immutable ready revision snapshots and stable
 delivery, preparation, occurrence and reserved execution identities, plus
-immutable preparation-withdrawal operations. It never
+immutable preparation-withdrawal operations. Program-owned deliveries also
+carry the paired stable Program and Program-session identities. Android keeps
+reading legacy deliveries that omitted this pair and accepts a later enrichment
+only when all legacy fields and the reserved execution identity are identical.
+It never
 overloads mobile export, AI proposals or execution-drafts V1. Android validates
 the complete artifact in the generation transaction and stores it as pending;
 start remains an explicit foreground action. Desktop records the exact
@@ -245,6 +249,11 @@ permits only the monotonic `in_progress` to `completed` transition. Exact replay
 is idempotent; identity reuse or regression is a hard conflict. Because the
 descriptor is optional, peers predating this companion keep exchanging all
 existing required domains without a capability failure.
+
+For Program-owned manual preparations, an acknowledged delivery is republished
+while its matching canonical execution evidence is absent on the PC. This
+bounded recovery lets Android enrich legacy deliveries with Program provenance
+and stops automatically when the execution returns through this companion.
 
 Desktop schema v28 adds terminal `deleted` provenance for a completed session
 removed through causal history deletion. A retained older

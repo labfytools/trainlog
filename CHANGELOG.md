@@ -2,6 +2,13 @@
 
 ## Unreleased — 0.1.4
 
+- Fixed Program progress for sessions started from a delivered manual
+  preparation. The preparation companion now carries its stable Program and
+  Program-session provenance through Android start, finalization, restart and
+  the existing execution companion; legacy stored deliveries are safely
+  enriched only when every pre-existing field and execution identity matches.
+  Android and Web consequently present the completed session and progress from
+  the same persisted identity without fabricating history.
 - Aligned the Sleep Diary Agenda ticks, interval bands and point markers on one
   exact 18:00-to-18:00 timestamp projection. Selecting another night now clears
   the previous entry immediately, adopts only an exact-date result and rejects

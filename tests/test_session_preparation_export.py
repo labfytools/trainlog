@@ -22,6 +22,8 @@ class SessionPreparationExportTest(unittest.TestCase):
                 current_revision_id TEXT NOT NULL,
                 source_proposal_id TEXT,
                 source_payload_sha256 TEXT,
+                source_program_id TEXT,
+                source_program_session_id TEXT,
                 withdrawn_at TEXT
             );
             CREATE TABLE session_preparation_revisions(
@@ -56,6 +58,13 @@ class SessionPreparationExportTest(unittest.TestCase):
                 state TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE program_session_executions(
+                program_session_id TEXT PRIMARY KEY,
+                program_id TEXT NOT NULL,
+                session_id TEXT NOT NULL UNIQUE,
+                state TEXT NOT NULL,
+                observed_at TEXT NOT NULL
+            );
             CREATE TABLE session_preparation_withdrawals(
                 withdrawal_id TEXT PRIMARY KEY,
                 preparation_id TEXT NOT NULL,
@@ -77,12 +86,14 @@ class SessionPreparationExportTest(unittest.TestCase):
         delivery = f"spd_{suffix}"
         execution = f"se_{suffix}"
         self.database.execute(
-            "INSERT INTO session_preparations VALUES(?,?,?,?,?)",
+            "INSERT INTO session_preparations VALUES(?,?,?,?,?,?,?)",
             (
                 preparation,
                 revision,
                 "aid_11111111-1111-4111-8111-111111111111",
                 "a" * 64,
+                "pg_11111111-1111-4111-8111-111111111111",
+                "pgs_22222222-2222-4222-8222-222222222222",
                 "2026-09-18T12:00:00Z" if withdrawn else None,
             ),
         )
@@ -120,6 +131,14 @@ class SessionPreparationExportTest(unittest.TestCase):
         self.assertEqual("trainlog-session-preparations", payload["format"])
         self.assertEqual(2, payload["version"])
         self.assertEqual([f"spd_{kept}"], [row["delivery_id"] for row in payload["deliveries"]])
+        self.assertEqual(
+            "pg_11111111-1111-4111-8111-111111111111",
+            payload["deliveries"][0]["source_program_id"],
+        )
+        self.assertEqual(
+            "pgs_22222222-2222-4222-8222-222222222222",
+            payload["deliveries"][0]["source_program_session_id"],
+        )
         self.assertEqual(1, len(payload["withdrawals"]))
         removal = payload["withdrawals"][0]
         self.assertEqual(f"spw_{withdrawn}", removal["withdrawal_id"])
@@ -146,6 +165,35 @@ class SessionPreparationExportTest(unittest.TestCase):
 
         self.assertEqual([], payload["deliveries"])
         self.assertEqual([], payload["withdrawals"])
+
+    def test_acknowledged_program_delivery_is_republished_until_execution_returns(self):
+        suffix = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        self.add_preparation(suffix, withdrawn=False)
+        self.database.execute(
+            "UPDATE session_preparation_deliveries SET state='acknowledged'"
+        )
+        self.database.commit()
+
+        payload = export_session_preparations.build_export(self.database)
+
+        self.assertEqual([f"spd_{suffix}"], [row["delivery_id"] for row in payload["deliveries"]])
+        self.assertEqual("remote_unknown", payload["deliveries"][0]["state"])
+
+        self.database.execute(
+            "INSERT INTO program_session_executions VALUES(?,?,?,?,?)",
+            (
+                "pgs_22222222-2222-4222-8222-222222222222",
+                "pg_11111111-1111-4111-8111-111111111111",
+                f"se_{suffix}",
+                "completed",
+                "2026-09-18T12:10:00Z",
+            ),
+        )
+        self.database.commit()
+
+        payload = export_session_preparations.build_export(self.database)
+
+        self.assertEqual([], payload["deliveries"])
 
 
 if __name__ == "__main__":

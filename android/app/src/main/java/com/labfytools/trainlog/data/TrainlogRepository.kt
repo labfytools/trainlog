@@ -2543,10 +2543,14 @@ class TrainlogRepository(
         return try {
             for (deliveryIndex in 0 until values.length()) {
                 val delivery = values.getJSONObject(deliveryIndex)
-                val required = setOf("delivery_id", "preparation_id", "revision_id", "execution_session_id",
+                val legacyKeys = setOf("delivery_id", "preparation_id", "revision_id", "execution_session_id",
                     "state", "title", "session_type", "planned_for", "notes", "source_proposal_id",
                     "source_payload_sha256", "occurrences")
-                require(delivery.hasExactKeys(required)) { "Forme de préparation invalide." }
+                val provenanceKeys = setOf("source_program_id", "source_program_session_id")
+                require(delivery.hasExactKeys(legacyKeys) ||
+                    delivery.hasExactKeys(legacyKeys + provenanceKeys)) {
+                    "Forme de préparation invalide."
+                }
                 val deliveryId = delivery.getString("delivery_id")
                 val preparationId = delivery.getString("preparation_id")
                 val revisionId = delivery.getString("revision_id")
@@ -2555,6 +2559,17 @@ class TrainlogRepository(
                     stableUuidV4Id(preparationId, "sp_") &&
                     stableUuidV4Id(revisionId, "spr_") &&
                     stableUuidV4Id(executionId, "se_")) { "Identité de préparation invalide." }
+                if (delivery.has("source_program_id")) {
+                    val programId = if (delivery.isNull("source_program_id")) null else
+                        delivery.getString("source_program_id")
+                    val programSessionId = if (delivery.isNull("source_program_session_id")) null else
+                        delivery.getString("source_program_session_id")
+                    require((programId == null) == (programSessionId == null) &&
+                        (programId == null || (stableUuidV4Id(programId, "pg_") &&
+                            stableUuidV4Id(programSessionId!!, "pgs_")))) {
+                        "Provenance de programme invalide."
+                    }
+                }
                 require(delivery.getString("state") in setOf("pending", "remote_unknown")) { "État de livraison invalide." }
                 val occurrences = delivery.getJSONArray("occurrences")
                 require(occurrences.length() in 1..64) { "Occurrences de préparation invalides." }
@@ -2581,8 +2596,82 @@ class TrainlogRepository(
                     })
                     imported++
                 } else {
-                    require(existing.first == revisionId && JSONObject(existing.second).toString() == canonical) {
+                    val existingPayload = JSONObject(existing.second)
+                    /* WHY: the PC delivery lifecycle can advance from pending
+                     * to acknowledged before a legacy Android row receives
+                     * newly exported Program provenance. CONTRACT: recovery
+                     * ignores only that transport state and the two missing
+                     * provenance fields; every preparation fact and identity
+                     * must remain byte-for-byte equivalent. */
+                    val legacyEnrichment =
+                        existing.first == revisionId &&
+                            !existingPayload.has("source_program_id") &&
+                            delivery.has("source_program_id") &&
+                            JSONObject(delivery.toString()).apply {
+                                remove("source_program_id")
+                                remove("source_program_session_id")
+                                remove("state")
+                            }.toString() == JSONObject(existingPayload.toString()).apply {
+                                remove("state")
+                            }.toString()
+                    require(existing.first == revisionId &&
+                        (existingPayload.toString() == canonical || legacyEnrichment)) {
                         "Identité de livraison réutilisée avec un contenu différent."
+                    }
+                    if (legacyEnrichment) {
+                        val programId = if (delivery.isNull("source_program_id")) null else
+                            delivery.getString("source_program_id")
+                        val programSessionId = if (delivery.isNull("source_program_session_id")) null else
+                            delivery.getString("source_program_session_id")
+                        if (programId != null && programSessionId != null) {
+                            val currentProvenance = db.rawQuery(
+                                "SELECT source_program_id,source_program_session_id FROM sessions " +
+                                    "WHERE session_id=? UNION ALL SELECT source_program_id," +
+                                    "source_program_session_id FROM active_session_draft WHERE session_id=?",
+                                arrayOf(executionId, executionId),
+                            ).use { cursor ->
+                                if (!cursor.moveToFirst()) {
+                                    null
+                                } else {
+                                    Pair(
+                                        if (cursor.isNull(0)) null else cursor.getString(0),
+                                        if (cursor.isNull(1)) null else cursor.getString(1),
+                                    ).also {
+                                        require(!cursor.moveToNext()) {
+                                            "Identité d'exécution dupliquée."
+                                        }
+                                    }
+                                }
+                            }
+                            require(currentProvenance == null ||
+                                (currentProvenance.first == null &&
+                                    currentProvenance.second == null) ||
+                                currentProvenance == Pair(programId, programSessionId)) {
+                                "Conflit de provenance du programme."
+                            }
+                            /* CONTRACT: old deliveries omitted Program
+                             * provenance. A later canonical delivery may fill
+                             * only those missing identities on the exact
+                             * reserved execution session; performed facts and
+                             * lifecycle state remain untouched. */
+                            db.execSQL(
+                                "UPDATE sessions SET source_program_id=?," +
+                                    "source_program_session_id=? WHERE session_id=? AND " +
+                                    "source_program_id IS NULL AND source_program_session_id IS NULL",
+                                arrayOf(programId, programSessionId, executionId),
+                            )
+                            db.execSQL(
+                                "UPDATE active_session_draft SET source_program_id=?," +
+                                    "source_program_session_id=? WHERE session_id=? AND " +
+                                    "source_program_id IS NULL AND source_program_session_id IS NULL",
+                                arrayOf(programId, programSessionId, executionId),
+                            )
+                        }
+                        db.execSQL(
+                            "UPDATE session_preparation_deliveries SET payload_json=? " +
+                                "WHERE delivery_id=? AND revision_id=?",
+                            arrayOf(canonical, deliveryId, revisionId),
+                        )
                     }
                     skipped++
                 }
@@ -2754,9 +2843,24 @@ class TrainlogRepository(
                 val payload = JSONObject(row.second)
                 val entries = parsePreparedOccurrences(db, payload.getJSONArray("occurrences"))
                 val type = if (payload.getString("session_type") == "max_test") SessionType.MAX_TEST else SessionType.TRAINING
-                /* INVARIANT: the desktop-reserved execution identity survives
-                 * start and replay; no performed value is manufactured. */
-                persistActiveSessionDraft(db, ActiveSessionDraft(sessionId = row.first, exercises = entries, sessionType = type))
+                val sourceProgramId = if (!payload.has("source_program_id") ||
+                    payload.isNull("source_program_id")) null else payload.getString("source_program_id")
+                val sourceProgramSessionId = if (!payload.has("source_program_session_id") ||
+                    payload.isNull("source_program_session_id")) null else
+                    payload.getString("source_program_session_id")
+                /* INVARIANT: the desktop-reserved execution and Program
+                 * identities survive start, edits, finalization and replay;
+                 * no performed value is manufactured by this transition. */
+                persistActiveSessionDraft(
+                    db,
+                    ActiveSessionDraft(
+                        sessionId = row.first,
+                        exercises = entries,
+                        sessionType = type,
+                        sourceProgramId = sourceProgramId,
+                        sourceProgramSessionId = sourceProgramSessionId,
+                    ),
+                )
                 db.execSQL("UPDATE session_preparation_deliveries SET state='started',started_at=? WHERE delivery_id=? AND state='pending'",
                     arrayOf(OffsetDateTime.now(java.time.ZoneOffset.UTC).toString(), deliveryId))
                 db.setTransactionSuccessful()
