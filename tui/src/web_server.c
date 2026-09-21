@@ -27,6 +27,7 @@
 #include "trainlog/web_programs.h"
 #include "trainlog/web_session_deletions.h"
 #include "trainlog/web_sessions.h"
+#include "trainlog/web_sleep.h"
 #include "trainlog/dashboard_layout.h"
 #include "trainlog/web_preferences.h"
 #include "web_assets.h"
@@ -113,6 +114,14 @@ static bool parse_analysis_period(const char *value, TrainlogWebAnalysisPeriod *
     }
     if (strcmp(value, "7d") == 0) {
         *period = TRAINLOG_WEB_ANALYSIS_7_DAYS;
+        return true;
+    }
+    if (strcmp(value, "14d") == 0) {
+        *period = TRAINLOG_WEB_ANALYSIS_14_DAYS;
+        return true;
+    }
+    if (strcmp(value, "21d") == 0) {
+        *period = TRAINLOG_WEB_ANALYSIS_21_DAYS;
         return true;
     }
     if (strcmp(value, "90d") == 0) {
@@ -1397,6 +1406,70 @@ static enum MHD_Result handle_request(void *closure,
                               NULL);
         }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
+    }
+    if (strcmp(url, "/api/v1/sleep-diary") == 0) {
+        char *json = NULL;
+        size_t json_size = 0U;
+        TrainlogStatus status;
+        enum MHD_Result queued;
+        if (is_get) {
+            const char *start =
+                MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "start_date");
+            const char *end =
+                MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "end_date");
+            size_t limit;
+            if (!parse_page_number(
+                    MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "limit"),
+                    90U,
+                    3660U,
+                    &limit) ||
+                limit == 0U) {
+                return queue_json(connection,
+                                  MHD_HTTP_BAD_REQUEST,
+                                  "{\"error\":\"invalid_sleep_query\"}\n",
+                                  NULL);
+            }
+            status = trainlog_web_sleep_list_json(
+                context->database, start, end, limit, &json, &json_size);
+        } else if (strcmp(method, MHD_HTTP_METHOD_POST) == 0 ||
+                   strcmp(method, MHD_HTTP_METHOD_DELETE) == 0) {
+            if (!program_mutation_allowed(context, connection)) {
+                return queue_json(
+                    connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+            }
+            status = strcmp(method, MHD_HTTP_METHOD_POST) == 0
+                         ? trainlog_web_sleep_save_json(
+                               context->database, state->body, state->body_size, &json, &json_size)
+                         : trainlog_web_sleep_delete_request_json(
+                               context->database, state->body, state->body_size, &json, &json_size);
+        } else {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET, POST, DELETE");
+        }
+        if (status == TRAINLOG_STATUS_CONFLICT) {
+            free(json);
+            return queue_json(
+                connection, MHD_HTTP_CONFLICT, "{\"error\":\"revision_conflict\"}\n", NULL);
+        }
+        if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_UNPROCESSABLE_CONTENT,
+                              "{\"error\":\"invalid_sleep_diary\"}\n",
+                              NULL);
+        }
+        if (status != TRAINLOG_STATUS_OK || json == NULL || json_size == 0U) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"sleep_diary_unavailable\"}\n",
+                              NULL);
+        }
+        queued = queue_json(connection, MHD_HTTP_OK, json, NULL);
+        free(json);
+        return queued;
     }
     if (strcmp(url, "/api/v1/dashboard") == 0) {
         TrainlogWebDashboardQuery query;

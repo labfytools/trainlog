@@ -12,8 +12,9 @@ import {
 import { analysisMessages, type AnalysisLanguage } from "../analysis/messages";
 import { BodyZoneFigure } from "../dashboard/BodyZoneFigure";
 import { formatDuration } from "../dashboard/dashboardFormat";
+import { SleepDiaryWorkspace } from "./SleepDiaryWorkspace";
 
-type AnalysisSection = "overview" | "exercise" | "body-zones" | "measurements";
+type AnalysisSection = "overview" | "exercise" | "body-zones" | "measurements" | "sleep";
 type ExerciseMetric =
   "duration" | "distance" | "speed" | "load" | "reps" | "volume" | "max";
 interface ChartPoint {
@@ -33,6 +34,7 @@ const sections: readonly AnalysisSection[] = [
   "exercise",
   "body-zones",
   "measurements",
+  "sleep",
 ];
 const exerciseIdPattern =
   /^ex_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -605,7 +607,9 @@ export function AnalysisPage() {
                   ? t.exercises
                   : id === "body-zones"
                     ? t.distribution
-                    : t.measurements}
+                    : id === "measurements"
+                      ? t.measurements
+                      : t.sleep}
             </button>
           ))}
         </div>
@@ -869,6 +873,9 @@ export function AnalysisPage() {
                 </>
               )}
             </article>
+          )}
+          {section === "sleep" && (
+            <SleepDiaryWorkspace period={period} language={language} />
           )}
         </>
       )}

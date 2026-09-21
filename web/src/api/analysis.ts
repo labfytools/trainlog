@@ -1,9 +1,9 @@
-export type AnalysisPeriod = '7d' | '30d' | '90d' | 'all'
+export type AnalysisPeriod = '7d' | '14d' | '21d' | '30d' | '90d' | 'all'
 export type MeasurementMetric = 'weight' | 'neck' | 'shoulders' | 'chest' | 'waist' | 'hips' |
   'left_arm' | 'right_arm' | 'left_forearm' | 'right_forearm' |
   'left_thigh' | 'right_thigh' | 'left_calf' | 'right_calf'
 
-export const ANALYSIS_PERIODS: readonly AnalysisPeriod[] = ['7d', '30d', '90d', 'all']
+export const ANALYSIS_PERIODS: readonly AnalysisPeriod[] = ['7d', '14d', '21d', '30d', '90d', 'all']
 export const MEASUREMENT_METRICS: readonly MeasurementMetric[] = [
   'weight', 'neck', 'shoulders', 'chest', 'waist', 'hips', 'left_arm', 'right_arm',
   'left_forearm', 'right_forearm', 'left_thigh', 'right_thigh', 'left_calf', 'right_calf',

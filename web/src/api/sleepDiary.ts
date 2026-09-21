@@ -1,0 +1,69 @@
+import { mutationCsrfToken } from './sync'
+
+export type SleepQuality = 'TB' | 'B' | 'Moy' | 'M' | 'TM'
+export type SleepEventType = 'bed_time' | 'final_get_up' | 'night_get_up' | 'sleep' |
+  'nap' | 'long_awake' | 'half_sleep' | 'daytime_sleepiness'
+
+export interface SleepEvent { event_id: string; type: SleepEventType; start_at: string; end_at: string | null }
+export interface SleepEntry {
+  entry_id: string; night_start_date: string; night_end_date: string
+  created_at: string; updated_at: string; revision_id: string
+  sleep_quality: SleepQuality | null; wake_quality: SleepQuality | null; day_form: SleepQuality | null
+  treatment_and_notes: string; events: SleepEvent[]
+}
+export interface SleepSnapshot {
+  api_version: 1; entries: SleepEntry[]
+  summary: { nights: number; long_awake_count: number; nap_count: number; sleepiness_count: number
+    sleep_duration_seconds: number; long_awake_duration_seconds: number; nap_duration_seconds: number
+    average_bed_minute: number | null; average_get_up_minute: number | null }
+}
+export type SleepEntryInput = Omit<SleepEntry, 'revision_id'> & { expected_revision: string | null }
+
+const object = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+const quality = (value: unknown): value is SleepQuality | null =>
+  value === null || ['TB', 'B', 'Moy', 'M', 'TM'].includes(String(value))
+const eventType = (value: unknown): value is SleepEventType =>
+  ['bed_time', 'final_get_up', 'night_get_up', 'sleep', 'nap', 'long_awake', 'half_sleep', 'daytime_sleepiness'].includes(String(value))
+
+function validEntry(value: unknown): value is SleepEntry {
+  return object(value) && typeof value.entry_id === 'string' && typeof value.night_start_date === 'string' &&
+    typeof value.night_end_date === 'string' && typeof value.created_at === 'string' &&
+    typeof value.updated_at === 'string' && typeof value.revision_id === 'string' &&
+    quality(value.sleep_quality) && quality(value.wake_quality) && quality(value.day_form) &&
+    typeof value.treatment_and_notes === 'string' && Array.isArray(value.events) && value.events.length <= 64 &&
+    value.events.every((event) => object(event) && typeof event.event_id === 'string' &&
+      eventType(event.type) && typeof event.start_at === 'string' &&
+      (event.end_at === null || typeof event.end_at === 'string'))
+}
+
+export async function fetchSleepDiary(startDate?: string, endDate?: string,
+  signal?: AbortSignal): Promise<SleepSnapshot> {
+  const query = new URLSearchParams({ limit: '3660' })
+  if (startDate) query.set('start_date', startDate)
+  if (endDate) query.set('end_date', endDate)
+  const response = await fetch(`/api/v1/sleep-diary?${query}`, { headers: { Accept: 'application/json' }, signal })
+  const value: unknown = await response.json()
+  if (!response.ok || !object(value) || value.api_version !== 1 || !Array.isArray(value.entries) ||
+      !value.entries.every(validEntry) || !object(value.summary)) throw new TypeError('sleep_diary_invalid')
+  return value as unknown as SleepSnapshot
+}
+
+async function mutation(method: 'POST' | 'DELETE', body: unknown): Promise<{ entry_id: string; revision_id: string }> {
+  const csrf = await mutationCsrfToken()
+  const response = await fetch('/api/v1/sleep-diary', {
+    method,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Trainlog-CSRF-Token': csrf },
+    body: JSON.stringify(body),
+  })
+  const value: unknown = await response.json()
+  if (!response.ok || !object(value) || typeof value.entry_id !== 'string' || typeof value.revision_id !== 'string') {
+    throw new Error(object(value) && typeof value.error === 'string' ? value.error : 'sleep_diary_mutation_failed')
+  }
+  return value as { entry_id: string; revision_id: string }
+}
+
+export const saveSleepEntry = async (entry: SleepEntryInput) => await mutation('POST', entry)
+export const deleteSleepEntry = async (entry: SleepEntry) => await mutation('DELETE', {
+  entry_id: entry.entry_id, expected_revision: entry.revision_id, deleted_at: new Date().toISOString(),
+})

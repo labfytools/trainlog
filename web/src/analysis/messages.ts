@@ -3,8 +3,8 @@ export type AnalysisLanguage = 'fr' | 'en'
 export const analysisMessages = {
   fr: {
     eyebrow: 'DONNÉES FACTUELLES', title: 'Analyse', loading: 'Chargement de l’analyse…', failed: 'Analyse momentanément indisponible.',
-    overview: 'Vue d’ensemble', exercises: 'Exercices', distribution: 'Répartition', measurements: 'Mensurations',
-    period: 'Période', periods: { '7d': '7 jours', '30d': '30 jours', '90d': '90 jours', all: 'Tout' },
+    overview: 'Vue d’ensemble', exercises: 'Exercices', distribution: 'Répartition', measurements: 'Mensurations', sleep: 'Sommeil',
+    period: 'Période', periods: { '7d': '7 jours', '14d': '14 jours', '21d': '21 jours', '30d': '30 jours', '90d': '90 jours', all: 'Tout' },
     sessions: 'Séances', sets: 'Séries', duration: 'Durée', unavailable: 'Indisponible', noData: 'Aucune donnée sur cette période.',
     activeProgram: 'Programme actif', noProgram: 'Aucun programme actif', nextSession: 'Prochaine séance',
     exercise: 'Exercice', noExercise: 'Aucun exercice disponible', noExerciseData: 'Aucune donnée compatible pour cet exercice.',
@@ -15,8 +15,8 @@ export const analysisMessages = {
   },
   en: {
     eyebrow: 'FACTUAL DATA', title: 'Analysis', loading: 'Loading analysis…', failed: 'Analysis is temporarily unavailable.',
-    overview: 'Overview', exercises: 'Exercises', distribution: 'Distribution', measurements: 'Measurements',
-    period: 'Period', periods: { '7d': '7 days', '30d': '30 days', '90d': '90 days', all: 'All' },
+    overview: 'Overview', exercises: 'Exercises', distribution: 'Distribution', measurements: 'Measurements', sleep: 'Sleep',
+    period: 'Period', periods: { '7d': '7 days', '14d': '14 days', '21d': '21 days', '30d': '30 days', '90d': '90 days', all: 'All' },
     sessions: 'Sessions', sets: 'Sets', duration: 'Duration', unavailable: 'Unavailable', noData: 'No data in this period.',
     activeProgram: 'Active program', noProgram: 'No active program', nextSession: 'Next session',
     exercise: 'Exercise', noExercise: 'No exercise available', noExerciseData: 'No compatible data for this exercise.',

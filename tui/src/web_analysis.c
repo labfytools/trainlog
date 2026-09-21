@@ -544,6 +544,8 @@ TrainlogStatus trainlog_web_analysis_json(TrainlogDatabase *database,
     if (database == NULL || query == NULL || output == NULL || capacity == 0U ||
         output_size == NULL || query->reference_unix_second < 0 ||
         (query->period != TRAINLOG_WEB_ANALYSIS_7_DAYS &&
+         query->period != TRAINLOG_WEB_ANALYSIS_14_DAYS &&
+         query->period != TRAINLOG_WEB_ANALYSIS_21_DAYS &&
          query->period != TRAINLOG_WEB_ANALYSIS_30_DAYS &&
          query->period != TRAINLOG_WEB_ANALYSIS_90_DAYS &&
          query->period != TRAINLOG_WEB_ANALYSIS_ALL) ||
@@ -568,6 +570,8 @@ TrainlogStatus trainlog_web_analysis_json(TrainlogDatabase *database,
                                    "period",
                                    query->period == TRAINLOG_WEB_ANALYSIS_ALL       ? "all"
                                    : query->period == TRAINLOG_WEB_ANALYSIS_7_DAYS  ? "7d"
+                                   : query->period == TRAINLOG_WEB_ANALYSIS_14_DAYS ? "14d"
+                                   : query->period == TRAINLOG_WEB_ANALYSIS_21_DAYS ? "21d"
                                    : query->period == TRAINLOG_WEB_ANALYSIS_30_DAYS ? "30d"
                                                                                     : "90d") ||
         !add_overview(database, query, document, root) ||
