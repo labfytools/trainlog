@@ -403,17 +403,40 @@ def run(args: argparse.Namespace) -> int:
         if selected_mode == "auto":
             # WHY: cable presence is not peer availability. A successful pull
             # is the bounded proof that the configured Trainlog peer is usable.
-            try:
-                probe = subprocess.run(
-                    [str(adapter), "pull", config["expected_peer_id"], config["transport_root"]],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=min(timeout, 30),
-                    check=False,
-                ) if adapter.is_absolute() and os.access(adapter, os.X_OK) else None
-            except (OSError, subprocess.TimeoutExpired):
-                probe = None
+            # The daemon performs the same libmtp operation for Android-origin
+            # discovery, so auto probing must share the dedicated transport
+            # lock rather than racing libmtp and falsely falling back to Drive.
+            probe = None
+            if adapter.is_absolute() and os.access(adapter, os.X_OK):
+                mtp_lock_path = Path(config["transport_root"]).parent / "mtp.lock"
+                mtp_lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                mtp_lock_fd = os.open(mtp_lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+                probe_deadline = time.monotonic() + min(timeout, 30)
+                try:
+                    while time.monotonic() < probe_deadline:
+                        try:
+                            fcntl.flock(mtp_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            break
+                        except BlockingIOError:
+                            time.sleep(0.05)
+                    else:
+                        raise subprocess.TimeoutExpired([str(adapter), "pull"], min(timeout, 30))
+                    remaining = max(0.01, probe_deadline - time.monotonic())
+                    probe = subprocess.run(
+                        [str(adapter), "pull", config["expected_peer_id"], config["transport_root"]],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=remaining,
+                        check=False,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    probe = None
+                finally:
+                    try:
+                        fcntl.flock(mtp_lock_fd, fcntl.LOCK_UN)
+                    finally:
+                        os.close(mtp_lock_fd)
             selected_mode = "mtp" if probe is not None and probe.returncode == 0 else "drive"
         command = [
             sys.executable,

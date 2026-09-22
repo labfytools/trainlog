@@ -1,4 +1,4 @@
-import json, os, signal, subprocess, tempfile, time, unittest, uuid
+import fcntl, json, os, signal, subprocess, tempfile, time, unittest, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +133,68 @@ class OrchestratorTest(unittest.TestCase):
                 with self.assertRaises(ProcessLookupError):
                     os.kill(pid, 0)
             self.assertEqual(json.loads(state.read_text())["phase"], "interrupted")
+
+    def test_auto_transport_waits_for_mtp_lock_instead_of_falling_back_to_drive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sandbox = root / "program"
+            sandbox.mkdir()
+            (sandbox / "sync_orchestrator.py").write_bytes(ORCHESTRATOR.read_bytes())
+            peer, desktop = identity("peer_"), identity("peer_")
+            inbound, outbound = identity("gen_"), identity("gen_")
+            report = {
+                "format": "trainlog-sync-worker-report", "version": 1,
+                "run_id": "RUN", "producer_peer_id": peer, "consumer_peer_id": desktop,
+                "inbound_generation_id": inbound, "outbound_generation_id": outbound,
+                "manifest_sha256": "a" * 64, "result": "completed",
+                "sessions_reconciled": 0, "domains": {}, "drafts": [],
+                "ai_midpoint": {"result": "not_configured"},
+                "ai_post_sync": {"result": "not_configured"},
+            }
+            (sandbox / "sync_peer_worker.py").write_text(
+                "import json,sys\nv=" + repr(report) +
+                "\nv['run_id']=sys.argv[sys.argv.index('--run-id')+1]\nprint(json.dumps(v))\n"
+            )
+            adapter = root / "build/tui/trainlog-generation-mtp-adapter"
+            adapter.parent.mkdir(parents=True)
+            marker = root / "mtp-probe"
+            adapter.write_text(f"#!/bin/sh\necho probe >> {marker}\nexit 0\n")
+            adapter.chmod(0o755)
+            values = self.fixture(
+                root,
+                version=2,
+                mode="auto",
+                drive_enabled=True,
+                drive_remote="fake:Trainlog/Sync/v1",
+            )
+            db, state, config, run, request = values
+            mtp_lock = root / "mtp.lock"
+            lock_fd = os.open(mtp_lock, os.O_RDWR | os.O_CREAT, 0o600)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            process = subprocess.Popen(
+                [
+                    "python3", str(sandbox / "sync_orchestrator.py"),
+                    "--database", str(db), "--state", str(state),
+                    "--config", str(config), "--run-id", run, "--request-id", request,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                time.sleep(0.2)
+                self.assertIsNone(process.poll())
+                self.assertFalse(marker.exists())
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 0, stderr or stdout)
+            self.assertTrue(marker.is_file())
+            final = json.loads(state.read_text())
+            self.assertEqual("completed", final["phase"])
+            self.assertEqual("mtp", final["transport"])
+            self.assertEqual("success", final["usb_state"])
 
     def test_committed_primary_run_survives_drive_mirror_failure(self):
         with tempfile.TemporaryDirectory() as directory:
