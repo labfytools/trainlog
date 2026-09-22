@@ -126,6 +126,45 @@ class SyncdRoutingTest(unittest.TestCase):
             self.assertEqual(1, len(commands))
             self.assertEqual("sy_old", json.loads(state.read_text())["run_id"])
 
+    def test_daemon_skips_mtp_probe_while_canonical_sync_lock_is_busy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            transport = root / "transport"
+            transport.mkdir()
+            config = root / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "format": "trainlog-sync-orchestrator-config",
+                        "version": 1,
+                        "enabled": True,
+                        "mode": "mtp",
+                        "expected_peer_id": "peer_11111111-1111-4111-8111-111111111111",
+                        "transport_root": str(transport),
+                        "owned_root": str(root / "owned"),
+                        "timeout_seconds": 30,
+                    }
+                )
+            )
+            args = argparse.Namespace(
+                mtp_adapter=root / "adapter",
+                state=root / "trainlog.db.sync-run.json",
+                trigger="android",
+                orchestrator=root / "sync_orchestrator.py",
+                database=root / "trainlog.db",
+            )
+
+            def flock(_fd, operation):
+                if operation == syncd.fcntl.LOCK_EX | syncd.fcntl.LOCK_NB:
+                    raise BlockingIOError
+                self.assertEqual(syncd.fcntl.LOCK_UN, operation)
+
+            with mock.patch.object(syncd.fcntl, "flock", side_effect=flock), mock.patch.object(
+                syncd.subprocess, "run"
+            ) as run:
+                self.assertEqual(3, syncd.run_full_generation(args, config))
+            run.assert_not_called()
+
     def test_android_production_publishes_full_generation_before_optional_legacy(self):
         source = (ROOT / "android/app/src/main/java/com/labfytools/trainlog/ui/SyncScreen.kt").read_text()
         production = source.split("internal suspend fun publishBundleAndRequest", 1)[1].split(

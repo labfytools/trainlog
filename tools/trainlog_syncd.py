@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -168,12 +169,32 @@ def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
     root = Path(config["transport_root"])
     expected_peer = config["expected_peer_id"]
     adapter = args.mtp_adapter
-    pull = subprocess.run(
-        [str(adapter), "pull", expected_peer, str(root)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # WHY: the daemon must probe MTP to discover Android-origin requests, but
+    # Web/TUI orchestration owns the same physical transport while it holds the
+    # canonical sync lock. Probing outside that lock lets libmtp race itself
+    # and fail with "device is busy". CONTRACT: idle discovery takes the same
+    # lock non-blockingly and simply skips this poll when another conversation
+    # is active. INVARIANT: the lock is released before launching the
+    # orchestrator, which remains the sole owner of business-sync locking.
+    lock_path = args.database.parent / "sync.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 3
+        pull = subprocess.run(
+            [str(adapter), "pull", expected_peer, str(root)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
     if pull.returncode != 0:
         return 3
     _, seen = load_request_state(args.state)
