@@ -364,7 +364,7 @@ def run(args: argparse.Namespace) -> int:
     ):
         raise RuntimeError("invalid expected peer identity")
     timeout = config["timeout_seconds"]
-    if not isinstance(timeout, int) or timeout < 1 or timeout > 900:
+    if type(timeout) is not int or timeout < 1 or timeout > 900:
         raise RuntimeError("invalid worker timeout")
     # CONTRACT: this is the same XDG data-directory lock used by the legacy
     # C engine, so Web, TUI and daemon admissions cannot overlap.
