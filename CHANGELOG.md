@@ -1,7 +1,16 @@
 # Changelog
 
-## Unreleased — 0.1.4
+## 0.1.4 — 2026-09-22
 
+- Added the frozen Bluetooth Classic RFCOMM synchronization transport without
+  changing full-generation business semantics. The paired deployment selects
+  Bluetooth before MTP, authenticates the configured bonded Android peer with
+  the persisted Trainlog peer identity, rate-limits reconnect noise, and keeps
+  MTP as the wired recovery transport. This transport is for Trainlog data
+  synchronization only; heart-rate sensor ingestion remains future 0.1.5 work.
+- Refreshed the Web next-session projection after synchronization and added
+  factual body-measurement trend charts through the existing bounded analysis
+  read model without introducing health interpretation or estimated metrics.
 - Fixed Program progress for sessions started from a delivered manual
   preparation. The preparation companion now carries its stable Program and
   Program-session provenance through Android start, finalization, restart and

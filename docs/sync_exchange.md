@@ -2,8 +2,8 @@
 
 ## Sleep Diary companion
 
-`trainlog-sleep-diary` version 1 is finalized on the unreleased 0.1.4 review
-branch with both the medication catalog and the entry-owned intake snapshots.
+`trainlog-sleep-diary` version 1 is finalized in stable v0.1.4 with both the
+medication catalog and the entry-owned intake snapshots.
 The artifact preserves catalog and diary causal parents, rejects concurrent
 siblings and resurrection, and treats an exact revision replay as idempotent.
 This completion happened before publication or freezing of the companion;
@@ -19,9 +19,9 @@ revalidated and acknowledged by a later generation. Imported tips are already
 validated and acknowledged because their containing generation was durably
 consumed. Draft and synchronized state are not inferred from wall-clock time.
 
-`trainlog-sleep-diary`, version 1, is emitted by full generations on the 0.1.4
-Sleep Diary branch. It is optional when consuming an older generation so a
-pre-domain artifact remains replayable. It carries bounded complete entry snapshots with
+`trainlog-sleep-diary`, version 1, is emitted by full generations in stable
+v0.1.4. It is optional when consuming an older generation so a pre-domain
+artifact remains replayable. It carries bounded complete entry snapshots with
 stable identities, the current immutable revision and causal parent,
 offset-bearing timestamps, appreciations, notes and logical deletion. Exact
 revision replay is unchanged; sibling revisions and resurrection after deletion

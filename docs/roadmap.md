@@ -5,9 +5,10 @@ physical libmtp, verified backups, signing continuity, migrations, correlated
 ACKs, restart, and idempotent replay passed. Generation mode remains an
 explicit per-installation opt-in. The additive private Drive transport and
 Android background software are implemented and validated with fake transport
-and the private production namespace. USB remains preferred, Drive is the
-configured mirror/fallback, and Android background operation retains its
-documented post-reboot platform limits.
+and the private production namespace. Stable v0.1.4 adds authenticated
+Bluetooth Classic RFCOMM as the primary paired local transport and retains direct MTP as wired recovery; Drive
+remains a separately configured supported path. Android background operation
+retains its documented post-reboot platform limits.
 
 This document owns future work. The implemented baseline is summarized in
 [current_state.md](current_state.md); completed narratives and evidence belong
@@ -23,19 +24,20 @@ Android executes in the field, captures actual work/feedback, and returns data.
 ```
 
 Future work must preserve the frozen Trainlog JSON V1 contract, stable
-identities, actual-versus-planned separation, direct MTP transport, and the
-distinction between measured values and estimates.
+identities, actual-versus-planned separation, the frozen synchronization
+transport boundaries, and the distinction between measured values and
+estimates.
 
 ## Current baseline
 
-Stable v0.1.2 is the release baseline for the v0.1.3 development cycle.
+Stable v0.1.4 is the release baseline for subsequent development.
 Desktop schema v29, Android schema v26, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
 Generator V1 is hidden pending V2. AI session-draft exchange retains its
 explicit manual validation gate. APP_SHELL_V1 remains useful historical design
 evidence, but its September 2026 observations must be revalidated against the
-v0.1.3 baseline rather than treated as a current implementation plan.
+v0.1.4 baseline rather than treated as a current implementation plan.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
@@ -43,9 +45,9 @@ tile rendering exist. The Dashboard's bounded progression and BODY ZONES
 visualizations and Sessions V1 are implemented. The top-level `/programmes`
 route is an operational daily active-Program calendar, while
 Sessions → Programmes remains the technical administration/import, list,
-detail, archive, and delete surface. Web Exercises V1 is implemented. The
-0.1.4 `TRAINLOG_WEB_ANALYSIS_V1` branch now owns the factual Dashboard/Analyse
-read-model foundation and stops before merge for visual inspection.
+detail, archive, and delete surface. Web Exercises V1, the factual
+Dashboard/Analyse read-model foundation, and Sleep Diary V1 are included in
+stable v0.1.4.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -54,16 +56,17 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
 
-The v0.1.4 cursor proceeds from stable v0.1.3 and its validated Web, Program
-execution, USB/Drive generation, ACK, and causal-deletion contracts without
-reopening those completed gates.
+Stable v0.1.4 closes the Analyse/Sleep Diary cycle and freezes the Bluetooth
+Classic synchronization transport independently from future sensor work.
 
-Sleep Diary V1 is implemented on `trainlog-0.1.4-sleep-diary-v1` and remains
-under grouped review before integration. Heart-rate sensor ingestion remains
-future scope; absolute diary timestamps are its prepared extension boundary.
+The next development cycle is 0.1.5 cardio. Android will own heart-rate sensor
+discovery/acquisition and timestamped local capture; synchronized desktop/Web
+surfaces will consume recorded measurements and will not connect directly to
+the sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
+Bluetooth synchronization transport contract.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_WEB_ANALYSIS_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_CARDIO_V1_NEXT_CONTRACT
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this

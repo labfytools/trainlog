@@ -1,22 +1,22 @@
 # Trainlog
 
-Synchronization uses one generation/ACK engine over USB/MTP first and an
-optional private Google Drive mirror/fallback. Drive contains only versioned
-Trainlog artifacts under its separate Sync namespace; desktop and Android
-SQLite databases always remain local. Android can process PC USB requests from
-an explicitly enabled, visibly notified background service, while Drive checks
-follow Android's bounded background scheduling.
+Synchronization uses one generation/ACK business engine across versioned
+local transports. The paired 0.1.4 deployment prefers Bluetooth Classic RFCOMM
+and falls back to direct USB/MTP; the separately configured private Drive path
+remains available to the legacy mirror/fallback workflow. No transport copies
+SQLite databases between devices.
 
 Trainlog is a local-first workout and body-data system. Trainlog Core owns
 business truth and canonical desktop persistence. Its native Android app is the
 field companion, its C17/Notcurses desktop TUI is the administration and
 technical surface, and its local browser Web sibling provides the implemented
-Dashboard, Sessions, Programmes, and Exercises surfaces while reserving Analyse
-for separately contracted work.
+Dashboard, Sessions, Programmes, Exercises, and factual Analyse/Sleep Diary
+surfaces.
 
 Android and desktop each own a local SQLite database. The desktop database is
 the canonical long-term history. Trainlog synchronizes versioned JSON artifacts
-over direct MTP; it never copies SQLite database files between devices.
+over its authenticated local transports and optional configured Drive workflow;
+it never copies SQLite database files between devices.
 
 ## Product split
 
@@ -24,7 +24,7 @@ over direct MTP; it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.4 development) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, 18:00-to-18:00 agenda and local vector PDF export. |
+| Local Web (0.1.4) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, 18:00-to-18:00 agenda and local vector PDF export. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -34,8 +34,8 @@ make the remaining placeholder routes functional.
 The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
-Web Exercises administration is implemented. The 0.1.4 development cursor is
-the Web Dashboard and Analyse V1 read-model workspace.
+Web Exercises administration is implemented. Version 0.1.4 also includes the
+factual Dashboard/Analyse read model and the synchronized Sleep Diary workspace.
 
 ## Releases
 
@@ -52,8 +52,8 @@ Each published stable release provides:
 - SHA-256 checksums.
 
 Both mirrors publish the same Trainlog product version and release assets. The
-latest stable version is **0.1.3** on Android and desktop; this is one shared
-Trainlog version, not separate interface versions. Version 0.1.2 is the
+latest stable version is **0.1.4** on Android and desktop; this is one shared
+Trainlog version, not separate interface versions. Version 0.1.3 is the
 previous stable release.
 
 Trainlog presents French by default, with English selectable
@@ -109,14 +109,14 @@ independent.
 
 ### Daily synchronization on an opted-in installation
 
-After explicitly enabling Android background synchronization once, connect and
-unlock the paired phone and select **Synchronize** in the local Web Dashboard.
-USB/MTP is preferred when the Trainlog peer is usable; the separately selected
-private Drive folder is updated as a mirror and is the fallback transport. Wait
-until Web reports the correlated generation and acknowledgements. A failure
-remains durable and should be diagnosed before retrying; do not delete
-generation, ACK, database, or backup files. Full-generation mode and Drive
-remain trusted per-installation configuration.
+After explicitly enabling the paired local synchronization path, keep Bluetooth
+enabled on Android and the desktop and select **Synchronize** in Trainlog when
+an explicit run is wanted. The current paired deployment prefers authenticated
+Bluetooth Classic RFCOMM and uses direct USB/MTP as the wired recovery path.
+The existing private Drive workflow remains separately configured. Wait until
+the correlated generation and acknowledgements complete; a failure remains
+durable and should be diagnosed before retrying rather than deleting protocol,
+database, or backup files.
 
 ### Build from source
 
@@ -157,7 +157,7 @@ updates; generating a replacement key is not a normal release procedure.
 
 ### Linux runtime dependencies
 
-The published v0.1.3 x86-64 desktop runtime is dynamically linked. Its tagged
+The published v0.1.4 x86-64 desktop runtime is dynamically linked. Its tagged
 source directly requires compatible versions of:
 
 - glibc and the GCC support runtime;
@@ -169,7 +169,7 @@ source directly requires compatible versions of:
 - Notcurses Core;
 - the standard math library.
 
-Version 0.1.3 additionally links GNU libmicrohttpd and yyjson for the local Web
+Version 0.1.4 additionally links GNU libmicrohttpd and yyjson for the local Web
 adapter and Dashboard layout configuration. Those are not retroactive
 requirements of the pre-Web v0.1.1 tagged source.
 
@@ -184,6 +184,9 @@ assuming one universal package command.
 - Android is optional when using the desktop TUI alone. USB/MTP synchronization
   requires the Android companion, libudev, libmtp, and an unlocked connected
   device.
+- Bluetooth synchronization requires BlueZ on Linux plus Python 3.11 or newer
+  with D-Bus and GObject bindings. It is a Trainlog synchronization transport,
+  not a heart-rate sensor implementation.
 - `trainlog-syncd` installation expects a systemd user session. Manual TUI
   synchronization does not require the user service.
 - `rclone` is required for desktop Google Drive synchronization and automatic

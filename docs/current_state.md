@@ -1,20 +1,21 @@
 # Current implementation state
 
-Full-generation Web synchronization now selects an actually usable MTP peer
-before USB, falls back to a separately configured private Drive generation
-namespace, and mirrors successful USB conversations to Drive on a best-effort
-basis without rolling back USB. Both transports move the same generation/ACK
-bytes; neither transports SQLite. Android has an explicitly enabled foreground
-USB listener with mandatory notification and a private-folder Drive grant with
-bounded WorkManager checks. Both use the same concurrency-guarded generation
+Full-generation synchronization uses one generation/ACK business engine across
+versioned transports. On the paired 0.1.4 deployment, automatic local selection
+is Bluetooth Classic RFCOMM first and direct USB/MTP second. The desktop BlueZ
+service accepts only the configured bonded Android address, Android proves the
+persisted Trainlog peer identity in the first bounded frame, and reconnect noise
+is rate-limited so proximity does not create repeated generations. MTP remains
+the wired recovery path. The separately configured private Drive transport
+remains available to its legacy mirror/fallback workflow. No transport copies
+SQLite.
+
+Android synchronization paths share the same concurrency-guarded generation
 coordinator as SyncScreen. That coordinator has one process-wide ownership
 arbiter: explicit foreground intent has priority over automatic background
-resumption, while the foreground service may remain alive without owning the
+resumption, while a foreground service may remain alive without owning the
 conversation. An automatic run yields cooperatively at safe boundaries; its
 durable generation is retained for a correlated handoff rather than deleted.
-Background actionability distinguishes a new request or new correlated remote
-evidence from a merely stale resumable generation, preventing five-second
-terminal retry loops.
 
 Direct-MTP publication now has an explicit Android visibility boundary.
 Durable immutable generation files are submitted to MediaProvider and all scan
@@ -55,22 +56,17 @@ keeps the independent target intact on save, and leaves sibling occurrences
 unchanged on save or cancellation. A set-based target-only occurrence can add
 or change equipment without fabricating a performed set.
 
-The opt-in full-generation path is operational on the private daily
-installation. Android explicit synchronization uses a dedicated coordination
-filename carrying the unchanged request-v1 payload. Legacy V3 signalling is
-additive and occurs only after a fresh strict V3 snapshot succeeds; daemon
-request identities are deduplicated across both bounded channels. The loopback
-Web control and foreground Android coordinator use
-the production direct-libmtp adapter, correlated manifest/ACK V1 objects, and
-persistent peer identities. Controlled USB and private Drive validation proved
-the complete Web-initiated request, generation, import, publication, and ACK
-conversation without opening SyncScreen for each run. USB remains preferred;
-the private `Trainlog/Sync/v1` namespace is configured as a verified mirror and
-fallback, independently from `Trainlog/AI`. Cross-transport replay is
-idempotent and neither transport carries SQLite.
+The full-generation path is operational on the paired daily installation.
+Bluetooth Classic is the primary local byte transport, MTP remains the wired
+recovery transport, and the existing private Drive namespace remains separately
+configured for its supported mirror/fallback path. All carry the same bounded
+generation/ACK artifacts and persistent peer identities; cross-transport replay
+is idempotent and no transport carries SQLite. The Bluetooth transport does not
+yet ingest heart-rate sensor data.
 
 The public Android release chain advances from v0.1.1 versionCode 2 through
-v0.1.2 versionCode 3 to v0.1.3 versionCode 4 under certificate SHA-256
+v0.1.2 versionCode 3 and v0.1.3 versionCode 4 to v0.1.4 versionCode 5 under
+certificate SHA-256
 `5ef41117da107c9805ae3215c5ec823cff06216610e6e4f7542a754161c71bd2`.
 Higher-numbered private validation builds used a separate Android Debug
 certificate and are not members of the public update-signature chain.
@@ -85,7 +81,7 @@ The rollout packager now keeps the legacy request daemon and one-shot helper in
 the same relocatable, hashed bundle as the Web generation coordinator, avoiding
 mixed-checkout user-service execution during the controlled rollout.
 
-Snapshot date: **2026-09-20**.
+Snapshot date: **2026-09-22**.
 
 `TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,
 generation/ACK, Android-backup, Web Dashboard serialization, tests, doubles and
@@ -103,9 +99,9 @@ Android is the field companion: it captures training and body data, preserves
 the active draft, receives AI proposals, triggers synchronization, and shows
 quick summaries. The C17/Notcurses TUI is the administration, inspection,
 maintenance, import/export, and technical-tooling surface. The local Web
-sibling now provides its embedded application shell and implemented Dashboard;
-its future business surfaces will own broader analysis, program/session
-preparation, and exercise workflows through Trainlog Core.
+sibling provides its embedded application shell, Dashboard, Sessions,
+Programmes, Exercises, factual Analyse views, and Sleep Diary
+workflow through Trainlog Core.
 
 Trainlog Core owns business truth. The desktop SQLite database remains the
 canonical local source of truth and long-term history; no interface owns a
@@ -120,7 +116,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v26; Sleep Diary V1 is additive in v26 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.4` development, synchronized across Android and desktop; latest stable release: `v0.1.3` |
+| Trainlog product version | `0.1.4` stable, synchronized across Android and desktop; latest stable release: `v0.1.4` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
@@ -138,7 +134,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
-| Sleep Diary V1 | Implemented on the 0.1.4 review branch: timestamped causal diary, stable Web/Android capture, full-generation companion and fully localized FR/EN local vector PDF; the Web Agenda, Chronology and factual summary adopt the latest persisted revision without reload, use one exact 18:00-to-18:00 projection and isolate all visible data to the active night despite out-of-order reads; medication choices expose dose/unit, while real-Firefox mutation/date-switch/reload coverage plus a section-local error boundary protect capture |
+| Sleep Diary V1 | `SLEEP_DIARY_V1=PASS`: timestamped causal capture, Android/Web editing, full-generation synchronization, exact 18:00-to-18:00 agenda projection, medication snapshots, and localized FR/EN vector PDF export |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
@@ -148,17 +144,18 @@ parallel implementation of its rules.
 | Web sync API V1 | `TRAINLOG_WEB_SYNC_API_V1=PASS/FROZEN` |
 | Web sync button V1 | `TRAINLOG_WEB_SYNC_BUTTON_V1=PASS/FROZEN` |
 | Sync Web end-to-end wrapper | `TRAINLOG_SYNC_WEB_END_TO_END_V1=PASS/FROZEN` (isolated) |
-| Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (direct MTP, one authorized phone) |
+| Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (authenticated Bluetooth primary transport with direct MTP recovery on one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
-| Current operational cursor | `TRAINLOG_WEB_ANALYSIS_V1` (implemented and visually refined, user review pending) |
+| Current operational cursor | `TRAINLOG_CARDIO_V1_NEXT_CONTRACT`: heart-rate sensor ingestion starts in 0.1.5 and remains distinct from the frozen Bluetooth synchronization transport |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
 | Synchronization data/lifecycle slice | `TRAINLOG_SYNC_DATA_LIFECYCLE_V1=PASS/FROZEN` |
 | Synchronization causal deletion slice | `TRAINLOG_SYNC_CAUSAL_DELETE_V1=PASS/FROZEN` |
 | Synchronization generation/ACK slice | `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` (explicit staged entry points; active transport remains V3) |
-| Generation MTP and Android backup | Software complete and validated in the authorized private physical-device rollout |
+| Bluetooth synchronization transport | `TRAINLOG_SYNC_BLUETOOTH_TRANSPORT_V1=PASS/FROZEN`; independent from future heart-rate sensor ingestion |
+| Generation MTP and Android backup | Software complete and retained as the authorized wired recovery path |
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
@@ -408,10 +405,10 @@ The full Android lint comparison against an isolated clean `main` worktree is
 unchanged at ten pre-existing errors: one `NewApi`, one
 `LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
 diagnostics. This UI tranche adds no lint error and changes no lint policy.
-The next private daily Android candidate remains on development
-`versionName=0.1.4`; only its strictly increasing `versionCode` may be supplied
-as a build-time override. No public tag or release is created by that private
-candidate process.
+The stable Android 0.1.4 source uses `versionName=0.1.4` and public
+versionCode 5. Private validation builds may still supply only a strictly
+increasing `versionCode` as a build-time override; that does not create a
+public release or change schemas and protocols.
 
 The private Program execution rollout installed desktop schema v27 and the
 signed nondebuggable Android versionCode 17/schema v25 update without
