@@ -87,6 +87,51 @@ class SleepExchangeTest(unittest.TestCase):
             ).fetchone()[0],
         )
 
+    def test_ancestry_allows_multi_hop_remote_advance_but_not_sibling(self):
+        first = "slr_20000000-0000-4000-8000-000000000002"
+        middle = "slr_30000000-0000-4000-8000-000000000003"
+        latest = "slr_40000000-0000-4000-8000-000000000004"
+        first_document = self.document(entry(first))
+        latest_document = self.document(entry(latest, middle))
+        latest_document["entries"][0]["ancestry"] = [latest, middle, first]
+
+        medication_first = first_document["medications"][0]["revision_id"]
+        medication_middle = "medr_a0000000-0000-4000-8000-00000000000a"
+        medication_latest = "medr_b0000000-0000-4000-8000-00000000000b"
+        medication = latest_document["medications"][0]
+        medication["revision_id"] = medication_latest
+        medication["parent_revision_id"] = medication_middle
+        medication["ancestry"] = [medication_latest, medication_middle, medication_first]
+        medication["updated_at"] = "2026-10-25T18:05:00+01:00"
+        medication["name"] = "Synthetic medication revised"
+
+        self.assertEqual((1, 0), exchange.apply(self.db, first_document))
+        self.assertEqual((1, 0), exchange.apply(self.db, latest_document))
+        self.assertEqual(
+            latest,
+            self.db.execute(
+                "SELECT current_revision_id FROM sleep_diary_entries WHERE entry_id=?",
+                (first_document["entries"][0]["entry_id"],),
+            ).fetchone()[0],
+        )
+        self.assertEqual(
+            medication_latest,
+            self.db.execute(
+                "SELECT current_revision_id FROM sleep_medications WHERE medication_id=?",
+                (medication["medication_id"],),
+            ).fetchone()[0],
+        )
+
+        sibling = self.document(
+            entry("slr_50000000-0000-4000-8000-000000000005", first)
+        )
+        sibling["entries"][0]["ancestry"] = [
+            sibling["entries"][0]["revision_id"],
+            first,
+        ]
+        with self.assertRaisesRegex(ValueError, "concurrent"):
+            exchange.apply(self.db, sibling)
+
     def test_rejects_concurrent_sibling_and_negative_absolute_interval(self):
         first = "slr_20000000-0000-4000-8000-000000000002"
         self.assertEqual((1, 0), exchange.apply(self.db, self.document(entry(first))))

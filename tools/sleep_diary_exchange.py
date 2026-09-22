@@ -18,6 +18,7 @@ MAX_ENTRIES = 3660
 MAX_EVENTS = 64
 MAX_INTAKES = 32
 MAX_MEDICATIONS = 1000
+MAX_ANCESTRY = 256
 UUID4 = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
 ENTRY_ID = re.compile(rf"^sl_{UUID4}$")
 REVISION_ID = re.compile(rf"^slr_{UUID4}$")
@@ -69,7 +70,7 @@ def validate(root: object) -> dict:
         keys = {"entry_id", "night_start_date", "night_end_date", "created_at", "updated_at",
                 "revision_id", "parent_revision_id", "deleted", "sleep_quality", "wake_quality",
                 "day_form", "treatment_and_notes", "events", "intakes"}
-        if not isinstance(item, dict) or set(item) != keys:
+        if not isinstance(item, dict) or set(item) not in (keys, keys | {"ancestry"}):
             fail("invalid sleep diary entry")
         if not ENTRY_ID.fullmatch(item["entry_id"]) or item["entry_id"] in seen_entries:
             fail("invalid or duplicate sleep diary entry identity")
@@ -79,6 +80,18 @@ def validate(root: object) -> dict:
         parent = item["parent_revision_id"]
         if parent is not None and (not isinstance(parent, str) or not REVISION_ID.fullmatch(parent) or parent == item["revision_id"]):
             fail("invalid sleep diary parent revision")
+        ancestry = item.get("ancestry")
+        if ancestry is not None:
+            if (not isinstance(ancestry, list) or not 1 <= len(ancestry) <= MAX_ANCESTRY or
+                    ancestry[0] != item["revision_id"] or len(set(ancestry)) != len(ancestry) or
+                    any(not isinstance(value, str) or not REVISION_ID.fullmatch(value)
+                        for value in ancestry)):
+                fail("invalid sleep diary ancestry")
+            if parent is None:
+                if len(ancestry) != 1:
+                    fail("invalid sleep diary ancestry root")
+            elif len(ancestry) < 2 or ancestry[1] != parent:
+                fail("invalid sleep diary ancestry parent")
         try:
             start_date = date.fromisoformat(item["night_start_date"])
             end_date = date.fromisoformat(item["night_end_date"])
@@ -145,7 +158,7 @@ def validate(root: object) -> dict:
     for medication in medications:
         keys = {"medication_id", "revision_id", "parent_revision_id", "created_at", "updated_at",
                 "name", "default_dose_value", "default_dose_unit", "form", "note", "active", "deleted"}
-        if not isinstance(medication, dict) or set(medication) != keys:
+        if not isinstance(medication, dict) or set(medication) not in (keys, keys | {"ancestry"}):
             fail("invalid medication")
         if (not MEDICATION_ID.fullmatch(medication["medication_id"]) or medication["medication_id"] in seen_medications or
                 not MEDICATION_REVISION_ID.fullmatch(medication["revision_id"])):
@@ -153,6 +166,18 @@ def validate(root: object) -> dict:
         seen_medications.add(medication["medication_id"])
         parent = medication["parent_revision_id"]
         if parent is not None and not MEDICATION_REVISION_ID.fullmatch(parent): fail("invalid medication parent")
+        ancestry = medication.get("ancestry")
+        if ancestry is not None:
+            if (not isinstance(ancestry, list) or not 1 <= len(ancestry) <= MAX_ANCESTRY or
+                    ancestry[0] != medication["revision_id"] or len(set(ancestry)) != len(ancestry) or
+                    any(not isinstance(value, str) or not MEDICATION_REVISION_ID.fullmatch(value)
+                        for value in ancestry)):
+                fail("invalid medication ancestry")
+            if parent is None:
+                if len(ancestry) != 1:
+                    fail("invalid medication ancestry root")
+            elif len(ancestry) < 2 or ancestry[1] != parent:
+                fail("invalid medication ancestry parent")
         timestamp(medication["created_at"]); timestamp(medication["updated_at"])
         if not isinstance(medication["name"], str) or not medication["name"].strip(): fail("invalid medication name")
         has_dose = medication["default_dose_value"] is not None
@@ -166,6 +191,27 @@ def load(path: Path) -> dict:
     if path.stat().st_size > MAX_BYTES:
         fail("sleep diary artifact exceeds 16 MiB")
     return validate(json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object))
+
+
+def revision_ancestry(db: sqlite3.Connection, parent_sql: str, owner_id: str,
+                      current_revision: str, pattern: re.Pattern[str]) -> list[str]:
+    result = []
+    revision = current_revision
+    seen = set()
+    first = True
+    while revision is not None:
+        if revision in seen or len(result) >= MAX_ANCESTRY or not pattern.fullmatch(revision):
+            fail("invalid sleep revision ancestry")
+        seen.add(revision)
+        result.append(revision)
+        row = db.execute(parent_sql, (owner_id, revision)).fetchone()
+        if row is None:
+            if first:
+                fail("sleep current revision is missing")
+            break
+        revision = row[0]
+        first = False
+    return result
 
 
 def build(db: sqlite3.Connection) -> dict:
@@ -187,6 +233,14 @@ def build(db: sqlite3.Connection) -> dict:
         ).fetchone()
         if revision is None:
             fail("sleep diary current revision is missing")
+        ancestry = revision_ancestry(
+            db,
+            "SELECT parent_revision_id FROM sleep_diary_revisions "
+            "WHERE entry_id=? AND revision_id=?",
+            entry_id,
+            revision_id,
+            REVISION_ID,
+        )
         events = [
             {"event_id": row[0], "type": row[1], "start_at": row[2], "end_at": row[3]}
             for row in db.execute(
@@ -200,15 +254,23 @@ def build(db: sqlite3.Connection) -> dict:
                    for row in db.execute("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id", (revision_id,))]
         entries.append({"entry_id": entry_id, "night_start_date": night_start,
             "night_end_date": night_end, "created_at": created_at, "updated_at": updated_at,
-            "revision_id": revision_id, "parent_revision_id": revision[0], "deleted": bool(deleted),
-            "sleep_quality": revision[1], "wake_quality": revision[2], "day_form": revision[3],
+            "revision_id": revision_id, "parent_revision_id": revision[0], "ancestry": ancestry,
+            "deleted": bool(deleted), "sleep_quality": revision[1], "wake_quality": revision[2], "day_form": revision[3],
             "treatment_and_notes": revision[4] or "", "events": events, "intakes": intakes})
     medications = []
     for row in db.execute("SELECT m.medication_id,m.created_at,m.updated_at,m.current_revision_id,m.deleted,r.parent_revision_id,r.name,r.default_dose_value,r.default_dose_unit,r.form,r.note,r.active FROM sleep_medications m JOIN sleep_medication_revisions r ON r.revision_id=m.current_revision_id ORDER BY m.medication_id"):
+        ancestry = revision_ancestry(
+            db,
+            "SELECT parent_revision_id FROM sleep_medication_revisions "
+            "WHERE medication_id=? AND revision_id=?",
+            row[0],
+            row[3],
+            MEDICATION_REVISION_ID,
+        )
         medications.append({"medication_id": row[0], "created_at": row[1], "updated_at": row[2],
             "revision_id": row[3], "deleted": bool(row[4]), "parent_revision_id": row[5],
-            "name": row[6], "default_dose_value": row[7], "default_dose_unit": row[8],
-            "form": row[9], "note": row[10], "active": bool(row[11])})
+            "ancestry": ancestry, "name": row[6], "default_dose_value": row[7],
+            "default_dose_unit": row[8], "form": row[9], "note": row[10], "active": bool(row[11])})
     return validate({"format": FORMAT, "version": VERSION,
                      "generated_at": datetime.now().astimezone().isoformat(), "entries": entries,
                      "medications": medications})
@@ -241,7 +303,11 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
         if local is not None and local[0] == medication["revision_id"]:
             persisted = next(value for value in build(db)["medications"]
                              if value["medication_id"] == medication["medication_id"])
-            if persisted != medication:
+            persisted_payload = dict(persisted)
+            incoming_payload = dict(medication)
+            persisted_payload.pop("ancestry", None)
+            incoming_payload.pop("ancestry", None)
+            if persisted_payload != incoming_payload:
                 fail("medication revision identity reused with different content")
             continue
         if local is not None and revision_is_ancestor(
@@ -253,7 +319,11 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             local[0],
         ):
             continue
-        if local is not None and medication["parent_revision_id"] != local[0]: fail("concurrent medication revision")
+        remote_descends_from_local = (
+            local is not None and local[0] in medication.get("ancestry", [])[1:]
+        )
+        if local is not None and not remote_descends_from_local and medication["parent_revision_id"] != local[0]:
+            fail("concurrent medication revision")
         if local is None and medication["parent_revision_id"] is not None: fail("unknown medication parent")
         if local is not None and local[1] and not medication["deleted"]: fail("medication resurrection")
         if local is None:
@@ -270,7 +340,11 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             persisted = next(
                 value for value in build(db)["entries"] if value["entry_id"] == item["entry_id"]
             )
-            if persisted != item:
+            persisted_payload = dict(persisted)
+            incoming_payload = dict(item)
+            persisted_payload.pop("ancestry", None)
+            incoming_payload.pop("ancestry", None)
+            if persisted_payload != incoming_payload:
                 fail("sleep diary revision identity reused with different content")
             db.execute(
                 "INSERT INTO sleep_diary_publication_state(entry_id,validated_revision_id,validated_at,"
@@ -295,7 +369,8 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             # A known ancestor is stale evidence, not a concurrent branch.
             unchanged += 1
             continue
-        if local is not None and item["parent_revision_id"] != local[0]:
+        remote_descends_from_local = local is not None and local[0] in item.get("ancestry", [])[1:]
+        if local is not None and not remote_descends_from_local and item["parent_revision_id"] != local[0]:
             fail("concurrent sleep diary revision")
         if local is None and item["parent_revision_id"] is not None:
             fail("sleep diary revision has an unknown parent")

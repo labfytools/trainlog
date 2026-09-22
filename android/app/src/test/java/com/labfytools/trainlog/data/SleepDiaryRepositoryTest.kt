@@ -74,7 +74,7 @@ class SleepDiaryRepositoryTest {
     }
 
     @Test
-    fun staleCurrentSnapshotDoesNotRegressNewerLocalTip() {
+    fun ancestryAllowsMultiHopRemoteAdvance() {
         val sourceName = "sleep-stale-source-${UUID.randomUUID()}.db"
         val destinationName = "sleep-stale-destination-${UUID.randomUUID()}.db"
         val source = TrainlogRepository(context, sourceName)
@@ -148,18 +148,45 @@ class SleepDiaryRepositoryTest {
                     "2026-09-21T08:15:00+02:00",
                 ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
             )
-            val secondSnapshot = source.buildSleepDiaryV1Json()
+            val afterSecond = source.listSleepDiary().single()
+            val thirdSaved = source.saveSleepDiary(
+                SleepDiaryDraft(
+                    entryId = afterSecond.entryId,
+                    expectedRevision = secondSaved.revisionId,
+                    nightStartDate = afterSecond.nightStartDate,
+                    nightEndDate = afterSecond.nightEndDate,
+                    createdAt = afterSecond.createdAt,
+                    updatedAt = "2026-09-21T08:20:00+02:00",
+                    sleepQuality = afterSecond.sleepQuality,
+                    wakeQuality = afterSecond.wakeQuality,
+                    dayForm = SleepQuality.TB,
+                    treatmentAndNotes = afterSecond.treatmentAndNotes,
+                    events = afterSecond.events,
+                    intakes = afterSecond.intakes,
+                ),
+            ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    thirdSaved.entryId,
+                    thirdSaved.revisionId,
+                    "2026-09-21T08:25:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
+            )
+            val latestSnapshot = source.buildSleepDiaryV1Json()
+            val ancestry =
+                org.json.JSONObject(latestSnapshot)
+                    .getJSONArray("entries")
+                    .getJSONObject(0)
+                    .getJSONArray("ancestry")
+            assertTrue((0 until ancestry.length()).any { ancestry.getString(it) == firstSaved.revisionId })
             assertEquals(
                 TrainlogRepository.SleepDiaryImportResult.Applied(1, 0),
-                destination.applySleepDiaryV1Json(secondSnapshot),
+                destination.applySleepDiaryV1Json(latestSnapshot),
             )
 
-            assertEquals(
-                TrainlogRepository.SleepDiaryImportResult.Applied(0, 1),
-                destination.applySleepDiaryV1Json(firstSnapshot),
-            )
-            assertEquals(secondSaved.revisionId, destination.listSleepDiary().single().revisionId)
+            assertEquals(thirdSaved.revisionId, destination.listSleepDiary().single().revisionId)
             assertEquals(SleepQuality.MOY, destination.listSleepDiary().single().wakeQuality)
+            assertEquals(SleepQuality.TB, destination.listSleepDiary().single().dayForm)
             assertEquals("Medication revised", destination.listSleepMedications().single().name)
         } finally {
             source.close()

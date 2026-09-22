@@ -513,6 +513,63 @@ class TrainlogRepository(
         return false
     }
 
+    private fun sleepRevisionAncestry(
+        db: SQLiteDatabase,
+        parentSql: String,
+        ownerId: String,
+        currentRevision: String,
+    ): JSONArray {
+        val result = JSONArray()
+        val seen = mutableSetOf<String>()
+        var revision: String? = currentRevision
+        var first = true
+        while (revision != null) {
+            val current = revision
+            check(seen.add(current) && result.length() < MAX_SLEEP_ANCESTRY) {
+                "sleep revision ancestry invalid"
+            }
+            result.put(current)
+            revision = db.rawQuery(parentSql, arrayOf(ownerId, current)).use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    check(!first) { "sleep current revision is missing" }
+                    null
+                } else {
+                    if (cursor.isNull(0)) null else cursor.getString(0)
+                }
+            }
+            first = false
+        }
+        return result
+    }
+
+    private fun sleepIncomingAncestry(
+        item: JSONObject,
+        revisionId: String,
+        parentRevisionId: String?,
+        prefix: String,
+    ): List<String>? {
+        if (!item.has("ancestry")) return null
+        val values = item.optJSONArray("ancestry")
+            ?: throw IllegalArgumentException("invalid sleep ancestry")
+        if (values.length() !in 1..MAX_SLEEP_ANCESTRY)
+            throw IllegalArgumentException("invalid sleep ancestry")
+        val result = mutableListOf<String>()
+        for (index in 0 until values.length()) {
+            val value = values.optString(index, "")
+            if (!sleepIdentity(value, prefix) || value in result)
+                throw IllegalArgumentException("invalid sleep ancestry")
+            result += value
+        }
+        if (result.first() != revisionId)
+            throw IllegalArgumentException("invalid sleep ancestry tip")
+        if (parentRevisionId == null) {
+            if (result.size != 1) throw IllegalArgumentException("invalid sleep ancestry root")
+        } else if (result.size < 2 || result[1] != parentRevisionId) {
+            throw IllegalArgumentException("invalid sleep ancestry parent")
+        }
+        return result
+    }
+
     private fun sleepDraftValid(draft: SleepDiaryDraft): Boolean = try {
         val startDate = LocalDate.parse(draft.nightStartDate)
         val endDate = LocalDate.parse(draft.nightEndDate)
@@ -785,11 +842,19 @@ class TrainlogRepository(
                     .put("dose_value", if (values.isNull(4)) JSONObject.NULL else values.getDouble(4))
                     .put("dose_unit", if (values.isNull(5)) JSONObject.NULL else values.getString(5))
                     .put("note", values.getString(6)).put("created_at", values.getString(7))) }
+                val ancestry = sleepRevisionAncestry(
+                    db,
+                    "SELECT parent_revision_id FROM sleep_diary_revisions " +
+                        "WHERE entry_id=? AND revision_id=?",
+                    cursor.getString(0),
+                    revisionId,
+                )
                 entries.put(JSONObject().put("entry_id", cursor.getString(0))
                     .put("night_start_date", cursor.getString(1)).put("night_end_date", cursor.getString(2))
                     .put("created_at", cursor.getString(3)).put("updated_at", cursor.getString(4))
                     .put("revision_id", revisionId)
                     .put("parent_revision_id", revision[0] ?: JSONObject.NULL)
+                    .put("ancestry", ancestry)
                     .put("deleted", cursor.getInt(6) != 0)
                     .put("sleep_quality", revision[1] ?: JSONObject.NULL)
                     .put("wake_quality", revision[2] ?: JSONObject.NULL)
@@ -801,17 +866,30 @@ class TrainlogRepository(
         db.rawQuery("SELECT m.medication_id,m.created_at,m.updated_at,m.current_revision_id,m.deleted," +
             "r.parent_revision_id,r.name,r.default_dose_value,r.default_dose_unit,r.form,r.note,r.active " +
             "FROM sleep_medications m JOIN sleep_medication_revisions r ON r.revision_id=m.current_revision_id " +
-            "ORDER BY m.medication_id", null).use { cursor -> while (cursor.moveToNext()) medications.put(
-                JSONObject().put("medication_id", cursor.getString(0)).put("created_at", cursor.getString(1))
-                    .put("updated_at", cursor.getString(2)).put("revision_id", cursor.getString(3))
-                    .put("deleted", cursor.getInt(4) != 0)
-                    .put("parent_revision_id", if (cursor.isNull(5)) JSONObject.NULL else cursor.getString(5))
-                    .put("name", cursor.getString(6))
-                    .put("default_dose_value", if (cursor.isNull(7)) JSONObject.NULL else cursor.getDouble(7))
-                    .put("default_dose_unit", if (cursor.isNull(8)) JSONObject.NULL else cursor.getString(8))
-                    .put("form", cursor.getString(9)).put("note", cursor.getString(10))
-                    .put("active", cursor.getInt(11) != 0),
-            ) }
+            "ORDER BY m.medication_id", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val ancestry = sleepRevisionAncestry(
+                    db,
+                    "SELECT parent_revision_id FROM sleep_medication_revisions " +
+                        "WHERE medication_id=? AND revision_id=?",
+                    cursor.getString(0),
+                    cursor.getString(3),
+                )
+                medications.put(
+                    JSONObject().put("medication_id", cursor.getString(0))
+                        .put("created_at", cursor.getString(1))
+                        .put("updated_at", cursor.getString(2)).put("revision_id", cursor.getString(3))
+                        .put("deleted", cursor.getInt(4) != 0)
+                        .put("parent_revision_id", if (cursor.isNull(5)) JSONObject.NULL else cursor.getString(5))
+                        .put("ancestry", ancestry)
+                        .put("name", cursor.getString(6))
+                        .put("default_dose_value", if (cursor.isNull(7)) JSONObject.NULL else cursor.getDouble(7))
+                        .put("default_dose_unit", if (cursor.isNull(8)) JSONObject.NULL else cursor.getString(8))
+                        .put("form", cursor.getString(9)).put("note", cursor.getString(10))
+                        .put("active", cursor.getInt(11) != 0),
+                )
+            }
+        }
         return JSONObject().put("format", "trainlog-sleep-diary").put("version", 1)
             .put("generated_at", OffsetDateTime.now().toString()).put("entries", entries)
             .put("medications", medications).toString()
@@ -840,6 +918,7 @@ class TrainlogRepository(
                 if (!sleepIdentity(id, "med") || !sleepIdentity(revision, "medr") ||
                     parent != null && !sleepIdentity(parent, "medr"))
                     return SleepDiaryImportResult.Rejected("invalid medication identity")
+                val ancestry = sleepIncomingAncestry(medication, revision, parent, "medr")
                 val local = db.rawQuery("SELECT current_revision_id,deleted FROM sleep_medications WHERE medication_id=?", arrayOf(id)).use { if (it.moveToFirst()) it.getString(0) to it.getInt(1) else null }
                 if (local?.first == revision) {
                     val same = db.rawQuery("SELECT m.created_at,m.updated_at,m.deleted,r.parent_revision_id," +
@@ -871,7 +950,10 @@ class TrainlogRepository(
                     )) {
                     continue
                 }
-                if (local != null && local.first != parent) return SleepDiaryImportResult.Rejected("concurrent medication revision")
+                val remoteDescendsFromLocal =
+                    local != null && ancestry?.drop(1)?.contains(local.first) == true
+                if (local != null && !remoteDescendsFromLocal && local.first != parent)
+                    return SleepDiaryImportResult.Rejected("concurrent medication revision")
                 /* CONTRACT: this companion is a current-state snapshot, not a
                  * revision log. A fresh peer may therefore seed the current
                  * revision while retaining an unavailable parent identity;
@@ -893,6 +975,7 @@ class TrainlogRepository(
                 if (!sleepIdentity(entryId, "sl") || !sleepIdentity(revisionId, "slr") ||
                     (parent != null && !sleepIdentity(parent, "slr")))
                     return SleepDiaryImportResult.Rejected("invalid sleep diary identity")
+                val ancestry = sleepIncomingAncestry(item, revisionId, parent, "slr")
                 val local = db.rawQuery(
                     "SELECT current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
                     arrayOf(entryId),
@@ -976,7 +1059,9 @@ class TrainlogRepository(
                     unchanged++
                     continue
                 }
-                if (local != null && parent != local.first)
+                val remoteDescendsFromLocal =
+                    local != null && ancestry?.drop(1)?.contains(local.first) == true
+                if (local != null && !remoteDescendsFromLocal && parent != local.first)
                     return SleepDiaryImportResult.Rejected("concurrent sleep diary revision")
                 /* The snapshot may start at a non-root current revision on a
                  * fresh peer. Preserve its causal parent identity even though
@@ -7780,6 +7865,7 @@ class TrainlogRepository(
     private companion object {
         const val MAX_OCCURRENCE_PAGE_SIZE = 32
         const val MAX_SET_PAGE_SIZE = 64
+        const val MAX_SLEEP_ANCESTRY = 256
     }
 
     /**
