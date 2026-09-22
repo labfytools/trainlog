@@ -364,7 +364,22 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
     archive_acknowledged(database, owned_root, consumer)
     with closing(connect_database(database)) as admission:
         require_schema(admission)
-        retained = admission.execute("SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? AND status IN('captured','published','waiting_acknowledgement','acknowledged') AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id)", (consumer,)).fetchone()[0]
+        # WHY: early private generation builds can contain terminal
+        # acknowledged rows from before durable ACK-ledger insertion was
+        # enforced. They cannot be archived without fabricating missing ACK
+        # evidence, but they are terminal and must not permanently consume the
+        # active admission window. Current production acknowledgements always
+        # have a durable sync_acknowledgements row and remain counted until
+        # archive_acknowledged() safely moves them out of the active window.
+        retained = admission.execute(
+            "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? "
+            "AND (g.status IN('captured','published','waiting_acknowledgement') OR "
+            "(g.status='acknowledged' AND EXISTS(SELECT 1 FROM sync_acknowledgements k "
+            "WHERE k.generation_id=g.generation_id))) "
+            "AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a "
+            "WHERE a.generation_id=g.generation_id)",
+            (consumer,),
+        ).fetchone()[0]
         if retained >= MAX_RETAINED_PER_PEER:
             raise GenerationError("generation retention capacity exhausted")
     stage = owned_root / "staging" / generation

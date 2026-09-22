@@ -95,6 +95,54 @@ class GenerationArchiveTest(unittest.TestCase):
         with sqlite3.connect(self.database) as database:
             self.assertEqual(0, database.execute("SELECT COUNT(*) FROM sync_generation_archives").fetchone()[0])
 
+    def test_historical_acknowledged_rows_without_ack_ledger_do_not_exhaust_admission(self):
+        with sqlite3.connect(self.database) as database:
+            producer = generation.peer_identity(database, "desktop")
+            database.commit()
+            parent = None
+            for index in range(generation.MAX_RETAINED_PER_PEER):
+                suffix = f"{index + 1:012d}"
+                generation_id = f"gen_10000000-0000-4000-8000-{suffix}"
+                run_id = f"sy_20000000-0000-4000-8000-{suffix}"
+                database.execute(
+                    "INSERT INTO sync_generations VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        generation_id,
+                        run_id,
+                        producer,
+                        PEER,
+                        "desktop",
+                        f"2026-09-16T00:00:{index:02d}+00:00",
+                        parent,
+                        "0" * 64,
+                        "acknowledged",
+                        "{}",
+                        str(self.owned / "staging" / generation_id),
+                        f"2026-09-16T00:01:{index:02d}+00:00",
+                    ),
+                )
+                parent = generation_id
+            database.commit()
+
+        stage, manifest, _ = generation.capture_desktop(self.database, self.owned, PEER)
+        self.assertTrue(stage.is_dir())
+        self.assertEqual(parent, manifest["parent_generation_id"])
+        with sqlite3.connect(self.database) as database:
+            self.assertEqual(
+                0,
+                database.execute(
+                    "SELECT COUNT(*) FROM sync_acknowledgements "
+                    "WHERE generation_id LIKE 'gen_10000000-%'"
+                ).fetchone()[0],
+            )
+            self.assertEqual(
+                0,
+                database.execute(
+                    "SELECT COUNT(*) FROM sync_generation_archives "
+                    "WHERE generation_id LIKE 'gen_10000000-%'"
+                ).fetchone()[0],
+            )
+
     def test_missing_then_late_ack_is_protected_until_correlated(self):
         values = self.create_acknowledged()
         stage, manifest, digest = generation.capture_desktop(self.database, self.owned, PEER)
