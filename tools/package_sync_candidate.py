@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_TOOLS = [
     "trainlog_syncd.py",
+    "trainlog_bt_agent.py",
     "sync_orchestrator.py",
     "sync_peer_worker.py",
     "sync_drive_transport.py",
@@ -81,13 +82,17 @@ def main() -> int:
     shutil.copy2(binary, args.output / "libexec/trainlog")
     shutil.copy2(sync_once, args.output / "libexec/trainlog-sync-once")
     shutil.copy2(mtp_adapter, args.output / "libexec/trainlog-generation-mtp-adapter")
+    shutil.copy2(
+        ROOT / "tools/trainlog_generation_bt_adapter.py",
+        args.output / "libexec/trainlog-generation-bt-adapter",
+    )
     for name in RUNTIME_TOOLS:
         shutil.copy2(ROOT / "tools" / name, args.output / "tools" / name)
     for source in sorted((ROOT / "catalog").glob("*.json")):
         shutil.copy2(source, args.output / "catalog" / source.name)
     launcher = args.output / "bin/trainlog"
     launcher.write_text(
-        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR="$root/tools"\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec "$root/libexec/trainlog" "$@"\n'
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexport TRAINLOG_SYNC_TOOLS_DIR="$root/tools"\nexport TRAINLOG_SYNC_BT_ADAPTER="$root/libexec/trainlog-generation-bt-adapter"\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec "$root/libexec/trainlog" "$@"\n'
     )
     sync_once_launcher = args.output / "bin/trainlog-sync-once"
     sync_once_launcher.write_text(
@@ -95,7 +100,11 @@ def main() -> int:
     )
     syncd_launcher = args.output / "bin/trainlog-syncd"
     syncd_launcher.write_text(
-        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexport TRAINLOG_SYNC_BT_ADAPTER="$root/libexec/trainlog-generation-bt-adapter"\nexport TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"\nexec python3 "$root/tools/trainlog_syncd.py" --sync-once "$root/bin/trainlog-sync-once" "$@"\n'
+    )
+    btd_launcher = args.output / "bin/trainlog-btd"
+    btd_launcher.write_text(
+        '#!/bin/sh\nset -eu\nscript=$(readlink -f -- "$0")\nroot=$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)\nexec python3 "$root/tools/trainlog_bt_agent.py" "$@"\n'
     )
     files = sorted(path for path in args.output.rglob("*") if path.is_file())
     inventory = {
@@ -115,6 +124,7 @@ def main() -> int:
             "generation-manifest-v1",
             "generation-ack-v1",
             "generation-archive-v1",
+            "bluetooth-files-v1",
             "session-preparations-v2",
             "ai-session-drafts-v2",
             "programs-v1",
@@ -125,6 +135,8 @@ def main() -> int:
             "bin/trainlog",
             "bin/trainlog-sync-once",
             "bin/trainlog-syncd",
+            "bin/trainlog-btd",
+            "libexec/trainlog-generation-bt-adapter",
             "libexec/trainlog-generation-mtp-adapter",
             "tools/sync_orchestrator.py",
         ],
@@ -135,6 +147,9 @@ def main() -> int:
             "libuuid",
             "libudev",
             "libmtp",
+            "bluez",
+            "python-dbus",
+            "python-gobject",
             "notcurses",
             "coreutils-readlink",
         ],
@@ -153,8 +168,10 @@ def main() -> int:
     os.chmod(args.output / "bin/trainlog", 0o755)
     os.chmod(args.output / "bin/trainlog-sync-once", 0o755)
     os.chmod(args.output / "bin/trainlog-syncd", 0o755)
+    os.chmod(args.output / "bin/trainlog-btd", 0o755)
     os.chmod(args.output / "libexec/trainlog", 0o755)
     os.chmod(args.output / "libexec/trainlog-sync-once", 0o755)
+    os.chmod(args.output / "libexec/trainlog-generation-bt-adapter", 0o755)
     os.chmod(args.output / "libexec/trainlog-generation-mtp-adapter", 0o755)
     return 0
 

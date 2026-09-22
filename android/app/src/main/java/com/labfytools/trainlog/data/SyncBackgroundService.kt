@@ -32,37 +32,29 @@ internal class BackgroundSyncSettings(context: Context) {
 }
 
 /**
- * User-enabled foreground listener for PC-initiated USB generation requests.
+ * User-enabled foreground listener for automatic Bluetooth and MTP synchronization.
  *
- * WHY: a Web request must be consumed while Compose is not visible, but modern
- * Android does not permit an invisible permanent background loop.
- * CONTRACT: the service shows a mandatory notification, invokes the same
- * generation coordinator as SyncScreen, and never starts an exercise.
- * INVARIANT: filesystem visibility only triggers protocol validation; stable
+ * WHY: the phone must reconnect to the paired desktop while Compose is not
+ * visible, but modern Android does not permit an invisible permanent loop.
+ * CONTRACT: the service shows a mandatory notification, owns the RFCOMM client,
+ * invokes the same generation coordinator as SyncScreen, and never starts an
+ * exercise. MTP remains a filesystem fallback.
+ * INVARIANT: transport visibility only triggers protocol validation; stable
  * run/generation/ACK identities remain the sole business authority.
  */
 class SyncBackgroundService : Service() {
     private val stopped = AtomicBoolean(false)
     private val launched = AtomicBoolean(false)
-    private val executor = Executors.newSingleThreadExecutor()
+    private val executor = Executors.newFixedThreadPool(2)
     private var repository: TrainlogRepository? = null
+    private var bluetoothClient: BluetoothSyncClient? = null
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        val notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(getString(R.string.background_sync_notification_title))
-            .setContentText(getString(R.string.background_sync_notification_text))
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .build()
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        promoteForeground()
         repository = TrainlogRepository(applicationContext)
+        bluetoothClient = BluetoothSyncClient(applicationContext, requireNotNull(repository))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -70,7 +62,11 @@ class SyncBackgroundService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        promoteForeground()
         if (!launched.compareAndSet(false, true)) return START_NOT_STICKY
+        executor.execute {
+            bluetoothClient?.run(stopped)
+        }
         executor.execute {
             val coordinator = SyncGenerationCoordinator(
                 requireNotNull(repository),
@@ -116,6 +112,7 @@ class SyncBackgroundService : Service() {
                         is ForegroundGenerationResult.Cancelled -> Unit
                     }
                 }
+                AiExportDriveSettings.enqueueImmediate(applicationContext)
                 if (!stopped.get()) runCatching { Thread.sleep(5_000) }
             }
             stopSelf()
@@ -125,6 +122,8 @@ class SyncBackgroundService : Service() {
 
     override fun onDestroy() {
         stopped.set(true)
+        bluetoothClient?.shutdown()
+        bluetoothClient = null
         executor.shutdownNow()
         repository?.close()
         repository = null
@@ -140,6 +139,28 @@ class SyncBackgroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun promoteForeground() {
+        val notification =
+            NotificationCompat.Builder(this, CHANNEL)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(getString(R.string.background_sync_notification_title))
+                .setContentText(getString(R.string.background_sync_notification_text))
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build()
+        if (Build.VERSION.SDK_INT >= 29) {
+            val serviceType =
+                if (hasBluetoothConnectPermission(this)) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                } else {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                }
+            startForeground(NOTIFICATION_ID, notification, serviceType)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
 
     private fun createChannel() {
         val manager = getSystemService(NotificationManager::class.java)

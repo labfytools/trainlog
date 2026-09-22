@@ -69,6 +69,16 @@ class SyncRequestOutbox private constructor(
         }
     }
 
+    internal fun requestFullGeneration(): SyncRequestResult {
+        return when (val opened = publisher.snapshot()) {
+            is DirectExchangeSnapshotResult.Ready -> {
+                val intent = newIntent()
+                publishFullGeneration(opened.snapshot, intent)
+            }
+            is DirectExchangeSnapshotResult.Error -> SyncRequestResult.Error(opened.message)
+        }
+    }
+
     internal fun requestSync(snapshot: DirectExchangeSnapshot): SyncRequestResult {
         if (
             Build.VERSION.SDK_INT <

@@ -207,7 +207,7 @@ class SyncErrorClassificationTest(unittest.TestCase):
                 (root / name).write_text("{}")
             observed = []
 
-            def inspect(_adapter, _operation, _peer, outbox, _deadline):
+            def inspect(_adapter, _operation, _peer, outbox, _deadline, **_kwargs):
                 observed.append(
                     sorted(
                         str(path.relative_to(outbox))

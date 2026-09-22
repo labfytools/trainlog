@@ -27,10 +27,44 @@ offset-bearing timestamps, appreciations, notes and logical deletion. Exact
 revision replay is unchanged; sibling revisions and resurrection after deletion
 are rejected in the generation consumption transaction.
 
-This does not change `TRAINLOG_FORMAT_V1`, manifests, ACKs, MTP or Drive
-transport ownership.
+This does not change `TRAINLOG_FORMAT_V1`, manifests, ACKs or causal
+ownership.
 
-## USB-priority and private Drive transport
+## Bluetooth-priority transport and Android AI publication
+
+The private 0.1.4 installation now adds Bluetooth Classic RFCOMM as the primary
+byte transport without changing the full-generation business protocol. The
+desktop registers the Trainlog-specific service UUID
+`f0d1c0de-7a11-4f62-9b7c-545241494e4c` through BlueZ and accepts only the
+configured bonded Android device address. Android connects as the RFCOMM
+client, then proves the already persisted Trainlog `peer_id` in the first
+bounded frame. Bluetooth name strings are never authority.
+
+Automatic transport selection is `Bluetooth -> MTP -> unavailable` for the
+current target configuration. MTP remains the wired recovery transport. The
+business `sync.lock` remains common while Bluetooth and MTP have independent
+physical transport locks, so an idle discovery probe cannot reject a Web
+synchronization.
+
+Entering Bluetooth range establishes one connection and publishes one bounded
+Android full-generation request. Reconnect noise is rate-limited; a persistent
+connection is not a timer that creates generations repeatedly. The existing
+background generation coordinator still owns capture, validation, causal
+consumption and durable ACKs.
+
+After both generation directions are durably acknowledged, desktop generates
+the canonical `trainlog_ai_export_v1.json` with the existing read-only AI
+exporter and best-effort delivers that file to Android over the selected local
+transport. Android stores it in `Documents/Trainlog`, then a separate SAF
+publisher replaces the same file in the user-selected `Trainlog/AI` Google
+Drive folder and verifies the provider bytes by size and SHA-256. Drive
+publication failure is retryable and never rolls back or fails an already
+completed synchronization. Desktop rclone is not part of this target path.
+
+The detailed framing, trust and fallback contract is
+[Bluetooth synchronization transport V1](design/sync_bluetooth_transport_v1.md).
+
+## Legacy USB-priority and private Drive transport
 
 Full-generation synchronization has one business engine and two byte
 transports. Automatic desktop admission acquires the existing global lock,

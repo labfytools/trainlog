@@ -1,3 +1,4 @@
+import argparse
 import importlib.util
 import subprocess
 import tempfile
@@ -140,6 +141,91 @@ class SyncPeerWorkerTest(unittest.TestCase):
                 sleeper=lambda duration: now.__setitem__(0, now[0] + duration),
             )
             self.assertEqual("sy_fresh", value["run_id"])
+
+    def test_bluetooth_adapter_uses_distinct_transport_lock(self):
+        completed = subprocess.CompletedProcess([], 0, b"", b"")
+        with mock.patch.object(worker.subprocess, "run", return_value=completed):
+            worker.run_adapter(
+                Path("/fixed/bt-adapter"),
+                "pull",
+                "peer_fixed",
+                self.transport,
+                100.0,
+                clock=lambda: 50.0,
+                transport_name="Bluetooth",
+                lock_name="bt.lock",
+            )
+        self.assertTrue((self.transport.parent / "bt.lock").is_file())
+
+    def test_ai_export_delivery_is_best_effort_and_uses_bluetooth(self):
+        database = Path(self.temporary.name) / "trainlog.db"
+        database.touch()
+        args = argparse.Namespace(
+            database=database,
+            transport_root=self.transport,
+            mode="bt",
+            bt_adapter=Path("/fixed/bt-adapter"),
+            mtp_adapter=None,
+            expected_peer="peer_fixed",
+        )
+
+        def execute(command, **kwargs):
+            if command[0] == worker.sys.executable:
+                output = Path(command[2])
+                output.write_text(
+                    '{"format":"TRAINLOG_AI_EXPORT","version":1}\n',
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    "TRAINLOG_AI_EXPORT_V1=PASS\n",
+                    "",
+                )
+            self.assertEqual("/fixed/bt-adapter", command[0])
+            self.assertEqual("push", command[1])
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+
+        with mock.patch.object(worker.subprocess, "run", side_effect=execute):
+            result = worker.publish_ai_export_to_android(args, time.monotonic() + 30)
+        self.assertEqual({"result": "delivered_to_android"}, result)
+        self.assertTrue((self.transport / "trainlog_ai_export_v1.json").is_file())
+
+    def test_ai_export_transport_failure_does_not_raise(self):
+        database = Path(self.temporary.name) / "trainlog.db"
+        database.touch()
+        args = argparse.Namespace(
+            database=database,
+            transport_root=self.transport,
+            mode="bt",
+            bt_adapter=Path("/fixed/bt-adapter"),
+            mtp_adapter=None,
+            expected_peer="peer_fixed",
+        )
+
+        def execute(command, **kwargs):
+            if command[0] == worker.sys.executable:
+                Path(command[2]).write_text(
+                    '{"format":"TRAINLOG_AI_EXPORT","version":1}\n',
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    "TRAINLOG_AI_EXPORT_V1=PASS\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(
+                command,
+                2,
+                b"",
+                b"Bluetooth adapter failed status=6 diagnostic=peer vanished",
+            )
+
+        with mock.patch.object(worker.subprocess, "run", side_effect=execute):
+            result = worker.publish_ai_export_to_android(args, time.monotonic() + 30)
+        self.assertEqual("pending", result["result"])
+        self.assertIn("peer vanished", result["diagnostic"])
 
     def test_missing_generation_reports_correlated_protocol_timeout(self):
         with tempfile.TemporaryDirectory() as directory:

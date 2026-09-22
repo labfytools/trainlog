@@ -87,9 +87,9 @@ def load_generation_config(path: Path) -> dict:
         not isinstance(value, dict)
         or value.get("format") != "trainlog-sync-orchestrator-config"
         or value.get("enabled") is not True
-        or value.get("mode") not in ("mtp", "auto")
+        or value.get("mode") not in ("bt", "mtp", "auto")
     ):
-        raise RuntimeError("trusted full-generation MTP configuration is invalid")
+        raise RuntimeError("trusted full-generation transport configuration is invalid")
     return value
 
 
@@ -164,38 +164,47 @@ def select_request(root: Path, seen: list[str]) -> tuple[str, str, list[str]] | 
     return None
 
 
-def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
-    config = load_generation_config(config_path)
-    root = Path(config["transport_root"])
-    expected_peer = config["expected_peer_id"]
-    adapter = args.mtp_adapter
-    # WHY: the daemon must probe MTP to discover Android-origin requests, but
-    # Web/TUI orchestration can use the same libmtp device concurrently. A
-    # business sync.lock is too broad here: holding it during discovery makes
-    # a user Web click fail with sync_in_progress. CONTRACT: discovery instead
-    # shares a dedicated physical-transport lock with every worker MTP adapter
-    # call and skips this poll when that transport is busy. INVARIANT: no MTP
-    # adapter processes overlap, while business-sync admission stays independent.
-    lock_path = root.parent / "mtp.lock"
+def pull_transport(
+    adapter: Path,
+    lock_name: str,
+    expected_peer: str,
+    root: Path,
+) -> bool:
+    lock_path = root.parent / lock_name
     lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return 3
-        pull = subprocess.run(
-            [str(adapter), "pull", expected_peer, str(root)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+            return False
+        try:
+            pull = subprocess.run(
+                [str(adapter), "pull", expected_peer, str(root)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return False
+        return pull.returncode == 0
     finally:
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
         finally:
             os.close(lock_fd)
-    if pull.returncode != 0:
+
+
+def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
+    config = load_generation_config(config_path)
+    root = Path(config["transport_root"])
+    expected_peer = config["expected_peer_id"]
+    pulled = False
+    if config.get("bluetooth_enabled") is True and args.bt_adapter is not None:
+        pulled = pull_transport(args.bt_adapter, "bt.lock", expected_peer, root)
+    if not pulled and config.get("mode") in ("mtp", "auto"):
+        pulled = pull_transport(args.mtp_adapter, "mtp.lock", expected_peer, root)
+    if not pulled:
         return 3
     _, seen = load_request_state(args.state)
     selected = select_request(root, seen)
@@ -271,6 +280,11 @@ def main() -> int:
     parser.add_argument("--database", type=Path, default=default_database())
     parser.add_argument("--state", type=Path)
     parser.add_argument(
+        "--bt-adapter",
+        type=Path,
+        default=Path(os.environ.get("TRAINLOG_SYNC_BT_ADAPTER", "")),
+    )
+    parser.add_argument(
         "--mtp-adapter",
         type=Path,
         default=Path(os.environ.get("TRAINLOG_SYNC_MTP_ADAPTER", "")),
@@ -295,8 +309,13 @@ def main() -> int:
         )
 
     if args.generation_config is not None:
-        if not args.orchestrator.is_file() or not args.mtp_adapter.is_file():
+        config = load_generation_config(args.generation_config)
+        if not args.orchestrator.is_file():
             raise SystemExit("full-generation runtime is incomplete")
+        if config.get("mode") in ("mtp", "auto") and not args.mtp_adapter.is_file():
+            raise SystemExit("full-generation MTP runtime is incomplete")
+        if config.get("bluetooth_enabled") is True and not args.bt_adapter.is_file():
+            raise SystemExit("full-generation Bluetooth runtime is incomplete")
 
     signal.signal(
         signal.SIGTERM,

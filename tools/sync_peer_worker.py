@@ -123,8 +123,10 @@ def run_adapter(
     deadline: float,
     allow_missing_peer: bool = False,
     clock=time.monotonic,
+    transport_name: str = "MTP",
+    lock_name: str = "mtp.lock",
 ) -> bool:
-    lock_path = root.parent / "mtp.lock"
+    lock_path = root.parent / lock_name
     lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
@@ -156,7 +158,7 @@ def run_adapter(
             # CONTRACT: an adapter timeout is an ambiguous transport failure. It
             # never implies rollback, replay, or permission to retry a mutation.
             raise RuntimeError(
-                f"transport_timeout: MTP {operation} did not finish within "
+                f"transport_timeout: {transport_name} {operation} did not finish within "
                 f"{MTP_OPERATION_TIMEOUT_SECONDS:g} seconds"
             ) from error
     finally:
@@ -166,11 +168,13 @@ def run_adapter(
             os.close(lock_fd)
     if result.returncode != 0:
         diagnostic = (
-            result.stderr.decode("utf-8", "replace")[:1024] or "MTP adapter failed"
+            result.stderr.decode("utf-8", "replace")[:1024]
+            or f"{transport_name} adapter failed"
         ).strip()
         missing_peer = diagnostic in {
             "double failed 6 expected Android peer not found",
             "MTP adapter failed status=6 diagnostic=expected Android peer not found",
+            "Bluetooth adapter failed status=6 diagnostic=expected Android peer not connected",
         }
         if allow_missing_peer and missing_peer:
             return False
@@ -184,6 +188,8 @@ def push_adapter(
     root: Path,
     relative_paths: list[str],
     deadline: float,
+    transport_name: str = "MTP",
+    lock_name: str = "mtp.lock",
 ) -> None:
     """Publish only the phase-owned bounded MTP objects.
 
@@ -216,7 +222,15 @@ def push_adapter(
                 shutil.copy2(source, destination)
             else:
                 raise RuntimeError(f"invalid MTP outbox object: {relative}")
-        run_adapter(adapter, "push", peer, outbox, deadline)
+        run_adapter(
+            adapter,
+            "push",
+            peer,
+            outbox,
+            deadline,
+            transport_name=transport_name,
+            lock_name=lock_name,
+        )
 
 
 def push_desktop_generation(
@@ -225,9 +239,19 @@ def push_desktop_generation(
     root: Path,
     relative_path: str,
     deadline: float,
+    transport_name: str = "MTP",
+    lock_name: str = "mtp.lock",
 ) -> None:
     """Commit immutable bytes before making their correlated reference visible."""
-    push_adapter(adapter, peer, root, [relative_path], deadline)
+    push_adapter(
+        adapter,
+        peer,
+        root,
+        [relative_path],
+        deadline,
+        transport_name=transport_name,
+        lock_name=lock_name,
+    )
     push_adapter(
         adapter,
         peer,
@@ -239,6 +263,8 @@ def push_desktop_generation(
             "desktop-generation-v1.json",
         ],
         deadline,
+        transport_name=transport_name,
+        lock_name=lock_name,
     )
 
 
@@ -376,6 +402,35 @@ def refresh_mtp_peer(
         time.sleep(min(MTP_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
 
 
+def refresh_bluetooth_peer(
+    adapter: Path,
+    peer: str,
+    root: Path,
+    deadline: float,
+) -> None:
+    """Require one successful Bluetooth pull before trusting retained peer state."""
+    peer_path = root / "android-peer-v1.json"
+    while True:
+        try:
+            pulled = run_adapter(
+                adapter,
+                "pull",
+                peer,
+                root,
+                deadline,
+                True,
+                transport_name="Bluetooth",
+                lock_name="bt.lock",
+            )
+        except ConversationDeadlineExpired as error:
+            raise RuntimeError("timeout waiting for android-peer-v1.json") from error
+        if pulled and peer_path.is_file():
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError("timeout waiting for android-peer-v1.json")
+        time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+
+
 def correlated_peer_error(root: Path, run_id: str) -> None:
     path = root / "android-generation-error-v1.json"
     if not path.is_file():
@@ -412,6 +467,76 @@ def load_peer(root: Path, expected: str) -> dict:
     return value
 
 
+def publish_ai_export_to_android(
+    args: argparse.Namespace,
+    deadline: float,
+) -> dict:
+    """Best-effort post-convergence AI export delivery.
+
+    The generation/ACK conversation is already complete when this runs.
+    Export or publication failure therefore remains separately observable and
+    never rolls back a durable synchronization.
+    """
+    remaining = deadline - time.monotonic()
+    if remaining <= 1:
+        return {"result": "pending", "diagnostic": "sync deadline exhausted before AI export"}
+    output = args.transport_root / "trainlog_ai_export_v1.json"
+    exporter = Path(__file__).with_name("export_ai_history.py")
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(exporter),
+                str(output),
+                "--database",
+                str(args.database),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=min(60.0, max(1.0, remaining - 0.5)),
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"result": "pending", "diagnostic": str(error)[:1024]}
+    if result.returncode != 0 or "TRAINLOG_AI_EXPORT_V1=PASS" not in result.stdout:
+        diagnostic = (result.stderr or result.stdout or "AI export failed").strip()
+        return {"result": "pending", "diagnostic": diagnostic[-1024:]}
+    if not output.is_file():
+        return {"result": "pending", "diagnostic": "AI export file is missing after exporter success"}
+
+    try:
+        if args.mode == "bt":
+            push_adapter(
+                args.bt_adapter,
+                args.expected_peer,
+                args.transport_root,
+                ["trainlog_ai_export_v1.json"],
+                deadline,
+                transport_name="Bluetooth",
+                lock_name="bt.lock",
+            )
+        elif args.mode == "mtp":
+            push_adapter(
+                args.mtp_adapter,
+                args.expected_peer,
+                args.transport_root,
+                ["trainlog_ai_export_v1.json"],
+                deadline,
+            )
+        elif args.mode == "directory":
+            pass
+        else:
+            return {
+                "result": "local_only",
+                "diagnostic": "AI export generated locally; Android delivery transport unavailable",
+            }
+    except Exception as error:
+        return {"result": "pending", "diagnostic": str(error)[:1024]}
+    return {"result": "delivered_to_android"}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database", required=True, type=Path)
@@ -420,14 +545,41 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--expected-peer", required=True)
     parser.add_argument("--timeout", required=True, type=int)
-    parser.add_argument("--mode", choices=("directory", "mtp", "drive"), default="directory")
+    parser.add_argument(
+        "--mode",
+        choices=("directory", "bt", "mtp", "drive"),
+        default="directory",
+    )
+    parser.add_argument("--bt-adapter", type=Path)
     parser.add_argument("--mtp-adapter", type=Path)
     parser.add_argument("--drive-adapter", type=Path)
     parser.add_argument("--drive-remote")
     args = parser.parse_args()
     deadline = time.monotonic() + args.timeout
     pump = None
-    if args.mode == "mtp":
+    if args.mode == "bt":
+        if args.bt_adapter is None:
+            raise RuntimeError("Bluetooth adapter is required")
+        refresh_bluetooth_peer(
+            args.bt_adapter,
+            args.expected_peer,
+            args.transport_root,
+            deadline,
+        )
+        pump = MtpPullPump(
+            lambda: run_adapter(
+                args.bt_adapter,
+                "pull",
+                args.expected_peer,
+                args.transport_root,
+                deadline,
+                True,
+                transport_name="Bluetooth",
+                lock_name="bt.lock",
+            ),
+            interval=1.0,
+        )
+    elif args.mode == "mtp":
         if args.mtp_adapter is None:
             raise RuntimeError("MTP adapter is required")
         refresh_mtp_peer(
@@ -494,7 +646,17 @@ def main() -> int:
     }
     archive_ack_path = args.transport_root / "desktop-archive-acknowledgements-v1.json"
     publish_json(archive_ack_path, archive_acknowledgements)
-    if args.mode == "mtp":
+    if args.mode == "bt":
+        push_adapter(
+            args.bt_adapter,
+            args.expected_peer,
+            args.transport_root,
+            ["request-v1.json", "desktop-archive-acknowledgements-v1.json"],
+            deadline,
+            transport_name="Bluetooth",
+            lock_name="bt.lock",
+        )
+    elif args.mode == "mtp":
         push_adapter(
             args.mtp_adapter,
             args.expected_peer,
@@ -529,7 +691,17 @@ def main() -> int:
     ack = generation.consume_desktop(args.database, inbound_dir)
     ack_path = args.transport_root / "desktop-consumption-ack-v1.json"
     publish_json(ack_path, ack)
-    if args.mode == "mtp":
+    if args.mode == "bt":
+        push_adapter(
+            args.bt_adapter,
+            args.expected_peer,
+            args.transport_root,
+            ["request-v1.json", "desktop-archive-acknowledgements-v1.json", "desktop-consumption-ack-v1.json"],
+            deadline,
+            transport_name="Bluetooth",
+            lock_name="bt.lock",
+        )
+    elif args.mode == "mtp":
         push_adapter(
             args.mtp_adapter,
             args.expected_peer,
@@ -574,7 +746,17 @@ def main() -> int:
         "relative_path": str(published.relative_to(args.transport_root)),
     }
     publish_json(args.transport_root / "desktop-generation-v1.json", ref)
-    if args.mode == "mtp":
+    if args.mode == "bt":
+        push_desktop_generation(
+            args.bt_adapter,
+            args.expected_peer,
+            args.transport_root,
+            ref["relative_path"],
+            deadline,
+            transport_name="Bluetooth",
+            lock_name="bt.lock",
+        )
+    elif args.mode == "mtp":
         # CONTRACT: the immutable generation must be fully visible before its
         # mutable run-correlated reference. Publishing both in one MTP walk
         # lets Android observe the reference while artifacts are still being
@@ -648,6 +830,7 @@ def main() -> int:
     if inbound_row != ("consumed",) or outbound_row != ("acknowledged",):
         raise RuntimeError("generation evidence did not corroborate completion")
     emit(args.run_id, "peer_consumed", outbound_generation_id=outgoing_id)
+    ai_post_sync = publish_ai_export_to_android(args, deadline)
     report = {
         "format": "trainlog-sync-worker-report",
         "version": 1,
@@ -674,7 +857,7 @@ def main() -> int:
         },
         "drafts": drafts,
         "ai_midpoint": {"result": "not_configured"},
-        "ai_post_sync": {"result": "not_configured"},
+        "ai_post_sync": ai_post_sync,
     }
     print(json.dumps(report, sort_keys=True, separators=(",", ":")), flush=True)
     return 0

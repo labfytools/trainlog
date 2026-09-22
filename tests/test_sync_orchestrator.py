@@ -134,6 +134,56 @@ class OrchestratorTest(unittest.TestCase):
                     os.kill(pid, 0)
             self.assertEqual(json.loads(state.read_text())["phase"], "interrupted")
 
+    def test_auto_transport_prefers_bluetooth_before_mtp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sandbox = root / "program"
+            sandbox.mkdir()
+            (sandbox / "sync_orchestrator.py").write_bytes(ORCHESTRATOR.read_bytes())
+            peer, desktop = identity("peer_"), identity("peer_")
+            inbound, outbound = identity("gen_"), identity("gen_")
+            report = {
+                "format": "trainlog-sync-worker-report", "version": 1,
+                "run_id": "RUN", "producer_peer_id": peer, "consumer_peer_id": desktop,
+                "inbound_generation_id": inbound, "outbound_generation_id": outbound,
+                "manifest_sha256": "a" * 64, "result": "completed",
+                "sessions_reconciled": 0, "domains": {}, "drafts": [],
+                "ai_midpoint": {"result": "not_configured"},
+                "ai_post_sync": {"result": "delivered_to_android"},
+            }
+            (sandbox / "sync_peer_worker.py").write_text(
+                "import json,sys\n"
+                "assert sys.argv[sys.argv.index('--mode')+1]=='bt'\n"
+                "assert '--bt-adapter' in sys.argv\n"
+                "v=" + repr(report) +
+                "\nv['run_id']=sys.argv[sys.argv.index('--run-id')+1]\nprint(json.dumps(v))\n"
+            )
+            bt_marker = root / "bt-probe"
+            bt_adapter = sandbox / "trainlog_generation_bt_adapter.py"
+            bt_adapter.write_text(f"#!/bin/sh\necho probe >> {bt_marker}\nexit 0\n")
+            bt_adapter.chmod(0o755)
+            mtp_marker = root / "mtp-probe"
+            mtp_adapter = root / "build/tui/trainlog-generation-mtp-adapter"
+            mtp_adapter.parent.mkdir(parents=True)
+            mtp_adapter.write_text(f"#!/bin/sh\necho probe >> {mtp_marker}\nexit 0\n")
+            mtp_adapter.chmod(0o755)
+            values = self.fixture(
+                root,
+                version=3,
+                mode="auto",
+                bluetooth_enabled=True,
+                bluetooth_device_address="AA:BB:CC:DD:EE:FF",
+            )
+            result = self.invoke(sandbox / "sync_orchestrator.py", values)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(bt_marker.is_file())
+            self.assertFalse(mtp_marker.exists())
+            final = json.loads(values[1].read_text())
+            self.assertEqual("completed", final["phase"])
+            self.assertEqual("bt", final["transport"])
+            self.assertEqual("success", final["bluetooth_state"])
+            self.assertEqual("unavailable", final["usb_state"])
+
     def test_auto_transport_waits_for_mtp_lock_instead_of_falling_back_to_drive(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

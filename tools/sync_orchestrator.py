@@ -183,8 +183,57 @@ def validate_result(value: dict, run_id: str) -> dict:
     return value
 
 
+def bluetooth_adapter_path() -> Path:
+    configured = os.environ.get("TRAINLOG_SYNC_BT_ADAPTER")
+    if configured:
+        return Path(configured)
+    return Path(__file__).with_name("trainlog_generation_bt_adapter.py")
+
+
 def drive_adapter_path() -> Path:
     return Path(__file__).with_name("sync_drive_transport.py")
+
+
+def probe_local_adapter(
+    adapter: Path,
+    expected_peer: str,
+    transport_root: Path,
+    timeout: int,
+    lock_name: str,
+) -> bool:
+    if not adapter.is_absolute() or not os.access(adapter, os.X_OK):
+        return False
+    lock_path = transport_root.parent / lock_name
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    probe_deadline = time.monotonic() + min(timeout, 30)
+    try:
+        while time.monotonic() < probe_deadline:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                time.sleep(0.05)
+        else:
+            return False
+        remaining = max(0.01, probe_deadline - time.monotonic())
+        try:
+            probe = subprocess.run(
+                [str(adapter), "pull", expected_peer, str(transport_root)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=remaining,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return probe.returncode == 0
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
 
 
 def mirror_current_exchange(transport_root: Path, remote: str, timeout: int) -> None:
@@ -339,22 +388,45 @@ def run(args: argparse.Namespace) -> int:
         "timeout_seconds",
     }
     drive_keys = {"drive_enabled", "drive_remote"}
-    if set(config) not in (base_keys, base_keys | drive_keys):
+    bluetooth_keys = {"bluetooth_enabled", "bluetooth_device_address"}
+    allowed_key_sets = (
+        base_keys,
+        base_keys | drive_keys,
+        base_keys | bluetooth_keys,
+        base_keys | drive_keys | bluetooth_keys,
+    )
+    if set(config) not in allowed_key_sets:
         raise RuntimeError("invalid trusted sync configuration")
     if (
         config["format"] != "trainlog-sync-orchestrator-config"
-        or config["version"] not in (1, 2)
+        or config["version"] not in (1, 2, 3)
         or config["enabled"] is not True
     ):
         raise RuntimeError("full-generation synchronization is disabled")
-    if config["mode"] not in ("directory", "mtp", "drive", "auto"):
+    if config["mode"] not in ("directory", "bt", "mtp", "drive", "auto"):
         raise RuntimeError("invalid transport mode")
     drive_enabled = config.get("drive_enabled", False)
     drive_remote = config.get("drive_remote", "")
-    if type(drive_enabled) is not bool or (drive_enabled and (not isinstance(drive_remote, str) or not drive_remote)):
+    if type(drive_enabled) is not bool or (
+        drive_enabled and (not isinstance(drive_remote, str) or not drive_remote)
+    ):
         raise RuntimeError("invalid Drive configuration")
-    if config["mode"] in ("drive", "auto") and not drive_enabled:
+    bluetooth_enabled = config.get("bluetooth_enabled", False)
+    bluetooth_address = config.get("bluetooth_device_address", "")
+    if type(bluetooth_enabled) is not bool or (
+        bluetooth_enabled
+        and (
+            config["version"] < 3
+            or not isinstance(bluetooth_address, str)
+            or re.fullmatch(r"[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}", bluetooth_address)
+            is None
+        )
+    ):
+        raise RuntimeError("invalid Bluetooth configuration")
+    if config["mode"] == "drive" and not drive_enabled:
         raise RuntimeError("Drive transport is not configured")
+    if config["mode"] == "bt" and not bluetooth_enabled:
+        raise RuntimeError("Bluetooth transport is not configured")
     for key in ("transport_root", "owned_root"):
         if not isinstance(config[key], str) or not Path(config[key]).is_absolute():
             raise RuntimeError("trusted paths must be absolute")
@@ -400,44 +472,30 @@ def run(args: argparse.Namespace) -> int:
                 str(Path(__file__).resolve().parents[1] / "build/tui/trainlog-generation-mtp-adapter"),
             )
         )
+        bt_adapter = bluetooth_adapter_path()
         if selected_mode == "auto":
-            # WHY: cable presence is not peer availability. A successful pull
-            # is the bounded proof that the configured Trainlog peer is usable.
-            # The daemon performs the same libmtp operation for Android-origin
-            # discovery, so auto probing must share the dedicated transport
-            # lock rather than racing libmtp and falsely falling back to Drive.
-            probe = None
-            if adapter.is_absolute() and os.access(adapter, os.X_OK):
-                mtp_lock_path = Path(config["transport_root"]).parent / "mtp.lock"
-                mtp_lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                mtp_lock_fd = os.open(mtp_lock_path, os.O_RDWR | os.O_CREAT, 0o600)
-                probe_deadline = time.monotonic() + min(timeout, 30)
-                try:
-                    while time.monotonic() < probe_deadline:
-                        try:
-                            fcntl.flock(mtp_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                            break
-                        except BlockingIOError:
-                            time.sleep(0.05)
-                    else:
-                        raise subprocess.TimeoutExpired([str(adapter), "pull"], min(timeout, 30))
-                    remaining = max(0.01, probe_deadline - time.monotonic())
-                    probe = subprocess.run(
-                        [str(adapter), "pull", config["expected_peer_id"], config["transport_root"]],
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        timeout=remaining,
-                        check=False,
-                    )
-                except (OSError, subprocess.TimeoutExpired):
-                    probe = None
-                finally:
-                    try:
-                        fcntl.flock(mtp_lock_fd, fcntl.LOCK_UN)
-                    finally:
-                        os.close(mtp_lock_fd)
-            selected_mode = "mtp" if probe is not None and probe.returncode == 0 else "drive"
+            transport_root = Path(config["transport_root"])
+            selected_mode = ""
+            if bluetooth_enabled and probe_local_adapter(
+                bt_adapter,
+                config["expected_peer_id"],
+                transport_root,
+                timeout,
+                "bt.lock",
+            ):
+                selected_mode = "bt"
+            elif probe_local_adapter(
+                adapter,
+                config["expected_peer_id"],
+                transport_root,
+                timeout,
+                "mtp.lock",
+            ):
+                selected_mode = "mtp"
+            elif drive_enabled:
+                selected_mode = "drive"
+            else:
+                raise RuntimeError("expected Android peer not found")
         command = [
             sys.executable,
             str(Path(__file__).with_name("sync_peer_worker.py")),
@@ -456,7 +514,11 @@ def run(args: argparse.Namespace) -> int:
             "--mode",
             selected_mode,
         ]
-        if selected_mode == "mtp":
+        if selected_mode == "bt":
+            if not bt_adapter.is_absolute() or not os.access(bt_adapter, os.X_OK):
+                raise RuntimeError("fixed Bluetooth adapter executable is unavailable")
+            command.extend(["--bt-adapter", str(bt_adapter)])
+        elif selected_mode == "mtp":
             if not adapter.is_absolute() or not os.access(adapter, os.X_OK):
                 raise RuntimeError("fixed MTP adapter executable is unavailable")
             command.extend(["--mtp-adapter", str(adapter)])
@@ -516,6 +578,7 @@ def run(args: argparse.Namespace) -> int:
             manifest_sha256=result["manifest_sha256"],
             ai_midpoint=result["ai_midpoint"],
             ai_post_sync=result["ai_post_sync"],
+            bluetooth_state="success" if selected_mode == "bt" else "unavailable",
             usb_state="success" if selected_mode == "mtp" else "unavailable",
             drive_state=drive_state,
             drive_diagnostic=drive_diagnostic,

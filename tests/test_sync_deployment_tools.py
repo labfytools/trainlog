@@ -72,10 +72,17 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertIn("programs-v1", inventory["protocols"])
             self.assertIn("program-executions-v1", inventory["protocols"])
             self.assertIn("sleep-diary-v1", inventory["protocols"])
+            self.assertIn("bluetooth-files-v1", inventory["protocols"])
             self.assertTrue((output / "bin/trainlog").is_file())
             self.assertTrue((output / "bin/trainlog-sync-once").is_file())
             self.assertTrue((output / "bin/trainlog-syncd").is_file())
+            self.assertTrue((output / "bin/trainlog-btd").is_file())
             self.assertTrue((output / "libexec/trainlog-sync-once").is_file())
+            self.assertTrue((output / "libexec/trainlog-generation-bt-adapter").is_file())
+            self.assertIn(
+                'TRAINLOG_SYNC_BT_ADAPTER="$root/libexec/trainlog-generation-bt-adapter"',
+                (output / "bin/trainlog-syncd").read_text(),
+            )
             self.assertIn(
                 'TRAINLOG_SYNC_MTP_ADAPTER="$root/libexec/trainlog-generation-mtp-adapter"',
                 (output / "bin/trainlog-syncd").read_text(),

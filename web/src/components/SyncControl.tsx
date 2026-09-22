@@ -135,6 +135,10 @@ export function SyncControl({ onCommitted }: { onCommitted: () => void }) {
         {action && <p>{action}</p>}
         {status?.error_code && <p>Code : {status.error_code}</p>}
         {status?.diagnostic && <p>{status.diagnostic}</p>}
+        {status?.bluetooth_state && <p>Android Bluetooth : {{
+          unavailable: 'non disponible', skipped: 'ignoré', running: 'en cours',
+          success: '✓ synchronisé', failed: '⚠ non traité',
+        }[status.bluetooth_state]}</p>}
         {status?.usb_state && <p>Android USB : {{
           unavailable: 'non disponible', skipped: 'ignoré', running: 'en cours',
           success: '✓ synchronisé', failed: '⚠ non traité',

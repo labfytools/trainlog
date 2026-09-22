@@ -35,7 +35,10 @@ import com.labfytools.trainlog.data.SyncConversationIntent
 import com.labfytools.trainlog.data.SyncGenerationForegroundCoordinator
 import com.labfytools.trainlog.data.BackgroundSyncSettings
 import com.labfytools.trainlog.data.SyncBackgroundService
-import com.labfytools.trainlog.data.DriveSyncSettings
+import com.labfytools.trainlog.data.AiExportDriveSettings
+import com.labfytools.trainlog.data.BluetoothSyncSettings
+import com.labfytools.trainlog.data.bondedBluetoothDesktops
+import com.labfytools.trainlog.data.hasBluetoothConnectPermission
 import com.labfytools.trainlog.data.canonicalExchangeDirectory
 import com.labfytools.trainlog.data.AndroidMtpPublicationVisibility
 import com.labfytools.trainlog.data.MtpPublicationVisibility
@@ -240,8 +243,20 @@ fun SyncScreen(
     var syncRunning by remember { mutableStateOf(false) }
     val backgroundSettings = remember { BackgroundSyncSettings(context) }
     var backgroundEnabled by remember { mutableStateOf(backgroundSettings.enabled) }
-    val driveSettings = remember { DriveSyncSettings(context) }
+    val driveSettings = remember { AiExportDriveSettings(context) }
     var driveConnected by remember { mutableStateOf(driveSettings.connected) }
+    val bluetoothSettings = remember { BluetoothSyncSettings(context) }
+    var bluetoothPermission by remember {
+        mutableStateOf(hasBluetoothConnectPermission(context))
+    }
+    var bluetoothDesktop by remember {
+        mutableStateOf(bluetoothSettings.desktopAddress)
+    }
+    var bondedDesktops by remember {
+        mutableStateOf(
+            if (bluetoothPermission) bondedBluetoothDesktops(context) else emptyList()
+        )
+    }
 
     val driveFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -254,6 +269,23 @@ fun SyncScreen(
                 }
                 .onFailure { status = strings.getString(R.string.drive_sync_connection_failed) }
         }
+    }
+
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        bluetoothPermission = granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+        bondedDesktops =
+            if (bluetoothPermission) bondedBluetoothDesktops(context) else emptyList()
+        if (bluetoothPermission && backgroundSettings.enabled) {
+            SyncBackgroundService.start(context)
+        }
+        status =
+            if (bluetoothPermission) {
+                strings.getString(R.string.bluetooth_sync_permission_granted)
+            } else {
+                strings.getString(R.string.bluetooth_sync_permission_required)
+            }
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -571,6 +603,69 @@ fun SyncScreen(
                     }
                 },
             )
+        }
+
+        TrainlogFrame(title = strings.getString(R.string.bluetooth_sync_title)) {
+            TrainlogInfo(
+                text = strings.getString(R.string.bluetooth_sync_description),
+                color =
+                    if (bluetoothDesktop != null && bluetoothPermission) colors.success
+                    else colors.warning,
+            )
+            if (!bluetoothPermission) {
+                TrainlogAction(
+                    label = strings.getString(R.string.bluetooth_sync_permission),
+                    description = strings.getString(R.string.bluetooth_sync_permission_required),
+                    accent = colors.success,
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                        } else {
+                            bluetoothPermission = true
+                            bondedDesktops = bondedBluetoothDesktops(context)
+                        }
+                    },
+                )
+            } else {
+                if (bondedDesktops.isEmpty()) {
+                    TrainlogInfo(
+                        text = strings.getString(R.string.bluetooth_sync_no_desktop),
+                        color = colors.warning,
+                    )
+                }
+                bondedDesktops.forEach { desktop ->
+                    TrainlogAction(
+                        label = strings.getString(R.string.bluetooth_sync_select, desktop.name),
+                        description = strings.getString(R.string.bluetooth_sync_address, desktop.address),
+                        accent =
+                            if (bluetoothDesktop == desktop.address) colors.success else colors.accent,
+                        onClick = {
+                            bluetoothSettings.selectDesktop(desktop.address)
+                            bluetoothDesktop = desktop.address
+                            status =
+                                strings.getString(R.string.bluetooth_sync_selected, desktop.name)
+                            if (backgroundSettings.enabled) {
+                                SyncBackgroundService.start(context)
+                            }
+                        },
+                    )
+                }
+                if (bluetoothDesktop != null) {
+                    TrainlogAction(
+                        label = strings.getString(R.string.bluetooth_sync_disconnect),
+                        description =
+                            strings.getString(
+                                R.string.bluetooth_sync_address,
+                                bluetoothDesktop ?: "",
+                            ),
+                        accent = colors.warning,
+                        onClick = {
+                            bluetoothSettings.disconnect()
+                            bluetoothDesktop = null
+                        },
+                    )
+                }
+            }
         }
 
         TrainlogFrame(title = strings.getString(R.string.background_sync_title)) {
