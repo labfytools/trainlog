@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — 0.1.5
+
+Development opened after stable v0.1.4 release.
+
 ## 0.1.4 — 2026-09-22
 
 - Added the frozen Bluetooth Classic RFCOMM synchronization transport without

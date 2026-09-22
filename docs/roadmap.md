@@ -30,7 +30,7 @@ estimates.
 
 ## Current baseline
 
-Stable v0.1.4 is the release baseline for subsequent development.
+Stable v0.1.4 is the release baseline for the v0.1.5 development cycle.
 Desktop schema v29, Android schema v26, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session

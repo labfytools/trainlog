@@ -24,7 +24,7 @@ it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.4) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, 18:00-to-18:00 agenda and local vector PDF export. |
+| Local Web (0.1.5 development) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, 18:00-to-18:00 agenda and local vector PDF export. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -34,8 +34,9 @@ make the remaining placeholder routes functional.
 The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
-Web Exercises administration is implemented. Version 0.1.4 also includes the
-factual Dashboard/Analyse read model and the synchronized Sleep Diary workspace.
+Web Exercises administration, the factual Dashboard/Analyse read model, and the
+synchronized Sleep Diary workspace are the stable v0.1.4 baseline. Version
+0.1.5 development is focused on cardio and heart-rate sensor capture.
 
 ## Releases
 

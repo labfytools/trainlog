@@ -116,7 +116,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v26; Sleep Diary V1 is additive in v26 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.4` stable, synchronized across Android and desktop; latest stable release: `v0.1.4` |
+| Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
@@ -405,10 +405,11 @@ The full Android lint comparison against an isolated clean `main` worktree is
 unchanged at ten pre-existing errors: one `NewApi`, one
 `LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
 diagnostics. This UI tranche adds no lint error and changes no lint policy.
-The stable Android 0.1.4 source uses `versionName=0.1.4` and public
-versionCode 5. Private validation builds may still supply only a strictly
-increasing `versionCode` as a build-time override; that does not create a
-public release or change schemas and protocols.
+The stable Android v0.1.4 tag uses `versionName=0.1.4` and public versionCode 5.
+The v0.1.5 development source starts at `versionName=0.1.5` and versionCode 6.
+Private validation builds may still supply only a strictly increasing
+`versionCode` as a build-time override; that does not create a public release
+or change schemas and protocols.
 
 The private Program execution rollout installed desktop schema v27 and the
 signed nondebuggable Android versionCode 17/schema v25 update without
