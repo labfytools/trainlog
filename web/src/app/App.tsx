@@ -35,8 +35,8 @@ function AppContent() {
     fetchDashboard().then((value) => { setDashboard(value); setDashboardFailed(false) })
       .catch(() => setDashboardFailed(true)).finally(() => setDashboardPending(false))
   }, [])
-  const reloadPreparedItems = useCallback(() => {
-    setPreparedItemsPending(true)
+  const reloadPreparedItems = useCallback((showPending = true) => {
+    if (showPending) setPreparedItemsPending(true)
     fetchPreparedItems().then((value) => {
       setPreparedItems(value)
       setPreparedItemsFailed(false)
@@ -44,7 +44,12 @@ function AppContent() {
       // INVARIANT: a transient reread failure does not erase the last durable
       // projection already shown to the user.
       setPreparedItemsFailed(true)
-    }).finally(() => setPreparedItemsPending(false))
+    }).finally(() => {
+      if (showPending) setPreparedItemsPending(false)
+    })
+  }, [])
+  const reloadAnalysis = useCallback(() => {
+    fetchAnalysis({}).then(setAnalysis).catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -67,6 +72,16 @@ function AppContent() {
     fetchAnalysis({}, controller.signal).then(setAnalysis).catch(() => setAnalysis(null))
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    if (route.id !== 'dashboard') return
+    const timer = window.setInterval(() => {
+      reloadDashboard()
+      reloadPreparedItems(false)
+      reloadAnalysis()
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [route.id, reloadDashboard, reloadPreparedItems, reloadAnalysis])
 
   const content = route.id === 'dashboard' ? (
     <DashboardPage
@@ -92,6 +107,7 @@ function AppContent() {
       <Header activeRoute={route} onNavigate={navigate} onSyncCommitted={() => {
         reloadDashboard()
         reloadPreparedItems()
+        reloadAnalysis()
       }} />
       <main className="app-main" id="main-content">{content}</main>
       <Footer health={health} healthPending={healthPending} healthFailed={healthFailed} dashboard={dashboard} />

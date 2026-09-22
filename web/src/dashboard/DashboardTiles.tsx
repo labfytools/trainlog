@@ -34,6 +34,7 @@ interface TileDataProps {
 export interface NextSessionTileProps {
   size: TileSize;
   preparedItems?: PreparedItemsSnapshot | null;
+  analysis?: AnalysisSnapshot | null;
   pending?: boolean;
   failed?: boolean;
 }
@@ -70,24 +71,59 @@ export function sortPreparedItems(
 export function NextSessionTile({
   size,
   preparedItems = null,
+  analysis = null,
   pending = false,
   failed = false,
 }: NextSessionTileProps) {
   const { dateFormat } = useDatePreferences();
-  if (preparedItems === null) {
+  const program = analysis?.active_program;
+  const hasProgramNext = program?.next_session_title !== null && program?.next_session_title !== undefined;
+  if (preparedItems === null && !hasProgramNext) {
     return (
       <Unavailable
         text={failed ? "Données indisponibles" : "Chargement des préparations…"}
       />
     );
   }
-  const orderedItems = sortPreparedItems(preparedItems.items);
+  const orderedItems = sortPreparedItems(preparedItems?.items ?? []);
   const item = orderedItems[0];
   if (item === undefined) {
+    if (!hasProgramNext || program === null || program === undefined) {
+      return (
+        <Unavailable
+          text={failed ? "Données indisponibles" : "Aucun élément disponible"}
+        />
+      );
+    }
     return (
-      <Unavailable
-        text={failed ? "Données indisponibles" : "Aucun élément disponible"}
-      />
+      <div className="session-content">
+        <p className="primary-label">Programme actif</p>
+        <strong>{program.next_session_title}</strong>
+        {size !== "compact" && (
+          <>
+            <dl className="fact-list horizontal">
+              <Fact
+                label="Prévue"
+                value={
+                  program.next_session_planned_for ? (
+                    <time dateTime={program.next_session_planned_for}>
+                      {formatDate(program.next_session_planned_for, dateFormat)}
+                    </time>
+                  ) : (
+                    "Non planifiée"
+                  )
+                }
+              />
+            </dl>
+            <small>{program.title}</small>
+          </>
+        )}
+        {failed && <small>Préparations indisponibles · programme conservé</small>}
+        {pending && !failed && <small>Actualisation…</small>}
+        <a className="tile-context-link" href="/programmes">
+          Ouvrir le programme
+        </a>
+      </div>
     );
   }
   const proposal = item.kind === "ai_proposal";

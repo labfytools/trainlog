@@ -222,6 +222,13 @@ static bool test_factual_models(void) {
     CHECK(yyjson_arr_size(yyjson_obj_get(exercise, "points")) == 2U);
     CHECK(yyjson_arr_size(yyjson_obj_get(root, "body_zones")) == 3U);
     CHECK(!yyjson_is_null(yyjson_obj_get(root, "active_program")));
+    {
+        yyjson_val *program = yyjson_obj_get(root, "active_program");
+        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_title")), "Next") == 0);
+        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_id")), "ps_analysis") == 0);
+        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_planned_for")),
+                     "2026-09-21") == 0);
+    }
     measurements = yyjson_obj_get(root, "measurements");
     CHECK(yyjson_arr_size(yyjson_obj_get(measurements, "points")) == 2U);
     summaries = yyjson_obj_get(measurements, "summaries");

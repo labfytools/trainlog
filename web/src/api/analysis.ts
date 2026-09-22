@@ -21,7 +21,15 @@ export interface AnalysisExercise extends AnalysisExerciseOption { points: Analy
 export interface AnalysisZone { zone_id: string; label: string; exposures: number; associated_sets: number }
 export interface MeasurementSummary { metric: MeasurementMetric; unit: 'kg' | 'cm'; count: number; first: number | null; last: number | null; delta: number | null }
 export interface MeasurementPoint { timestamp: string; value: number }
-export interface ActiveProgram { program_id: string; title: string; total_sessions: number; completed_sessions: number; next_session_title: string | null }
+export interface ActiveProgram {
+  program_id: string
+  title: string
+  total_sessions: number
+  completed_sessions: number
+  next_session_title: string | null
+  next_session_id: string | null
+  next_session_planned_for: string | null
+}
 
 export interface AnalysisSnapshot {
   api_version: 1
@@ -67,7 +75,7 @@ export function parseAnalysis(value: unknown): AnalysisSnapshot {
   const points = value.measurements.points
   if (!Array.isArray(summaries) || summaries.length !== MEASUREMENT_METRICS.length || !summaries.every((item) => record(item) && metric(item.metric) && (item.unit === 'kg' || item.unit === 'cm') && count(item.count) && nullableFinite(item.first) && nullableFinite(item.last) && nullableFinite(item.delta)) ||
       !metric(value.measurements.selected_metric) || (value.measurements.unit !== 'kg' && value.measurements.unit !== 'cm') || !Array.isArray(points) || points.length > 90 || !points.every((item) => record(item) && typeof item.timestamp === 'string' && finite(item.value))) throw new TypeError('analysis_measurements_invalid')
-  if (value.active_program !== null && (!record(value.active_program) || typeof value.active_program.program_id !== 'string' || typeof value.active_program.title !== 'string' || !count(value.active_program.total_sessions) || !count(value.active_program.completed_sessions) || !(value.active_program.next_session_title === null || typeof value.active_program.next_session_title === 'string'))) throw new TypeError('analysis_program_invalid')
+  if (value.active_program !== null && (!record(value.active_program) || typeof value.active_program.program_id !== 'string' || typeof value.active_program.title !== 'string' || !count(value.active_program.total_sessions) || !count(value.active_program.completed_sessions) || !(value.active_program.next_session_title === null || typeof value.active_program.next_session_title === 'string') || !(value.active_program.next_session_id === null || typeof value.active_program.next_session_id === 'string') || !(value.active_program.next_session_planned_for === null || typeof value.active_program.next_session_planned_for === 'string'))) throw new TypeError('analysis_program_invalid')
   if (typeof value.meta.partial !== 'boolean' || !count(value.meta.reference_unix_second)) throw new TypeError('analysis_meta_invalid')
   return value as unknown as AnalysisSnapshot
 }

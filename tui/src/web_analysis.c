@@ -486,6 +486,15 @@ add_program(TrainlogDatabase *database, yyjson_mut_doc *document, yyjson_mut_val
         "(SELECT ps2.title FROM program_sessions ps2 LEFT JOIN program_session_executions pe2 ON "
         "pe2.program_session_id=ps2.program_session_id WHERE ps2.program_id=p.program_id AND "
         "COALESCE(pe2.state,'todo') NOT IN('completed','deleted') ORDER BY "
+        "CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position LIMIT 1),"
+        "(SELECT ps2.program_session_id FROM program_sessions ps2 LEFT JOIN "
+        "program_session_executions pe2 ON pe2.program_session_id=ps2.program_session_id WHERE "
+        "ps2.program_id=p.program_id AND COALESCE(pe2.state,'todo') NOT IN('completed','deleted') "
+        "ORDER BY CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position "
+        "LIMIT 1),"
+        "(SELECT ps2.planned_for FROM program_sessions ps2 LEFT JOIN program_session_executions pe2 "
+        "ON pe2.program_session_id=ps2.program_session_id WHERE ps2.program_id=p.program_id AND "
+        "COALESCE(pe2.state,'todo') NOT IN('completed','deleted') ORDER BY "
         "CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position LIMIT 1) "
         "FROM programs p LEFT JOIN program_sessions ps ON ps.program_id=p.program_id LEFT JOIN "
         "program_session_executions pe ON pe.program_session_id=ps.program_session_id WHERE "
@@ -521,6 +530,18 @@ add_program(TrainlogDatabase *database, yyjson_mut_doc *document, yyjson_mut_val
                                           program,
                                           "next_session_title",
                                           (const char *)sqlite3_column_text(statement, 4))) ||
+        !(sqlite3_column_type(statement, 5) == SQLITE_NULL
+              ? yyjson_mut_obj_add_null(document, program, "next_session_id")
+              : yyjson_mut_obj_add_strcpy(document,
+                                          program,
+                                          "next_session_id",
+                                          (const char *)sqlite3_column_text(statement, 5))) ||
+        !(sqlite3_column_type(statement, 6) == SQLITE_NULL
+              ? yyjson_mut_obj_add_null(document, program, "next_session_planned_for")
+              : yyjson_mut_obj_add_strcpy(document,
+                                          program,
+                                          "next_session_planned_for",
+                                          (const char *)sqlite3_column_text(statement, 6))) ||
         !yyjson_mut_obj_add_val(document, root, "active_program", program) ||
         sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
         return false;

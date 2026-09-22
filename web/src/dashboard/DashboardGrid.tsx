@@ -189,7 +189,9 @@ export function DashboardGrid({
             const dimensions = visibleLayout.find((tile) => tile.id === id) ?? DEFAULT_DASHBOARD_LAYOUT[0]
             const size = tileSize(dimensions)
             const available = id === 'next-session'
-              ? (preparedItems?.items.length ?? 0) > 0
+              ? (preparedItems?.items.length ?? 0) > 0 ||
+                analysis?.active_program?.next_session_title !== null &&
+                analysis?.active_program?.next_session_title !== undefined
               : dashboard !== null && tileAvailable(dashboard, id, analysis)
             const tilePending = id === 'next-session' ? preparedItemsPending : pending
             const partial = dashboard?.meta.partial === true && id === 'max-records'
@@ -209,6 +211,7 @@ export function DashboardGrid({
                     <NextSessionTile
                       size={size}
                       preparedItems={preparedItems}
+                      analysis={analysis}
                       pending={preparedItemsPending}
                       failed={preparedItemsFailed}
                     />

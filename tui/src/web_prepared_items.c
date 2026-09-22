@@ -107,7 +107,10 @@ static TrainlogStatus load_manual_preparations(TrainlogDatabase *database,
         "p.editing_state,p.updated_at FROM session_preparations p JOIN "
         "session_preparation_revisions r ON r.revision_id=p.current_revision_id LEFT JOIN "
         "session_preparation_entries e ON e.revision_id=r.revision_id WHERE "
-        "p.withdrawn_at IS NULL GROUP BY p.preparation_id ORDER BY "
+        "p.withdrawn_at IS NULL AND (p.source_program_id IS NULL OR "
+        "p.source_program_session_id IS NULL OR NOT EXISTS(SELECT 1 FROM "
+        "program_session_executions x WHERE x.program_id=p.source_program_id AND "
+        "x.program_session_id=p.source_program_session_id)) GROUP BY p.preparation_id ORDER BY "
         "COALESCE(r.planned_for,'9999-12-31'),p.updated_at,p.preparation_id LIMIT ?1;";
     sqlite3_stmt *statement = NULL;
     int step;
@@ -153,11 +156,14 @@ static TrainlogStatus load_execution_drafts(TrainlogDatabase *database,
                                             TrainlogWebPreparedItems *output) {
     static const char SQL[] =
         "SELECT d.session_id,d.state,d.session_type,COALESCE(substr(d.started_at,1,10),''),"
-        "COALESCE(json_array_length(d.payload_json,'$.exercises'),0),COALESCE(d.started_at,'') "
+        "COALESCE(json_array_length(d.payload_json,'$.exercises'),"
+        "json_array_length(d.payload_json,'$.entries'),0),COALESCE(d.started_at,'') "
         "FROM execution_drafts d "
         "WHERE NOT EXISTS(SELECT 1 FROM execution_draft_finalizations f WHERE "
         "f.session_id=d.session_id) AND NOT EXISTS(SELECT 1 FROM sync_causal_state c WHERE "
-        "c.target_kind='execution_draft' AND c.target_id=d.session_id AND c.deleted=1) "
+        "c.target_kind='execution_draft' AND c.target_id=d.session_id AND c.deleted=1) AND "
+        "COALESCE(json_array_length(d.payload_json,'$.exercises'),"
+        "json_array_length(d.payload_json,'$.entries'),0)>0 "
         "ORDER BY CASE d.state WHEN 'active' THEN 0 ELSE 1 END,d.session_id LIMIT ?1;";
     sqlite3_stmt *statement = NULL;
     int step;

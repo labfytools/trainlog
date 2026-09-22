@@ -102,8 +102,43 @@ static bool test_finalized_and_deleted_drafts_are_hidden(void) {
     return true;
 }
 
+static bool test_executed_program_preparation_and_empty_draft_are_hidden(void) {
+    TrainlogDatabase *database = NULL;
+    TrainlogWebPreparedItems items;
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(execute(database,
+        "INSERT INTO programs VALUES('pg_00000000-0000-4000-8000-000000000001','Program',NULL,"
+        "'active','2026-09-21','2026-10-18','2026-09-20T00:00:00Z',"
+        "'2026-09-20T00:00:00Z','pgr_one','test',1,"
+        "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',NULL);"
+        "INSERT INTO program_sessions VALUES('pgs_00000000-0000-4000-8000-000000000001',"
+        "'pg_00000000-0000-4000-8000-000000000001',0,'Done','training','2026-09-21',NULL);"
+        "INSERT INTO session_preparations(preparation_id,current_revision_id,created_at,updated_at,"
+        "editing_state,delivery_state,source_program_id,source_program_session_id) VALUES("
+        "'sp_00000000-0000-4000-8000-000000000001','spr_one','2026-09-20T00:00:00Z',"
+        "'2026-09-20T00:00:00Z','ready','acknowledged',"
+        "'pg_00000000-0000-4000-8000-000000000001',"
+        "'pgs_00000000-0000-4000-8000-000000000001');"
+        "INSERT INTO session_preparation_revisions VALUES('spr_one',"
+        "'sp_00000000-0000-4000-8000-000000000001',NULL,'Done','training','2026-09-21',NULL,"
+        "'2026-09-20T00:00:00Z');"
+        "INSERT INTO program_session_executions VALUES("
+        "'pgs_00000000-0000-4000-8000-000000000001',"
+        "'pg_00000000-0000-4000-8000-000000000001',"
+        "'se_00000000-0000-4000-8000-000000000009','completed','2026-09-21T12:00:00Z');"
+        "INSERT INTO execution_drafts(session_id,session_type,revision_id,state,payload_json) "
+        "VALUES('se_00000000-0000-4000-8000-000000000010','training','dr_empty','active',"
+        "'{\"entries\":[]}');"));
+    CHECK(trainlog_web_prepared_items_load(database, &items) == TRAINLOG_STATUS_OK);
+    CHECK(items.item_count == 0U);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void) {
-    if (!test_distinct_durable_items() || !test_finalized_and_deleted_drafts_are_hidden()) {
+    if (!test_distinct_durable_items() || !test_finalized_and_deleted_drafts_are_hidden() ||
+        !test_executed_program_preparation_and_empty_draft_are_hidden()) {
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

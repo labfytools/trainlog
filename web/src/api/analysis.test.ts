@@ -31,7 +31,10 @@ export const analysisFixture: AnalysisSnapshot = {
       { metric: 'right_calf', unit: 'cm', count: 0, first: null, last: null, delta: null },
     ],
   },
-  active_program: { program_id: 'pg_test', title: 'Programme', total_sessions: 4, completed_sessions: 1, next_session_title: 'Séance B' },
+  active_program: {
+    program_id: 'pg_test', title: 'Programme', total_sessions: 4, completed_sessions: 1,
+    next_session_title: 'Séance B', next_session_id: 'pgs_b', next_session_planned_for: '2026-09-18',
+  },
   meta: { partial: false, reference_unix_second: 1789560000 },
 }
 

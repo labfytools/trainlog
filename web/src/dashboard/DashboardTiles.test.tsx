@@ -38,6 +38,30 @@ describe("tuiles Dashboard alimentées par le contrat", () => {
     expect(document.body).not.toHaveTextContent(/bpm|%/i);
   });
 
+  it("retombe sur la prochaine séance du programme quand aucune préparation utile ne reste", () => {
+    render(
+      <NextSessionTile
+        preparedItems={{
+          api_version: 1,
+          generated_at: "2026-09-22T12:00:00Z",
+          partial: false,
+          items: [],
+        }}
+        analysis={analysisFixture}
+        pending={false}
+        failed={false}
+        size="large"
+      />,
+    );
+    expect(screen.getByText("Programme actif")).toBeInTheDocument();
+    expect(screen.getByText("Séance B")).toBeInTheDocument();
+    expect(screen.getByText("18/09/2026")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ouvrir le programme" })).toHaveAttribute(
+      "href",
+      "/programmes",
+    );
+  });
+
   it("sépare proposition à valider et brouillon actif sans fabriquer de réalisé", () => {
     const proposal = {
       api_version: 1 as const,
