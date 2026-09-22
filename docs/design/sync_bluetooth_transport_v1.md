@@ -2,7 +2,7 @@
 
 ## Status
 
-`TRAINLOG_SYNC_BLUETOOTH_TRANSPORT_V1=LIVE_DEVICE_PASS_DRIVE_SETUP_PENDING`
+`TRAINLOG_SYNC_BLUETOOTH_TRANSPORT_V1=PASS/FROZEN`
 
 This transport is additive. It does not change generation manifests, artifact
 formats, causal deletion, revision ancestry, acknowledgement semantics, SQLite
@@ -55,9 +55,26 @@ was explicitly re-paired; Android then reported the bond ready and established
 the Trainlog RFCOMM service. Android now also repairs a missing bond through the
 normal platform pairing flow before attempting RFCOMM.
 
-The one remaining manual setup step is selecting the Android SAF destination
-`Trainlog/AI`. This is intentionally user-authorized provider access and is
-not bypassed by ADB or Trainlog.
+The Android SAF destination `Trainlog/AI` was then selected explicitly by
+the user. A Web-triggered Bluetooth-only run completed immediately afterward:
+
+- request: `sy_ab1869d3-7f25-497f-a338-97213ec08370`;
+- run: `sy_f3ab061f-b4f8-44e9-9911-c0ad3283b457`;
+- inbound Android generation:
+  `gen_c74705f9-04dc-4ffe-9e67-6ae5bf08d1a2`;
+- outbound desktop generation:
+  `gen_0b33d209-35f1-41c0-9f98-6adf843b2a5f`;
+- `transport=bt`, `bluetooth_state=success`;
+- both directions are durable `sqlite-commit-full`;
+- `ai_post_sync=delivered_to_android`;
+- desktop SQLite integrity: `ok`.
+
+The resulting local AI export was 66,971 bytes with SHA-256
+`73ce8d3ca6cef3080ed2da77d58ef600bb79e6d2089f3472632b59aea76a8b90`.
+The exact Google Drive object in `Trainlog/AI/trainlog_ai_export_v1.json` was
+modified at `2026-09-22T14:50:11.875Z`, had the same 66,971-byte size, and
+the downloaded Drive object had the exact same SHA-256. This closes the
+Android-SAF publication proof without rclone.
 
 ## Trust and pairing
 

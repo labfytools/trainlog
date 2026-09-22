@@ -168,6 +168,7 @@ mode retain their explicit compatibility rejection instead of losing its unit.
 ## 1. Status
 
 ```text
+TRAINLOG_SYNC_BLUETOOTH_TRANSPORT_V1=PASS/FROZEN
 DIRECT_MTP_TRANSPORT=PASS
 ANDROID_TO_PC_IMPORT=PASS
 PC_TO_ANDROID_CATALOG=PASS
