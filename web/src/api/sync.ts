@@ -116,10 +116,7 @@ export async function fetchSyncStatus(signal?: AbortSignal): Promise<SyncStatus>
   return parse(await response.json())
 }
 
-export async function startSync(requestId: string): Promise<SyncStatus> {
-  if (!/^sy_[0-9a-f-]{36}$/.test(requestId) || csrfToken.length !== 64) {
-    throw new Error('requête sync invalide')
-  }
+async function postSync(requestId: string): Promise<{ response: Response; value: any }> {
   const response = await fetch('/api/v1/sync', {
     method: 'POST',
     headers: {
@@ -129,10 +126,32 @@ export async function startSync(requestId: string): Promise<SyncStatus> {
     },
     body: JSON.stringify({ request_id: requestId, trigger: 'web' }),
   })
-  const value = await response.json()
+  return { response, value: await response.json() }
+}
+
+export async function startSync(requestId: string): Promise<SyncStatus> {
+  if (!/^sy_[0-9a-f-]{36}$/.test(requestId) || csrfToken.length !== 64) {
+    throw new Error('requête sync invalide')
+  }
+  let attempt = await postSync(requestId)
+  if (attempt.response.status === 403 && attempt.value?.error === 'mutation_forbidden') {
+    /*
+     * WHY: the browser can outlive a restarted Trainlog Web process, so its
+     * cached CSRF token may be structurally valid but no longer authoritative.
+     * CONTRACT: refresh passive status once, then replay the exact same
+     * request_id. INVARIANT: no second business intent is created and the
+     * bounded retry cannot loop across repeated server restarts.
+     */
+    csrfToken = ''
+    await fetchSyncStatus()
+    attempt = await postSync(requestId)
+  }
+  const { response, value } = attempt
   if (!response.ok) {
     throw new Error(typeof value?.error === 'string' ? value.error : `sync HTTP ${response.status}`)
   }
+  const token = response.headers.get('X-Trainlog-CSRF-Token') ?? ''
+  if (/^[0-9a-f]{64}$/.test(token)) csrfToken = token
   return parse(value)
 }
 export function newRequestId(): string {
