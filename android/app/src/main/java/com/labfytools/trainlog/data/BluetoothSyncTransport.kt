@@ -3,11 +3,13 @@ package com.labfytools.trainlog.data
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -355,6 +357,9 @@ internal class BluetoothSyncClient(
     private val context: Context,
     private val repository: TrainlogRepository,
 ) {
+    companion object {
+        private const val TAG = "TrainlogBluetoothSync"
+    }
     @Volatile private var activeSocket: BluetoothSocket? = null
     private val settings = BluetoothSyncSettings(context)
     private val codec = BluetoothFrameCodec(context.cacheDir)
@@ -374,12 +379,22 @@ internal class BluetoothSyncClient(
                 continue
             }
             val address = settings.desktopAddress ?: continue
+            val device =
+                runCatching { adapter.getRemoteDevice(address) }
+                    .onFailure { Log.w(TAG, "Configured Bluetooth desktop is invalid", it) }
+                    .getOrNull()
+            if (device == null || !ensureBond(device, stopped)) {
+                sleep(stopped, Duration.ofSeconds(5))
+                continue
+            }
             val socket =
                 runCatching {
-                    adapter
-                        .getRemoteDevice(address)
-                        .createRfcommSocketToServiceRecord(UUID.fromString(TRAINLOG_BLUETOOTH_SERVICE_UUID))
-                }.getOrNull()
+                    device.createRfcommSocketToServiceRecord(
+                        UUID.fromString(TRAINLOG_BLUETOOTH_SERVICE_UUID)
+                    )
+                }
+                    .onFailure { Log.w(TAG, "Unable to create RFCOMM socket", it) }
+                    .getOrNull()
             if (socket == null) {
                 sleep(stopped, Duration.ofSeconds(10))
                 continue
@@ -387,10 +402,10 @@ internal class BluetoothSyncClient(
             activeSocket = socket
             try {
                 socket.connect()
+                Log.i(TAG, "RFCOMM connected to selected Trainlog desktop")
                 serve(socket, stopped)
-            } catch (_: Exception) {
-                // Arrival polling is intentionally silent. A foreground manual
-                // synchronization still exposes its own correlated diagnostic.
+            } catch (error: Exception) {
+                Log.w(TAG, "RFCOMM connection ended: ${error.message}", error)
             } finally {
                 activeSocket = null
                 runCatching { socket.close() }
@@ -402,6 +417,33 @@ internal class BluetoothSyncClient(
     fun shutdown() {
         runCatching { activeSocket?.close() }
         activeSocket = null
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun ensureBond(device: BluetoothDevice, stopped: AtomicBoolean): Boolean {
+        if (device.bondState == BluetoothDevice.BOND_BONDED) return true
+        if (device.bondState == BluetoothDevice.BOND_NONE) {
+            Log.i(TAG, "Bluetooth bond missing; requesting one-time repair")
+            if (!runCatching { device.createBond() }.getOrDefault(false)) {
+                Log.w(TAG, "Bluetooth bond request was rejected by Android")
+                return false
+            }
+        }
+        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
+        while (!stopped.get() && System.nanoTime() < deadline) {
+            when (device.bondState) {
+                BluetoothDevice.BOND_BONDED -> {
+                    Log.i(TAG, "Bluetooth bond ready")
+                    return true
+                }
+                BluetoothDevice.BOND_NONE -> {
+                    Log.w(TAG, "Bluetooth bond repair failed")
+                    return false
+                }
+            }
+            sleep(stopped, Duration.ofMillis(250))
+        }
+        return device.bondState == BluetoothDevice.BOND_BONDED
     }
 
     private fun sleep(stopped: AtomicBoolean, duration: Duration) {

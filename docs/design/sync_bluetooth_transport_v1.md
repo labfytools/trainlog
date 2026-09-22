@@ -2,7 +2,7 @@
 
 ## Status
 
-`TRAINLOG_SYNC_BLUETOOTH_TRANSPORT_V1=SOFTWARE_VALIDATED_DEVICE_TEST_PENDING`
+`TRAINLOG_SYNC_BLUETOOTH_TRANSPORT_V1=LIVE_DEVICE_PASS_DRIVE_SETUP_PENDING`
 
 This transport is additive. It does not change generation manifests, artifact
 formats, causal deletion, revision ancestry, acknowledgement semantics, SQLite
@@ -29,6 +29,35 @@ desktop are within Bluetooth range.
 
 The manual Web and Android Synchroniser actions remain as recovery/forced-sync
 controls.
+
+## Private live-device evidence — 2026-09-22
+
+The authorized Samsung Android peer and ArchASP completed a physical Bluetooth
+Classic/RFCOMM synchronization without MTP or Drive as a sync transport.
+
+- request: `sr_86ccc07f-cc5b-4506-86c1-06c00bd8b06a`;
+- run: `sy_df8f87fb-e4c1-44f5-b3f7-8fe87942d19e`;
+- inbound Android generation:
+  `gen_9609d163-4a3a-4187-a806-84379a1bcf4c`;
+- outbound desktop generation:
+  `gen_bc1d5e4b-4b16-49bc-b228-c3ff1f1a1705`;
+- final transport: `bt`;
+- final Bluetooth state: `success`;
+- final phase/result: `completed/completed`;
+- desktop SQLite integrity: `ok`;
+- post-sync AI export: `delivered_to_android`;
+- Android copy:
+  `Documents/Trainlog/trainlog_ai_export_v1.json`, 66,971 bytes,
+  SHA-256 `49f7f02fdeebd15699655e43fdb475bb20d9dd2d1bc59d2bdb4cd099ae50ecda`.
+
+The initial legacy bond contained mismatched link-key state. The private device
+was explicitly re-paired; Android then reported the bond ready and established
+the Trainlog RFCOMM service. Android now also repairs a missing bond through the
+normal platform pairing flow before attempting RFCOMM.
+
+The one remaining manual setup step is selecting the Android SAF destination
+`Trainlog/AI`. This is intentionally user-authorized provider access and is
+not bypassed by ADB or Trainlog.
 
 ## Trust and pairing
 

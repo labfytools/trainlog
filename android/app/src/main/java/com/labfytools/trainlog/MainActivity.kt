@@ -14,6 +14,9 @@ import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.SyncExporter
 import com.labfytools.trainlog.data.SyncCatalogInbox
 import com.labfytools.trainlog.data.SyncRequestOutbox
+import com.labfytools.trainlog.data.BackgroundSyncSettings
+import com.labfytools.trainlog.data.SyncBackgroundService
+import com.labfytools.trainlog.data.hasBluetoothConnectPermission
 import com.labfytools.trainlog.ui.TrainlogApp
 import com.labfytools.trainlog.ui.TrainlogAppState
 import com.labfytools.trainlog.ui.LanguagePresentation
@@ -29,6 +32,13 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onCreate(savedInstanceState)
         languageSettings = LanguageSettingsOwner(applicationContext)
+
+        if (
+            BackgroundSyncSettings(applicationContext).enabled &&
+            hasBluetoothConnectPermission(applicationContext)
+        ) {
+            SyncBackgroundService.start(applicationContext)
+        }
 
         val repository =
             TrainlogRepository(
