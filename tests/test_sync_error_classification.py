@@ -129,18 +129,21 @@ class SyncErrorClassificationTest(unittest.TestCase):
 
     def test_transport_timeout_has_a_stable_code_and_bounded_diagnostic(self):
         timeout = subprocess.TimeoutExpired(["adapter", "push"], 30)
-        with mock.patch.object(sync_peer_worker.subprocess, "run", side_effect=timeout):
-            with self.assertRaisesRegex(
-                RuntimeError,
-                r"^transport_timeout: MTP push did not finish within 30 seconds$",
-            ) as caught:
-                sync_peer_worker.run_adapter(
-                    Path("/adapter"),
-                    "push",
-                    "peer_00000000-0000-4000-8000-000000000001",
-                    Path("/transport"),
-                    sync_peer_worker.time.monotonic() + 60,
-                )
+        with tempfile.TemporaryDirectory() as directory:
+            transport = Path(directory) / "transport"
+            transport.mkdir()
+            with mock.patch.object(sync_peer_worker.subprocess, "run", side_effect=timeout):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"^transport_timeout: MTP push did not finish within 30 seconds$",
+                ) as caught:
+                    sync_peer_worker.run_adapter(
+                        Path("/adapter"),
+                        "push",
+                        "peer_00000000-0000-4000-8000-000000000001",
+                        transport,
+                        sync_peer_worker.time.monotonic() + 60,
+                    )
         self.assertEqual(sync_orchestrator.failure_code(caught.exception), "transport_timeout")
 
     def test_known_operational_failures_remain_distinct(self):

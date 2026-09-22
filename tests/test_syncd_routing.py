@@ -126,7 +126,7 @@ class SyncdRoutingTest(unittest.TestCase):
             self.assertEqual(1, len(commands))
             self.assertEqual("sy_old", json.loads(state.read_text())["run_id"])
 
-    def test_daemon_skips_mtp_probe_while_canonical_sync_lock_is_busy(self):
+    def test_daemon_skips_mtp_probe_while_transport_lock_is_busy(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             transport = root / "transport"

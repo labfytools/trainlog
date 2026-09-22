@@ -9,6 +9,7 @@ always produced and consumed by the existing generation services.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -123,28 +124,46 @@ def run_adapter(
     allow_missing_peer: bool = False,
     clock=time.monotonic,
 ) -> bool:
-    remaining = deadline - clock()
-    if remaining <= 0:
-        raise ConversationDeadlineExpired()
-    timeout = min(remaining, MTP_OPERATION_TIMEOUT_SECONDS)
-    deadline_limited = remaining < MTP_OPERATION_TIMEOUT_SECONDS
+    lock_path = root.parent / "mtp.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        result = subprocess.run(
-            [str(adapter), operation, peer, str(root)],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        if deadline_limited:
-            raise ConversationDeadlineExpired() from error
-        # CONTRACT: an adapter timeout is an ambiguous transport failure. It
-        # never implies rollback, replay, or permission to retry a mutation.
-        raise RuntimeError(
-            f"transport_timeout: MTP {operation} did not finish within "
-            f"{MTP_OPERATION_TIMEOUT_SECONDS:g} seconds"
-        ) from error
+        while True:
+            remaining = deadline - clock()
+            if remaining <= 0:
+                raise ConversationDeadlineExpired()
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                time.sleep(min(0.05, remaining))
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise ConversationDeadlineExpired()
+        timeout = min(remaining, MTP_OPERATION_TIMEOUT_SECONDS)
+        deadline_limited = remaining < MTP_OPERATION_TIMEOUT_SECONDS
+        try:
+            result = subprocess.run(
+                [str(adapter), operation, peer, str(root)],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            if deadline_limited:
+                raise ConversationDeadlineExpired() from error
+            # CONTRACT: an adapter timeout is an ambiguous transport failure. It
+            # never implies rollback, replay, or permission to retry a mutation.
+            raise RuntimeError(
+                f"transport_timeout: MTP {operation} did not finish within "
+                f"{MTP_OPERATION_TIMEOUT_SECONDS:g} seconds"
+            ) from error
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
     if result.returncode != 0:
         diagnostic = (
             result.stderr.decode("utf-8", "replace")[:1024] or "MTP adapter failed"

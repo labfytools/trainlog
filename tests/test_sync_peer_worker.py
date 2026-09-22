@@ -17,6 +17,14 @@ SPEC.loader.exec_module(worker)
 
 
 class SyncPeerWorkerTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="trainlog-peer-worker-test-")
+        self.transport = Path(self.temporary.name) / "transport"
+        self.transport.mkdir()
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
     def test_drive_adapter_uses_remaining_conversation_deadline(self):
         completed = subprocess.CompletedProcess([], 0, b"", b"")
         with mock.patch.object(worker.subprocess, "run", return_value=completed) as run:
@@ -24,7 +32,7 @@ class SyncPeerWorkerTest(unittest.TestCase):
                 Path("/fixed/adapter.py"),
                 "pull",
                 "remote:Trainlog/Sync-Test/run",
-                Path("/private/transport"),
+                self.transport,
                 time.monotonic() + 180,
             )
         timeout = run.call_args.kwargs["timeout"]
@@ -36,9 +44,24 @@ class SyncPeerWorkerTest(unittest.TestCase):
         with mock.patch.object(worker.subprocess, "run", return_value=completed) as run:
             worker.run_adapter(
                 Path("/fixed/adapter"), "pull", "peer_fixed",
-                Path("/private/transport"), 100.0, clock=lambda: 50.0,
+                self.transport, 100.0, clock=lambda: 50.0,
             )
         self.assertEqual(worker.MTP_OPERATION_TIMEOUT_SECONDS, run.call_args.kwargs["timeout"])
+
+    def test_mtp_adapter_uses_and_releases_shared_transport_lock(self):
+        completed = subprocess.CompletedProcess([], 0, b"", b"")
+        real_flock = worker.fcntl.flock
+        with mock.patch.object(worker.subprocess, "run", return_value=completed), mock.patch.object(
+            worker.fcntl, "flock", wraps=real_flock
+        ) as flock:
+            worker.run_adapter(
+                Path("/fixed/adapter"), "pull", "peer_fixed",
+                self.transport, 100.0, clock=lambda: 50.0,
+            )
+        self.assertTrue((self.transport.parent / "mtp.lock").is_file())
+        operations = [call.args[1] for call in flock.call_args_list]
+        self.assertIn(worker.fcntl.LOCK_EX | worker.fcntl.LOCK_NB, operations)
+        self.assertEqual(worker.fcntl.LOCK_UN, operations[-1])
 
     def test_mtp_pull_pump_is_throttled(self):
         now = [0.0]
@@ -55,7 +78,7 @@ class SyncPeerWorkerTest(unittest.TestCase):
         with self.assertRaises(worker.ConversationDeadlineExpired):
             worker.run_adapter(
                 Path("/fixed/adapter"), "pull", "peer_fixed",
-                Path("/private/transport"), 10.0, clock=lambda: 10.0,
+                self.transport, 10.0, clock=lambda: 10.0,
             )
 
     def test_deadline_limited_pull_becomes_protocol_timeout(self):
@@ -65,7 +88,7 @@ class SyncPeerWorkerTest(unittest.TestCase):
             with self.assertRaises(worker.ConversationDeadlineExpired):
                 worker.run_adapter(
                     Path("/fixed/adapter"), "pull", "peer_fixed",
-                    Path("/private/transport"), 10.5, clock=lambda: 10.0,
+                    self.transport, 10.5, clock=lambda: 10.0,
                 )
 
     def test_blocked_full_budget_pull_is_transport_timeout(self):
@@ -75,7 +98,7 @@ class SyncPeerWorkerTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "transport_timeout"):
                 worker.run_adapter(
                     Path("/fixed/adapter"), "pull", "peer_fixed",
-                    Path("/private/transport"), 100.0, clock=lambda: 50.0,
+                    self.transport, 100.0, clock=lambda: 50.0,
                 )
 
     def test_delayed_correlated_generation_survives_multiple_polls(self):

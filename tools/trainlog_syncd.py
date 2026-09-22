@@ -170,13 +170,13 @@ def run_full_generation(args: argparse.Namespace, config_path: Path) -> int:
     expected_peer = config["expected_peer_id"]
     adapter = args.mtp_adapter
     # WHY: the daemon must probe MTP to discover Android-origin requests, but
-    # Web/TUI orchestration owns the same physical transport while it holds the
-    # canonical sync lock. Probing outside that lock lets libmtp race itself
-    # and fail with "device is busy". CONTRACT: idle discovery takes the same
-    # lock non-blockingly and simply skips this poll when another conversation
-    # is active. INVARIANT: the lock is released before launching the
-    # orchestrator, which remains the sole owner of business-sync locking.
-    lock_path = args.database.parent / "sync.lock"
+    # Web/TUI orchestration can use the same libmtp device concurrently. A
+    # business sync.lock is too broad here: holding it during discovery makes
+    # a user Web click fail with sync_in_progress. CONTRACT: discovery instead
+    # shares a dedicated physical-transport lock with every worker MTP adapter
+    # call and skips this poll when that transport is busy. INVARIANT: no MTP
+    # adapter processes overlap, while business-sync admission stays independent.
+    lock_path = root.parent / "mtp.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
