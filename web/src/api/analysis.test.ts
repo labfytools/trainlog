@@ -14,6 +14,7 @@ export const analysisFixture: AnalysisSnapshot = {
   body_zones: [{ zone_id: 'thighs', label: 'Cuisses', exposures: 1, associated_sets: 2 }],
   measurements: {
     selected_metric: 'waist', unit: 'cm', points: [{ timestamp: '2026-09-20T08:00:00Z', value: 88 }],
+    series: [],
     summaries: [
       { metric: 'weight', unit: 'kg', count: 0, first: null, last: null, delta: null },
       { metric: 'neck', unit: 'cm', count: 0, first: null, last: null, delta: null },

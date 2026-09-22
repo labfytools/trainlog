@@ -235,7 +235,7 @@ function tileAvailable(snapshot: DashboardSnapshot, id: TileId, analysis: Analys
   if (id === 'activity') return snapshot.data.activity.available
   if (id === 'progression') return snapshot.data.progression.available
   if (id === 'last-session') return snapshot.data.last_session.available
-  if (id === 'max-records') return analysis?.measurements.summaries.some((item) => item.last !== null) === true
+  if (id === 'max-records') return (analysis?.measurements.series.length ?? 0) > 0
   if (id === 'muscle-distribution') return snapshot.data.muscle_distribution.available
   return analysis?.active_program !== null && analysis?.active_program !== undefined
 }

@@ -161,6 +161,14 @@ describe("AnalysisPage", () => {
         selected_metric: "weight",
         unit: "kg",
         summaries,
+        series: [{
+          metric: "weight",
+          unit: "kg",
+          points: [
+            { timestamp: "2026-08-20T08:00:00Z", value: 83.7 },
+            { timestamp: "2026-09-20T08:00:00Z", value: 85.1 },
+          ],
+        }],
         points: [
           { timestamp: "2026-08-20T08:00:00Z", value: 83.7 },
           { timestamp: "2026-09-20T08:00:00Z", value: 85.1 },

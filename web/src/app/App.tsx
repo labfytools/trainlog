@@ -15,6 +15,14 @@ import { useRoute } from './useRoute'
 import { DatePreferencesProvider } from '../presentation/DatePreferences'
 import { fetchAnalysis, type AnalysisSnapshot } from '../api/analysis'
 
+async function fetchDashboardAnalysis(signal?: AbortSignal): Promise<AnalysisSnapshot> {
+  const [windowed, allMeasurements] = await Promise.all([
+    fetchAnalysis({}, signal),
+    fetchAnalysis({ period: 'all' }, signal),
+  ])
+  return { ...windowed, measurements: allMeasurements.measurements }
+}
+
 const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'analysis' | 'programs' | 'exercises'>, [string, string, string]> = {
   sessions: ['Séances', 'ORGANISER', 'Les séances préparées et terminées seront présentées sans confondre plan et réalisé.'],
 }
@@ -49,7 +57,7 @@ function AppContent() {
     })
   }, [])
   const reloadAnalysis = useCallback(() => {
-    fetchAnalysis({}).then(setAnalysis).catch(() => undefined)
+    fetchDashboardAnalysis().then(setAnalysis).catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -69,7 +77,7 @@ function AppContent() {
     }).catch(() => {
       setPreparedItemsFailed(true)
     }).finally(() => setPreparedItemsPending(false))
-    fetchAnalysis({}, controller.signal).then(setAnalysis).catch(() => setAnalysis(null))
+    fetchDashboardAnalysis(controller.signal).then(setAnalysis).catch(() => setAnalysis(null))
     return () => controller.abort()
   }, [])
 

@@ -25,6 +25,12 @@ const ProgressionChart = lazy(() =>
   })),
 );
 
+const MeasurementsEvolutionChart = lazy(() =>
+  import("../charts/MeasurementsEvolutionChart").then((module) => ({
+    default: module.MeasurementsEvolutionChart,
+  })),
+);
+
 interface TileDataProps {
   snapshot: DashboardSnapshot;
   size: TileSize;
@@ -617,38 +623,27 @@ export function ProgramTile({ size, analysis }: TileDataProps) {
 }
 
 export function MeasurementsTile({ size, analysis }: TileDataProps) {
-  const summaries = analysis?.measurements.summaries ?? [];
-  const visible = summaries
-    .filter(
-      (summary) => summary.metric === "weight" || summary.metric === "waist",
-    )
-    .filter((summary) => summary.last !== null);
-  if (visible.length === 0)
-    return <Unavailable text="Aucune mensuration disponible" />;
+  const series = analysis?.measurements.series ?? [];
+  if (series.length === 0) {
+    return (
+      <Unavailable
+        text="Deux relevés minimum sont nécessaires pour afficher une évolution"
+      />
+    );
+  }
   return (
-    <div className="measurement-summary">
-      <dl className="fact-list horizontal">
-        {visible.map((summary) => (
-          <div key={summary.metric}>
-            <dt>{summary.metric === "weight" ? "Poids" : "Tour de taille"}</dt>
-            <dd>
-              {formatWeight(summary.last ?? 0).replace("kg", summary.unit)}
-              {summary.delta !== null && size !== "compact" && (
-                <small>
-                  {summary.delta > 0 ? "+" : ""}
-                  {summary.delta.toLocaleString("fr-FR", {
-                    maximumFractionDigits: 2,
-                  })}{" "}
-                  {summary.unit}
-                </small>
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
+    <div className="measurement-evolution">
+      <Suspense fallback={<div className="chart-loading">Chargement du graphique…</div>}>
+        <MeasurementsEvolutionChart series={series} />
+      </Suspense>
+      {size !== "compact" && (
+        <small className="measurement-evolution-note">
+          Seules les mensurations disposant d’au moins deux relevés sont affichées.
+        </small>
+      )}
       <a
         className="tile-context-link"
-        href="/analyse?section=measurements&metric=waist&period=30d"
+        href="/analyse?section=measurements&period=all"
       >
         Voir dans Analyse
       </a>

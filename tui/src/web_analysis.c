@@ -381,10 +381,12 @@ static bool add_measurements(TrainlogDatabase *database,
                              bool *partial) {
     yyjson_mut_val *measurements = yyjson_mut_obj(document);
     yyjson_mut_val *summaries = yyjson_mut_arr(document);
+    yyjson_mut_val *series = yyjson_mut_arr(document);
     yyjson_mut_val *points = yyjson_mut_arr(document);
     const MeasurementDefinition *selected = measurement_definition(query->measurement_metric);
     size_t index;
-    if (measurements == NULL || summaries == NULL || points == NULL || selected == NULL) {
+    if (measurements == NULL || summaries == NULL || series == NULL || points == NULL ||
+        selected == NULL) {
         return false;
     }
     for (index = 0U; index < sizeof(MEASUREMENTS) / sizeof(MEASUREMENTS[0]); ++index) {
@@ -423,6 +425,64 @@ static bool add_measurements(TrainlogDatabase *database,
             if (statement != NULL) {
                 (void)sqlite3_finalize(statement);
             }
+            return false;
+        }
+    }
+    for (index = 0U; index < sizeof(MEASUREMENTS) / sizeof(MEASUREMENTS[0]); ++index) {
+        char sql[512];
+        sqlite3_stmt *statement = NULL;
+        yyjson_mut_val *metric_points = yyjson_mut_arr(document);
+        yyjson_mut_val *metric_series;
+        size_t count = 0U;
+        int step;
+        int written = snprintf(
+            sql,
+            sizeof(sql),
+            "SELECT observed_at,%s FROM body_observations WHERE %s IS NOT NULL "
+            "AND (?1 IS NULL OR unixepoch(observed_at)>=?1) AND unixepoch(observed_at)<=?2 "
+            "ORDER BY unixepoch(observed_at),observation_id LIMIT ?3",
+            MEASUREMENTS[index].column,
+            MEASUREMENTS[index].column);
+        if (metric_points == NULL || written < 0 || (size_t)written >= sizeof(sql) ||
+            !prepare(database, sql, &statement) || !bind_interval(statement, query) ||
+            sqlite3_bind_int64(statement, 3, TRAINLOG_WEB_ANALYSIS_POINTS_MAX + 1U) != SQLITE_OK) {
+            if (statement != NULL) {
+                (void)sqlite3_finalize(statement);
+            }
+            return false;
+        }
+        while ((step = sqlite3_step(statement)) == SQLITE_ROW) {
+            yyjson_mut_val *point;
+            if (count == TRAINLOG_WEB_ANALYSIS_POINTS_MAX) {
+                *partial = true;
+                continue;
+            }
+            point = yyjson_mut_obj(document);
+            if (point == NULL ||
+                !yyjson_mut_obj_add_strcpy(document,
+                                           point,
+                                           "timestamp",
+                                           (const char *)sqlite3_column_text(statement, 0)) ||
+                !yyjson_mut_obj_add_real(
+                    document, point, "value", sqlite3_column_double(statement, 1)) ||
+                !yyjson_mut_arr_add_val(metric_points, point)) {
+                (void)sqlite3_finalize(statement);
+                return false;
+            }
+            ++count;
+        }
+        if (step != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+            return false;
+        }
+        if (count < 2U) {
+            continue;
+        }
+        metric_series = yyjson_mut_obj(document);
+        if (metric_series == NULL ||
+            !yyjson_mut_obj_add_strcpy(document, metric_series, "metric", MEASUREMENTS[index].id) ||
+            !yyjson_mut_obj_add_strcpy(document, metric_series, "unit", MEASUREMENTS[index].unit) ||
+            !yyjson_mut_obj_add_val(document, metric_series, "points", metric_points) ||
+            !yyjson_mut_arr_add_val(series, metric_series)) {
             return false;
         }
     }
@@ -472,6 +532,7 @@ static bool add_measurements(TrainlogDatabase *database,
         }
     }
     return yyjson_mut_obj_add_val(document, measurements, "summaries", summaries) &&
+           yyjson_mut_obj_add_val(document, measurements, "series", series) &&
            yyjson_mut_obj_add_strcpy(document, measurements, "selected_metric", selected->id) &&
            yyjson_mut_obj_add_strcpy(document, measurements, "unit", selected->unit) &&
            yyjson_mut_obj_add_val(document, measurements, "points", points) &&

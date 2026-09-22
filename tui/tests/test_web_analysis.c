@@ -231,6 +231,16 @@ static bool test_factual_models(void) {
     }
     measurements = yyjson_obj_get(root, "measurements");
     CHECK(yyjson_arr_size(yyjson_obj_get(measurements, "points")) == 2U);
+    {
+        yyjson_val *series = yyjson_obj_get(measurements, "series");
+        yyjson_val *first_series = yyjson_arr_get(series, 0U);
+        yyjson_val *second_series = yyjson_arr_get(series, 1U);
+        CHECK(yyjson_arr_size(series) == 2U);
+        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(first_series, "metric")), "weight") == 0);
+        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(second_series, "metric")), "waist") == 0);
+        CHECK(yyjson_arr_size(yyjson_obj_get(first_series, "points")) == 2U);
+        CHECK(yyjson_arr_size(yyjson_obj_get(second_series, "points")) == 2U);
+    }
     summaries = yyjson_obj_get(measurements, "summaries");
     waist = yyjson_arr_get(summaries, 4U);
     CHECK(yyjson_get_int(yyjson_obj_get(waist, "count")) == 2);

@@ -21,6 +21,11 @@ export interface AnalysisExercise extends AnalysisExerciseOption { points: Analy
 export interface AnalysisZone { zone_id: string; label: string; exposures: number; associated_sets: number }
 export interface MeasurementSummary { metric: MeasurementMetric; unit: 'kg' | 'cm'; count: number; first: number | null; last: number | null; delta: number | null }
 export interface MeasurementPoint { timestamp: string; value: number }
+export interface MeasurementSeries {
+  metric: MeasurementMetric
+  unit: 'kg' | 'cm'
+  points: MeasurementPoint[]
+}
 export interface ActiveProgram {
   program_id: string
   title: string
@@ -39,7 +44,13 @@ export interface AnalysisSnapshot {
   exercises: AnalysisExerciseOption[]
   exercise: AnalysisExercise | null
   body_zones: AnalysisZone[]
-  measurements: { summaries: MeasurementSummary[]; selected_metric: MeasurementMetric; unit: 'kg' | 'cm'; points: MeasurementPoint[] }
+  measurements: {
+    summaries: MeasurementSummary[]
+    series: MeasurementSeries[]
+    selected_metric: MeasurementMetric
+    unit: 'kg' | 'cm'
+    points: MeasurementPoint[]
+  }
   active_program: ActiveProgram | null
   meta: { partial: boolean; reference_unix_second: number }
 }
@@ -72,8 +83,13 @@ export function parseAnalysis(value: unknown): AnalysisSnapshot {
   }
   if (!value.body_zones.every((item) => record(item) && typeof item.zone_id === 'string' && typeof item.label === 'string' && count(item.exposures) && count(item.associated_sets))) throw new TypeError('analysis_zones_invalid')
   const summaries = value.measurements.summaries
+  const series = value.measurements.series
   const points = value.measurements.points
   if (!Array.isArray(summaries) || summaries.length !== MEASUREMENT_METRICS.length || !summaries.every((item) => record(item) && metric(item.metric) && (item.unit === 'kg' || item.unit === 'cm') && count(item.count) && nullableFinite(item.first) && nullableFinite(item.last) && nullableFinite(item.delta)) ||
+      !Array.isArray(series) || series.length > MEASUREMENT_METRICS.length ||
+      !series.every((item) => record(item) && metric(item.metric) && (item.unit === 'kg' || item.unit === 'cm') &&
+        Array.isArray(item.points) && item.points.length >= 2 && item.points.length <= 90 &&
+        item.points.every((point) => record(point) && typeof point.timestamp === 'string' && finite(point.value))) ||
       !metric(value.measurements.selected_metric) || (value.measurements.unit !== 'kg' && value.measurements.unit !== 'cm') || !Array.isArray(points) || points.length > 90 || !points.every((item) => record(item) && typeof item.timestamp === 'string' && finite(item.value))) throw new TypeError('analysis_measurements_invalid')
   if (value.active_program !== null && (!record(value.active_program) || typeof value.active_program.program_id !== 'string' || typeof value.active_program.title !== 'string' || !count(value.active_program.total_sessions) || !count(value.active_program.completed_sessions) || !(value.active_program.next_session_title === null || typeof value.active_program.next_session_title === 'string') || !(value.active_program.next_session_id === null || typeof value.active_program.next_session_id === 'string') || !(value.active_program.next_session_planned_for === null || typeof value.active_program.next_session_planned_for === 'string'))) throw new TypeError('analysis_program_invalid')
   if (typeof value.meta.partial !== 'boolean' || !count(value.meta.reference_unix_second)) throw new TypeError('analysis_meta_invalid')
