@@ -492,6 +492,27 @@ class TrainlogRepository(
         Regex("^${prefix}_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
             .matches(value)
 
+    private fun sleepRevisionIsAncestor(
+        db: SQLiteDatabase,
+        parentSql: String,
+        ownerId: String,
+        ancestorRevision: String,
+        currentRevision: String,
+    ): Boolean {
+        var revision: String? = currentRevision
+        val seen = mutableSetOf<String>()
+        while (revision != null) {
+            val current = revision
+            if (current == ancestorRevision) return true
+            check(seen.add(current)) { "sleep revision chain cycle" }
+            revision = db.rawQuery(parentSql, arrayOf(ownerId, current)).use { cursor ->
+                if (!cursor.moveToFirst()) return false
+                if (cursor.isNull(0)) null else cursor.getString(0)
+            }
+        }
+        return false
+    }
+
     private fun sleepDraftValid(draft: SleepDiaryDraft): Boolean = try {
         val startDate = LocalDate.parse(draft.nightStartDate)
         val endDate = LocalDate.parse(draft.nightEndDate)
@@ -840,6 +861,16 @@ class TrainlogRepository(
                     if (!same) return SleepDiaryImportResult.Rejected("medication revision identity reused with different content")
                     continue
                 }
+                if (local != null && sleepRevisionIsAncestor(
+                        db,
+                        "SELECT parent_revision_id FROM sleep_medication_revisions " +
+                            "WHERE medication_id=? AND revision_id=?",
+                        id,
+                        revision,
+                        local.first,
+                    )) {
+                    continue
+                }
                 if (local != null && local.first != parent) return SleepDiaryImportResult.Rejected("concurrent medication revision")
                 /* CONTRACT: this companion is a current-state snapshot, not a
                  * revision log. A fresh peer may therefore seed the current
@@ -928,6 +959,20 @@ class TrainlogRepository(
                         "sleep diary revision identity reused with different content",
                     )
                     markSleepDiaryImported(db, entryId, revisionId, root.getString("generated_at"))
+                    unchanged++
+                    continue
+                }
+                if (local != null && sleepRevisionIsAncestor(
+                        db,
+                        "SELECT parent_revision_id FROM sleep_diary_revisions " +
+                            "WHERE entry_id=? AND revision_id=?",
+                        entryId,
+                        revisionId,
+                        local.first,
+                    )) {
+                    // Current-state snapshots can arrive out of order. A local
+                    // descendant already proves this revision is stale rather
+                    // than a concurrent branch, so never regress the tip.
                     unchanged++
                     continue
                 }

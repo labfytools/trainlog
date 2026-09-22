@@ -58,6 +58,35 @@ class SleepExchangeTest(unittest.TestCase):
         exported = exchange.build(self.db)
         self.assertTrue(exported["entries"][0]["deleted"])
 
+    def test_stale_ancestor_snapshot_does_not_regress_newer_tip(self):
+        first = "slr_20000000-0000-4000-8000-000000000002"
+        second = "slr_40000000-0000-4000-8000-000000000004"
+        first_document = self.document(entry(first))
+        second_document = self.document(entry(second, first))
+        second_medication = second_document["medications"][0]
+        second_medication["parent_revision_id"] = first_document["medications"][0]["revision_id"]
+        second_medication["revision_id"] = "medr_a0000000-0000-4000-8000-00000000000a"
+        second_medication["updated_at"] = "2026-10-25T18:05:00+01:00"
+        second_medication["name"] = "Synthetic medication revised"
+
+        self.assertEqual((1, 0), exchange.apply(self.db, first_document))
+        self.assertEqual((1, 0), exchange.apply(self.db, second_document))
+        self.assertEqual((0, 1), exchange.apply(self.db, first_document))
+        self.assertEqual(
+            second,
+            self.db.execute(
+                "SELECT current_revision_id FROM sleep_diary_entries WHERE entry_id=?",
+                (first_document["entries"][0]["entry_id"],),
+            ).fetchone()[0],
+        )
+        self.assertEqual(
+            second_medication["revision_id"],
+            self.db.execute(
+                "SELECT current_revision_id FROM sleep_medications WHERE medication_id=?",
+                (second_medication["medication_id"],),
+            ).fetchone()[0],
+        )
+
     def test_rejects_concurrent_sibling_and_negative_absolute_interval(self):
         first = "slr_20000000-0000-4000-8000-000000000002"
         self.assertEqual((1, 0), exchange.apply(self.db, self.document(entry(first))))

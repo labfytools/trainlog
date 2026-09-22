@@ -214,6 +214,24 @@ def build(db: sqlite3.Connection) -> dict:
                      "medications": medications})
 
 
+def revision_is_ancestor(db: sqlite3.Connection, parent_sql: str, owner_id: str,
+                         ancestor_revision: str, current_revision: str) -> bool:
+    """Return whether an incoming current-state revision is already in the local lineage."""
+    revision = current_revision
+    seen = set()
+    while revision is not None:
+        if revision == ancestor_revision:
+            return True
+        if revision in seen:
+            fail("sleep revision chain cycle")
+        seen.add(revision)
+        row = db.execute(parent_sql, (owner_id, revision)).fetchone()
+        if row is None:
+            return False
+        revision = row[0]
+    return False
+
+
 def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
     validate(root)
     applied = 0
@@ -225,6 +243,15 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
                              if value["medication_id"] == medication["medication_id"])
             if persisted != medication:
                 fail("medication revision identity reused with different content")
+            continue
+        if local is not None and revision_is_ancestor(
+            db,
+            "SELECT parent_revision_id FROM sleep_medication_revisions "
+            "WHERE medication_id=? AND revision_id=?",
+            medication["medication_id"],
+            medication["revision_id"],
+            local[0],
+        ):
             continue
         if local is not None and medication["parent_revision_id"] != local[0]: fail("concurrent medication revision")
         if local is None and medication["parent_revision_id"] is not None: fail("unknown medication parent")
@@ -254,6 +281,18 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
                 (item["entry_id"], item["revision_id"], root["generated_at"],
                  item["revision_id"], root["generated_at"]),
             )
+            unchanged += 1
+            continue
+        if local is not None and revision_is_ancestor(
+            db,
+            "SELECT parent_revision_id FROM sleep_diary_revisions "
+            "WHERE entry_id=? AND revision_id=?",
+            item["entry_id"],
+            item["revision_id"],
+            local[0],
+        ):
+            # Current-state companions may legitimately arrive out of order.
+            # A known ancestor is stale evidence, not a concurrent branch.
             unchanged += 1
             continue
         if local is not None and item["parent_revision_id"] != local[0]:

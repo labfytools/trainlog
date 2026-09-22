@@ -74,6 +74,102 @@ class SleepDiaryRepositoryTest {
     }
 
     @Test
+    fun staleCurrentSnapshotDoesNotRegressNewerLocalTip() {
+        val sourceName = "sleep-stale-source-${UUID.randomUUID()}.db"
+        val destinationName = "sleep-stale-destination-${UUID.randomUUID()}.db"
+        val source = TrainlogRepository(context, sourceName)
+        val destination = TrainlogRepository(context, destinationName)
+        try {
+            val createdAt = "2026-09-20T20:00:00+02:00"
+            source.saveSleepMedication(
+                SleepMedication("", "", createdAt, createdAt, "Medication", 5.0, "mg", "", "", true),
+            )
+            val firstSaved = source.saveSleepDiary(
+                SleepDiaryDraft(
+                    nightStartDate = "2026-09-20",
+                    nightEndDate = "2026-09-21",
+                    createdAt = createdAt,
+                    updatedAt = createdAt,
+                    sleepQuality = SleepQuality.B,
+                    wakeQuality = null,
+                    dayForm = null,
+                    treatmentAndNotes = "",
+                    events = listOf(
+                        SleepDiaryEvent(
+                            "",
+                            SleepEventType.SLEEP,
+                            "2026-09-20T23:00:00+02:00",
+                            "2026-09-21T07:00:00+02:00",
+                        ),
+                    ),
+                ),
+            ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    firstSaved.entryId,
+                    firstSaved.revisionId,
+                    "2026-09-21T08:00:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
+            )
+            val firstSnapshot = source.buildSleepDiaryV1Json()
+            assertEquals(
+                TrainlogRepository.SleepDiaryImportResult.Applied(1, 0),
+                destination.applySleepDiaryV1Json(firstSnapshot),
+            )
+
+            val medication = source.listSleepMedications().single()
+            source.saveSleepMedication(
+                medication.copy(
+                    name = "Medication revised",
+                    updatedAt = "2026-09-21T08:05:00+02:00",
+                ),
+            )
+            val current = source.listSleepDiary().single()
+            val secondSaved = source.saveSleepDiary(
+                SleepDiaryDraft(
+                    entryId = current.entryId,
+                    expectedRevision = current.revisionId,
+                    nightStartDate = current.nightStartDate,
+                    nightEndDate = current.nightEndDate,
+                    createdAt = current.createdAt,
+                    updatedAt = "2026-09-21T08:10:00+02:00",
+                    sleepQuality = current.sleepQuality,
+                    wakeQuality = SleepQuality.MOY,
+                    dayForm = current.dayForm,
+                    treatmentAndNotes = current.treatmentAndNotes,
+                    events = current.events,
+                    intakes = current.intakes,
+                ),
+            ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    secondSaved.entryId,
+                    secondSaved.revisionId,
+                    "2026-09-21T08:15:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
+            )
+            val secondSnapshot = source.buildSleepDiaryV1Json()
+            assertEquals(
+                TrainlogRepository.SleepDiaryImportResult.Applied(1, 0),
+                destination.applySleepDiaryV1Json(secondSnapshot),
+            )
+
+            assertEquals(
+                TrainlogRepository.SleepDiaryImportResult.Applied(0, 1),
+                destination.applySleepDiaryV1Json(firstSnapshot),
+            )
+            assertEquals(secondSaved.revisionId, destination.listSleepDiary().single().revisionId)
+            assertEquals(SleepQuality.MOY, destination.listSleepDiary().single().wakeQuality)
+            assertEquals("Medication revised", destination.listSleepMedications().single().name)
+        } finally {
+            source.close()
+            destination.close()
+            context.deleteDatabase(sourceName)
+            context.deleteDatabase(destinationName)
+        }
+    }
+
+    @Test
     fun currentSnapshotSeedsFreshPeerFromNonRootRevisions() {
         val sourceName = "sleep-source-${UUID.randomUUID()}.db"
         val destinationName = "sleep-destination-${UUID.randomUUID()}.db"
