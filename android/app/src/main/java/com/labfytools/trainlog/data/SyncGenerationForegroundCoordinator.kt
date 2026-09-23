@@ -54,6 +54,11 @@ internal class SyncGenerationCoordinator(
 ) {
     private val service = SyncGenerationService(repository)
 
+    private companion object {
+        const val ACK_RECOVERY_CAPABILITY = "generation-ack-recovery-v1"
+        const val MAX_COORDINATION_BYTES = 65_536
+    }
+
     private fun phase(
         runId: String?,
         phase: String,
@@ -196,6 +201,45 @@ internal class SyncGenerationCoordinator(
         if (actual != expected) throw SyncGenerationException("invalid $label fields")
     }
 
+    private fun requestSupports(request: JSONObject, capability: String): Boolean {
+        val capabilities = request.optJSONArray("capabilities") ?: return false
+        for (index in 0 until capabilities.length()) {
+            if (capabilities.optString(index) == capability) return true
+        }
+        return false
+    }
+
+    private fun recoveryAcknowledgements(
+        desktopPeerId: String,
+        androidPeerId: String,
+    ): JSONArray =
+        repository.inSyncGenerationTransaction { db ->
+            val acknowledgements = JSONArray()
+            db.rawQuery(
+                    "SELECT ack_json FROM sync_consumed_generations WHERE producer_peer_id=? " +
+                        "AND consumer_peer_id=? AND result IN('consumed','rejected') " +
+                        "ORDER BY consumed_at DESC,generation_id DESC LIMIT 32",
+                    arrayOf(desktopPeerId, androidPeerId),
+                )
+                .use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val acknowledgement = JSONObject(cursor.getString(0))
+                        /* ACKs written before cross-runtime rejection diagnostics
+                         * were normalized can hash '/' differently in Android
+                         * and Python JSON canonicalizers. They remain immutable
+                         * evidence, but must not block recovery of newer,
+                         * compatible ACKs. Consumed ACKs are unaffected. */
+                        if (
+                            acknowledgement.optString("result") != "rejected" ||
+                                !acknowledgement.optString("diagnostic").contains("/")
+                        ) {
+                            acknowledgements.put(acknowledgement)
+                        }
+                    }
+                }
+            acknowledgements
+        }
+
     private fun reconcileArchiveAcknowledgements(
         raw: ByteArray,
         runId: String,
@@ -299,6 +343,7 @@ internal class SyncGenerationCoordinator(
                             "mobile-history-v4",
                             "execution-draft-v1",
                             "generation-archive-v1",
+                            ACK_RECOVERY_CAPABILITY,
                             "session-preparations-v2",
                             "programs-v1",
                         )
@@ -433,6 +478,43 @@ internal class SyncGenerationCoordinator(
                 request.getString("desktop_peer_id"),
             )
             phase(runId, "archive_ack_observed", "desktop-archive-acknowledgements-v1.json")
+            if (requestSupports(request, ACK_RECOVERY_CAPABILITY)) {
+                /* WHY: Android may commit consumption after the desktop
+                 * producer has already published its immutable generation, then
+                 * transport can fail before the ACK reaches that producer.
+                 * CONTRACT: return only exact durable consumer ACK evidence,
+                 * bounded to the newest 32 rows, before either side captures a
+                 * new generation. INVARIANT: recovery never fabricates lineage
+                 * and never rewrites Android consumption history. */
+                val recoveryPath =
+                    File(directory, "android-archive-acknowledgements-v1.json")
+                val recoveryEnvelope =
+                    JSONObject()
+                        .put("format", "trainlog-sync-archive-acknowledgements")
+                        .put("version", 1)
+                        .put("run_id", runId)
+                        .put("android_peer_id", peer)
+                        .put("desktop_peer_id", request.getString("desktop_peer_id"))
+                        .put(
+                            "acknowledgements",
+                            recoveryAcknowledgements(
+                                request.getString("desktop_peer_id"),
+                                peer,
+                            ),
+                        )
+                        .toString()
+                if (recoveryEnvelope.toByteArray(Charsets.UTF_8).size > MAX_COORDINATION_BYTES)
+                    throw SyncGenerationException(
+                        "Android archive acknowledgement envelope exceeds bound"
+                    )
+                publish(recoveryPath, recoveryEnvelope)
+                visibility.confirm(listOf(recoveryPath))
+                phase(
+                    runId,
+                    "android_archive_ack_published",
+                    recoveryPath.name,
+                )
+            }
             /* WHY: transport can fail after immutable generation publication.
              * CONTRACT: an explicit retry for the same run republishes that
              * exact generation and resumes ACK handling; it never recaptures

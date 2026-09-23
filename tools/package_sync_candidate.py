@@ -129,6 +129,7 @@ def main() -> int:
             "generation-manifest-v1",
             "generation-ack-v1",
             "generation-archive-v1",
+            "generation-ack-recovery-v1",
             "bluetooth-files-v1",
             "session-preparations-v2",
             "ai-session-drafts-v2",

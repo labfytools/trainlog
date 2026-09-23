@@ -56,6 +56,7 @@ class SyncDeploymentConversationTest {
         val databaseName = "deployment-peer-${UUID.randomUUID()}.db"
         var repository = TrainlogRepository(context, databaseName)
         var localWorker: Process? = null
+        var lostDesktopAckGeneration: String? = null
         try {
             transport.mkdirs()
             // A previous interrupted exchange leaves durable coordination
@@ -180,6 +181,7 @@ class SyncDeploymentConversationTest {
                             "full_generation_trigger_published",
                             "generation_request_observed",
                             "archive_ack_observed",
+                            "android_archive_ack_published",
                             "generation_capture_started",
                             "generation_captured",
                             "generation_objects_published",
@@ -212,6 +214,71 @@ class SyncDeploymentConversationTest {
                         ).use { cursor ->
                             assertTrue(cursor.moveToFirst())
                             assertEquals(8, cursor.getInt(0))
+                        }
+                    }
+                }
+                if (suppliedTransport == null && it == 11) {
+                    /* Reproduce the inverse deployed failure: Android has
+                     * durably consumed the newest desktop generation, but its
+                     * ACK was lost before the desktop producer committed it.
+                     * The next conversation must recover that exact Android
+                     * evidence before capturing another desktop generation. */
+                    SQLiteDatabase.openDatabase(
+                        desktop.absolutePath,
+                        null,
+                        SQLiteDatabase.OPEN_READWRITE,
+                    ).use { database ->
+                        val generation =
+                            database.rawQuery(
+                                "SELECT generation_id FROM sync_generations " +
+                                    "WHERE status='acknowledged' ORDER BY generated_at DESC LIMIT 1",
+                                null,
+                            ).use { cursor ->
+                                assertTrue(cursor.moveToFirst())
+                                cursor.getString(0)
+                            }
+                        database.delete(
+                            "sync_acknowledgements",
+                            "generation_id=?",
+                            arrayOf(generation),
+                        )
+                        database.execSQL(
+                            "UPDATE sync_generations SET status='waiting_acknowledgement'," +
+                                "acknowledged_at=NULL WHERE generation_id=?",
+                            arrayOf(generation),
+                        )
+                        database.rawQuery(
+                            "SELECT status FROM sync_generations WHERE generation_id=?",
+                            arrayOf(generation),
+                        ).use { cursor ->
+                            assertTrue(cursor.moveToFirst())
+                            assertEquals("waiting_acknowledgement", cursor.getString(0))
+                        }
+                        lostDesktopAckGeneration = generation
+                    }
+                }
+                if (suppliedTransport == null && it == 12) {
+                    val recovered = checkNotNull(lostDesktopAckGeneration)
+                    SQLiteDatabase.openDatabase(
+                        desktop.absolutePath,
+                        null,
+                        SQLiteDatabase.OPEN_READONLY,
+                    ).use { database ->
+                        database.rawQuery(
+                            "SELECT status FROM sync_generations WHERE generation_id=?",
+                            arrayOf(recovered),
+                        ).use { cursor ->
+                            assertTrue(cursor.moveToFirst())
+                            assertEquals("acknowledged", cursor.getString(0))
+                        }
+                        database.rawQuery(
+                            "SELECT parent_generation_id,status FROM sync_generations " +
+                                "ORDER BY generated_at DESC LIMIT 1",
+                            null,
+                        ).use { cursor ->
+                            assertTrue(cursor.moveToFirst())
+                            assertEquals(recovered, cursor.getString(0))
+                            assertEquals("acknowledged", cursor.getString(1))
                         }
                     }
                 }

@@ -78,6 +78,7 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertIn("heart-rate-v1", inventory["protocols"])
             self.assertIn("session-timeline-v1", inventory["protocols"])
             self.assertIn("bluetooth-files-v1", inventory["protocols"])
+            self.assertIn("generation-ack-recovery-v1", inventory["protocols"])
             self.assertTrue((output / "bin/trainlog").is_file())
             self.assertTrue((output / "bin/trainlog-sync-once").is_file())
             self.assertTrue((output / "bin/trainlog-syncd").is_file())

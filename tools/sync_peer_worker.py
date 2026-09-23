@@ -35,6 +35,8 @@ CAPS = {
     "session-preparations-v2",
 }
 
+ACK_RECOVERY_CAP = "generation-ack-recovery-v1"
+
 MTP_OPERATION_TIMEOUT_SECONDS = 30.0
 MTP_POLL_INTERVAL_SECONDS = 3.0
 
@@ -113,6 +115,67 @@ def recovery_acknowledgements(db, producer_peer_id: str, consumer_peer_id: str) 
         value for value in acknowledgements
         if value.get("result") != "rejected" or "/" not in value.get("diagnostic", "")
     ]
+
+
+def recovery_acknowledgement_envelope(
+    raw: bytes,
+    run_id: str,
+    android_peer_id: str,
+    desktop_peer_id: str,
+) -> list[dict]:
+    """Validate the Android consumer's bounded ACK recovery envelope."""
+    value = generation.strict_json(raw, 65536)
+    expected = {
+        "format",
+        "version",
+        "run_id",
+        "android_peer_id",
+        "desktop_peer_id",
+        "acknowledgements",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != expected
+        or value.get("format") != "trainlog-sync-archive-acknowledgements"
+        or type(value.get("version")) is not int
+        or value.get("version") != 1
+        or value.get("run_id") != run_id
+        or value.get("android_peer_id") != android_peer_id
+        or value.get("desktop_peer_id") != desktop_peer_id
+    ):
+        raise RuntimeError("Android archive acknowledgement envelope is not correlated")
+    acknowledgements = value.get("acknowledgements")
+    if not isinstance(acknowledgements, list) or len(acknowledgements) > 32:
+        raise RuntimeError("invalid Android archive acknowledgement count")
+    if not all(isinstance(ack, dict) for ack in acknowledgements):
+        raise RuntimeError("invalid Android archive acknowledgement")
+    return acknowledgements
+
+
+def reconcile_recovery_acknowledgements(
+    database: Path,
+    raw: bytes,
+    run_id: str,
+    android_peer_id: str,
+    desktop_peer_id: str,
+) -> int:
+    """Repair producer state only from exact ACK evidence retained by Android."""
+    acknowledgements = recovery_acknowledgement_envelope(
+        raw,
+        run_id,
+        android_peer_id,
+        desktop_peer_id,
+    )
+    reconciled = 0
+    for acknowledgement in acknowledgements:
+        result = generation.accept_ack_bytes(
+            database,
+            generation.canonical(acknowledgement),
+        )
+        if result not in ("acknowledged", "rejected", "unchanged"):
+            raise RuntimeError("unexpected recovered ACK result")
+        reconciled += 1
+    return reconciled
 
 
 def run_adapter(
@@ -630,7 +693,7 @@ def main() -> int:
         "run_id": args.run_id,
         "desktop_peer_id": desktop_peer,
         "android_peer_id": peer["peer_id"],
-        "capabilities": sorted(CAPS),
+        "capabilities": sorted(CAPS | {ACK_RECOVERY_CAP}),
     }
     request_path = args.transport_root / "request-v1.json"
     publish_json(request_path, request)
@@ -678,12 +741,36 @@ def main() -> int:
         producer_peer_id=peer["peer_id"],
         consumer_peer_id=desktop_peer,
     )
-    inbound_ref = args.transport_root / "android-generation-v1.json"
+
     def pump_inbound():
         if pump is not None:
             pump()
         correlated_peer_error(args.transport_root, args.run_id)
 
+    if ACK_RECOVERY_CAP in set(peer.get("capabilities", [])):
+        android_archive_ack = args.transport_root / "android-archive-acknowledgements-v1.json"
+        wait_json(
+            android_archive_ack,
+            deadline,
+            lambda value: value.get("run_id") == args.run_id
+            and value.get("android_peer_id") == peer["peer_id"]
+            and value.get("desktop_peer_id") == desktop_peer,
+            pump_inbound,
+        )
+        recovered = reconcile_recovery_acknowledgements(
+            args.database,
+            bounded(android_archive_ack),
+            args.run_id,
+            peer["peer_id"],
+            desktop_peer,
+        )
+        emit(
+            args.run_id,
+            "android_archive_ack_observed",
+            recovered_acknowledgements=recovered,
+        )
+
+    inbound_ref = args.transport_root / "android-generation-v1.json"
     inbound = wait_json(
         inbound_ref, deadline, lambda value: value.get("run_id") == args.run_id, pump_inbound
     )

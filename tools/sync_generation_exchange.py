@@ -791,8 +791,7 @@ def validate_ack(raw: bytes, pending: sqlite3.Row | tuple) -> dict:
     return value
 
 
-def accept_ack(database: Path, path: Path) -> str:
-    raw = path.read_bytes()
+def accept_ack_bytes(database: Path, raw: bytes) -> str:
     with closing(connect_database(database)) as db:
         require_schema(db); db.execute("BEGIN IMMEDIATE")
         value = strict_json(raw, MAX_MANIFEST)
@@ -860,6 +859,10 @@ def accept_ack(database: Path, path: Path) -> str:
                 (ack["generation_id"],),
             )
         db.commit(); return status
+
+
+def accept_ack(database: Path, path: Path) -> str:
+    return accept_ack_bytes(database, path.read_bytes())
 
 
 def main() -> None:
