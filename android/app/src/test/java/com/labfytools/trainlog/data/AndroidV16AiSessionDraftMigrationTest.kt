@@ -78,7 +78,7 @@ class AndroidV16AiSessionDraftMigrationTest {
             migrated.close()
         }
         SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(26, scalar(db, "PRAGMA user_version"))
+            assertEquals(27, scalar(db, "PRAGMA user_version"))
             assertEquals(before, listOf(
                 scalar(db, "SELECT COUNT(*) FROM sessions"),
                 scalar(db, "SELECT COUNT(*) FROM performed_sets"),

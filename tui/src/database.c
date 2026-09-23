@@ -1343,6 +1343,40 @@ static const char *const MIGRATE_V28_TO_V29_SQL =
     "PRIMARY KEY(generation_id,entry_id));"
     "PRAGMA user_version=29;COMMIT;";
 
+/* WHY: heart-rate is Android-owned measured field data, but desktop remains
+ * the canonical long-term synchronized store. CONTRACT: v30 adds only the
+ * immutable imported capture/sample tables. INVARIANT: no workout, Sleep
+ * Diary, generation or existing observation row is rewritten or inferred. */
+static const char *const MIGRATE_V29_TO_V30_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS heart_rate_captures("
+    "capture_id TEXT PRIMARY KEY,context_kind TEXT NOT NULL CHECK(context_kind IN('session','cardio','sleep')),"
+    "context_id TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT NOT NULL,sensor_name TEXT,"
+    "imported_at TEXT NOT NULL,CHECK(capture_id GLOB 'hrc_*'),"
+    "CHECK((context_kind IN('session','cardio') AND context_id GLOB 'se_*') OR "
+    "(context_kind='sleep' AND context_id GLOB 'sl_*')),"
+    "CHECK(sensor_name IS NULL OR length(CAST(sensor_name AS BLOB))<=160));"
+    "CREATE TABLE IF NOT EXISTS heart_rate_samples("
+    "capture_id TEXT NOT NULL REFERENCES heart_rate_captures(capture_id) ON DELETE CASCADE,"
+    "sequence INTEGER NOT NULL CHECK(sequence>=0),observed_at TEXT NOT NULL,"
+    "bpm INTEGER NOT NULL CHECK(bpm BETWEEN 0 AND 65535),exercise_entry_id TEXT,"
+    "sensor_contact_detected INTEGER CHECK(sensor_contact_detected IS NULL OR "
+    "sensor_contact_detected IN(0,1)),energy_expended INTEGER CHECK(energy_expended IS NULL OR "
+    "energy_expended BETWEEN 0 AND 65535),PRIMARY KEY(capture_id,sequence),"
+    "CHECK(exercise_entry_id IS NULL OR exercise_entry_id GLOB 'sxe_*'));"
+    "CREATE TABLE IF NOT EXISTS heart_rate_rr_intervals("
+    "capture_id TEXT NOT NULL,sample_sequence INTEGER NOT NULL,"
+    "rr_index INTEGER NOT NULL CHECK(rr_index BETWEEN 0 AND 63),"
+    "value_1024 INTEGER NOT NULL CHECK(value_1024 BETWEEN 0 AND 65535),"
+    "PRIMARY KEY(capture_id,sample_sequence,rr_index),"
+    "FOREIGN KEY(capture_id,sample_sequence) REFERENCES "
+    "heart_rate_samples(capture_id,sequence) ON DELETE CASCADE);"
+    "CREATE INDEX IF NOT EXISTS heart_rate_samples_time ON "
+    "heart_rate_samples(observed_at,capture_id,sequence);"
+    "CREATE INDEX IF NOT EXISTS heart_rate_captures_context ON "
+    "heart_rate_captures(context_kind,context_id,started_at);"
+    "PRAGMA user_version=30;COMMIT;";
+
 /* WHY: schema v29 was already opened on the private 0.1.4 review installation
  * before medication capture joined the same unreleased migration. CONTRACT:
  * this additive repair is identical to the tail of v28 -> v29 and runs only
@@ -2176,7 +2210,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     } else if (version == 11 || version == 12 || version == 13 || version == 14 || version == 15 ||
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
-               version == 26 || version == 27 || version == 28 || version == 29) {
+               version == 26 || version == 27 || version == 28 || version == 29 || version == 30) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2324,6 +2358,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK) {
         status = execute_sql(database, ENSURE_V29_SLEEP_MEDICATION_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 30) {
+        status = execute_sql(database, MIGRATE_V29_TO_V30_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2343,7 +2380,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v29" : "migrate database to schema v29",
+                            version == 0 ? "create schema v30" : "migrate database to schema v30",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

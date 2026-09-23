@@ -2,6 +2,14 @@
 
 ## Unreleased — 0.1.5
 
+- Added the Cardio V1 persistence/synchronization foundation. Android schema
+  v27 owns durable timestamped heart-rate captures, samples and raw RR values;
+  desktop schema v30 imports the optional `trainlog-heart-rate` V1 companion
+  transactionally. Exact generation membership is retained until a correlated
+  consumed ACK, after which those stopped captures remain local history but are
+  excluded from ordinary re-publication. Desktop/Web remain sensor consumers
+  only; Bluetooth Classic Trainlog synchronization is unchanged.
+
 Development opened after stable v0.1.4 release.
 
 ## 0.1.4 — 2026-09-22

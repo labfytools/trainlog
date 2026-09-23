@@ -1648,3 +1648,25 @@ checks passed, both outgoing desktop generations were acknowledged, and the
 Android UI displayed completion. The private journal retains exact IDs and
 hashes. Drive and `connectedDebugAndroidTest` were not run; the personal phone
 was used only for non-destructive install, backup and manual sync validation.
+
+## Cardio persistence/synchronization V1 validation
+
+`TRAINLOG_CARDIO_PERSISTENCE_SYNC_V1=PASS` is covered without requiring a
+physical heart-rate sensor. Android migration coverage advances schema v26 to
+v27 and verifies durable raw BPM/contact/energy/RR capture; desktop migration
+coverage advances v29 to v30 and verifies the additive cardio tables/indexes.
+
+`heart_rate_exchange` validates the strict `trainlog-heart-rate` V1 envelope,
+cardio/session/sleep ownership, timestamp bounds, raw RR preservation, exact
+idempotent replay, and rejection of identity reuse with different measured
+content. The Android full-generation regression captures a stopped sleep-owned
+measurement, publishes it, consumes it through the production desktop
+generation tool, accepts the correlated ACK, verifies one desktop
+capture/sample/RR row, and proves the acknowledged Android capture is no longer
+emitted.
+
+The 2026-09-23 closeout passes the complete native Meson inventory:
+**102/102 passed, 0 failed**. The complete Android JVM inventory reports
+**258 tests: 253 passed, five skipped, zero failures/errors**. The five skips
+remain optional historical/external fixture gates and are not Cardio V1
+failures.

@@ -847,9 +847,9 @@ def require_supported_schema(connection):
 
     # CONTRACT: v9 owns explicit max_results; earlier supported schemas remain
     # readable for legacy artifacts and are never made to fake that table.
-    if version not in range(5, 30):
+    if version not in range(5, 31):
         raise ImportFailure(
-            f"base desktop schema v5 à v29 attendue, version trouvée: {version}"
+            f"base desktop schema v5 à v30 attendue, version trouvée: {version}"
         )
 
 
@@ -2002,8 +2002,8 @@ def apply_payload(connection, payload, trace_exercises=False, complete_causal_en
     require_supported_schema(connection)
 
     schema_version = connection.execute("PRAGMA user_version;").fetchone()[0]
-    if payload["version"] == 4 and schema_version not in (19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29):
-        raise ImportFailure("mobile V4 exige le schéma desktop v19 à v29")
+    if payload["version"] == 4 and schema_version not in (19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30):
+        raise ImportFailure("mobile V4 exige le schéma desktop v19 à v30")
     if schema_version >= 20:
         protected = {(row[0], row[1]) for row in connection.execute(
             "SELECT target_kind,target_id FROM sync_causal_state WHERE deleted=1")}

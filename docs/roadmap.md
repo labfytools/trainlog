@@ -69,7 +69,7 @@ sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
 Bluetooth synchronization transport contract.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_CARDIO_PERSISTENCE_SYNC_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this

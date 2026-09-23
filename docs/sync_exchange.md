@@ -1060,7 +1060,36 @@ format. It lists bounded durable desktop AI proposals and relevant execution
 drafts as distinct kinds. Completed sessions remain outside this projection,
 and finalized or causally deleted execution drafts are excluded.
 
-## 19. Legacy active-protocol limitations
+## 19. Heart-rate companion V1
+
+`trainlog-heart-rate` V1 is an optional full-generation participant produced
+only by Android. Its logical name is `heart-rate` and its immutable generation
+file is `heart-rate-v1.json`. Desktop never produces sensor measurements and
+never connects to the heart-rate device.
+
+A normal Android generation includes only stopped captures that have not
+already been acknowledged and are not already retained by an outstanding
+captured/published/waiting-ACK generation. Capture, sample and RR identities
+are respectively `capture_id`, `capture_id + sequence`, and
+`capture_id + sequence + rr_index`.
+
+Desktop schema v30 validates and imports the whole companion inside the
+containing generation transaction. Exact replay is idempotent; reusing one
+stable measurement identity with different content rejects the generation.
+
+Android schema v27 records the exact `capture_id -> generation_id` relation
+when the immutable generation is captured. Only a correlated `consumed` ACK
+sets those captures' acknowledgement timestamps. Rejected generations do not
+advance cardio acknowledgement. Acknowledged captures remain in Android
+history but are omitted from normal later publication, preventing a full
+night's samples from being retransmitted on every sync.
+
+The companion changes neither the frozen Bluetooth Classic RFCOMM transport,
+MTP recovery, manifest/ACK framing, Sleep Diary V1 nor mobile-export semantics.
+Heart-rate BLE/GATT acquisition remains Android-only and is a separate
+implementation layer.
+
+## 20. Legacy active-protocol limitations
 
 The Web end-to-end tranche adds an explicit opt-in application orchestrator.
 `POST /api/v1/sync` admits one correlated run and `GET /api/v1/sync/status` is

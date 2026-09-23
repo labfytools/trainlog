@@ -49,7 +49,7 @@ int main(void) {
     trainlog_database_close(production);
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 29);
+    CHECK(scalar(raw, "PRAGMA user_version") == 30);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
                  "('sleep_diary_entries','sleep_diary_revisions','sleep_diary_events',"
@@ -61,6 +61,9 @@ int main(void) {
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
                  "('sleep_medications','sleep_medication_revisions',"
                  "'sleep_medication_intakes')") == 3);
+    CHECK(scalar(raw,
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
+                 "('heart_rate_captures','heart_rate_samples','heart_rate_rr_intervals')") == 3);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_integrity_check WHERE integrity_check='ok'") ==
           1);
@@ -79,13 +82,13 @@ int main(void) {
                        NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
-    /* An unpublished v29 may already exist locally. Opening it completes the
-     * same v29 contract without rewriting user data or changing user_version. */
+    /* A valid v29 may already exist locally. Opening it completes the historical
+     * v29 repair and then advances additively to the current v30 schema. */
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     trainlog_database_close(production);
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 29);
+    CHECK(scalar(raw, "PRAGMA user_version") == 30);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE "
                  "'sleep_medication%'") == 3);
@@ -99,7 +102,7 @@ cleanup:
     }
     (void)unlink(path);
     if (result == EXIT_SUCCESS) {
-        puts("PASS schema v28 to v29 migration and reopen");
+        puts("PASS schema v28 through v29 to current migration and reopen");
     }
     return result;
 }

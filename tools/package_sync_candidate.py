@@ -18,6 +18,7 @@ RUNTIME_TOOLS = [
     "sync_drive_transport.py",
     "sync_generation_exchange.py",
     "sleep_diary_exchange.py",
+    "heart_rate_exchange.py",
     "trainlog_sqlite.py",
     "validate_json.py",
     "validate_training_knowledge.py",
@@ -114,8 +115,8 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.5",
-        "desktop_schema": 29,
-        "android_schema": 26,
+        "desktop_schema": 30,
+        "android_schema": 27,
         "protocols": [
             "mobile-export-v3",
             "mobile-history-v4",
@@ -130,6 +131,7 @@ def main() -> int:
             "programs-v1",
             "program-executions-v1",
             "sleep-diary-v1",
+            "heart-rate-v1",
         ],
         "entry_points": [
             "bin/trainlog",

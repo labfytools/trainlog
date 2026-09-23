@@ -3,11 +3,14 @@ package com.labfytools.trainlog.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
+import com.labfytools.trainlog.model.HeartRateContextKind
+import com.labfytools.trainlog.model.HeartRateRrInterval
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
+import com.labfytools.trainlog.model.SleepDiaryDraft
 import com.labfytools.trainlog.model.TrackingMode
 import java.io.File
 import java.nio.file.Files
@@ -506,7 +509,7 @@ class SyncGenerationServiceTest {
                 .use { db ->
                     db.rawQuery("PRAGMA user_version", null).use {
                         assertTrue(it.moveToFirst())
-                        assertEquals(26, it.getInt(0))
+                        assertEquals(27, it.getInt(0))
                     }
                     db.rawQuery("SELECT COUNT(*) FROM exercises", null).use {
                         assertTrue(it.moveToFirst())
@@ -855,7 +858,54 @@ class SyncGenerationServiceTest {
                         )
                     )!!
                     .groupValues[1]
+            val sleepEntry =
+                source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        nightStartDate = "2026-09-22",
+                        nightEndDate = "2026-09-23",
+                        createdAt = "2026-09-22T22:00:00+02:00",
+                        updatedAt = "2026-09-22T22:00:00+02:00",
+                        sleepQuality = null,
+                        wakeQuality = null,
+                        dayForm = null,
+                        treatmentAndNotes = "",
+                        events = emptyList(),
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            val heartCapture =
+                source.startHeartRateCapture(
+                    HeartRateContextKind.SLEEP,
+                    sleepEntry.entryId,
+                    "2026-09-22T22:30:00+02:00",
+                    "Synthetic HR",
+                ) as TrainlogRepository.StartHeartRateCaptureResult.Started
+            assertTrue(
+                source.appendHeartRateSample(
+                    heartCapture.captureId,
+                    "2026-09-22T22:30:01+02:00",
+                    61,
+                    true,
+                    7,
+                    listOf(HeartRateRrInterval(0, 1024)),
+                ) is TrainlogRepository.HeartRateMutationResult.Applied,
+            )
+            assertTrue(
+                source.stopHeartRateCapture(
+                    heartCapture.captureId,
+                    "2026-09-22T22:31:00+02:00",
+                ) is TrainlogRepository.HeartRateMutationResult.Applied,
+            )
+
             val androidToDesktop = sourceService.capture(root, desktopPeer)
+            assertEquals(
+                1,
+                JSONObject(
+                        java.io.File(androidToDesktop.stagingDirectory, "heart-rate-v1.json")
+                            .readText(),
+                    )
+                    .getJSONArray("captures")
+                    .length(),
+            )
             val androidPublished =
                 sourceService.publish(
                     androidToDesktop,
@@ -872,9 +922,30 @@ class SyncGenerationServiceTest {
                 "--ack-output",
                 androidAckFile.absolutePath,
             )
+            val androidAck = JSONObject(androidAckFile.readText())
+            assertEquals(
+                "desktop ACK diagnostic: ${androidAck.getString("diagnostic")}",
+                "consumed",
+                androidAck.getString("result"),
+            )
             assertEquals(
                 "acknowledged",
                 sourceService.acceptAcknowledgement(androidAckFile.readBytes()),
+            )
+            assertEquals(
+                0,
+                JSONObject(source.buildHeartRateV1Json()).getJSONArray("captures").length(),
+            )
+            assertEquals(
+                "1|1|1",
+                run(
+                        "sqlite3",
+                        desktopConsumerDb.absolutePath,
+                        "SELECT (SELECT count(*) FROM heart_rate_captures) || '|' || " +
+                            "(SELECT count(*) FROM heart_rate_samples) || '|' || " +
+                            "(SELECT count(*) FROM heart_rate_rr_intervals);",
+                    )
+                    .trim(),
             )
             val androidSessionId = source.listSessions().single().sessionId
             assertEquals(

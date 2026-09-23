@@ -1,5 +1,25 @@
 # Desktop database
 
+## Schema v30: synchronized Heart Rate V1
+
+Schema v30 additively owns Android-recorded heart-rate captures after
+full-generation synchronization. `heart_rate_captures` stores one immutable
+stopped capture with its stable `hrc_` identity, owner kind (`session` or
+`sleep`), stable owner identity, exact start/end timestamps, optional sensor
+name, and import time.
+
+`heart_rate_samples` stores the received timestamp, measured BPM, optional
+exercise `entry_id` snapshot, optional sensor-contact state, and optional
+cumulative energy value. `heart_rate_rr_intervals` preserves zero or more raw
+Heart Rate Service RR values in their native 1/1024-second units. Desktop never
+creates these measurements and never connects to the sensor.
+
+The v29→v30 migration is additive and creates no cardio row. Heart-rate data
+travels Android→desktop through the separate optional `trainlog-heart-rate`
+V1 generation companion. Exact replay is idempotent; a stable capture/sample
+identity with different measured content is rejected. Existing workout,
+Sleep Diary, and frozen mobile formats are unchanged.
+
 ## Schema v29: Sleep Diary V1
 
 Schema v29 additively owns `sleep_diary_entries`, immutable
@@ -9,14 +29,14 @@ one night and its associated day. Point events have an offset-bearing
 their start. The 18:00-to-18:00 agenda is only a projection and is never stored
 as cells.
 
-The same unreleased migration owns `sleep_medications`, immutable
+The same stable v0.1.4 migration owns `sleep_medications`, immutable
 `sleep_medication_revisions`, and revision-owned `sleep_medication_intakes`.
 Catalog defaults assist capture but do not own historical facts: every intake
 stores the displayed medication name and effective optional positive dose/unit
 snapshot. Renaming or deactivating a catalog item therefore cannot rewrite a
 past entry. Development databases that had already opened the earlier v29
-draft are completed idempotently on open; `user_version` remains 29 and no
-existing row is rewritten.
+draft are completed idempotently on open before the additive v30 migration;
+no existing sleep row is rewritten.
 
 Mutations advance `current_revision_id` only when the caller supplies the
 current parent. Logical deletion advances the revision and retains the

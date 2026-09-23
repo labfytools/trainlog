@@ -69,6 +69,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 "program-executions" to
                     Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
                 "sleep-diary" to Kind("trainlog-sleep-diary", 1, "sleep-diary-v1.json", false),
+                "heart-rate" to Kind("trainlog-heart-rate", 1, "heart-rate-v1.json", false),
             )
         private val SUPPORTED =
             (ANDROID_KINDS.values +
@@ -420,6 +421,14 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                         "INSERT INTO sleep_diary_generation_entries(generation_id,entry_id,revision_id) " +
                             "VALUES(?,?,?)",
                         arrayOf(generationId, entry.getString("entry_id"), entry.getString("revision_id")),
+                    )
+                }
+                val heartRate = JSONObject(checkNotNull(artifacts["heart-rate"]))
+                val captures = heartRate.getJSONArray("captures")
+                for (index in 0 until captures.length()) {
+                    db.execSQL(
+                        "INSERT INTO heart_rate_generation_captures(generation_id,capture_id) VALUES(?,?)",
+                        arrayOf(generationId, captures.getJSONObject(index).getString("capture_id")),
                     )
                 }
             }
@@ -1058,6 +1067,14 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                                 "WHERE m.generation_id=? AND m.entry_id=sleep_diary_publication_state.entry_id)",
                             arrayOf(ack.getString("generation_id"), ack.getString("consumed_at"),
                                 ack.getString("generation_id")),
+                        )
+                        db.execSQL(
+                            "UPDATE heart_rate_captures SET acknowledged_at=? WHERE " +
+                                "acknowledged_at IS NULL AND EXISTS(" +
+                                "SELECT 1 FROM heart_rate_generation_captures m " +
+                                "WHERE m.generation_id=? AND " +
+                                "m.capture_id=heart_rate_captures.capture_id)",
+                            arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
                         )
                     }
                     target

@@ -22,6 +22,10 @@ import com.labfytools.trainlog.model.ExerciseProfile
 import com.labfytools.trainlog.model.ExerciseEditInput
 import com.labfytools.trainlog.model.ExerciseFeedback
 import com.labfytools.trainlog.model.DraftExerciseFeedback
+import com.labfytools.trainlog.model.HeartRateCapture
+import com.labfytools.trainlog.model.HeartRateContextKind
+import com.labfytools.trainlog.model.HeartRateRrInterval
+import com.labfytools.trainlog.model.HeartRateSample
 import com.labfytools.trainlog.model.LatestExerciseMax
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.PreparedSession
@@ -484,6 +488,21 @@ class TrainlogRepository(
     sealed interface SleepDiaryImportResult {
         data class Applied(val advanced: Int, val unchanged: Int) : SleepDiaryImportResult
         data class Rejected(val reason: String) : SleepDiaryImportResult
+    }
+
+    sealed interface StartHeartRateCaptureResult {
+        data class Started(val captureId: String) : StartHeartRateCaptureResult
+        data object Invalid : StartHeartRateCaptureResult
+        data object Conflict : StartHeartRateCaptureResult
+        data object DatabaseError : StartHeartRateCaptureResult
+    }
+
+    sealed interface HeartRateMutationResult {
+        data class Applied(val sequence: Long? = null) : HeartRateMutationResult
+        data object Invalid : HeartRateMutationResult
+        data object NotFound : HeartRateMutationResult
+        data object Conflict : HeartRateMutationResult
+        data object DatabaseError : HeartRateMutationResult
     }
 
     private fun sleepId(prefix: String): String = "${prefix}_${UUID.randomUUID()}"
@@ -1139,6 +1158,391 @@ class TrainlogRepository(
         )
     }
 
+    private fun heartRateContextIdValid(kind: HeartRateContextKind, value: String): Boolean =
+        when (kind) {
+            HeartRateContextKind.SESSION,
+            HeartRateContextKind.CARDIO ->
+                Regex("^se_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+                    .matches(value)
+            HeartRateContextKind.SLEEP -> sleepIdentity(value, "sl")
+        }
+
+    private fun heartRateContextExists(
+        db: SQLiteDatabase,
+        kind: HeartRateContextKind,
+        contextId: String,
+    ): Boolean =
+        when (kind) {
+            HeartRateContextKind.SESSION ->
+                db.rawQuery(
+                    "SELECT 1 FROM active_session_draft WHERE id=1 AND session_id=? " +
+                        "AND session_type IN('training','max_test') LIMIT 1",
+                    arrayOf(contextId),
+                ).use { it.moveToFirst() }
+            HeartRateContextKind.CARDIO ->
+                db.rawQuery(
+                    "SELECT 1 FROM active_session_draft WHERE id=1 AND session_id=? " +
+                        "AND session_type='cardio' LIMIT 1",
+                    arrayOf(contextId),
+                ).use { it.moveToFirst() }
+            HeartRateContextKind.SLEEP ->
+                db.rawQuery(
+                    "SELECT 1 FROM sleep_diary_entries WHERE entry_id=? AND deleted=0 LIMIT 1",
+                    arrayOf(contextId),
+                ).use { it.moveToFirst() }
+        }
+
+    fun startHeartRateCapture(
+        contextKind: HeartRateContextKind,
+        contextId: String,
+        startedAt: String,
+        sensorName: String? = null,
+    ): StartHeartRateCaptureResult {
+        val normalizedSensor = sensorName?.trim()?.takeIf { it.isNotEmpty() }
+        if (
+            !heartRateContextIdValid(contextKind, contextId) ||
+            TrainlogTimestamp.parse(startedAt) == null ||
+            (normalizedSensor != null &&
+                normalizedSensor.toByteArray(StandardCharsets.UTF_8).size >
+                    MAX_HEART_RATE_SENSOR_NAME_UTF8_BYTES)
+        ) return StartHeartRateCaptureResult.Invalid
+
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            if (!heartRateContextExists(db, contextKind, contextId)) {
+                StartHeartRateCaptureResult.Invalid
+            } else if (
+                db.rawQuery(
+                    "SELECT 1 FROM heart_rate_captures WHERE active_slot=1 LIMIT 1",
+                    null,
+                ).use { it.moveToFirst() }
+            ) {
+                StartHeartRateCaptureResult.Conflict
+            } else {
+                val captureId = "hrc_${UUID.randomUUID()}"
+                db.execSQL(
+                    "INSERT INTO heart_rate_captures(" +
+                        "capture_id,context_kind,context_id,started_at,ended_at,active_slot," +
+                        "active_exercise_entry_id,sensor_name,acknowledged_at) " +
+                        "VALUES(?,?,?,?,NULL,1,NULL,?,NULL)",
+                    arrayOf(captureId, contextKind.wireValue, contextId, startedAt, normalizedSensor),
+                )
+                db.setTransactionSuccessful()
+                StartHeartRateCaptureResult.Started(captureId)
+            }
+        } catch (_: SQLiteConstraintException) {
+            StartHeartRateCaptureResult.Conflict
+        } catch (_: android.database.sqlite.SQLiteException) {
+            StartHeartRateCaptureResult.DatabaseError
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun setHeartRateActiveExercise(
+        captureId: String,
+        exerciseEntryId: String?,
+    ): HeartRateMutationResult {
+        if (
+            !sleepIdentity(captureId, "hrc") ||
+            (exerciseEntryId != null && !SESSION_ENTRY_ID_V4_PATTERN.matches(exerciseEntryId))
+        ) return HeartRateMutationResult.Invalid
+
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val context =
+                db.rawQuery(
+                    "SELECT context_kind,context_id FROM heart_rate_captures " +
+                        "WHERE capture_id=? AND active_slot=1",
+                    arrayOf(captureId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getString(1)
+                } ?: return HeartRateMutationResult.NotFound
+
+            if (context.first !in setOf(
+                    HeartRateContextKind.SESSION.wireValue,
+                    HeartRateContextKind.CARDIO.wireValue,
+                )
+            ) {
+                HeartRateMutationResult.Invalid
+            } else if (
+                exerciseEntryId != null &&
+                !db.rawQuery(
+                    "SELECT 1 FROM draft_session_exercises de " +
+                        "JOIN active_session_draft d ON d.id=de.draft_id " +
+                        "WHERE d.id=1 AND d.session_id=? AND de.entry_id=? LIMIT 1",
+                    arrayOf(context.second, exerciseEntryId),
+                ).use { it.moveToFirst() }
+            ) {
+                HeartRateMutationResult.Invalid
+            } else {
+                val values = ContentValues().apply {
+                    if (exerciseEntryId == null) putNull("active_exercise_entry_id")
+                    else put("active_exercise_entry_id", exerciseEntryId)
+                }
+                if (
+                    db.update(
+                        "heart_rate_captures",
+                        values,
+                        "capture_id=? AND active_slot=1",
+                        arrayOf(captureId),
+                    ) != 1
+                ) HeartRateMutationResult.Conflict
+                else {
+                    db.setTransactionSuccessful()
+                    HeartRateMutationResult.Applied()
+                }
+            }
+        } catch (_: android.database.sqlite.SQLiteException) {
+            HeartRateMutationResult.DatabaseError
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun appendHeartRateSample(
+        captureId: String,
+        observedAt: String,
+        bpm: Int,
+        sensorContactDetected: Boolean? = null,
+        energyExpended: Int? = null,
+        rrIntervals: List<HeartRateRrInterval> = emptyList(),
+    ): HeartRateMutationResult {
+        val observed = TrainlogTimestamp.parse(observedAt)
+        if (
+            !sleepIdentity(captureId, "hrc") ||
+            observed == null ||
+            bpm !in 0..65535 ||
+            (energyExpended != null && energyExpended !in 0..65535) ||
+            rrIntervals.size > MAX_HEART_RATE_RR_PER_SAMPLE ||
+            rrIntervals.withIndex().any { (index, rr) ->
+                rr.index != index || rr.value1024 !in 0..65535
+            }
+        ) return HeartRateMutationResult.Invalid
+
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val capture =
+                db.rawQuery(
+                    "SELECT started_at,active_exercise_entry_id FROM heart_rate_captures " +
+                        "WHERE capture_id=? AND active_slot=1",
+                    arrayOf(captureId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else cursor.getString(0) to
+                        if (cursor.isNull(1)) null else cursor.getString(1)
+                } ?: return HeartRateMutationResult.NotFound
+            val started = TrainlogTimestamp.parse(capture.first)
+                ?: return HeartRateMutationResult.DatabaseError
+            if (observed < started) return HeartRateMutationResult.Invalid
+
+            val sequence =
+                db.rawQuery(
+                    "SELECT COALESCE(MAX(sequence),-1)+1 FROM heart_rate_samples WHERE capture_id=?",
+                    arrayOf(captureId),
+                ).use { cursor ->
+                    check(cursor.moveToFirst())
+                    cursor.getLong(0)
+                }
+            if (sequence >= MAX_HEART_RATE_SAMPLES_PER_CAPTURE.toLong()) {
+                return HeartRateMutationResult.Conflict
+            }
+
+            db.execSQL(
+                "INSERT INTO heart_rate_samples(" +
+                    "capture_id,sequence,observed_at,bpm,exercise_entry_id," +
+                    "sensor_contact_detected,energy_expended) VALUES(?,?,?,?,?,?,?)",
+                arrayOf<Any?>(
+                    captureId,
+                    sequence,
+                    observedAt,
+                    bpm,
+                    capture.second,
+                    sensorContactDetected?.let { if (it) 1 else 0 },
+                    energyExpended,
+                ),
+            )
+            rrIntervals.forEach { rr ->
+                db.execSQL(
+                    "INSERT INTO heart_rate_rr_intervals(" +
+                        "capture_id,sample_sequence,rr_index,value_1024) VALUES(?,?,?,?)",
+                    arrayOf<Any>(captureId, sequence, rr.index, rr.value1024),
+                )
+            }
+            db.setTransactionSuccessful()
+            HeartRateMutationResult.Applied(sequence)
+        } catch (_: SQLiteConstraintException) {
+            HeartRateMutationResult.Conflict
+        } catch (_: android.database.sqlite.SQLiteException) {
+            HeartRateMutationResult.DatabaseError
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun stopHeartRateCapture(
+        captureId: String,
+        endedAt: String,
+    ): HeartRateMutationResult {
+        val ended = TrainlogTimestamp.parse(endedAt)
+        if (!sleepIdentity(captureId, "hrc") || ended == null)
+            return HeartRateMutationResult.Invalid
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val startedText =
+                db.rawQuery(
+                    "SELECT started_at FROM heart_rate_captures WHERE capture_id=? AND active_slot=1",
+                    arrayOf(captureId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0)
+                } ?: return HeartRateMutationResult.NotFound
+            val started: TrainlogTimestampKey =
+                TrainlogTimestamp.parse(startedText)
+                    ?: return HeartRateMutationResult.DatabaseError
+            if (ended < started) return HeartRateMutationResult.Invalid
+            val values = ContentValues().apply {
+                put("ended_at", endedAt)
+                putNull("active_slot")
+                putNull("active_exercise_entry_id")
+            }
+            if (
+                db.update(
+                    "heart_rate_captures",
+                    values,
+                    "capture_id=? AND active_slot=1",
+                    arrayOf(captureId),
+                ) != 1
+            ) HeartRateMutationResult.Conflict
+            else {
+                db.setTransactionSuccessful()
+                HeartRateMutationResult.Applied()
+            }
+        } catch (_: android.database.sqlite.SQLiteException) {
+            HeartRateMutationResult.DatabaseError
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun activeHeartRateCapture(): HeartRateCapture? {
+        val db = database.readableDatabase
+        return db.rawQuery(
+            "SELECT capture_id,context_kind,context_id,started_at,ended_at," +
+                "active_exercise_entry_id,sensor_name FROM heart_rate_captures " +
+                "WHERE active_slot=1 LIMIT 1",
+            null,
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null
+            else HeartRateCapture(
+                captureId = cursor.getString(0),
+                contextKind = HeartRateContextKind.fromWire(cursor.getString(1)),
+                contextId = cursor.getString(2),
+                startedAt = cursor.getString(3),
+                endedAt = if (cursor.isNull(4)) null else cursor.getString(4),
+                activeExerciseEntryId = if (cursor.isNull(5)) null else cursor.getString(5),
+                sensorName = if (cursor.isNull(6)) null else cursor.getString(6),
+            )
+        }
+    }
+
+    internal fun buildHeartRateV1Json(): String {
+        val db = database.readableDatabase
+        val captures = JSONArray()
+        db.rawQuery(
+            "SELECT c.capture_id,c.context_kind,c.context_id,c.started_at,c.ended_at,c.sensor_name " +
+                "FROM heart_rate_captures c WHERE c.ended_at IS NOT NULL " +
+                "AND c.acknowledged_at IS NULL AND NOT EXISTS(" +
+                "SELECT 1 FROM heart_rate_generation_captures m " +
+                "JOIN sync_generations g ON g.generation_id=m.generation_id " +
+                "WHERE m.capture_id=c.capture_id AND " +
+                "g.status IN('captured','published','waiting_acknowledgement')) " +
+                "ORDER BY c.ended_at,c.capture_id LIMIT ?",
+            arrayOf(MAX_HEART_RATE_CAPTURES_PER_GENERATION.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val captureId = cursor.getString(0)
+                val samples = JSONArray()
+                val rrBySequence = mutableMapOf<Long, JSONArray>()
+                db.rawQuery(
+                    "SELECT sample_sequence,rr_index,value_1024 FROM heart_rate_rr_intervals " +
+                        "WHERE capture_id=? ORDER BY sample_sequence,rr_index",
+                    arrayOf(captureId),
+                ).use { rrCursor ->
+                    var currentSequence: Long? = null
+                    var expectedIndex = 0
+                    while (rrCursor.moveToNext()) {
+                        val sequence = rrCursor.getLong(0)
+                        if (sequence != currentSequence) {
+                            currentSequence = sequence
+                            expectedIndex = 0
+                        }
+                        check(rrCursor.getInt(1) == expectedIndex++)
+                        rrBySequence.getOrPut(sequence) { JSONArray() }.put(rrCursor.getInt(2))
+                    }
+                }
+                db.rawQuery(
+                    "SELECT sequence,observed_at,bpm,exercise_entry_id," +
+                        "sensor_contact_detected,energy_expended FROM heart_rate_samples " +
+                        "WHERE capture_id=? ORDER BY sequence",
+                    arrayOf(captureId),
+                ).use { sampleCursor ->
+                    var count = 0
+                    while (sampleCursor.moveToNext()) {
+                        check(++count <= MAX_HEART_RATE_SAMPLES_PER_CAPTURE)
+                        val sequence = sampleCursor.getLong(0)
+                        val rr = rrBySequence.remove(sequence) ?: JSONArray()
+                        samples.put(
+                            JSONObject()
+                                .put("sequence", sequence)
+                                .put("observed_at", sampleCursor.getString(1))
+                                .put("bpm", sampleCursor.getInt(2))
+                                .put(
+                                    "exercise_entry_id",
+                                    if (sampleCursor.isNull(3)) JSONObject.NULL
+                                    else sampleCursor.getString(3),
+                                )
+                                .put(
+                                    "sensor_contact_detected",
+                                    if (sampleCursor.isNull(4)) JSONObject.NULL
+                                    else sampleCursor.getInt(4) != 0,
+                                )
+                                .put(
+                                    "energy_expended",
+                                    if (sampleCursor.isNull(5)) JSONObject.NULL
+                                    else sampleCursor.getInt(5),
+                                )
+                                .put("rr_intervals_1024", rr),
+                        )
+                    }
+                }
+                check(rrBySequence.isEmpty())
+                captures.put(
+                    JSONObject()
+                        .put("capture_id", captureId)
+                        .put("context_kind", cursor.getString(1))
+                        .put("context_id", cursor.getString(2))
+                        .put("started_at", cursor.getString(3))
+                        .put("ended_at", cursor.getString(4))
+                        .put(
+                            "sensor_name",
+                            if (cursor.isNull(5)) JSONObject.NULL else cursor.getString(5),
+                        )
+                        .put("samples", samples),
+                )
+            }
+        }
+        return JSONObject()
+            .put("format", "trainlog-heart-rate")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("captures", captures)
+            .toString()
+    }
+
     /** Create a transactionally consistent SQLite snapshot without exposing WAL files. */
     internal fun backupDatabaseTo(destination: File) {
         require(!destination.exists()) { "Backup snapshot destination already exists." }
@@ -1185,6 +1589,7 @@ class TrainlogRepository(
         artifacts["causal-deletions"] = buildCausalDeletionExportV1Json()
         artifacts["program-executions"] = buildProgramExecutionsV1Json()
         artifacts["sleep-diary"] = buildSleepDiaryV1Json()
+        artifacts["heart-rate"] = buildHeartRateV1Json()
         artifacts
     }
 
@@ -9554,6 +9959,10 @@ private val SESSION_ENTRY_ID_V4_PATTERN = Regex(
     "^sxe_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
 )
 private const val MAX_AI_DRAFTS = 256
+private const val MAX_HEART_RATE_CAPTURES_PER_GENERATION = 256
+private const val MAX_HEART_RATE_SAMPLES_PER_CAPTURE = 200000
+private const val MAX_HEART_RATE_RR_PER_SAMPLE = 64
+private const val MAX_HEART_RATE_SENSOR_NAME_UTF8_BYTES = 160
 private const val MAX_AI_DRAFT_ENTRIES = 64
 private const val MAX_AI_TARGET_SETS = 99
 private const val MAX_AI_TARGET_REPS = 999
@@ -9572,7 +9981,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    26,
+    27,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -9626,6 +10035,7 @@ private class TrainlogDatabaseHelper(
         createSyncedProgramTables(db)
         createProgramExecutionProvenance(db)
         createSleepDiaryTables(db)
+        createHeartRateTables(db)
         seedEquipment(db)
     }
 
@@ -9839,6 +10249,14 @@ private class TrainlogDatabaseHelper(
             createSleepDiaryTables(db)
             version = 26
         }
+        if (version < 27 && newVersion >= 27) {
+            /* WHY: heart-rate samples are Android-owned measured field data.
+             * CONTRACT: v27 adds only cardio captures/samples and generation
+             * publication state. INVARIANT: no workout or sleep row is
+             * rewritten and no historical timestamp is invented. */
+            createHeartRateTables(db)
+            version = 27
+        }
 
         if (version != newVersion) {
             error(
@@ -9975,6 +10393,71 @@ private class TrainlogDatabaseHelper(
             entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
             revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
             PRIMARY KEY(generation_id,entry_id))""".trimIndent())
+    }
+
+    private fun createHeartRateTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS heart_rate_captures(
+                capture_id TEXT PRIMARY KEY,
+                context_kind TEXT NOT NULL CHECK(context_kind IN('session','cardio','sleep')),
+                context_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                active_slot INTEGER UNIQUE CHECK(active_slot IS NULL OR active_slot=1),
+                active_exercise_entry_id TEXT,
+                sensor_name TEXT,
+                acknowledged_at TEXT,
+                CHECK(capture_id GLOB 'hrc_*'),
+                CHECK((context_kind IN('session','cardio') AND context_id GLOB 'se_*') OR
+                    (context_kind='sleep' AND context_id GLOB 'sl_*')),
+                CHECK(active_exercise_entry_id IS NULL OR active_exercise_entry_id GLOB 'sxe_*'),
+                CHECK(sensor_name IS NULL OR length(CAST(sensor_name AS BLOB))<=160)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS heart_rate_samples(
+                capture_id TEXT NOT NULL
+                    REFERENCES heart_rate_captures(capture_id) ON DELETE CASCADE,
+                sequence INTEGER NOT NULL CHECK(sequence>=0),
+                observed_at TEXT NOT NULL,
+                bpm INTEGER NOT NULL CHECK(bpm BETWEEN 0 AND 65535),
+                exercise_entry_id TEXT,
+                sensor_contact_detected INTEGER
+                    CHECK(sensor_contact_detected IS NULL OR sensor_contact_detected IN(0,1)),
+                energy_expended INTEGER
+                    CHECK(energy_expended IS NULL OR energy_expended BETWEEN 0 AND 65535),
+                PRIMARY KEY(capture_id,sequence),
+                CHECK(exercise_entry_id IS NULL OR exercise_entry_id GLOB 'sxe_*')
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS heart_rate_rr_intervals(
+                capture_id TEXT NOT NULL,
+                sample_sequence INTEGER NOT NULL,
+                rr_index INTEGER NOT NULL CHECK(rr_index BETWEEN 0 AND 63),
+                value_1024 INTEGER NOT NULL CHECK(value_1024 BETWEEN 0 AND 65535),
+                PRIMARY KEY(capture_id,sample_sequence,rr_index),
+                FOREIGN KEY(capture_id,sample_sequence)
+                    REFERENCES heart_rate_samples(capture_id,sequence) ON DELETE CASCADE
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS heart_rate_generation_captures(
+                generation_id TEXT NOT NULL
+                    REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,
+                capture_id TEXT NOT NULL
+                    REFERENCES heart_rate_captures(capture_id) ON DELETE RESTRICT,
+                PRIMARY KEY(generation_id,capture_id)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS heart_rate_samples_time " +
+                "ON heart_rate_samples(observed_at,capture_id,sequence)",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS heart_rate_captures_context " +
+                "ON heart_rate_captures(context_kind,context_id,started_at)",
+        )
     }
 
     private fun createSyncDataLifecycleTables(db: SQLiteDatabase) {

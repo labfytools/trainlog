@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from trainlog_sqlite import connect_database
 import causal_delete_exchange
 import execution_draft_exchange
+import heart_rate_exchange
 import import_equipment_associations
 import import_equipment_definitions
 import import_exercise_aliases
@@ -81,6 +82,7 @@ ARTIFACTS = (
 )
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS} | {
     ("trainlog-program-executions", 1),
+    ("trainlog-heart-rate", 1),
 }
 
 
@@ -209,7 +211,7 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25, 26, 27, 28, 29)
+    supported_versions = (24, 25, 26, 27, 28, 29, 30)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         raise GenerationError("desktop schema v24, v25, v26, v27, v28 or v29 required")
 
@@ -667,6 +669,8 @@ def consume_desktop(database: Path, directory: Path) -> dict:
     feedback = import_training_feedback.load(required("feedback"))
     sleep_diary = (sleep_diary_exchange.load(listed["sleep-diary"])
                    if "sleep-diary" in listed else None)
+    heart_rate = (heart_rate_exchange.load(listed["heart-rate"])
+                  if "heart-rate" in listed else None)
     program_executions = (
         program_execution_exchange.load(listed["program-executions"])
         if "program-executions" in listed else None
@@ -710,6 +714,8 @@ def consume_desktop(database: Path, directory: Path) -> dict:
             execution_draft_exchange.import_document(db, drafts, own_transaction=False)
             if sleep_diary is not None:
                 sleep_diary_exchange.apply(db, sleep_diary)
+            if heart_rate is not None:
+                heart_rate_exchange.apply(db, heart_rate)
             if program_executions is not None:
                 program_execution_exchange.apply_executions(db, program_executions)
             ack = record_consumed(db, manifest, manifest_digest)

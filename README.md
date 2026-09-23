@@ -36,7 +36,7 @@ Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
 Web Exercises administration, the factual Dashboard/Analyse read model, and the
 synchronized Sleep Diary workspace are the stable v0.1.4 baseline. Version
-0.1.5 development is focused on cardio and heart-rate sensor capture.
+0.1.5 development has the Android/desktop heart-rate persistence and synchronization foundation in place; Android BLE sensor acquisition is the current implementation cursor.
 
 ## Releases
 

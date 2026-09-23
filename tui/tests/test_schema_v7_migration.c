@@ -178,8 +178,8 @@ static bool test_v7_migration_sqlite_failure_has_diagnostic(void) {
           TRAINLOG_STATUS_DATABASE_ERROR);
     CHECK(database == NULL);
     CHECK(strncmp(diagnostic,
-                  "migrate database to schema v29: SQLite rc=",
-                  strlen("migrate database to schema v29: SQLite rc=")) == 0);
+                  "migrate database to schema v30: SQLite rc=",
+                  strlen("migrate database to schema v30: SQLite rc=")) == 0);
     CHECK(strstr(diagnostic, "extended_rc=") != NULL);
     CHECK(strstr(diagnostic, "custom_equipment") != NULL);
     CHECK(strstr(diagnostic, "already exists") != NULL);
@@ -197,12 +197,12 @@ static bool test_newer_schema_has_application_diagnostic(void) {
     CHECK(fd >= 0);
     CHECK(close(fd) == 0);
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(sqlite3_exec(raw, "PRAGMA user_version=30;", NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw, "PRAGMA user_version=31;", NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic, sizeof(diagnostic)) ==
           TRAINLOG_STATUS_SCHEMA_UNSUPPORTED);
     CHECK(database == NULL);
-    CHECK(strstr(diagnostic, "schema version 30 is newer") != NULL);
+    CHECK(strstr(diagnostic, "schema version 31 is newer") != NULL);
     CHECK(strstr(diagnostic, "SQLite") == NULL);
     CHECK(unlink(path) == 0);
     return true;
