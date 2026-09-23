@@ -1433,7 +1433,7 @@ static const char *const MIGRATE_V32_TO_V33_SQL =
 static const char *const MIGRATE_V33_TO_V34_SQL =
     "BEGIN IMMEDIATE;"
     "CREATE TABLE IF NOT EXISTS cardio_guidance_runs("
-    "run_id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE RESTRICT,"
+    "run_id TEXT PRIMARY KEY,session_id TEXT NOT NULL UNIQUE REFERENCES sessions(session_id) ON DELETE RESTRICT,"
     "started_at TEXT NOT NULL,ended_at TEXT NOT NULL,imported_at TEXT NOT NULL,"
     "CHECK(run_id GLOB 'cgr_*'),CHECK(session_id GLOB 'se_*'));"
     "CREATE TABLE IF NOT EXISTS cardio_guidance_phases("

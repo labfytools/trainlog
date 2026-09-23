@@ -22,6 +22,7 @@
 
 #include "trainlog/web_dashboard.h"
 #include "trainlog/web_analysis.h"
+#include "trainlog/web_heart_rate.h"
 #include "trainlog/web_exercises.h"
 #include "trainlog/web_prepared_items.h"
 #include "trainlog/web_programs.h"
@@ -69,6 +70,36 @@ static bool valid_sync_id(const char *value) {
 static bool valid_exercise_id(const char *value) {
     return value != NULL && strlen(value) == 39U && strncmp(value, "ex_", 3U) == 0 &&
            uuid_parse(value + 3U, (unsigned char[16]){0}) == 0;
+}
+
+static bool valid_heart_rate_context_id(const char *value) {
+    return value != NULL && strlen(value) == 39U &&
+           (strncmp(value, "se_", 3U) == 0 || strncmp(value, "sl_", 3U) == 0) &&
+           uuid_parse(value + 3U, (unsigned char[16]){0}) == 0;
+}
+
+typedef struct TrainlogHeartRateArguments {
+    bool valid;
+    unsigned int context_count;
+} TrainlogHeartRateArguments;
+
+static enum MHD_Result validate_heart_rate_argument(void *context,
+                                                    enum MHD_ValueKind kind,
+                                                    const char *key,
+                                                    const char *value) {
+    TrainlogHeartRateArguments *arguments = context;
+    (void)kind;
+    (void)value;
+    if (strcmp(key, "context_id") != 0) {
+        arguments->valid = false;
+        return MHD_NO;
+    }
+    ++arguments->context_count;
+    if (arguments->context_count > 1U) {
+        arguments->valid = false;
+        return MHD_NO;
+    }
+    return MHD_YES;
 }
 
 typedef struct TrainlogAnalysisArguments {
@@ -1357,6 +1388,57 @@ static enum MHD_Result handle_request(void *closure,
                                      accepted_size,
                                      context->csrf_token,
                                      "/api/v1/sync/status");
+    }
+    if (strcmp(url, "/api/v1/heart-rate-timeline") == 0) {
+        TrainlogHeartRateArguments arguments = {.valid = true};
+        const char *context_id;
+        char *json;
+        size_t json_size = 0U;
+        TrainlogStatus status;
+        enum MHD_Result queued;
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
+        (void)MHD_get_connection_values(
+            connection, MHD_GET_ARGUMENT_KIND, validate_heart_rate_argument, &arguments);
+        context_id =
+            MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "context_id");
+        if (!arguments.valid || arguments.context_count != 1U ||
+            !valid_heart_rate_context_id(context_id)) {
+            return queue_json(connection,
+                              MHD_HTTP_BAD_REQUEST,
+                              "{\"error\":\"invalid_heart_rate_context\"}\n",
+                              NULL);
+        }
+        json = malloc(TRAINLOG_WEB_HEART_RATE_JSON_CAPACITY);
+        if (json == NULL) {
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"heart_rate_timeline_unavailable\"}\n",
+                              NULL);
+        }
+        status = trainlog_web_heart_rate_timeline_json(context->database,
+                                                       context_id,
+                                                       json,
+                                                       TRAINLOG_WEB_HEART_RATE_JSON_CAPACITY,
+                                                       &json_size);
+        if (status != TRAINLOG_STATUS_OK || json_size == 0U) {
+            free(json);
+            return queue_json(connection,
+                              status == TRAINLOG_STATUS_INVALID_ARGUMENT
+                                  ? MHD_HTTP_BAD_REQUEST
+                                  : MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              status == TRAINLOG_STATUS_INVALID_ARGUMENT
+                                  ? "{\"error\":\"invalid_heart_rate_context\"}\n"
+                                  : "{\"error\":\"heart_rate_timeline_unavailable\"}\n",
+                              NULL);
+        }
+        queued = queue_json(connection, MHD_HTTP_OK, json, NULL);
+        free(json);
+        return queued;
     }
     if (strcmp(url, "/api/v1/analysis") == 0) {
         TrainlogAnalysisArguments arguments = {.valid = true};

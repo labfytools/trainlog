@@ -155,7 +155,8 @@ parallel implementation of its rules.
 | Cardio session type | `TRAINLOG_CARDIO_SESSION_TYPE_V1=PASS`: Android v29 + desktop v32 use canonical `session_kind=cardio`; frozen mobile/history and draft formats keep legacy training/max_test; dedicated `trainlog-cardio-sessions` V1 syncs completed cardio sessions Android→desktop idempotently |
 | Cardio calibration | `TRAINLOG_CARDIO_CALIBRATION_V1=PASS`: reserved system Calibration cardio exercise, real measured observed peak, ≥3 min recovery with bounded +1/+2/+3 min factual samples, immutable profile and Android→desktop calibration companion |
 | Cardio BPM guidance | `TRAINLOG_CARDIO_BPM_GUIDANCE_V1=PASS`: absolute/calibration-derived immutable BPM targets, 2 BPM hysteresis, 3 s confirmation, stale-signal suspension, durable phase/condition history, Android live guidance UI and strict Android→desktop `trainlog-cardio-guidance` V1 sync |
-| Current operational cursor | `TRAINLOG_CARDIO_WEB_VISUALIZATION_V1`: factual Web timelines/curves for training, cardio guidance/calibration and Sleep without inventing measurements or sleep states |
+| Cardio Web visualization | `TRAINLOG_CARDIO_WEB_VISUALIZATION_V1=PASS`: one bounded factual heart-rate timeline read model/HTTP endpoint powers Web History and Sleep with raw BPM/RR, real session/exercise/Sleep markers, guided targets/instructions and calibration facts; no sleep-stage or medical inference |
+| Current operational cursor | `TRAINLOG_0_1_5_VALIDATION_V1`: complete Android/native/Web regression, migration, package, sync/replay and private-device smoke validation before any stable release decision |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

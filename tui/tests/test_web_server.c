@@ -517,6 +517,29 @@ static bool test_http_contract(TrainlogDatabase *database) {
           strstr(response, "\"period\":\"30d\"") != NULL &&
           strstr(response, "\"selected_metric\":\"waist\"") != NULL);
     CHECK(exchange(port,
+                   "GET /api/v1/heart-rate-timeline?context_id="
+                   "se_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb HTTP/1.1\r\n"
+                   "Host: 127.0.0.1\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 200") != NULL &&
+          strstr(response, "\"available\":false") != NULL &&
+          strstr(response, "\"capture\":null") != NULL);
+    CHECK(exchange(port,
+                   "GET /api/v1/heart-rate-timeline?context_id=bad HTTP/1.1\r\n"
+                   "Host: 127.0.0.1\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 400") != NULL &&
+          strstr(response, "invalid_heart_rate_context") != NULL);
+    CHECK(exchange(port,
+                   "POST /api/v1/heart-rate-timeline?context_id="
+                   "se_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb HTTP/1.1\r\n"
+                   "Host: 127.0.0.1\r\nContent-Length: 0\r\n\r\n",
+                   response,
+                   sizeof(response)) &&
+          strstr(response, "HTTP/1.1 405") != NULL);
+    CHECK(exchange(port,
                    "GET /api/v1/analysis?period=invalid HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
                    response,
                    sizeof(response)) &&

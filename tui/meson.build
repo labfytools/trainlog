@@ -218,6 +218,7 @@ trainlog_core_sources = files(
   'src/web_dashboard.c',
   'src/web_dashboard_json.c',
   'src/web_analysis.c',
+  'src/web_heart_rate.c',
   'src/web_prepared_items.c',
   'src/web_prepared_items_json.c',
   'src/web_sessions.c',
@@ -380,6 +381,15 @@ test_web_analysis = executable(
   c_args: strict_c_args,
 )
 test('web_analysis', test_web_analysis)
+
+test_web_heart_rate = executable(
+  'test_web_heart_rate',
+  'tests/test_web_heart_rate.c',
+  dependencies: trainlog_core_dep,
+  include_directories: trainlog_private_include,
+  c_args: strict_c_args,
+)
+test('web_heart_rate', test_web_heart_rate)
 
 test_web_prepared_items = executable(
   'test_web_prepared_items',

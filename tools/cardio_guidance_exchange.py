@@ -128,6 +128,7 @@ def validate(root: object) -> dict:
     if not isinstance(runs, list) or len(runs) > MAX_RUNS:
         fail("cardio guidance run bound exceeded")
     seen_runs = set()
+    seen_sessions = set()
     seen_phases = set()
     for run in runs:
         if not isinstance(run, dict) or set(run) != {
@@ -140,8 +141,13 @@ def validate(root: object) -> dict:
         ):
             fail("invalid or duplicate cardio guidance run identity")
         seen_runs.add(run["run_id"])
-        if not isinstance(run["session_id"], str) or not SESSION_ID.fullmatch(run["session_id"]):
-            fail("invalid cardio guidance session identity")
+        if (
+            not isinstance(run["session_id"], str)
+            or not SESSION_ID.fullmatch(run["session_id"])
+            or run["session_id"] in seen_sessions
+        ):
+            fail("invalid or duplicate cardio guidance session identity")
+        seen_sessions.add(run["session_id"])
         _, run_start = timestamp(run["started_at"])
         _, run_end = timestamp(run["ended_at"])
         if run_end < run_start:

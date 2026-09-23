@@ -1837,3 +1837,28 @@ calibration provenance and exact raw BPM evidence for non-suspended events.
 The 2026-09-23 closeout passes the complete native Meson inventory
 **110/110**, and the complete Android JVM inventory reports **300 tests:
 295 passed, five skipped, zero failures/errors**. `assembleDebug` succeeds.
+
+## Cardio Web visualization V1 validation
+
+`TRAINLOG_CARDIO_WEB_VISUALIZATION_V1=PASS` adds one bounded read-only C17
+heart-rate timeline projection and one loopback GET endpoint keyed only by the
+stable session/cardio `se_` or Sleep Diary `sl_` identity. The projection
+returns synchronized raw BPM samples with native RR arrays, canonical
+session/exercise or Sleep/medication markers, guided-cardio phase snapshots and
+instruction changes, and factual calibration peak/recovery data when present.
+It performs no sleep-stage, return-to-sleep, HRV, readiness or medical
+inference.
+
+Web History and the Sleep workspace reuse the same React timeline component.
+Min/max/mean facts are calculated over every returned BPM sample. Only the SVG
+projection is bounded for large captures by retaining bucket extrema; the
+source samples and statistics are not downsampled. A large synchronized night
+therefore remains exact at the data boundary without forcing a 100,000-point
+SVG path.
+
+The backend test covers cardio BPM/RR, exercise intervals, guidance, calibration,
+Sleep events, medication points, empty contexts and invalid identities. The HTTP
+test covers valid empty GET, bad context rejection and GET-only semantics. The
+2026-09-23 closeout passes the complete native inventory **111/111** and the
+complete Web inventory **29 files / 183 tests**; Web typecheck and production
+build also succeed.

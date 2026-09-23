@@ -16,6 +16,7 @@ import {
   type SessionListItem,
 } from '../api/sessions'
 import { DeleteConfirmationDialog } from '../components/DeleteConfirmationDialog'
+import { HeartRateTimelinePanel } from '../components/HeartRateTimelinePanel'
 import { useDatePreferences } from '../presentation/DatePreferences'
 import {
   formatCivilDate,
@@ -478,6 +479,7 @@ function ReadonlyDetail({ kind, identity, onBack }: {
             return `${String(values.reps ?? values.duration_seconds ?? '—')}${values.weight_kg ? ` × ${String(values.weight_kg)} kg` : ''}` }).join(' · ')
           : occurrence.max_weight_kg ? `MAX mesuré ${String(occurrence.max_weight_kg)} kg` : 'aucune mesure persistée'}</span>
       </li>)}</ol></section>}
+    {kind === 'history' && <HeartRateTimelinePanel contextId={identity} />}
     {kind === 'draft' && payload && <section className="detail-tile"><h3>État confirmé</h3>
       <pre className="draft-payload">{JSON.stringify(payload, null, 2)}</pre></section>}
   </article>

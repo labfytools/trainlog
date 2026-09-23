@@ -17,6 +17,7 @@ import {
   type SleepQuality,
 } from "../api/sleepDiary";
 import type { AnalysisPeriod } from "../api/analysis";
+import { HeartRateTimelinePanel } from "../components/HeartRateTimelinePanel";
 import {
   buildSleepDiaryPdf,
   presentSleepDiaryPdf,
@@ -890,6 +891,8 @@ export function SleepDiaryWorkspace({
           </div>
         )}
       </article>
+
+      {activeEntry && <HeartRateTimelinePanel contextId={activeEntry.entry_id} />}
 
       <article className="analysis-panel analysis-wide sleep-entry-card">
         <header className="sleep-entry-header">

@@ -2943,3 +2943,124 @@ h2 {
     transition: none !important;
   }
 }
+
+.heart-rate-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--mantle);
+  border: 1px solid var(--surface-1);
+  border-radius: 0.7rem;
+}
+.heart-rate-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.heart-rate-heading h3,
+.heart-rate-phases h4,
+.heart-rate-calibration h4 {
+  margin: 0;
+}
+.heart-rate-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(4.5rem, 1fr));
+  gap: 0.4rem;
+}
+.heart-rate-facts div {
+  padding: 0.45rem 0.55rem;
+  background: var(--surface-0);
+  border-radius: 0.45rem;
+}
+.heart-rate-facts dt {
+  color: var(--overlay-1);
+  font-size: var(--font-size-xs);
+}
+.heart-rate-facts dd {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+  font: 700 var(--font-size-sm) var(--font-mono);
+}
+.heart-rate-chart {
+  margin: 0.85rem 0 0;
+}
+.heart-rate-chart svg {
+  width: 100%;
+  min-height: 15rem;
+  overflow: visible;
+}
+.heart-rate-line {
+  stroke: var(--red);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-target {
+  fill: rgb(166 227 161 / 14%);
+  stroke: rgb(166 227 161 / 42%);
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-event-band {
+  fill: rgb(180 190 254 / 6%);
+}
+.heart-rate-marker {
+  stroke: var(--surface-2);
+  stroke-width: 0.7;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-marker-label,
+.chart-axis-label {
+  fill: var(--subtext-0);
+  font-size: 10px;
+}
+.heart-rate-chart figcaption {
+  margin-top: 0.45rem;
+  color: var(--subtext-0);
+  font-size: var(--font-size-xs);
+}
+.heart-rate-phases,
+.heart-rate-calibration,
+.heart-rate-events {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--surface-1);
+}
+.heart-rate-phases ol {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+}
+.heart-rate-phases li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  background: var(--surface-0);
+  border-radius: 0.45rem;
+}
+.heart-rate-phases small,
+.heart-rate-events {
+  color: var(--subtext-0);
+}
+.heart-rate-events ul {
+  max-height: 12rem;
+  overflow: auto;
+}
+@media (max-width: 720px) {
+  .heart-rate-heading {
+    display: block;
+  }
+  .heart-rate-facts {
+    margin-top: 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .heart-rate-phases li {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}
