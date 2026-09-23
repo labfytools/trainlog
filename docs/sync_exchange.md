@@ -1127,7 +1127,15 @@ facts are applied.
 Programs, manual preparations, AI execution drafts, mobile V3/V4 and
 `TRAINLOG_FORMAT_V1` are not widened by this companion.
 
-## 22. Legacy active-protocol limitations
+## 22. Cardio calibration companion V1
+
+`trainlog-cardio-calibrations` V1 is an optional Android→desktop full-generation participant containing only completed calibration profiles. It references an already synchronized cardio session, its reserved stable occurrence, and an immutable stopped Heart Rate V1 capture.
+
+Before import, desktop proves that the referenced session/occurrence and HR capture already exist and match. The declared observed peak must equal a BPM actually present in that capture, and each recovery point must match an exact raw `(observed_at, bpm)` sample. Exact replay is idempotent; stable identity reuse with different metadata or recovery facts is rejected.
+
+Android generation membership is retained until a correlated consumed ACK. Acknowledged profiles remain local history and are not ordinarily republished. No calibration artifact claims a physiological maximum: the persisted value is the highest BPM actually observed in that calibration capture before recovery.
+
+## 23. Legacy active-protocol limitations
 
 The Web end-to-end tranche adds an explicit opt-in application orchestrator.
 `POST /api/v1/sync` admits one correlated run and `GET /api/v1/sync/status` is

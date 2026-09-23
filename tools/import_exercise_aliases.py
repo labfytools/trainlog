@@ -56,9 +56,9 @@ def load(path):
 
 def apply_aliases(con, aliases):
     """Apply parsed aliases inside the caller-owned transaction."""
-    supported_versions = range(12, 33)
+    supported_versions = range(12, 34)
     if con.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        fail("schema desktop v12-v32 requis")
+        fail("schema desktop v12-v33 requis")
     for source, canonical in aliases:
         target = con.execute("SELECT id,tracking_mode,recording_mode,data_fields FROM exercises WHERE exercise_id=?", (canonical,)).fetchone()
         if target is None: fail(f"cible canonique absente: {canonical}")

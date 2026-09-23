@@ -1401,6 +1401,31 @@ static const char *const MIGRATE_V31_TO_V32_SQL =
     "BEGIN IMMEDIATE;"
     "PRAGMA user_version=32;COMMIT;";
 
+/* WHY: guided cardio must retain the exact measured calibration reference
+ * independently from the raw HR samples. CONTRACT: v33 stores only completed
+ * imported calibration metadata/recovery points; the source curve remains in
+ * Heart Rate V1. INVARIANT: no session or HR sample is inferred or rewritten. */
+static const char *const MIGRATE_V32_TO_V33_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS cardio_calibrations("
+    "calibration_id TEXT PRIMARY KEY,protocol_version INTEGER NOT NULL CHECK(protocol_version=1),"
+    "session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE RESTRICT,"
+    "entry_id TEXT NOT NULL,started_at TEXT NOT NULL,effort_end_at TEXT NOT NULL,"
+    "ended_at TEXT NOT NULL,heart_rate_capture_id TEXT NOT NULL "
+    "REFERENCES heart_rate_captures(capture_id) ON DELETE RESTRICT,"
+    "observed_peak_bpm INTEGER NOT NULL CHECK(observed_peak_bpm BETWEEN 0 AND 65535),"
+    "imported_at TEXT NOT NULL,CHECK(calibration_id GLOB 'cal_*'),"
+    "CHECK(session_id GLOB 'se_*'),CHECK(entry_id GLOB 'sxe_*'),"
+    "CHECK(heart_rate_capture_id GLOB 'hrc_*'));"
+    "CREATE TABLE IF NOT EXISTS cardio_calibration_recovery("
+    "calibration_id TEXT NOT NULL REFERENCES cardio_calibrations(calibration_id) ON DELETE CASCADE,"
+    "target_offset_seconds INTEGER NOT NULL CHECK(target_offset_seconds IN(60,120,180)),"
+    "observed_at TEXT NOT NULL,bpm INTEGER NOT NULL CHECK(bpm BETWEEN 0 AND 65535),"
+    "PRIMARY KEY(calibration_id,target_offset_seconds));"
+    "CREATE INDEX IF NOT EXISTS cardio_calibration_session ON "
+    "cardio_calibrations(session_id,ended_at,calibration_id);"
+    "PRAGMA user_version=33;COMMIT;";
+
 static TrainlogStatus ensure_v32_session_kind(TrainlogDatabase *database) {
     sqlite3_stmt *statement = NULL;
     bool found_kind = false;
@@ -2270,7 +2295,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
                version == 26 || version == 27 || version == 28 || version == 29 || version == 30 ||
-               version == 31 || version == 32) {
+               version == 31 || version == 32 || version == 33) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2430,6 +2455,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 32) {
         status = execute_sql(database, MIGRATE_V31_TO_V32_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 33) {
+        status = execute_sql(database, MIGRATE_V32_TO_V33_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2449,7 +2477,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v32" : "migrate database to schema v32",
+                            version == 0 ? "create schema v33" : "migrate database to schema v33",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

@@ -17,6 +17,9 @@ import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.ActiveSessionTimelineContext
 import com.labfytools.trainlog.model.AiSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
+import com.labfytools.trainlog.model.CardioCalibrationPhase
+import com.labfytools.trainlog.model.CardioCalibrationProfile
+import com.labfytools.trainlog.model.CardioCalibrationRecoveryPoint
 import com.labfytools.trainlog.model.BodyObservationSummary
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseProfile
@@ -65,6 +68,7 @@ import java.io.StringReader
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.time.Duration
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.temporal.WeekFields
@@ -528,6 +532,13 @@ class TrainlogRepository(
         data class ActiveConflict(val activeEntryId: String) : SessionExerciseTimingResult
         data class Invalid(val message: String) : SessionExerciseTimingResult
         data class DatabaseError(val message: String) : SessionExerciseTimingResult
+    }
+
+    sealed interface CardioCalibrationResult {
+        data class Applied(val profile: CardioCalibrationProfile) : CardioCalibrationResult
+        data class Invalid(val message: String) : CardioCalibrationResult
+        data object Conflict : CardioCalibrationResult
+        data class DatabaseError(val message: String) : CardioCalibrationResult
     }
 
     private fun legacySessionTypeWire(type: SessionType): String =
@@ -1675,6 +1686,445 @@ class TrainlogRepository(
         }
     }
 
+    private fun readCardioCalibrationProfile(
+        db: SQLiteDatabase,
+        calibrationId: String,
+    ): CardioCalibrationProfile? {
+        val row =
+            db.rawQuery(
+                "SELECT calibration_id,protocol_version,session_id,entry_id,phase,started_at," +
+                    "phase_started_at,effort_end_at,ended_at,heart_rate_capture_id,observed_peak_bpm " +
+                    "FROM cardio_calibrations WHERE calibration_id=?",
+                arrayOf(calibrationId),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null
+                else arrayOf<Any?>(
+                    cursor.getString(0),
+                    cursor.getInt(1),
+                    cursor.getString(2),
+                    cursor.getString(3),
+                    cursor.getString(4),
+                    cursor.getString(5),
+                    cursor.getString(6),
+                    if (cursor.isNull(7)) null else cursor.getString(7),
+                    if (cursor.isNull(8)) null else cursor.getString(8),
+                    if (cursor.isNull(9)) null else cursor.getString(9),
+                    if (cursor.isNull(10)) null else cursor.getInt(10),
+                )
+            } ?: return null
+        val recovery =
+            db.rawQuery(
+                "SELECT target_offset_seconds,observed_at,bpm FROM cardio_calibration_recovery " +
+                    "WHERE calibration_id=? ORDER BY target_offset_seconds",
+                arrayOf(calibrationId),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(
+                            CardioCalibrationRecoveryPoint(
+                                targetOffsetSeconds = cursor.getInt(0),
+                                observedAt = cursor.getString(1),
+                                bpm = cursor.getInt(2),
+                            ),
+                        )
+                    }
+                }
+            }
+        return CardioCalibrationProfile(
+            calibrationId = row[0] as String,
+            protocolVersion = row[1] as Int,
+            sessionId = row[2] as String,
+            entryId = row[3] as String,
+            phase = CardioCalibrationPhase.fromWire(row[4] as String),
+            startedAt = row[5] as String,
+            phaseStartedAt = row[6] as String,
+            effortEndAt = row[7] as String?,
+            endedAt = row[8] as String?,
+            heartRateCaptureId = row[9] as String?,
+            observedPeakBpm = row[10] as Int?,
+            recovery = recovery,
+        )
+    }
+
+    fun activeCardioCalibration(): CardioCalibrationProfile? {
+        val db = database.readableDatabase
+        val id =
+            db.rawQuery(
+                "SELECT calibration_id FROM cardio_calibrations WHERE active_slot=1 LIMIT 1",
+                null,
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                ?: return null
+        return readCardioCalibrationProfile(db, id)
+    }
+
+    fun listCompletedCardioCalibrations(limit: Int = 32): List<CardioCalibrationProfile> {
+        require(limit in 1..128)
+        val db = database.readableDatabase
+        val ids =
+            db.rawQuery(
+                "SELECT calibration_id FROM cardio_calibrations WHERE phase='completed' " +
+                    "ORDER BY ended_at DESC,calibration_id DESC LIMIT ?",
+                arrayOf(limit.toString()),
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0))
+                }
+            }
+        return ids.mapNotNull { readCardioCalibrationProfile(db, it) }
+    }
+
+    internal fun buildCardioCalibrationsV1Json(): String {
+        val db = database.readableDatabase
+        val calibrations = JSONArray()
+        db.rawQuery(
+            "SELECT c.calibration_id FROM cardio_calibrations c " +
+                "WHERE c.phase='completed' AND c.acknowledged_at IS NULL AND NOT EXISTS(" +
+                "SELECT 1 FROM cardio_calibration_generation m " +
+                "JOIN sync_generations g ON g.generation_id=m.generation_id " +
+                "WHERE m.calibration_id=c.calibration_id AND " +
+                "g.status IN('captured','published','waiting_acknowledgement')) " +
+                "ORDER BY c.ended_at,c.calibration_id LIMIT ?",
+            arrayOf(MAX_CARDIO_CALIBRATIONS_PER_GENERATION.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val profile = checkNotNull(readCardioCalibrationProfile(db, cursor.getString(0)))
+                val recovery = JSONArray()
+                profile.recovery.forEach { point ->
+                    recovery.put(
+                        JSONObject()
+                            .put("target_offset_seconds", point.targetOffsetSeconds)
+                            .put("observed_at", point.observedAt)
+                            .put("bpm", point.bpm),
+                    )
+                }
+                calibrations.put(
+                    JSONObject()
+                        .put("calibration_id", profile.calibrationId)
+                        .put("protocol_version", profile.protocolVersion)
+                        .put("session_id", profile.sessionId)
+                        .put("entry_id", profile.entryId)
+                        .put("started_at", profile.startedAt)
+                        .put("effort_end_at", checkNotNull(profile.effortEndAt))
+                        .put("ended_at", checkNotNull(profile.endedAt))
+                        .put("heart_rate_capture_id", checkNotNull(profile.heartRateCaptureId))
+                        .put("observed_peak_bpm", checkNotNull(profile.observedPeakBpm))
+                        .put("recovery", recovery),
+                )
+            }
+        }
+        return JSONObject()
+            .put("format", "trainlog-cardio-calibrations")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("calibrations", calibrations)
+            .toString()
+    }
+
+    fun startCardioCalibration(
+        startedAt: String = OffsetDateTime.now().toString(),
+    ): CardioCalibrationResult {
+        if (TrainlogTimestamp.parse(startedAt) == null) {
+            return CardioCalibrationResult.Invalid("Invalid calibration start timestamp.")
+        }
+        if (activeCardioCalibration() != null || loadActiveSessionDraft() !is ActiveDraftLoadResult.None) {
+            return CardioCalibrationResult.Conflict
+        }
+        val exerciseRow =
+            findExerciseRow(
+                database.readableDatabase,
+                "exercise_id=?",
+                arrayOf(CARDIO_CALIBRATION_EXERCISE_ID),
+            ) ?: return CardioCalibrationResult.DatabaseError("Calibration exercise is unavailable.")
+        val exercise =
+            ExerciseProfile(
+                exerciseId = exerciseRow.exerciseId,
+                name = exerciseRow.name,
+                normalizedName = exerciseRow.normalizedName,
+                recordingMode = exerciseRow.recordingMode,
+                trackingMode = exerciseRow.trackingMode,
+                dataFields = exerciseRow.dataFields,
+            )
+        val entry = SessionExerciseDraft(exercise = exercise)
+        when (
+            saveActiveSessionDraft(
+                ActiveSessionDraft(
+                    startedAt = startedAt,
+                    exercises = listOf(entry),
+                    sessionType = SessionType.CARDIO,
+                ),
+            )
+        ) {
+            ActiveDraftMutationResult.Saved -> Unit
+            is ActiveDraftMutationResult.Error ->
+                return CardioCalibrationResult.DatabaseError("Calibration draft creation failed.")
+        }
+        val loaded = loadActiveSessionDraft() as? ActiveDraftLoadResult.Loaded
+            ?: return CardioCalibrationResult.DatabaseError("Calibration draft is unavailable.")
+        val sessionId = loaded.draft.sessionId
+            ?: return CardioCalibrationResult.DatabaseError("Calibration session identity is missing.")
+        val actualStartedAt = loaded.draft.startedAt
+            ?: return CardioCalibrationResult.DatabaseError("Calibration start timestamp is missing.")
+        val actualEntry = loaded.draft.exercises.singleOrNull()
+            ?: return CardioCalibrationResult.DatabaseError("Calibration occurrence is missing.")
+        when (startActiveSessionExercise(actualEntry.entryId, actualStartedAt)) {
+            is SessionExerciseTimingResult.Started -> Unit
+            else -> {
+                discardActiveSessionDraft()
+                return CardioCalibrationResult.DatabaseError("Calibration timing could not start.")
+            }
+        }
+
+        val calibrationId = "cal_" + UUID.randomUUID()
+        val db = database.writableDatabase
+        return try {
+            db.execSQL(
+                "INSERT INTO cardio_calibrations(" +
+                    "calibration_id,protocol_version,session_id,entry_id,phase,started_at," +
+                    "phase_started_at,effort_end_at,ended_at,heart_rate_capture_id," +
+                    "observed_peak_bpm,active_slot,acknowledged_at) " +
+                    "VALUES(?,?,?,?,?,?,?,NULL,NULL,NULL,NULL,1,NULL)",
+                arrayOf<Any?>(
+                    calibrationId,
+                    CARDIO_CALIBRATION_PROTOCOL_VERSION,
+                    sessionId,
+                    actualEntry.entryId,
+                    CardioCalibrationPhase.WARMUP.wireValue,
+                    actualStartedAt,
+                    actualStartedAt,
+                ),
+            )
+            CardioCalibrationResult.Applied(
+                checkNotNull(readCardioCalibrationProfile(db, calibrationId)),
+            )
+        } catch (error: Exception) {
+            discardActiveSessionDraft()
+            CardioCalibrationResult.DatabaseError(
+                error.message ?: "Calibration creation failed.",
+            )
+        }
+    }
+
+    fun advanceCardioCalibrationPhase(
+        at: String = OffsetDateTime.now().toString(),
+    ): CardioCalibrationResult {
+        if (TrainlogTimestamp.parse(at) == null) {
+            return CardioCalibrationResult.Invalid("Invalid calibration phase timestamp.")
+        }
+        val current = activeCardioCalibration() ?: return CardioCalibrationResult.Invalid("No calibration is active.")
+        val next =
+            when (current.phase) {
+                CardioCalibrationPhase.WARMUP -> CardioCalibrationPhase.PROGRESSIVE
+                CardioCalibrationPhase.PROGRESSIVE -> CardioCalibrationPhase.HIGH_EFFORT
+                else -> return CardioCalibrationResult.Invalid("Calibration phase cannot advance.")
+            }
+        if (TrainlogTimestamp.parse(at)!! < TrainlogTimestamp.parse(current.phaseStartedAt)!!) {
+            return CardioCalibrationResult.Invalid("Calibration phase cannot move backwards in time.")
+        }
+        val db = database.writableDatabase
+        return try {
+            db.execSQL(
+                "UPDATE cardio_calibrations SET phase=?,phase_started_at=? " +
+                    "WHERE calibration_id=? AND active_slot=1",
+                arrayOf(next.wireValue, at, current.calibrationId),
+            )
+            CardioCalibrationResult.Applied(
+                checkNotNull(readCardioCalibrationProfile(db, current.calibrationId)),
+            )
+        } catch (error: Exception) {
+            CardioCalibrationResult.DatabaseError(error.message ?: "Calibration phase update failed.")
+        }
+    }
+
+    fun markCardioCalibrationEffortEnd(
+        at: String = OffsetDateTime.now().toString(),
+    ): CardioCalibrationResult {
+        if (TrainlogTimestamp.parse(at) == null) {
+            return CardioCalibrationResult.Invalid("Invalid effort-end timestamp.")
+        }
+        val current = activeCardioCalibration() ?: return CardioCalibrationResult.Invalid("No calibration is active.")
+        if (current.phase != CardioCalibrationPhase.HIGH_EFFORT) {
+            return CardioCalibrationResult.Invalid("High-effort phase is not active.")
+        }
+        if (current.observedPeakBpm == null || current.heartRateCaptureId == null) {
+            return CardioCalibrationResult.Invalid("No measured heart-rate sample is available.")
+        }
+        if (TrainlogTimestamp.parse(at)!! < TrainlogTimestamp.parse(current.phaseStartedAt)!!) {
+            return CardioCalibrationResult.Invalid("Effort cannot end before its phase starts.")
+        }
+        val db = database.writableDatabase
+        return try {
+            db.execSQL(
+                "UPDATE cardio_calibrations SET phase='recovery',phase_started_at=?,effort_end_at=? " +
+                    "WHERE calibration_id=? AND active_slot=1",
+                arrayOf(at, at, current.calibrationId),
+            )
+            CardioCalibrationResult.Applied(
+                checkNotNull(readCardioCalibrationProfile(db, current.calibrationId)),
+            )
+        } catch (error: Exception) {
+            CardioCalibrationResult.DatabaseError(error.message ?: "Effort-end update failed.")
+        }
+    }
+
+    fun finishCardioCalibration(
+        endedAt: String = OffsetDateTime.now().toString(),
+    ): CardioCalibrationResult {
+        if (TrainlogTimestamp.parse(endedAt) == null) {
+            return CardioCalibrationResult.Invalid("Invalid calibration end timestamp.")
+        }
+        val current = activeCardioCalibration() ?: return CardioCalibrationResult.Invalid("No calibration is active.")
+        if (
+            current.phase != CardioCalibrationPhase.RECOVERY ||
+            current.observedPeakBpm == null ||
+            current.heartRateCaptureId == null
+        ) {
+            return CardioCalibrationResult.Invalid("Calibration is not ready to finish.")
+        }
+        val effortEnd =
+            current.effortEndAt?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
+                ?: return CardioCalibrationResult.Invalid("Calibration effort end is missing.")
+        val parsedEnd = OffsetDateTime.parse(endedAt)
+        if (parsedEnd.isBefore(effortEnd.plusSeconds(CARDIO_CALIBRATION_MIN_RECOVERY_SECONDS))) {
+            return CardioCalibrationResult.Invalid("Calibration recovery must last at least three minutes.")
+        }
+        val timing =
+            listActiveSessionExerciseTimings().singleOrNull {
+                it.entryId == current.entryId && it.active
+            } ?: return CardioCalibrationResult.Invalid("Calibration exercise is not active.")
+        val durationSeconds =
+            Duration.between(OffsetDateTime.parse(timing.startedAt), OffsetDateTime.parse(endedAt)).seconds
+        if (durationSeconds !in 1..MAX_PLAN_DURATION_SECONDS.toLong()) {
+            return CardioCalibrationResult.Invalid("Calibration duration is invalid.")
+        }
+        val loaded = loadActiveSessionDraft() as? ActiveDraftLoadResult.Loaded
+            ?: return CardioCalibrationResult.Invalid("Calibration draft is unavailable.")
+        if (loaded.draft.sessionId != current.sessionId || loaded.draft.sessionType != SessionType.CARDIO) {
+            return CardioCalibrationResult.Conflict
+        }
+        val updatedEntries = loaded.draft.exercises.map { occurrence ->
+            if (occurrence.entryId == current.entryId) {
+                occurrence.copy(continuousDurationSeconds = durationSeconds.toInt())
+            } else occurrence
+        }
+        when (saveActiveSessionDraft(loaded.draft.copy(exercises = updatedEntries))) {
+            ActiveDraftMutationResult.Saved -> Unit
+            is ActiveDraftMutationResult.Error ->
+                return CardioCalibrationResult.DatabaseError("Calibration duration could not be saved.")
+        }
+        when (finishActiveSessionExercise(current.entryId, endedAt)) {
+            is SessionExerciseTimingResult.Finished -> Unit
+            else -> return CardioCalibrationResult.DatabaseError("Calibration timing could not finish.")
+        }
+        when (finalizeActiveSessionDraft()) {
+            is FinalizeActiveDraftResult.Saved -> Unit
+            else -> return CardioCalibrationResult.DatabaseError("Calibration session could not finalize.")
+        }
+        val db = database.writableDatabase
+        return try {
+            db.execSQL(
+                "UPDATE cardio_calibrations SET phase='completed',phase_started_at=?,ended_at=?," +
+                    "active_slot=NULL WHERE calibration_id=? AND active_slot=1",
+                arrayOf(endedAt, endedAt, current.calibrationId),
+            )
+            CardioCalibrationResult.Applied(
+                checkNotNull(readCardioCalibrationProfile(db, current.calibrationId)),
+            )
+        } catch (error: Exception) {
+            CardioCalibrationResult.DatabaseError(error.message ?: "Calibration completion failed.")
+        }
+    }
+
+    fun abortCardioCalibration(
+        endedAt: String = OffsetDateTime.now().toString(),
+    ): CardioCalibrationResult {
+        if (TrainlogTimestamp.parse(endedAt) == null) {
+            return CardioCalibrationResult.Invalid("Invalid calibration abort timestamp.")
+        }
+        val current = activeCardioCalibration() ?: return CardioCalibrationResult.Invalid("No calibration is active.")
+        val db = database.writableDatabase
+        return try {
+            db.execSQL(
+                "UPDATE cardio_calibrations SET phase='aborted',phase_started_at=?,ended_at=?," +
+                    "heart_rate_capture_id=NULL,active_slot=NULL WHERE calibration_id=? AND active_slot=1",
+                arrayOf(endedAt, endedAt, current.calibrationId),
+            )
+            discardActiveSessionDraft()
+            CardioCalibrationResult.Applied(
+                checkNotNull(readCardioCalibrationProfile(db, current.calibrationId)),
+            )
+        } catch (error: Exception) {
+            CardioCalibrationResult.DatabaseError(error.message ?: "Calibration abort failed.")
+        }
+    }
+
+    private fun updateActiveCardioCalibrationFromMeasurement(
+        captureId: String,
+        observedAt: String,
+        measurement: ParsedHeartRateMeasurement,
+    ) {
+        val observed = runCatching { OffsetDateTime.parse(observedAt) }.getOrNull() ?: return
+        val db = database.writableDatabase
+        db.beginTransaction()
+        try {
+            val row =
+                db.rawQuery(
+                    "SELECT calibration_id,phase,effort_end_at,heart_rate_capture_id,observed_peak_bpm " +
+                        "FROM cardio_calibrations WHERE active_slot=1 LIMIT 1",
+                    null,
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else arrayOf<Any?>(
+                        cursor.getString(0),
+                        cursor.getString(1),
+                        if (cursor.isNull(2)) null else cursor.getString(2),
+                        if (cursor.isNull(3)) null else cursor.getString(3),
+                        if (cursor.isNull(4)) null else cursor.getInt(4),
+                    )
+                } ?: return
+            val calibrationId = row[0] as String
+            val phase = CardioCalibrationPhase.fromWire(row[1] as String)
+            val existingCapture = row[3] as String?
+            if (existingCapture != null && existingCapture != captureId) return
+            if (existingCapture == null) {
+                db.execSQL(
+                    "UPDATE cardio_calibrations SET heart_rate_capture_id=? WHERE calibration_id=?",
+                    arrayOf(captureId, calibrationId),
+                )
+            }
+            if (phase in setOf(
+                    CardioCalibrationPhase.WARMUP,
+                    CardioCalibrationPhase.PROGRESSIVE,
+                    CardioCalibrationPhase.HIGH_EFFORT,
+                )
+            ) {
+                val peak = row[4] as Int?
+                if (peak == null || measurement.bpm > peak) {
+                    db.execSQL(
+                        "UPDATE cardio_calibrations SET observed_peak_bpm=? WHERE calibration_id=?",
+                        arrayOf<Any?>(measurement.bpm, calibrationId),
+                    )
+                }
+            } else if (phase == CardioCalibrationPhase.RECOVERY) {
+                val effortEnd = OffsetDateTime.parse(row[2] as String? ?: return)
+                for (offset in CARDIO_CALIBRATION_RECOVERY_OFFSETS) {
+                    val target = effortEnd.plusSeconds(offset.toLong())
+                    val latestAccepted =
+                        target.plusSeconds(CARDIO_CALIBRATION_RECOVERY_SAMPLE_MAX_LAG_SECONDS)
+                    if (!observed.isBefore(target) && !observed.isAfter(latestAccepted)) {
+                        db.execSQL(
+                            "INSERT OR IGNORE INTO cardio_calibration_recovery(" +
+                                "calibration_id,target_offset_seconds,observed_at,bpm) VALUES(?,?,?,?)",
+                            arrayOf<Any?>(calibrationId, offset, observedAt, measurement.bpm),
+                        )
+                    }
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     internal fun recordLiveHeartRateForActiveSession(
         sensorName: String?,
         observedAt: String,
@@ -1714,17 +2164,28 @@ class TrainlogRepository(
             }
         }
 
-        return appendHeartRateSample(
-            captureId = current.captureId,
-            observedAt = observedAt,
-            bpm = measurement.bpm,
-            sensorContactDetected = measurement.sensorContactDetected,
-            energyExpended = measurement.energyExpended,
-            rrIntervals =
-                measurement.rrIntervals1024.mapIndexed { index, value ->
-                    HeartRateRrInterval(index, value)
-                },
-        )
+        val result =
+            appendHeartRateSample(
+                captureId = current.captureId,
+                observedAt = observedAt,
+                bpm = measurement.bpm,
+                sensorContactDetected = measurement.sensorContactDetected,
+                energyExpended = measurement.energyExpended,
+                rrIntervals =
+                    measurement.rrIntervals1024.mapIndexed { index, value ->
+                        HeartRateRrInterval(index, value)
+                    },
+            )
+        if (result is HeartRateMutationResult.Applied && contextKind == HeartRateContextKind.CARDIO) {
+            runCatching {
+                updateActiveCardioCalibrationFromMeasurement(
+                    current.captureId,
+                    observedAt,
+                    measurement,
+                )
+            }
+        }
+        return result
     }
 
     private fun heartRateContextIdValid(kind: HeartRateContextKind, value: String): Boolean =
@@ -2221,6 +2682,7 @@ class TrainlogRepository(
         artifacts["program-executions"] = buildProgramExecutionsV1Json()
         artifacts["sleep-diary"] = buildSleepDiaryV1Json()
         artifacts["heart-rate"] = buildHeartRateV1Json()
+        artifacts["cardio-calibrations"] = buildCardioCalibrationsV1Json()
         artifacts["session-timeline"] = buildSessionTimelineV1Json()
         artifacts
     }
@@ -2746,6 +3208,8 @@ class TrainlogRepository(
         val normalizedPrefix = normalizeName(query)
         val selection = mutableListOf<String>()
         val arguments = mutableListOf<String>()
+        selection += "e.exercise_id<>?"
+        arguments += CARDIO_CALIBRATION_EXERCISE_ID
         if (normalizedPrefix.isNotEmpty()) {
             selection += "e.normalized_name LIKE ? ESCAPE '\\'"
             arguments += normalizedPrefix
@@ -3078,8 +3542,9 @@ class TrainlogRepository(
             "SELECT e.exercise_id,e.recording_mode,e.tracking_mode,e.data_fields," +
                 "e.load_semantics,e.machine_variant,e.machine_provenance,e.scientific_profile_id," +
                 "e.science_state,e.legacy_equipment_id,s.revision_id,s.parent_revision_id,s.legacy_seed " +
-                "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id ORDER BY e.exercise_id",
-            null,
+                "FROM exercises e JOIN exercise_profile_state s ON s.exercise_row_id=e.id " +
+                    "WHERE e.exercise_id<>? ORDER BY e.exercise_id",
+            arrayOf(CARDIO_CALIBRATION_EXERCISE_ID),
         ).use { c ->
             while (c.moveToNext()) {
                 check(c.getType(3)==Cursor.FIELD_TYPE_INTEGER && c.getType(12)==Cursor.FIELD_TYPE_INTEGER &&
@@ -4876,6 +5341,11 @@ class TrainlogRepository(
                         )
 
                 val suppliedExerciseId = item.getString("exercise_id")
+                if (suppliedExerciseId == CARDIO_CALIBRATION_EXERCISE_ID) {
+                    return PcCatalogImportResult.Invalid(
+                        "Reserved cardio calibration exercise is not owned by the PC catalog.",
+                    )
+                }
                 /* CONTRACT: a peer which has not yet consumed the companion
                  * may resend a retired catalogue ID; resolve it before lookup
                  * so the old row can never be resurrected. */
@@ -9862,6 +10332,22 @@ class TrainlogRepository(
         allowTargetOnly: Boolean = false,
     ): Boolean {
         if (!validateSessionPlan(draft)) return false
+        if (
+            allowTargetOnly &&
+            sessionType == SessionType.CARDIO &&
+            draft.exercise.exerciseId == CARDIO_CALIBRATION_EXERCISE_ID &&
+            draft.exercise.recordingMode == RecordingMode.CONTINUOUS &&
+            draft.exercise.trackingMode == TrackingMode.DURATION &&
+            draft.exercise.dataFields == 0 &&
+            draft.plan == null &&
+            draft.sets.isEmpty() &&
+            draft.continuousDurationSeconds == 0 &&
+            draft.speedKmh == null &&
+            draft.distanceKm == null &&
+            draft.maxWeightKg == null
+        ) {
+            return true
+        }
         val maxWeight = draft.maxWeightKg
         if (maxWeight != null) {
             /* INVARIANT: max is a first-class result owned by the movement
@@ -10674,6 +11160,14 @@ private const val MAX_HEART_RATE_RR_PER_SAMPLE = 64
 private const val MAX_HEART_RATE_SENSOR_NAME_UTF8_BYTES = 160
 private const val MAX_SESSION_TIMELINE_SESSIONS_PER_GENERATION = 256
 private const val MAX_SESSION_TIMELINE_EXERCISES_PER_SESSION = 128
+private const val CARDIO_CALIBRATION_PROTOCOL_VERSION = 1
+private const val CARDIO_CALIBRATION_EXERCISE_ID =
+    "ex_ca1b4a7e-1c2d-4f00-8a11-000000000001"
+private const val CARDIO_CALIBRATION_EXERCISE_NAME = "Calibration cardio"
+private const val MAX_CARDIO_CALIBRATIONS_PER_GENERATION = 128
+private val CARDIO_CALIBRATION_RECOVERY_OFFSETS = intArrayOf(60, 120, 180)
+private const val CARDIO_CALIBRATION_MIN_RECOVERY_SECONDS = 180L
+private const val CARDIO_CALIBRATION_RECOVERY_SAMPLE_MAX_LAG_SECONDS = 10L
 private const val MAX_AI_DRAFT_ENTRIES = 64
 private const val MAX_AI_TARGET_SETS = 99
 private const val MAX_AI_TARGET_REPS = 999
@@ -10692,7 +11186,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    29,
+    30,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -10748,6 +11242,8 @@ private class TrainlogDatabaseHelper(
         createSleepDiaryTables(db)
         createHeartRateTables(db)
         createSessionTimelineTables(db)
+        createCardioCalibrationTables(db)
+        ensureCardioCalibrationExercise(db)
         seedEquipment(db)
     }
 
@@ -11004,6 +11500,16 @@ private class TrainlogDatabaseHelper(
             )
             version = 29
         }
+        if (version < 30 && newVersion >= 30) {
+            /* WHY: calibration metadata must be versioned separately from the
+             * authoritative raw heart-rate curve. CONTRACT: v30 adds only the
+             * calibration profile/recovery/publication domain and one reserved
+             * continuous exercise identity. INVARIANT: no existing workout,
+             * heart-rate sample, or session timing is rewritten. */
+            createCardioCalibrationTables(db)
+            ensureCardioCalibrationExercise(db)
+            version = 30
+        }
 
         if (version != newVersion) {
             error(
@@ -11140,6 +11646,85 @@ private class TrainlogDatabaseHelper(
             entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
             revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
             PRIMARY KEY(generation_id,entry_id))""".trimIndent())
+    }
+
+    private fun createCardioCalibrationTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_calibrations(
+                calibration_id TEXT PRIMARY KEY,
+                protocol_version INTEGER NOT NULL CHECK(protocol_version=1),
+                session_id TEXT NOT NULL UNIQUE,
+                entry_id TEXT NOT NULL,
+                phase TEXT NOT NULL
+                    CHECK(phase IN('warmup','progressive','high_effort','recovery','completed','aborted')),
+                started_at TEXT NOT NULL,
+                phase_started_at TEXT NOT NULL,
+                effort_end_at TEXT,
+                ended_at TEXT,
+                heart_rate_capture_id TEXT,
+                observed_peak_bpm INTEGER CHECK(observed_peak_bpm IS NULL OR observed_peak_bpm BETWEEN 0 AND 65535),
+                active_slot INTEGER UNIQUE CHECK(active_slot IS NULL OR active_slot=1),
+                acknowledged_at TEXT,
+                CHECK(calibration_id GLOB 'cal_*'),
+                CHECK(session_id GLOB 'se_*'),
+                CHECK(entry_id GLOB 'sxe_*'),
+                CHECK(heart_rate_capture_id IS NULL OR heart_rate_capture_id GLOB 'hrc_*'),
+                CHECK((phase IN('completed','aborted'))=(ended_at IS NOT NULL)),
+                CHECK(phase='aborted' OR
+                      (phase IN('recovery','completed') AND effort_end_at IS NOT NULL) OR
+                      (phase IN('warmup','progressive','high_effort') AND effort_end_at IS NULL))
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_calibration_recovery(
+                calibration_id TEXT NOT NULL
+                    REFERENCES cardio_calibrations(calibration_id) ON DELETE CASCADE,
+                target_offset_seconds INTEGER NOT NULL CHECK(target_offset_seconds IN(60,120,180)),
+                observed_at TEXT NOT NULL,
+                bpm INTEGER NOT NULL CHECK(bpm BETWEEN 0 AND 65535),
+                PRIMARY KEY(calibration_id,target_offset_seconds)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_calibration_generation(
+                generation_id TEXT NOT NULL
+                    REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,
+                calibration_id TEXT NOT NULL
+                    REFERENCES cardio_calibrations(calibration_id) ON DELETE RESTRICT,
+                PRIMARY KEY(generation_id,calibration_id)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS cardio_calibration_session " +
+                "ON cardio_calibrations(session_id,started_at);",
+        )
+    }
+
+    private fun ensureCardioCalibrationExercise(db: SQLiteDatabase) {
+        db.execSQL(
+            """INSERT OR IGNORE INTO exercises(
+                exercise_id,name,normalized_name,recording_mode,tracking_mode,data_fields
+            ) VALUES(?,?,?,'continuous','duration',0)""".trimIndent(),
+            arrayOf(
+                CARDIO_CALIBRATION_EXERCISE_ID,
+                CARDIO_CALIBRATION_EXERCISE_NAME,
+                "calibration cardio",
+            ),
+        )
+        val valid =
+            db.rawQuery(
+                "SELECT name,normalized_name,recording_mode,tracking_mode,data_fields " +
+                    "FROM exercises WHERE exercise_id=?",
+                arrayOf(CARDIO_CALIBRATION_EXERCISE_ID),
+            ).use { cursor ->
+                cursor.moveToFirst() &&
+                    cursor.getString(0) == CARDIO_CALIBRATION_EXERCISE_NAME &&
+                    cursor.getString(1) == "calibration cardio" &&
+                    cursor.getString(2) == "continuous" &&
+                    cursor.getString(3) == "duration" &&
+                    cursor.getInt(4) == 0
+            }
+        check(valid) { "Reserved cardio calibration exercise conflicts with existing catalogue data." }
     }
 
     private fun createHeartRateTables(db: SQLiteDatabase) {

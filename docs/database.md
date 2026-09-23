@@ -1,5 +1,13 @@
 # Desktop database
 
+## Schema v33: synchronized Cardio calibration V1
+
+Schema v33 additively stores completed Android-owned Cardio calibration profiles. `cardio_calibrations` is keyed by stable `calibration_id` and retains protocol version, canonical cardio `session_id`, stable occurrence `entry_id`, exact calibration/effort/end timestamps, the synchronized heart-rate `capture_id`, observed peak BPM and import time.
+
+`cardio_calibration_recovery` stores only factual recovery samples for the defined +60, +120 and +180 second references. The source curve remains Heart Rate V1; the calibration importer verifies that the observed peak and every recovery `(observed_at, bpm)` pair exist in that raw capture. It never derives, interpolates or rewrites HR samples.
+
+Android owns the active calibration lifecycle. Desktop stores only completed profiles. A later calibration creates a new stable profile and never rewrites an older session or reference.
+
 ## Schema v32: canonical cardio session kind
 
 Schema v32 adds the product-owned `sessions.session_kind` column with the

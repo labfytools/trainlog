@@ -206,9 +206,9 @@ def main():
     payload = json.loads(args.artifact.read_text(encoding="utf-8"))
     connection = connect_database(args.database)
     try:
-        supported_versions = range(8, 33)
+        supported_versions = range(8, 34)
         if connection.execute("PRAGMA user_version;").fetchone()[0] not in supported_versions:
-            fail("schema desktop v8 à v32 requis")
+            fail("schema desktop v8 à v33 requis")
         proof_path = args.mobile_export
         if proof_path is None:
             candidate = args.artifact.with_name("trainlog-mobile-export-v2.json")

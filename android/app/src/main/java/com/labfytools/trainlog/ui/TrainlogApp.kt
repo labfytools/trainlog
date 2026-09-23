@@ -103,8 +103,16 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
                 },
                 { open(AppRoute.BodyMeasurements) }, { open(AppRoute.Sync) },
             )
-            AppRoute.Sessions -> SessionsHub(activeDraft, pendingAiDraftCount, { open(AppRoute.SessionEditor) }, ::openManualSession,
-                { open(AppRoute.AiSessionDrafts) }, { open(AppRoute.CompletedSessions) }, { open(AppRoute.Programs) })
+            AppRoute.Sessions -> SessionsHub(
+                activeDraft,
+                pendingAiDraftCount,
+                { open(AppRoute.SessionEditor) },
+                ::openManualSession,
+                { open(AppRoute.AiSessionDrafts) },
+                { open(AppRoute.CompletedSessions) },
+                { open(AppRoute.Programs) },
+                { open(AppRoute.CardioCalibration) },
+            )
             AppRoute.SessionEditor -> SessionScreen(
                 repository,
                 catalogRevision,
@@ -137,6 +145,10 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             )
             AppRoute.CompletedSessions -> HistoryScreen(repository, { back() }) { open(AppRoute.SessionDetail(it)) }
             AppRoute.Programs -> ProgramsScreen(repository) { open(AppRoute.ProgramDetail(it)) }
+            AppRoute.CardioCalibration -> CardioCalibrationScreen(repository) {
+                draftRevision++
+                exportSnapshot()
+            }
             is AppRoute.ProgramDetail -> ProgramDetailScreen(repository, route.programId) {
                 draftRevision++
                 open(AppRoute.SessionEditor)

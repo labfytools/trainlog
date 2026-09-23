@@ -847,6 +847,14 @@ test_schema_v32_migration = executable(
 )
 test('schema_v32_migration', test_schema_v32_migration)
 
+test_schema_v33_migration = executable(
+  'test_schema_v33_migration',
+  'tests/test_schema_v33_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('schema_v33_migration', test_schema_v33_migration)
+
 test_schema_v7_migration = executable(
   'test_schema_v7_migration',
   'tests/test_schema_v7_migration.c',
@@ -940,6 +948,11 @@ test(
   'cardio_session_exchange',
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_cardio_session_exchange.py'],
+)
+test(
+  'cardio_calibration_exchange',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_cardio_calibration_exchange.py'],
 )
 test(
   'session_preparation_export',

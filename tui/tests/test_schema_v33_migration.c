@@ -3,7 +3,6 @@
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
 #include "trainlog/database.h"
@@ -22,7 +21,7 @@ static int scalar(sqlite3 *database, const char *sql) {
 }
 
 int main(void) {
-    char path[] = "/tmp/trainlog-schema-v32-XXXXXX";
+    char path[] = "/tmp/trainlog-schema-v33-XXXXXX";
     TrainlogDatabase *production = NULL;
     sqlite3 *raw = NULL;
     int descriptor = mkstemp(path);
@@ -36,8 +35,9 @@ int main(void) {
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(sqlite3_exec(raw,
-                       "ALTER TABLE sessions DROP COLUMN session_kind;"
-                       "PRAGMA user_version=31;",
+                       "DROP TABLE cardio_calibration_recovery;"
+                       "DROP TABLE cardio_calibrations;"
+                       "PRAGMA user_version=32;",
                        NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
@@ -50,17 +50,11 @@ int main(void) {
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(scalar(raw,
-                 "SELECT COUNT(*) FROM pragma_table_info('sessions') "
-                 "WHERE name='session_kind'") == 1);
-    CHECK(sqlite3_exec(raw,
-                       "INSERT INTO sessions(session_id,started_at,ended_at,session_type,session_kind)"
-                       "VALUES('se_11111111-1111-4111-8111-111111111111',"
-                       "'2026-09-23T09:00:00+02:00','2026-09-23T09:30:00+02:00',"
-                       "'training','cardio');",
-                       NULL, NULL, NULL) == SQLITE_OK);
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN("
+                 "'cardio_calibrations','cardio_calibration_recovery')") == 2);
     CHECK(scalar(raw,
-                 "SELECT COUNT(*) FROM sessions WHERE session_type='training' "
-                 "AND session_kind='cardio'") == 1);
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
+                 "AND name='cardio_calibration_session'") == 1);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
     result = EXIT_SUCCESS;
 
@@ -68,6 +62,6 @@ cleanup:
     if (production != NULL) trainlog_database_close(production);
     if (raw != NULL) (void)sqlite3_close(raw);
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v31 to v32 cardio session kind migration");
+    if (result == EXIT_SUCCESS) puts("PASS schema v32 to v33 cardio calibration migration");
     return result;
 }

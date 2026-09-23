@@ -46,6 +46,8 @@
   exact replay is idempotent and identity collision with non-cardio history is
   rejected.
 
+- Added the first versioned Cardio calibration workflow. Android schema v30 creates one reserved system exercise outside the normal exercise catalogue, starts a real cardio session and HR capture, records only measured observed peak BPM, and requires at least three minutes of recovery. +1/+2/+3 minute recovery facts accept only real samples within a bounded ten-second window; missing signal therefore remains missing instead of being backfilled from a later reconnect. Completed immutable profiles synchronize Android→desktop through `trainlog-cardio-calibrations` V1 into desktop schema v33, where the importer proves peak and recovery points against the synchronized raw HR capture before accepting them.
+
 Development opened after stable v0.1.4 release.
 
 ## 0.1.4 — 2026-09-22

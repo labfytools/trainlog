@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from trainlog_sqlite import connect_database
 import causal_delete_exchange
 import cardio_session_exchange
+import cardio_calibration_exchange
 import execution_draft_exchange
 import heart_rate_exchange
 import session_timeline_exchange
@@ -85,6 +86,7 @@ ARTIFACTS = (
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS} | {
     ("trainlog-program-executions", 1),
     ("trainlog-cardio-sessions", 1),
+    ("trainlog-cardio-calibrations", 1),
     ("trainlog-heart-rate", 1),
     ("trainlog-session-timeline", 1),
 }
@@ -215,7 +217,7 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32)
+    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32, 33)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
         raise GenerationError("desktop schema v24, v25, v26 through v32 required")
 
@@ -681,6 +683,10 @@ def consume_desktop(database: Path, directory: Path) -> dict:
                    if "sleep-diary" in listed else None)
     heart_rate = (heart_rate_exchange.load(listed["heart-rate"])
                   if "heart-rate" in listed else None)
+    cardio_calibrations = (
+        cardio_calibration_exchange.load(listed["cardio-calibrations"])
+        if "cardio-calibrations" in listed else None
+    )
     session_timeline = (session_timeline_exchange.load(listed["session-timeline"])
                         if "session-timeline" in listed else None)
     program_executions = (
@@ -734,6 +740,8 @@ def consume_desktop(database: Path, directory: Path) -> dict:
                 sleep_diary_exchange.apply(db, sleep_diary)
             if heart_rate is not None:
                 heart_rate_exchange.apply(db, heart_rate)
+            if cardio_calibrations is not None:
+                cardio_calibration_exchange.apply(db, cardio_calibrations)
             if session_timeline is not None:
                 session_timeline_exchange.apply(db, session_timeline)
             if program_executions is not None:

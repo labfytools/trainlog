@@ -1798,3 +1798,13 @@ The 2026-09-23 closeout passes the complete native Meson inventory:
 **106/106 passed, 0 failed**. The complete Android JVM inventory reports
 **277 tests: 272 passed, five skipped, zero failures/errors**; `assembleDebug`
 also succeeds. The five skips remain optional historical/external fixture gates.
+
+## Cardio calibration V1 validation
+
+`TRAINLOG_CARDIO_CALIBRATION_V1=PASS` covers the Android v29→v30 and desktop v32→v33 additive migrations, reserved system exercise ownership, real cardio session/timeline/HR capture integration, observed peak tracking, recovery, exact replay and generation synchronization.
+
+The calibration system exercise keeps a stable `exercise_id` for occurrence foreign keys but is deliberately absent from the ordinary exercise catalogue, BODY ZONES, profile-state and PC-catalog companions. This preserves existing exercise-domain invariants while the dedicated cardio session/calibration companions own the system occurrence.
+
+Recovery cannot complete before three minutes after effort end. The +60/+120/+180 second references accept only a real HR sample arriving from the target instant through ten seconds after it. A missing sensor interval remains missing rather than being populated by a later reconnect.
+
+The desktop importer independently rejects a peak not supported by the raw HR capture and rejects a recovery point that is not an exact raw sample. The 2026-09-23 closeout passes the complete native inventory **108/108** and the complete Android JVM inventory **281 tests: 276 passed, five skipped, zero failures/errors**; `assembleDebug` also succeeds.

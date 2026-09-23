@@ -72,6 +72,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
                 "sleep-diary" to Kind("trainlog-sleep-diary", 1, "sleep-diary-v1.json", false),
                 "heart-rate" to Kind("trainlog-heart-rate", 1, "heart-rate-v1.json", false),
+                "cardio-calibrations" to
+                    Kind("trainlog-cardio-calibrations", 1, "cardio-calibrations-v1.json", false),
                 "session-timeline" to
                     Kind("trainlog-session-timeline", 1, "session-timeline-v1.json", false),
             )
@@ -433,6 +435,17 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     db.execSQL(
                         "INSERT INTO heart_rate_generation_captures(generation_id,capture_id) VALUES(?,?)",
                         arrayOf(generationId, captures.getJSONObject(index).getString("capture_id")),
+                    )
+                }
+                val calibrations = JSONObject(checkNotNull(artifacts["cardio-calibrations"]))
+                val calibrationItems = calibrations.getJSONArray("calibrations")
+                for (index in 0 until calibrationItems.length()) {
+                    db.execSQL(
+                        "INSERT INTO cardio_calibration_generation(generation_id,calibration_id) VALUES(?,?)",
+                        arrayOf(
+                            generationId,
+                            calibrationItems.getJSONObject(index).getString("calibration_id"),
+                        ),
                     )
                 }
                 val timeline = JSONObject(checkNotNull(artifacts["session-timeline"]))
@@ -1090,6 +1103,14 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                                 "SELECT 1 FROM heart_rate_generation_captures m " +
                                 "WHERE m.generation_id=? AND " +
                                 "m.capture_id=heart_rate_captures.capture_id)",
+                            arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
+                        )
+                        db.execSQL(
+                            "UPDATE cardio_calibrations SET acknowledged_at=? WHERE " +
+                                "acknowledged_at IS NULL AND EXISTS(" +
+                                "SELECT 1 FROM cardio_calibration_generation m " +
+                                "WHERE m.generation_id=? AND " +
+                                "m.calibration_id=cardio_calibrations.calibration_id)",
                             arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
                         )
                         db.execSQL(

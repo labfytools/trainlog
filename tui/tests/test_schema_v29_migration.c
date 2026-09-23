@@ -53,7 +53,7 @@ int main(void) {
     trainlog_database_close(production);
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 32);
+    CHECK(scalar(raw, "PRAGMA user_version") == 33);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
                  "('sleep_diary_entries','sleep_diary_revisions','sleep_diary_events',"
@@ -97,7 +97,7 @@ int main(void) {
     trainlog_database_close(production);
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 32);
+    CHECK(scalar(raw, "PRAGMA user_version") == 33);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE "
                  "'sleep_medication%'") == 3);

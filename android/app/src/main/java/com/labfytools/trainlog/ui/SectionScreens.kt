@@ -58,6 +58,7 @@ fun SessionsHub(
     onDrafts: () -> Unit,
     onHistory: () -> Unit,
     onPrograms: () -> Unit = {},
+    onCardioCalibration: () -> Unit = {},
 ) {
     val colors = LocalTrainlogColors.current
     val strings = localizedContext()
@@ -77,6 +78,13 @@ fun SessionsHub(
                     Modifier.weight(1f).fillMaxHeight().testTag("sessions-drafts-action"))
             }
         }
+        TrainlogButton(
+            strings.getString(R.string.route_cardio_calibration),
+            onCardioCalibration,
+            Modifier.fillMaxWidth().testTag("sessions-cardio-calibration-action"),
+            style = TrainlogButtonStyle.SUCCESS,
+        )
+        Spacer(Modifier.height(10.dp))
         TrainlogButton(strings.getString(R.string.route_completed_sessions), onHistory,
             Modifier.fillMaxWidth().testTag("sessions-history-action"))
         Spacer(Modifier.height(16.dp).testTag("sessions-programs-spacing"))
