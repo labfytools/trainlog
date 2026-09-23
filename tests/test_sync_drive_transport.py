@@ -116,6 +116,8 @@ class DriveTransportTest(unittest.TestCase):
             source = Path(raw) / "source"
             source.mkdir()
             self.generation(source)
+            recovery = source / "android-archive-acknowledgements-v1.json"
+            recovery.write_text('{"format":"trainlog-sync-archive-acknowledgements","version":1}')
             remote = MemoryDrive()
             drive.push(remote, source)
             destination = Path(raw) / "destination"
@@ -123,6 +125,10 @@ class DriveTransportTest(unittest.TestCase):
             self.assertEqual(
                 (destination / "desktop-objects/generations/gen_one/history.json").read_bytes(),
                 b"{}\n",
+            )
+            self.assertEqual(
+                (destination / "android-archive-acknowledgements-v1.json").read_bytes(),
+                recovery.read_bytes(),
             )
 
             remote.downloads.clear()

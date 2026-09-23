@@ -195,7 +195,8 @@ internal class DriveDocumentTransport(private val context: Context, treeUri: Uri
         localRoot.mkdirs()
         val coordination = listOf(
             "android-peer-v1.json", "android-generation-v1.json", "android-consumption-ack-v1.json",
-            "android-generation-error-v1.json", "request-v1.json",
+            "android-archive-acknowledgements-v1.json", "android-generation-error-v1.json",
+            "request-v1.json",
             "desktop-archive-acknowledgements-v1.json", "desktop-consumption-ack-v1.json",
             "desktop-generation-v1.json",
         )
@@ -261,6 +262,13 @@ internal class DriveDocumentTransport(private val context: Context, treeUri: Uri
         upload("android-generation-v1.json", reference)
     }
 
+    fun pushRecoveryAcknowledgements(localRoot: File) {
+        upload(
+            "android-archive-acknowledgements-v1.json",
+            File(localRoot, "android-archive-acknowledgements-v1.json"),
+        )
+    }
+
     fun pushAcknowledgement(localRoot: File) {
         upload(
             "android-consumption-ack-v1.json",
@@ -318,6 +326,10 @@ class DriveSyncWorker(context: Context, parameters: WorkerParameters) :
                 local,
                 Duration.ofMinutes(10),
                 afterPeerPublication = { transport.pushPeer(local) },
+                afterRecoveryAcknowledgements = {
+                    stage = "recovery-acknowledgement"
+                    transport.pushRecoveryAcknowledgements(local)
+                },
                 afterPublication = {
                     stage = "generation-publication"
                     transport.pushGeneration(local)

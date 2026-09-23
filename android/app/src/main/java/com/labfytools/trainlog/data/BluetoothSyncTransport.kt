@@ -41,6 +41,17 @@ private const val MAX_BT_FILE_BYTES = 64L * 1024L * 1024L
 private const val MAX_BT_FILES = 128
 private const val AUTO_REQUEST_COOLDOWN_MS = 5L * 60L * 1000L
 
+internal val BLUETOOTH_ANDROID_PULL_COORDINATION =
+    listOf(
+        "android-peer-v1.json",
+        FULL_GENERATION_REQUEST_NAME,
+        LEGACY_SYNC_REQUEST_NAME,
+        "android-generation-v1.json",
+        "android-consumption-ack-v1.json",
+        "android-archive-acknowledgements-v1.json",
+        "android-generation-error-v1.json",
+    )
+
 internal data class BondedBluetoothDesktop(
     val name: String,
     val address: String,
@@ -248,14 +259,7 @@ private class BluetoothExchangeArchive(
         val totals = longArrayOf(0L, 0L)
         try {
             ZipOutputStream(BufferedOutputStream(FileOutputStream(output))).use { zip ->
-                listOf(
-                    "android-peer-v1.json",
-                    FULL_GENERATION_REQUEST_NAME,
-                    LEGACY_SYNC_REQUEST_NAME,
-                    "android-generation-v1.json",
-                    "android-consumption-ack-v1.json",
-                    "android-generation-error-v1.json",
-                ).forEach { name ->
+                BLUETOOTH_ANDROID_PULL_COORDINATION.forEach { name ->
                     addFile(zip, File(exchangeDirectory, name), name, seen, totals)
                 }
                 val reference = File(exchangeDirectory, "android-generation-v1.json")

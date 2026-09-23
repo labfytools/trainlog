@@ -20,6 +20,7 @@ COORDINATION = (
     "android-peer-v1.json",
     "android-generation-v1.json",
     "android-consumption-ack-v1.json",
+    "android-archive-acknowledgements-v1.json",
     "android-generation-error-v1.json",
     "request-v1.json",
     "desktop-archive-acknowledgements-v1.json",

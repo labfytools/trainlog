@@ -404,6 +404,7 @@ internal class SyncGenerationCoordinator(
         directory: File,
         timeout: Duration = Duration.ofMinutes(5),
         afterPeerPublication: (() -> Unit)? = null,
+        afterRecoveryAcknowledgements: (() -> Unit)? = null,
         afterPublication: (() -> Unit)? = null,
         pollTransport: (() -> Unit)? = null,
         afterAcknowledgement: (() -> Unit)? = null,
@@ -509,6 +510,7 @@ internal class SyncGenerationCoordinator(
                     )
                 publish(recoveryPath, recoveryEnvelope)
                 visibility.confirm(listOf(recoveryPath))
+                afterRecoveryAcknowledgements?.invoke()
                 phase(
                     runId,
                     "android_archive_ack_published",
