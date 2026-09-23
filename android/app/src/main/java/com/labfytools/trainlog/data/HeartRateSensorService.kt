@@ -277,9 +277,15 @@ class HeartRateSensorService : Service() {
         if (parsed !is HeartRateMeasurementParseResult.Parsed) return
         lastMeasurementElapsed = SystemClock.elapsedRealtime()
         HeartRateLiveState.measurement(parsed.measurement)
-        repository().recordLiveHeartRateForActiveSession(
+        val observedAt = OffsetDateTime.now().toString()
+        val repository = repository()
+        repository.recordLiveHeartRateForActiveSession(
             sensorName = selected?.name,
-            observedAt = OffsetDateTime.now().toString(),
+            observedAt = observedAt,
+            measurement = parsed.measurement,
+        ) ?: repository.recordLiveHeartRateForActiveSleep(
+            sensorName = selected?.name,
+            observedAt = observedAt,
             measurement = parsed.measurement,
         )
         if (lastNotificationBpm != parsed.measurement.bpm) {

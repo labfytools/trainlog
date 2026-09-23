@@ -31,6 +31,12 @@
   unclosed occurrence. Live heart-rate samples snapshot the active `entry_id`,
   rest intervals remain unowned, and the optional `trainlog-session-timeline`
   V1 companion imports idempotently into desktop schema v31.
+- Added Android one-tap Sleep capture on top of the existing Sleep Diary V1:
+  Couché, active medication buttons, point Réveil events and Levé each record
+  the current timestamp in one action. A guarded short-lived Annuler creates a
+  causal compensating revision, while Corriger la nuit retains the complete
+  editor. Heart-rate acquisition links directly to the stable sleep `entry_id`
+  and closes at Levé; no return-to-sleep or sleep-stage inference is added.
 
 Development opened after stable v0.1.4 release.
 

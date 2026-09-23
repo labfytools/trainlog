@@ -1744,3 +1744,29 @@ The 2026-09-23 closeout passes the complete native Meson inventory:
 **104/104 passed, 0 failed**. The complete Android JVM inventory reports
 **272 tests: 267 passed, five skipped, zero failures/errors**; `assembleDebug`
 also succeeds. The five skips remain optional historical/external fixture gates.
+
+## Android one-tap Sleep V1 validation
+
+`TRAINLOG_SLEEP_ANDROID_ONE_TAP_V1=SOFTWARE_PASS / DEVICE_VISUAL_PENDING`
+reuses the existing Sleep Diary V1 revision model and schema. The quick-capture
+API creates/advances normal immutable Sleep Diary revisions for Couché,
+medication intake, point Réveil and Levé actions. Undo is accepted only when
+the action's exact applied revision is still current; older receipts conflict,
+and successful undo appends a compensating revision instead of rewriting the
+history.
+
+Targeted coverage executes Couché, a configured medication with dose snapshot,
+two independent wake points, live sleep-owned BPM/RR capture, Levé and final
+heart-rate export against the same stable sleep `entry_id`. A separate test
+proves stale undo rejection and exact restoration of the latest action.
+
+The complete Android JVM inventory before the final localization-only cleanup
+reported **274 tests: 269 passed, five skipped, zero failures/errors** and
+`assembleDebug` succeeded. After the localization cleanup the targeted
+SleepQuickCapture test and `assembleDebug` passed again.
+
+The private Android installation was advanced non-destructively to Trainlog
+0.1.5 versionCode 41 with the same debug signing identity and no uninstall or
+data clear. The device locked before the final visual Sleep-screen inspection,
+so no lock bypass was attempted and no real Sleep business button was pressed;
+that visual review remains explicitly pending.

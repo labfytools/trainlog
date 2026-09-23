@@ -492,6 +492,21 @@ class TrainlogRepository(
         data class Rejected(val reason: String) : SleepDiaryImportResult
     }
 
+    data class SleepQuickActionReceipt(
+        val entryId: String,
+        val previousRevisionId: String?,
+        val appliedRevisionId: String,
+    )
+
+    sealed interface SleepQuickActionResult {
+        data class Applied(val receipt: SleepQuickActionReceipt) : SleepQuickActionResult
+        data object NoActiveNight : SleepQuickActionResult
+        data object AlreadyActive : SleepQuickActionResult
+        data object InvalidMedication : SleepQuickActionResult
+        data object Conflict : SleepQuickActionResult
+        data object Error : SleepQuickActionResult
+    }
+
     sealed interface StartHeartRateCaptureResult {
         data class Started(val captureId: String) : StartHeartRateCaptureResult
         data object Invalid : StartHeartRateCaptureResult
@@ -666,6 +681,257 @@ class TrainlogRepository(
         } catch (_: android.database.sqlite.SQLiteException) {
             SaveSleepDiaryResult.DatabaseError
         } finally { db.endTransaction() }
+    }
+
+    private fun activeSleepDiaryEntry(): SleepDiaryEntry? =
+        listSleepDiary().firstOrNull { entry ->
+            entry.events.any { it.type == SleepEventType.BED_TIME } &&
+                entry.events.none { it.type == SleepEventType.FINAL_GET_UP }
+        }
+
+    private fun quickSleepDates(at: String): Pair<String, String>? =
+        runCatching {
+            val moment = OffsetDateTime.parse(at)
+            val start = if (moment.hour >= 18) moment.toLocalDate() else moment.toLocalDate().minusDays(1)
+            start.toString() to start.plusDays(1).toString()
+        }.getOrNull()
+
+    fun quickSleepBedTime(at: String = OffsetDateTime.now().toString()): SleepQuickActionResult {
+        if (activeSleepDiaryEntry() != null) return SleepQuickActionResult.AlreadyActive
+        val dates = quickSleepDates(at) ?: return SleepQuickActionResult.Error
+        val result = saveSleepDiary(
+            SleepDiaryDraft(
+                nightStartDate = dates.first,
+                nightEndDate = dates.second,
+                createdAt = at,
+                updatedAt = at,
+                sleepQuality = null,
+                wakeQuality = null,
+                dayForm = null,
+                treatmentAndNotes = "",
+                events = listOf(SleepDiaryEvent(sleepId("sle"), SleepEventType.BED_TIME, at, null)),
+            ),
+        )
+        return when (result) {
+            is SaveSleepDiaryResult.Saved ->
+                SleepQuickActionResult.Applied(
+                    SleepQuickActionReceipt(result.entryId, null, result.revisionId),
+                )
+            SaveSleepDiaryResult.Conflict -> SleepQuickActionResult.Conflict
+            else -> SleepQuickActionResult.Error
+        }
+    }
+
+    private fun mutateActiveSleep(
+        at: String,
+        transform: (SleepDiaryEntry) -> SleepDiaryDraft,
+    ): SleepQuickActionResult {
+        if (runCatching { OffsetDateTime.parse(at) }.isFailure) return SleepQuickActionResult.Error
+        val current = activeSleepDiaryEntry() ?: return SleepQuickActionResult.NoActiveNight
+        return when (val result = saveSleepDiary(transform(current))) {
+            is SaveSleepDiaryResult.Saved ->
+                SleepQuickActionResult.Applied(
+                    SleepQuickActionReceipt(current.entryId, current.revisionId, result.revisionId),
+                )
+            SaveSleepDiaryResult.Conflict -> SleepQuickActionResult.Conflict
+            else -> SleepQuickActionResult.Error
+        }
+    }
+
+    private fun SleepDiaryEntry.quickDraft(
+        at: String,
+        events: List<SleepDiaryEvent> = this.events,
+        intakes: List<MedicationIntake> = this.intakes,
+    ) = SleepDiaryDraft(
+        entryId = entryId,
+        expectedRevision = revisionId,
+        nightStartDate = nightStartDate,
+        nightEndDate = nightEndDate,
+        createdAt = createdAt,
+        updatedAt = at,
+        sleepQuality = sleepQuality,
+        wakeQuality = wakeQuality,
+        dayForm = dayForm,
+        treatmentAndNotes = treatmentAndNotes,
+        events = events,
+        intakes = intakes,
+    )
+
+    fun quickSleepWake(at: String = OffsetDateTime.now().toString()): SleepQuickActionResult =
+        mutateActiveSleep(at) { current ->
+            current.quickDraft(
+                at,
+                events = current.events + SleepDiaryEvent(
+                    sleepId("sle"),
+                    SleepEventType.NIGHT_GET_UP,
+                    at,
+                    null,
+                ),
+            )
+        }
+
+    fun quickSleepMedication(
+        medicationId: String,
+        at: String = OffsetDateTime.now().toString(),
+    ): SleepQuickActionResult {
+        val medication =
+            listSleepMedications(includeInactive = false)
+                .firstOrNull { it.medicationId == medicationId }
+                ?: return SleepQuickActionResult.InvalidMedication
+        return mutateActiveSleep(at) { current ->
+            current.quickDraft(
+                at,
+                intakes = current.intakes + MedicationIntake(
+                    intakeId = sleepId("mdi"),
+                    medicationId = medication.medicationId,
+                    medicationName = medication.name,
+                    takenAt = at,
+                    doseValue = medication.defaultDoseValue,
+                    doseUnit = medication.defaultDoseUnit,
+                    note = "",
+                    createdAt = at,
+                ),
+            )
+        }
+    }
+
+    fun quickSleepFinalGetUp(at: String = OffsetDateTime.now().toString()): SleepQuickActionResult {
+        val activeBefore = activeSleepDiaryEntry() ?: return SleepQuickActionResult.NoActiveNight
+        val result =
+            mutateActiveSleep(at) { current ->
+                current.quickDraft(
+                    at,
+                    events = current.events + SleepDiaryEvent(
+                        sleepId("sle"),
+                        SleepEventType.FINAL_GET_UP,
+                        at,
+                        null,
+                    ),
+                )
+            }
+        if (result is SleepQuickActionResult.Applied) {
+            activeHeartRateCapture()
+                ?.takeIf {
+                    it.contextKind == HeartRateContextKind.SLEEP &&
+                        it.contextId == activeBefore.entryId
+                }
+                ?.let { stopHeartRateCapture(it.captureId, at) }
+        }
+        return result
+    }
+
+    private fun loadSleepDiaryRevision(entryId: String, revisionId: String): SleepDiaryEntry? {
+        val db = database.readableDatabase
+        val owner = db.rawQuery(
+            "SELECT night_start_date,night_end_date,created_at,updated_at FROM sleep_diary_entries " +
+                "WHERE entry_id=? AND deleted=0",
+            arrayOf(entryId),
+        ).use { c ->
+            if (!c.moveToFirst()) null else arrayOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3))
+        } ?: return null
+        val values = db.rawQuery(
+            "SELECT sleep_quality,wake_quality,day_form,treatment_and_notes FROM sleep_diary_revisions " +
+                "WHERE entry_id=? AND revision_id=?",
+            arrayOf(entryId, revisionId),
+        ).use { c ->
+            if (!c.moveToFirst()) null else arrayOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3))
+        } ?: return null
+        val events = db.rawQuery(
+            "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=? " +
+                "ORDER BY start_at,event_id",
+            arrayOf(revisionId),
+        ).use { c -> buildList {
+            while (c.moveToNext()) add(SleepDiaryEvent(c.getString(0), SleepEventType.entries.single { it.wireValue == c.getString(1) }, c.getString(2), if (c.isNull(3)) null else c.getString(3)))
+        } }
+        val intakes = db.rawQuery(
+            "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at " +
+                "FROM sleep_medication_intakes WHERE revision_id=? ORDER BY taken_at,intake_id",
+            arrayOf(revisionId),
+        ).use { c -> buildList {
+            while (c.moveToNext()) add(MedicationIntake(c.getString(0), c.getString(1), c.getString(2), c.getString(3), if (c.isNull(4)) null else c.getDouble(4), if (c.isNull(5)) null else c.getString(5), c.getString(6), c.getString(7)))
+        } }
+        fun quality(v: String?) = v?.let { text -> SleepQuality.entries.single { it.wireValue == text } }
+        return SleepDiaryEntry(entryId, owner[0], owner[1], owner[2], owner[3], revisionId,
+            quality(values[0]), quality(values[1]), quality(values[2]), values[3].orEmpty(),
+            events, intakes, SleepPublicationStatus.DRAFT)
+    }
+
+    fun undoSleepQuickAction(
+        receipt: SleepQuickActionReceipt,
+        at: String = OffsetDateTime.now().toString(),
+    ): SleepQuickActionResult {
+        val current = listSleepDiary().firstOrNull { it.entryId == receipt.entryId }
+            ?: return SleepQuickActionResult.Conflict
+        if (current.revisionId != receipt.appliedRevisionId) return SleepQuickActionResult.Conflict
+        if (receipt.previousRevisionId == null) {
+            return when (deleteSleepDiary(current.entryId, current.revisionId, at)) {
+                is SaveSleepDiaryResult.Saved ->
+                    SleepQuickActionResult.Applied(
+                        SleepQuickActionReceipt(current.entryId, current.revisionId, current.revisionId),
+                    )
+                else -> SleepQuickActionResult.Conflict
+            }
+        }
+        val previous = loadSleepDiaryRevision(current.entryId, receipt.previousRevisionId)
+            ?: return SleepQuickActionResult.Conflict
+        val compensating =
+            SleepDiaryDraft(
+                entryId = current.entryId,
+                expectedRevision = current.revisionId,
+                nightStartDate = previous.nightStartDate,
+                nightEndDate = previous.nightEndDate,
+                createdAt = previous.createdAt,
+                updatedAt = at,
+                sleepQuality = previous.sleepQuality,
+                wakeQuality = previous.wakeQuality,
+                dayForm = previous.dayForm,
+                treatmentAndNotes = previous.treatmentAndNotes,
+                events = previous.events,
+                intakes = previous.intakes,
+            )
+        return when (val result = saveSleepDiary(compensating)) {
+            is SaveSleepDiaryResult.Saved ->
+                SleepQuickActionResult.Applied(
+                    SleepQuickActionReceipt(current.entryId, current.revisionId, result.revisionId),
+                )
+            else -> SleepQuickActionResult.Conflict
+        }
+    }
+
+    internal fun recordLiveHeartRateForActiveSleep(
+        sensorName: String?,
+        observedAt: String,
+        measurement: ParsedHeartRateMeasurement,
+    ): HeartRateMutationResult? {
+        if (activeSessionTimelineContext() != null) return null
+        val db = database.readableDatabase
+        val sleep = db.rawQuery(
+            "SELECT e.entry_id,bed.start_at FROM sleep_diary_entries e " +
+                "JOIN sleep_diary_events bed ON bed.revision_id=e.current_revision_id " +
+                "AND bed.event_type='bed_time' WHERE e.deleted=0 AND NOT EXISTS(" +
+                "SELECT 1 FROM sleep_diary_events wake WHERE wake.revision_id=e.current_revision_id " +
+                "AND wake.event_type='final_get_up') ORDER BY bed.start_at DESC LIMIT 1",
+            null,
+        ).use { c -> if (!c.moveToFirst()) null else c.getString(0) to c.getString(1) } ?: return null
+
+        var capture = activeHeartRateCapture()
+        if (capture == null) {
+            when (startHeartRateCapture(HeartRateContextKind.SLEEP, sleep.first, sleep.second, sensorName)) {
+                is StartHeartRateCaptureResult.Started -> capture = activeHeartRateCapture()
+                StartHeartRateCaptureResult.Conflict -> capture = activeHeartRateCapture()
+                else -> return HeartRateMutationResult.DatabaseError
+            }
+        }
+        val current = capture ?: return HeartRateMutationResult.NotFound
+        if (current.contextKind != HeartRateContextKind.SLEEP || current.contextId != sleep.first) return null
+        return appendHeartRateSample(
+            current.captureId,
+            observedAt,
+            measurement.bpm,
+            measurement.sensorContactDetected,
+            measurement.energyExpended,
+            measurement.rrIntervals1024.mapIndexed { index, value -> HeartRateRrInterval(index, value) },
+        )
     }
 
     fun listSleepDiary(limit: Int = 90): List<SleepDiaryEntry> {

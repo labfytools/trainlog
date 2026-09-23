@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -37,8 +38,240 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 
+
 @Composable
 fun SleepDiaryScreen(repository: TrainlogRepository) {
+    var correctionMode by remember { mutableStateOf(false) }
+    if (correctionMode) {
+        Column(Modifier.fillMaxSize()) {
+            Button(
+                onClick = { correctionMode = false },
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+            ) {
+                Text(stringResource(R.string.sleep_return_night_mode))
+            }
+            SleepDiaryEditorScreen(repository)
+        }
+    } else {
+        SleepNightCaptureScreen(repository) { correctionMode = true }
+    }
+}
+
+@Composable
+private fun SleepNightCaptureScreen(
+    repository: TrainlogRepository,
+    onCorrection: () -> Unit,
+) {
+    var revision by remember { mutableStateOf(0) }
+    var undoReceipt by remember {
+        mutableStateOf<TrainlogRepository.SleepQuickActionReceipt?>(null)
+    }
+    var message by remember { mutableStateOf<String?>(null) }
+    val strings = localizedContext()
+    val entries = remember(revision) { repository.listSleepDiary() }
+    val active =
+        entries.firstOrNull { entry ->
+            entry.events.any { it.type == SleepEventType.BED_TIME } &&
+                entry.events.none { it.type == SleepEventType.FINAL_GET_UP }
+        }
+    val medications =
+        remember(revision) {
+            repository.listSleepMedications(includeInactive = false)
+        }
+
+    LaunchedEffect(undoReceipt?.appliedRevisionId) {
+        if (undoReceipt != null) {
+            delay(10_000)
+            undoReceipt = null
+        }
+    }
+
+    fun apply(
+        successMessage: String,
+        result: TrainlogRepository.SleepQuickActionResult,
+    ) {
+        when (result) {
+            is TrainlogRepository.SleepQuickActionResult.Applied -> {
+                undoReceipt = result.receipt
+                message = successMessage
+                revision++
+            }
+            TrainlogRepository.SleepQuickActionResult.NoActiveNight ->
+                message = strings.getString(R.string.sleep_quick_no_active)
+            TrainlogRepository.SleepQuickActionResult.AlreadyActive ->
+                message = strings.getString(R.string.sleep_quick_already_active)
+            TrainlogRepository.SleepQuickActionResult.InvalidMedication ->
+                message = strings.getString(R.string.sleep_quick_medication_unavailable)
+            TrainlogRepository.SleepQuickActionResult.Conflict ->
+                message = strings.getString(R.string.sleep_quick_conflict)
+            TrainlogRepository.SleepQuickActionResult.Error ->
+                message = strings.getString(R.string.sleep_quick_error)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(stringResource(R.string.sleep_night_capture_title))
+        }
+        item {
+            active?.let { night ->
+                Text(
+                    stringResource(
+                        R.string.sleep_night_in_progress,
+                        night.nightStartDate,
+                        night.nightEndDate,
+                    ),
+                )
+            } ?: Text(stringResource(R.string.sleep_no_night_active))
+        }
+        item {
+            Button(
+                onClick = {
+                    apply(
+                        strings.getString(R.string.sleep_bed_recorded),
+                        repository.quickSleepBedTime(),
+                    )
+                },
+                enabled = active == null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.sleep_quick_bed))
+            }
+        }
+        if (medications.isNotEmpty()) {
+            item { Text(stringResource(R.string.sleep_medications)) }
+            items(medications, key = { it.medicationId }) { medication ->
+                Button(
+                    onClick = {
+                        apply(
+                            strings.getString(R.string.sleep_medication_recorded, medication.name),
+                            repository.quickSleepMedication(medication.medicationId),
+                        )
+                    },
+                    enabled = active != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    val dose =
+                        medication.defaultDoseValue?.let { doseValue ->
+                            " · " + doseValue.toString().trimEnd('0').trimEnd('.') +
+                                " " + medication.defaultDoseUnit.orEmpty()
+                        }.orEmpty()
+                    Text("💊 " + medication.name + dose)
+                }
+            }
+        }
+        item {
+            Button(
+                onClick = {
+                    apply(
+                        strings.getString(R.string.sleep_wake_recorded),
+                        repository.quickSleepWake(),
+                    )
+                },
+                enabled = active != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.sleep_quick_wake))
+            }
+        }
+        item {
+            Button(
+                onClick = {
+                    apply(
+                        strings.getString(R.string.sleep_get_up_recorded),
+                        repository.quickSleepFinalGetUp(),
+                    )
+                },
+                enabled = active != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.sleep_quick_get_up))
+            }
+        }
+        message?.let { text ->
+            item {
+                Card {
+                    Column(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(text)
+                        undoReceipt?.let { receipt ->
+                            Button(
+                                onClick = {
+                                    when (repository.undoSleepQuickAction(receipt)) {
+                                        is TrainlogRepository.SleepQuickActionResult.Applied -> {
+                                            message = strings.getString(R.string.sleep_action_undone)
+                                            undoReceipt = null
+                                            revision++
+                                        }
+                                        else -> {
+                                            message = strings.getString(R.string.sleep_undo_unavailable)
+                                            undoReceipt = null
+                                            revision++
+                                        }
+                                    }
+                                },
+                            ) {
+                                Text(stringResource(R.string.sleep_undo))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        active?.let { night ->
+            item {
+                Card {
+                    Column(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        Text(stringResource(R.string.sleep_night_timeline))
+                        night.events.sortedBy { it.startAt }.forEach { event ->
+                            Text(eventLabelPlain(event.type, strings) + " · " + shortTime(event.startAt))
+                        }
+                        night.intakes.sortedBy { it.takenAt }.forEach { intake ->
+                            Text("💊 " + intake.medicationName + " · " + shortTime(intake.takenAt))
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Button(
+                onClick = onCorrection,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.sleep_correct_night))
+            }
+        }
+    }
+}
+
+private fun shortTime(value: String): String =
+    runCatching { OffsetDateTime.parse(value).toLocalTime().withSecond(0).withNano(0).toString() }
+        .getOrDefault(value)
+
+private fun eventLabelPlain(type: SleepEventType, context: android.content.Context): String =
+    context.getString(
+        when (type) {
+            SleepEventType.BED_TIME -> R.string.sleep_bed_time
+            SleepEventType.FINAL_GET_UP -> R.string.sleep_final_get_up
+            SleepEventType.NIGHT_GET_UP -> R.string.sleep_night_get_up
+            SleepEventType.SLEEP -> R.string.sleep_sleep
+            SleepEventType.NAP -> R.string.sleep_nap
+            SleepEventType.LONG_AWAKE -> R.string.sleep_long_awake
+            SleepEventType.HALF_SLEEP -> R.string.sleep_half_sleep
+            SleepEventType.DAYTIME_SLEEPINESS -> R.string.sleep_sleepiness
+        },
+    )
+
+@Composable
+private fun SleepDiaryEditorScreen(repository: TrainlogRepository) {
     var revision by remember { mutableStateOf(0) }
     var selected by remember(revision) { mutableStateOf<SleepDiaryEntry?>(repository.listSleepDiary().firstOrNull()) }
     val today = LocalDate.now()

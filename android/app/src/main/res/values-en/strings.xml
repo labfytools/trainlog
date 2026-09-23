@@ -536,4 +536,27 @@
     <string name="exercise_timeline_finalize_title">An exercise is still active</string>
     <string name="exercise_timeline_finalize_detail">%1$s is still active. Finish it now and then save the session?</string>
     <string name="exercise_timeline_finalize_confirm">Finish and save</string>
+
+    <string name="sleep_night_capture_title">Night capture</string>
+    <string name="sleep_no_night_active">No night in progress.</string>
+    <string name="sleep_night_in_progress">Night in progress · %1$s → %2$s</string>
+    <string name="sleep_quick_bed">🛏 BED</string>
+    <string name="sleep_quick_wake">👁 WAKE</string>
+    <string name="sleep_quick_get_up">☀ GET UP</string>
+    <string name="sleep_bed_recorded">Bed time recorded.</string>
+    <string name="sleep_wake_recorded">Wake recorded.</string>
+    <string name="sleep_get_up_recorded">Get-up recorded.</string>
+    <string name="sleep_medication_recorded">%1$s recorded.</string>
+    <string name="sleep_undo">UNDO</string>
+    <string name="sleep_action_undone">Last action undone.</string>
+    <string name="sleep_undo_unavailable">Undo unavailable: the night has already changed.</string>
+    <string name="sleep_correct_night">Correct the night</string>
+    <string name="sleep_return_night_mode">Back to night capture</string>
+    <string name="sleep_night_timeline">Night timeline</string>
+
+    <string name="sleep_quick_no_active">No night in progress.</string>
+    <string name="sleep_quick_already_active">A night is already in progress.</string>
+    <string name="sleep_quick_medication_unavailable">Medication unavailable.</string>
+    <string name="sleep_quick_conflict">The night changed; reload before trying again.</string>
+    <string name="sleep_quick_error">Unable to record the action.</string>
 </resources>
