@@ -2,8 +2,14 @@
 
 ## Unreleased — 0.1.6
 
-Development opened after the stable v0.1.5 release. No 0.1.6 feature tranche
-is selected by this version-opening commit.
+Development opened after the stable v0.1.5 release. The Web refinement tranche
+adds persistent French/English settings, denser shared surfaces, ISO-week
+Dashboard activity, factual exercise-count overview charts, measured-timeline
+muscle-group drill-down, normalized measurement summaries, one shared refined
+BODY ZONES silhouette, and a compact Program header. A new Equipment workspace
+lists factual references and transactionally absorbs a custom duplicate into a
+canonical identity while retaining history/MAX context and recording a causal
+deletion marker; immutable embedded drafts cause an explicit conflict.
 
 ## 0.1.5 — 2026-09-23
 

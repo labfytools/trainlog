@@ -28,8 +28,8 @@
   --font-size-lg: 1.0625rem;
   --font-size-xl: 1.5rem;
   --font-size-display: clamp(2.25rem, 5vw, 4.5rem);
-  --shell-gutter: clamp(1rem, 3vw, 3rem);
-  --radius: 1rem;
+  --shell-gutter: clamp(0.9rem, 2vw, 2rem);
+  --radius: 0.78rem;
   font-family: var(--font-sans);
   color: var(--text);
   background: var(--crust);

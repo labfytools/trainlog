@@ -237,6 +237,7 @@ export function ActivityTile({ snapshot, size, analysis }: TileDataProps) {
     analysis?.overview.sets ??
     days.reduce((total, day) => total + day.set_count, 0);
   const shown = size === "compact" ? days.slice(-35) : days;
+  const weeks = calendarWeeks(shown);
   return (
     <div className="activity-content">
       <div className="metric-row">
@@ -255,17 +256,19 @@ export function ActivityTile({ snapshot, size, analysis }: TileDataProps) {
           )}
       </div>
       <div
-        className="activity-heatmap"
+        className="activity-calendar"
         role="img"
         aria-label={`Sur 90 jours : ${count(activeDays, "jour actif", "jours actifs")}, ${count(sessions, "séance")}, ${count(sets, "série")}.`}
       >
-        {shown.map((day) => (
-          <span
-            key={day.date}
-            className={`activity-day${day.active ? " is-active" : ""}${day.session_count > 1 ? " is-multiple" : ""}`}
-            title={`${formatDate(day.date, dateFormat)} — ${count(day.session_count, "séance")}, ${count(day.set_count, "série")}`}
-          />
-        ))}
+        {weeks.map((week) => <section className="activity-week" key={week.key}>
+          <h4>{week.label}</h4><div className="activity-week-days">{week.days.map((day) => (
+            <span key={day.date} className={`activity-day activity-calendar-day${day.active ? " is-active" : ""}${day.session_count > 1 ? " is-multiple" : ""}`}
+              title={`${formatDate(day.date, dateFormat)} — ${count(day.session_count, "séance")}, ${count(day.set_count, "série")}`}
+              aria-label={`${formatDate(day.date, dateFormat)} — ${count(day.session_count, "séance")}, ${count(day.set_count, "série")}`}>
+              <small>{activityDayLabel(day.date)}</small><strong>{/^\d{4}-\d{2}-\d{2}$/.test(day.date) ? Number(day.date.slice(8, 10)) : '—'}</strong>
+              {day.active && <b>{day.session_count}</b>}
+            </span>))}</div>
+        </section>)}
       </div>
       {size === "large" && (
         <p className="chart-legend">
@@ -277,71 +280,51 @@ export function ActivityTile({ snapshot, size, analysis }: TileDataProps) {
   );
 }
 
+function activityDayLabel(value: string): string {
+  const date = new Date(`${value}T12:00:00Z`)
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat('fr-FR', { weekday: 'short', timeZone: 'UTC' }).format(date)
+    : '—'
+}
+
+export function calendarWeeks(days: DashboardSnapshot['data']['activity']['days']) {
+  const groups = new Map<string, typeof days>()
+  days.forEach((day, index) => {
+    const date = new Date(`${day.date}T12:00:00Z`)
+    if (!Number.isFinite(date.getTime())) {
+      const key = `unknown-${Math.floor(index / 7)}`
+      groups.set(key, [...(groups.get(key) ?? []), day])
+      return
+    }
+    const weekday = date.getUTCDay() || 7
+    const thursday = new Date(date)
+    thursday.setUTCDate(date.getUTCDate() + 4 - weekday)
+    const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1, 12))
+    const week = Math.ceil((((thursday.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+    const key = `${thursday.getUTCFullYear()}-${String(week).padStart(2, '0')}`
+    groups.set(key, [...(groups.get(key) ?? []), day])
+  })
+  return [...groups.entries()].map(([key, weekDays]) => ({
+    key,
+    days: weekDays,
+    label: key.startsWith('unknown-') ? 'Période' : `${new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${weekDays[0].date}T12:00:00Z`))} — S${Number(key.slice(-2))}`,
+  }))
+}
+
 export function ProgressionTile({ snapshot, size, analysis }: TileDataProps) {
   const { dateFormat } = useDatePreferences();
-  if (analysis?.exercise !== null && analysis?.exercise !== undefined) {
-    const exercise = analysis.exercise;
-    const latest = exercise.points[0];
+  const distinctExercises = analysis?.overview.distinct_exercises ?? 0;
+  if (analysis !== null && analysis !== undefined) {
+    const top = analysis.exercise_groups.flatMap((group) => group.exercises).sort((left, right) => right.occurrences - left.occurrences || left.name.localeCompare(right.name, 'fr')).slice(0, 3);
     return (
       <div className="progression-content">
-        <div>
-          <p className="primary-label">{exercise.name}</p>
-          <p className="secondary-label">
-            {exercise.tracking_mode === "reps" ? "Répétitions" : "Durée"}
-          </p>
-        </div>
-        {latest === undefined ? (
-          <Unavailable text="Aucune donnée compatible sur 30 jours" />
-        ) : (
-          <dl className="fact-list horizontal">
-            {exercise.recording_mode === "sets" && (
-              <Fact label="Séries" value={String(latest.sets)} />
-            )}
-            {latest.reps !== null && (
-              <Fact label="Répétitions" value={String(latest.reps)} />
-            )}
-            {(latest.continuous_duration_seconds ??
-              latest.set_duration_seconds) !== null && (
-              <Fact
-                label="Durée"
-                value={formatDuration(
-                  latest.continuous_duration_seconds ??
-                    latest.set_duration_seconds ??
-                    0,
-                )}
-              />
-            )}
-            {latest.distance_km !== null && (
-              <Fact
-                label="Distance"
-                value={`${latest.distance_km.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} km`}
-              />
-            )}
-            {latest.speed_kmh !== null && (
-              <Fact
-                label="Vitesse"
-                value={`${latest.speed_kmh.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} km/h`}
-              />
-            )}
-            {latest.external_volume_kg !== null && (
-              <Fact
-                label="Volume externe"
-                value={formatWeight(latest.external_volume_kg)}
-              />
-            )}
-            {latest.explicit_max_kg !== null && (
-              <Fact
-                label="MAX explicite"
-                value={formatWeight(latest.explicit_max_kg)}
-              />
-            )}
-          </dl>
-        )}
+        <dl className="fact-list horizontal"><Fact label="Exercices distincts" value={String(distinctExercises)} /><Fact label="Séances" value={String(analysis.overview.sessions)} /><Fact label="Séries" value={String(analysis.overview.sets)} /></dl>
+        {size !== 'compact' && top.length > 0 && <ol className="progression-top">{top.map((exercise) => <li key={exercise.exercise_id}><span>{exercise.name}</span><strong>{exercise.occurrences} occurrences</strong></li>)}</ol>}
         <a
           className="tile-context-link"
-          href={`/analyse?section=exercise&exercise_id=${encodeURIComponent(exercise.exercise_id)}&period=30d`}
+          href="/analyse?section=exercise&period=30d"
         >
-          Voir dans Analyse
+          Explorer dans Analyse
         </a>
       </div>
     );

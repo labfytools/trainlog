@@ -58,8 +58,8 @@ type RegionProps = (zoneId: MappedBodyZoneId) => Record<string, unknown>
 
 function BodyView({ title, side, zoneProps, language }: { title: string; side: 'front' | 'back'; zoneProps: RegionProps; language: 'fr' | 'en' }) {
   return <figure><figcaption>{title}</figcaption><svg viewBox="0 0 120 260" role="group" aria-label={language === 'fr' ? `Silhouette, vue ${title.toLowerCase()}` : `Silhouette, ${title.toLowerCase()} view`}>
-    <circle className="body-outline" cx="60" cy="23" r="16" />
-    <path className="body-outline" d="M42 43 Q60 36 78 43 L88 116 75 150 70 244H52L45 150 32 116Z" />
+    <path className="body-outline" d="M60 5C49 5 43 13 44 24c1 10 7 17 16 17s15-7 16-17C77 13 71 5 60 5Z" />
+    <path className="body-outline" d="M53 40v7c-13 2-21 8-25 20l-9 55c-1 7 2 11 8 12 5 1 9-3 10-9l7-43 1 49c0 8-5 17-7 27l-4 38 9 52c1 6 6 9 11 7 4-1 6-5 6-10v-43l4-28 4 28v43c0 5 2 9 6 10 5 2 10-1 11-7l9-52-4-38c-2-10-7-19-7-27l1-49 7 43c1 6 5 10 10 9 6-1 9-5 8-12l-9-55c-4-12-12-18-25-20v-7Z" />
     {side === 'front' ? <>
       <ellipse id="front-shoulder-left" {...zoneProps('shoulders')} cx="37" cy="57" rx="10" ry="12" /><ellipse id="front-shoulder-right" {...zoneProps('shoulders')} cx="83" cy="57" rx="10" ry="12" />
       <path id="front-chest-left" {...zoneProps('chest')} d="M43 58 Q52 53 58 59 L57 85 Q47 85 42 77Z" /><path id="front-chest-right" {...zoneProps('chest')} d="M77 58 Q68 53 62 59 L63 85 Q73 85 78 77Z" />

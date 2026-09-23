@@ -342,33 +342,33 @@ function ActivityHistogram({
   const ordered = [...points].sort((left, right) =>
     left.date.localeCompare(right.date),
   );
-  const maximum = Math.max(...ordered.map((point) => point.sessions), 1);
+  const maximum = Math.max(...ordered.map((point) => point.exercises), 1);
   return (
     <figure className="activity-histogram">
       <div className="analysis-chart-heading">
         <strong>
-          {language === "fr" ? "Séances par date" : "Sessions by date"}
+          {language === "fr" ? "Exercices réalisés par date" : "Exercises completed by date"}
         </strong>
-        <span>{language === "fr" ? "séances" : "sessions"}</span>
+        <span>{language === "fr" ? "exercices" : "exercises"}</span>
       </div>
       <div
         className="activity-bars"
         role="img"
         aria-label={
           language === "fr"
-            ? "Histogramme des séances par date"
-            : "Sessions-by-date histogram"
+            ? "Histogramme des exercices réalisés par date"
+            : "Exercises-by-date histogram"
         }
       >
         {ordered.map((point, index) => (
           <div className="activity-bar-column" key={point.date}>
-            <span className="activity-bar-value">{point.sessions}</span>
+            <span className="activity-bar-value">{point.exercises}</span>
             <span
               className="activity-bar"
               style={{
-                height: `${Math.max(8, (point.sessions / maximum) * 100)}%`,
+                height: `${Math.max(8, (point.exercises / maximum) * 100)}%`,
               }}
-              title={`${shortDate(`${point.date}T00:00:00Z`, language)} · ${point.sessions} ${language === "fr" ? "séance(s)" : "session(s)"}`}
+              title={`${shortDate(`${point.date}T00:00:00Z`, language)} · ${point.exercises} ${language === "fr" ? "exercice(s)" : "exercise(s)"} · ${point.sets} ${language === "fr" ? "série(s)" : "set(s)"}`}
             />
             {(ordered.length <= 10 ||
               index === 0 ||
@@ -518,6 +518,7 @@ export function AnalysisPage() {
   const [exerciseMetric, setExerciseMetric] = useState<ExerciseMetric | null>(
     null,
   );
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AnalysisSnapshot | null>(null);
   const [pending, setPending] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -595,6 +596,8 @@ export function AnalysisPage() {
     1,
     ...(snapshot?.body_zones.map((zone) => zone.exposures) ?? []),
   );
+  const distinctExercises = snapshot?.overview.distinct_exercises ?? 0;
+  const activeGroup = snapshot?.exercise_groups.find((group) => group.zone_id === selectedGroup);
   return (
     <section className="page analysis-page" aria-labelledby="page-title">
       <div className="page-heading">
@@ -666,6 +669,10 @@ export function AnalysisPage() {
                     label={t.sets}
                     value={formatNumber(snapshot.overview.sets, language)}
                   />
+                  <Fact
+                    label={language === "fr" ? "Exercices distincts" : "Distinct exercises"}
+                    value={formatNumber(distinctExercises, language)}
+                  />
                   {snapshot.overview.duration_seconds !== null && (
                     <Fact
                       label={t.duration}
@@ -732,17 +739,13 @@ export function AnalysisPage() {
               </article>
               <article className="analysis-panel">
                 <h2>{t.exercises}</h2>
-                {snapshot.exercise === null ? (
+                {distinctExercises === 0 ? (
                   <p className="analysis-empty">{t.noExercise}</p>
                 ) : (
                   <>
-                    <h3>{snapshot.exercise.name}</h3>
-                    <ExerciseFacts
-                      exercise={snapshot.exercise}
-                      language={language}
-                      selectedMetric={exerciseMetric}
-                      onMetricChange={setExerciseMetric}
-                    />
+                    <p className="analysis-summary-value">{distinctExercises}</p>
+                    <p className="analysis-note">{language === "fr" ? "exercices distincts sur la période" : "distinct exercises in this period"}</p>
+                    <button className="analysis-link" type="button" onClick={() => chooseSection("exercise")}>{language === "fr" ? "Explorer par groupe" : "Explore by group"}</button>
                   </>
                 )}
               </article>
@@ -750,7 +753,32 @@ export function AnalysisPage() {
           )}
           {section === "exercise" && (
             <article className="analysis-panel analysis-wide">
-              <label className="analysis-picker">
+              {selectedGroup === null ? <>
+                <h2>{language === "fr" ? "Groupes musculaires" : "Muscle groups"}</h2>
+                <p className="analysis-note">{language === "fr" ? "Temps provenant uniquement des timestamps réels début/fin des exercices." : "Time comes only from real exercise start/end timestamps."}</p>
+                <div className="analysis-group-bars">{snapshot.exercise_groups.map((group) => {
+                  const seconds = group.exercises.reduce((sum, item) => sum + item.measured_seconds, 0)
+                  const measured = group.exercises.reduce((sum, item) => sum + item.measured_occurrences, 0)
+                  const maximum = Math.max(1, ...snapshot.exercise_groups.map((candidate) => candidate.exercises.reduce((sum, item) => sum + item.measured_seconds, 0)))
+                  return <button type="button" key={group.zone_id} onClick={() => { setSelectedGroup(group.zone_id); setExerciseId(undefined) }}>
+                    <span>{language === "en" ? (zoneLabelsEn[group.zone_id] ?? group.label) : group.label}</span>
+                    <span className="group-bar-track"><span style={{ width: `${(seconds / maximum) * 100}%` }} /></span>
+                    <strong>{formatDuration(seconds)}</strong><small>{language === "fr" ? `Temps mesuré sur ${measured} occurrences` : `Time measured across ${measured} occurrences`}</small>
+                  </button>
+                })}</div>
+              </> : activeGroup !== undefined && exerciseId !== undefined && snapshot.exercise?.exercise_id === exerciseId ? <>
+                <button type="button" className="analysis-back" onClick={() => setExerciseId(undefined)}>← {language === "fr" ? "Exercices du groupe" : "Group exercises"}</button>
+                <h2>{snapshot.exercise.name}</h2>
+                <ExerciseFacts exercise={snapshot.exercise} language={language} selectedMetric={exerciseMetric} onMetricChange={setExerciseMetric} detailed />
+              </> : activeGroup !== undefined ? <>
+                <button type="button" className="analysis-back" onClick={() => setSelectedGroup(null)}>← {language === "fr" ? "Groupes musculaires" : "Muscle groups"}</button>
+                <h2>{language === "en" ? (zoneLabelsEn[activeGroup.zone_id] ?? activeGroup.label) : activeGroup.label}</h2>
+                <div className="analysis-group-bars">{activeGroup.exercises.map((exercise) => <button type="button" key={exercise.exercise_id} onClick={() => chooseExercise(exercise.exercise_id)}>
+                  <span>{exercise.name}</span><strong>{formatDuration(exercise.measured_seconds)}</strong>
+                  <small>{exercise.occurrences} {language === "fr" ? "occurrences" : "occurrences"} · {exercise.sessions} {language === "fr" ? "séances" : "sessions"} · {exercise.sets} {language === "fr" ? "séries" : "sets"}<br/>{language === "fr" ? `Temps mesuré sur ${exercise.measured_occurrences} occurrences` : `Time measured across ${exercise.measured_occurrences} occurrences`}</small>
+                </button>)}</div>
+              </> : null}
+              <label className="analysis-picker legacy-exercise-picker">
                 {t.exercise}
                 <select
                   value={snapshot.exercise?.exercise_id ?? ""}
@@ -769,9 +797,9 @@ export function AnalysisPage() {
                   ))}
                 </select>
               </label>
-              {snapshot.exercise === null ? (
+              {selectedGroup === null && snapshot.exercise === null ? (
                 <p className="analysis-empty">{t.noExercise}</p>
-              ) : (
+              ) : selectedGroup === null && snapshot.exercise !== null ? (
                 <>
                   <h2>{snapshot.exercise.name}</h2>
                   <ExerciseFacts
@@ -782,7 +810,7 @@ export function AnalysisPage() {
                     detailed
                   />
                 </>
-              )}
+              ) : null}
             </article>
           )}
           {section === "body-zones" && (
@@ -827,6 +855,11 @@ export function AnalysisPage() {
           )}
           {section === "measurements" && (
             <article className="analysis-panel analysis-wide">
+              <h2>{language === "fr" ? "Vue globale" : "Overview"}</h2>
+              <div className="measurement-overview">{snapshot.measurements.summaries.filter((summary) => summary.count > 0).map((summary) => {
+                const relative = summary.first !== null && summary.last !== null && summary.first !== 0 ? ((summary.last - summary.first) / Math.abs(summary.first)) * 100 : null
+                return <button type="button" key={summary.metric} aria-pressed={metric === summary.metric} onClick={() => chooseMetric(summary.metric)}><strong>{metricLabels[language][summary.metric]}</strong><span>{summary.first} {summary.unit} → {summary.last} {summary.unit}</span><em>{relative === null ? '—' : `${relative > 0 ? '+' : ''}${formatNumber(relative, language, 1)} %`}</em></button>
+              })}</div>
               <label className="analysis-picker">
                 {t.metric}
                 <select

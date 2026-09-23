@@ -222,7 +222,7 @@ describe("tuiles Dashboard alimentées par le contrat", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
-  it("masque les séries incompatibles et humanise la durée pour une activité continue", () => {
+  it("remplace l’exercice arbitraire par une synthèse globale factuelle", () => {
     const analysis = {
       ...analysisFixture,
       exercise: {
@@ -252,10 +252,9 @@ describe("tuiles Dashboard alimentées par le contrat", () => {
         analysis={analysis}
       />,
     );
-    expect(screen.getByText("15 min")).toBeInTheDocument();
-    expect(screen.getByText("1,43 km")).toBeInTheDocument();
-    expect(screen.getByText("6,4 km/h")).toBeInTheDocument();
-    expect(screen.queryByText("Séries")).not.toBeInTheDocument();
+    expect(screen.getByText("Exercices distincts")).toBeInTheDocument();
+    expect(screen.getByText("Explorer dans Analyse")).toBeInTheDocument();
+    expect(screen.queryByText("15 min")).not.toBeInTheDocument();
   });
 
   it("réserve la courbe aux tailles medium et large", async () => {

@@ -10,10 +10,13 @@ import { ProgramsCalendarPage } from '../routes/ProgramsCalendarPage'
 import { SessionsPage } from '../routes/SessionsPage'
 import { ExercisesPage } from '../routes/ExercisesPage'
 import { AnalysisPage } from '../routes/AnalysisPage'
+import { SettingsPage } from '../routes/SettingsPage'
+import { EquipmentPage } from '../routes/EquipmentPage'
 import type { RouteId } from './routes'
 import { useRoute } from './useRoute'
 import { DatePreferencesProvider } from '../presentation/DatePreferences'
 import { fetchAnalysis, type AnalysisSnapshot } from '../api/analysis'
+import { LanguagePreferencesProvider, useLanguagePreferences } from '../presentation/LanguagePreferences'
 
 async function fetchDashboardAnalysis(signal?: AbortSignal): Promise<AnalysisSnapshot> {
   const [windowed, allMeasurements] = await Promise.all([
@@ -23,11 +26,12 @@ async function fetchDashboardAnalysis(signal?: AbortSignal): Promise<AnalysisSna
   return { ...windowed, measurements: allMeasurements.measurements }
 }
 
-const placeholderContent: Record<Exclude<RouteId, 'dashboard' | 'analysis' | 'programs' | 'exercises'>, [string, string, string]> = {
+const placeholderContent: Record<Extract<RouteId, 'sessions'>, [string, string, string]> = {
   sessions: ['Séances', 'ORGANISER', 'Les séances préparées et terminées seront présentées sans confondre plan et réalisé.'],
 }
 
 function AppContent() {
+  const { language } = useLanguagePreferences()
   const [route, navigate] = useRoute()
   const [health, setHealth] = useState<Health | null>(null)
   const [healthPending, setHealthPending] = useState(true)
@@ -105,13 +109,15 @@ function AppContent() {
     route.id === 'sessions' ? <SessionsPage /> :
     route.id === 'programs' ? <ProgramsCalendarPage onNavigate={navigate} /> :
     route.id === 'exercises' ? <ExercisesPage path={route.path} onNavigate={navigate} /> :
+    route.id === 'equipment' ? <EquipmentPage /> :
+    route.id === 'settings' ? <SettingsPage /> :
     <PlaceholderPage title={placeholderContent[route.id][0]}
       eyebrow={placeholderContent[route.id][1]}
       description={placeholderContent[route.id][2]} />
 
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">Aller au contenu</a>
+      <a className="skip-link" href="#main-content">{language === 'en' ? 'Skip to content' : 'Aller au contenu'}</a>
       <Header activeRoute={route} onNavigate={navigate} onSyncCommitted={() => {
         reloadDashboard()
         reloadPreparedItems()
@@ -124,5 +130,5 @@ function AppContent() {
 }
 
 export function App() {
-  return <DatePreferencesProvider><AppContent /></DatePreferencesProvider>
+  return <LanguagePreferencesProvider><DatePreferencesProvider><AppContent /></DatePreferencesProvider></LanguagePreferencesProvider>
 }

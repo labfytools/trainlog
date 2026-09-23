@@ -163,7 +163,7 @@ describe('shell Trainlog', () => {
   it('expose les cinq destinations dans une navigation clavier sémantique', () => {
     mockHealth()
     render(<App />)
-    expect(screen.getAllByRole('link').filter((link) => link.closest('nav'))).toHaveLength(5)
+    expect(screen.getAllByRole('link').filter((link) => link.closest('nav'))).toHaveLength(6)
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page')
   })
 })

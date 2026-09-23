@@ -64,7 +64,7 @@ The heart-rate path remains independent from the frozen Bluetooth Trainlog
 synchronization transport.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=0.1.6 development open; next feature tranche not selected.
+CURRENT_OPERATIONAL_CURSOR=0.1.6 Web UI refinement implemented; validation and private deployment review pending.
 ```
 
 Sleep Diary V1 stays frozen/readable while active capable peers require

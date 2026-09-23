@@ -190,15 +190,15 @@ describe("AnalysisPage", () => {
     expect(document.querySelectorAll(".chart-x-label")).toHaveLength(2);
   });
 
-  it("uses a factual sessions-by-date histogram in the overview", async () => {
+  it("uses a factual exercises-by-date histogram in the overview", async () => {
     render(<AnalysisPage />);
-    expect(await screen.findByText("Séances par date")).toBeInTheDocument();
+    expect(await screen.findByText("Exercices réalisés par date")).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: "Histogramme des séances par date" }),
+      screen.getByRole("img", { name: "Histogramme des exercices réalisés par date" }),
     ).toBeInTheDocument();
     expect(document.querySelector(".activity-bar")).toHaveAttribute(
       "title",
-      expect.stringContaining("2 séance(s)"),
+      expect.stringContaining("1 exercice(s)"),
     );
   });
 });

@@ -349,7 +349,8 @@ h2 {
   align-self: start;
   border: 1px solid var(--surface-1);
   border-radius: 0.75rem;
-  background: var(--mantle);
+  background: color-mix(in srgb, var(--base) 78%, var(--surface-0));
+  box-shadow: 0 0.45rem 1.4rem rgb(0 0 0 / 10%);
   overflow: hidden;
 }
 .analysis-panel h3 {
@@ -1616,6 +1617,86 @@ h2 {
   align-items: end;
   justify-content: space-between;
   gap: 2rem;
+}
+.program-calendar-header h1 {
+  max-width: 24ch;
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: clamp(2.15rem, 4vw, 2.8rem);
+  line-height: 1.02;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.settings-grid,
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 1rem;
+}
+.settings-card,
+.equipment-card,
+.equipment-merge-panel {
+  padding: clamp(1rem, 2vw, 1.4rem);
+  background: color-mix(in srgb, var(--base) 76%, var(--surface-0));
+  border: 1px solid var(--surface-1);
+  border-radius: var(--radius);
+  box-shadow: 0 0.45rem 1.4rem rgb(0 0 0 / 10%);
+}
+.settings-card fieldset {
+  padding: 0;
+  display: grid;
+  gap: .65rem;
+  border: 0;
+}
+.settings-card label { display: flex; gap: .55rem; align-items: center; }
+.settings-card p,
+.equipment-card p { color: var(--subtext-0); line-height: 1.55; }
+.equipment-origin { color: var(--lavender); font: 700 var(--font-size-xs) var(--font-mono); text-transform: uppercase; }
+.equipment-card h2 { margin: .35rem 0 0; }
+.compact-facts { margin: 1rem 0 0; display: flex; gap: 1.5rem; }
+.compact-facts dt { color: var(--subtext-0); font-size: var(--font-size-xs); }
+.compact-facts dd { margin: .2rem 0 0; font-weight: 750; }
+.equipment-merge-panel { margin-top: 1rem; }
+.equipment-merge-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.equipment-merge-fields label { display: grid; gap: .35rem; color: var(--subtext-0); }
+.equipment-merge-fields select { min-height: 2.7rem; padding: .5rem; color: var(--text); background: var(--mantle); border: 1px solid var(--surface-2); border-radius: .5rem; }
+.merge-consequences { margin: 1rem 0; padding: .9rem; background: var(--mantle); border-radius: .55rem; }
+.merge-confirmation { margin-top: 1rem; padding: 1rem; border: 1px solid var(--red); border-radius: .55rem; }
+.merge-confirmation .quiet-action { margin-left: .6rem; }
+
+.activity-calendar { max-height: 22rem; margin-top: 1rem; overflow: auto; display: grid; gap: .75rem; }
+.activity-week h4 { margin: 0 0 .35rem; color: var(--subtext-0); font-size: var(--font-size-xs); text-transform: capitalize; }
+.activity-week-days { display: grid; grid-template-columns: repeat(7, minmax(2.4rem, 1fr)); gap: .3rem; }
+.activity-calendar-day { min-height: 3.15rem; padding: .35rem; position: relative; display: grid; align-content: space-between; color: var(--overlay-1); background: var(--base); border: 1px solid var(--surface-1); border-radius: .42rem; }
+.activity-calendar-day small { text-transform: capitalize; }
+.activity-calendar-day.is-active { color: var(--text); background: rgb(180 190 254 / 18%); border-color: var(--lavender); }
+.activity-calendar-day.is-multiple { background: rgb(203 166 247 / 27%); }
+.activity-calendar-day b { position: absolute; right: .35rem; bottom: .35rem; color: var(--lavender); font-size: .7rem; }
+.progression-top { margin: .8rem 0; padding: 0; display: grid; gap: .4rem; list-style: none; }
+.progression-top li { display: flex; justify-content: space-between; gap: 1rem; }
+.progression-top strong { color: var(--subtext-0); font-size: var(--font-size-xs); }
+
+.analysis-summary-value { margin: .6rem 0 0; font-size: 2.5rem; font-weight: 750; }
+.analysis-group-bars { display: grid; gap: .55rem; }
+.analysis-group-bars > button { padding: .75rem; display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 2fr) auto; gap: .4rem 1rem; align-items: center; color: var(--text); text-align: left; background: var(--base); border: 1px solid var(--surface-1); border-radius: .55rem; cursor: pointer; }
+.analysis-group-bars > button:hover { border-color: var(--lavender); }
+.analysis-group-bars small { grid-column: 1 / -1; color: var(--subtext-0); }
+.group-bar-track { height: .55rem; overflow: hidden; background: var(--surface-0); border-radius: 1rem; }
+.group-bar-track > span { height: 100%; display: block; background: var(--lavender); border-radius: inherit; }
+.analysis-back { margin-bottom: 1rem; color: var(--lavender); background: transparent; border: 0; cursor: pointer; }
+.legacy-exercise-picker { margin-top: 1.5rem; }
+.measurement-overview { margin-bottom: 1.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .55rem; }
+.measurement-overview button { padding: .75rem; display: grid; gap: .3rem; color: var(--text); text-align: left; background: var(--base); border: 1px solid var(--surface-1); border-radius: .55rem; cursor: pointer; }
+.measurement-overview button[aria-pressed="true"] { border-color: var(--lavender); }
+.measurement-overview span { color: var(--subtext-0); font-size: var(--font-size-xs); }
+.measurement-overview em { color: var(--lavender); font-style: normal; font-weight: 700; }
+
+@media (max-width: 760px) {
+  .equipment-merge-fields { grid-template-columns: 1fr; }
+  .activity-week-days { grid-template-columns: repeat(7, minmax(2rem, 1fr)); }
+  .analysis-group-bars > button { grid-template-columns: 1fr auto; }
+  .group-bar-track { grid-column: 1 / -1; }
 }
 .program-calendar-summary {
   margin: 0.7rem 0 0;

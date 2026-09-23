@@ -1,5 +1,18 @@
 # Tests and validation
 
+## Web UI refinement 0.1.6
+
+Web regressions cover calendar-week activity grouping, global rather than
+single-exercise Dashboard progression, exercises-per-date overview data,
+measured-only group drill-down, normalized measurement selection, the shared
+BODY ZONES figure, persistent language/settings navigation, multi-night Sleep
+selection invariants, and Equipment response validation. Native equipment
+coverage exercises a synthetic custom duplicate and proves that a transactional
+merge repoints completed history to the retained canonical identity without
+touching real user equipment. Strict C compilation, the full Meson inventory,
+Web typecheck/build/Vitest, JSON/import validation, changed-C formatting and
+diff checks remain the closeout gates.
+
 Sleep Diary coverage includes schema creation/migration, midnight and DST
 offsets, revision conflict, logical deletion/reopen, companion replay and
 rollback, Web periods/deep links, Android persistence, and vector PDF
