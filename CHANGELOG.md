@@ -68,8 +68,18 @@
   away from Cardio remains possible before Cardio-only facts exist, but is
   rejected once durable guidance or calibration facts would make it
   ambiguous. Repository coverage reproduces the real ordering through an
-  active exercise and guidance event; a private vc46 device re-smoke remains
-  required.
+  active exercise and guidance event. The private vc46 re-smoke retained the
+  original capture and more than 31 existing samples across the transition,
+  then displayed a measured 92 BPM and `ACCÉLÈRE`; the Sommeil and Calibration
+  cardio screens also rendered without creating persistent data.
+
+- Added one end-to-end tomorrow-session readiness regression. A synchronized
+  Program session retains its stable session and Program identities through
+  edits, two explicit exercise intervals, pre-exercise/inter-exercise/active
+  heart-rate ownership, finalization, full-generation publication, desktop
+  import, replay and correlated ACK. Raw observation timestamps, BPM, RR,
+  nullable stable exercise ownership and capture/session bounds are compared
+  on both platforms without inferring ownership from time overlap.
 
 - Added factual synchronized heart-rate timelines to the local Web. One bounded C17 read model and loopback GET endpoint now project raw BPM/RR measurements with canonical workout exercise intervals or Sleep Diary/medication markers. Cardio history additionally presents resolved phase targets, instruction changes and calibration peak/recovery facts. History and Sleep reuse one responsive SVG component; full-sample min/max/mean statistics remain exact while only very large chart projections retain bounded bucket extrema. No sleep stage, HRV, readiness or medical inference is added.
 

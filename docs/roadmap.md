@@ -69,7 +69,7 @@ sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
 Bluetooth synchronization transport contract.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_0_1_5_DEVICE_VISUAL_REVIEW_V1
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS
 ```
 
 The vc45 real-device smoke found that selecting Cardio after live capture had
@@ -77,9 +77,18 @@ already started on the default Training draft left the durable capture tagged
 as `session`, starving Cardio guidance despite fresh global BPM. Repository
 persistence now reconciles the same capture atomically while retaining its
 identity, sample order and raw BPM/RR facts; automated coverage reproduces the
-transition through an active exercise and guidance event. The cursor remains
-pending until the corrected flow is re-smoked on the separately deployed vc46
-candidate.
+transition through an active exercise and guidance event. The vc46 re-smoke
+then passed with the same capture, preserved pre-transition samples, measured
+guidance, and non-mutating Sommeil/Calibration screen checks.
+
+Tomorrow's next synchronized Program session is unambiguously
+`S1 D — Haut du corps machines` on 2026-09-24 with seven occurrences. The
+private phone remains on Android schema v31 with integrity/FK checks clean and
+no active draft, timeline, HR capture, guidance phase or calibration. A single
+combined regression now proves Program start and provenance through two
+explicit exercise intervals, four HR ownership positions, finalization, full
+generation, desktop import, idempotent replay and correlated ACK. This
+readiness result does not authorize a stable 0.1.5 tag or release.
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
 cursor: complete predecessor state, imported built-in authorization,
