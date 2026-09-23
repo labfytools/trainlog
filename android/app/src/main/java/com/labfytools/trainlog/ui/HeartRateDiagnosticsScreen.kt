@@ -18,12 +18,14 @@ import com.labfytools.trainlog.R
 import com.labfytools.trainlog.data.HeartRateBleDiagnostics
 import com.labfytools.trainlog.data.HeartRateDiagnosticPhase
 import com.labfytools.trainlog.data.HeartRateDiagnosticSnapshot
+import com.labfytools.trainlog.data.HeartRateSensorPreferences
+import com.labfytools.trainlog.data.HeartRateSensorService
 import com.labfytools.trainlog.data.hasHeartRateBleRuntimePermissions
 import com.labfytools.trainlog.data.heartRateBleRuntimePermissions
 import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 
 @Composable
-fun HeartRateDiagnosticsScreen() {
+fun HeartRateDiagnosticsScreen(onSelected: () -> Unit) {
     val context = LocalContext.current
     val strings = localizedContext()
     val colors = LocalTrainlogColors.current
@@ -122,6 +124,27 @@ fun HeartRateDiagnosticsScreen() {
                 strings.getString(R.string.hr_diag_notifications, snapshot.notificationCount),
                 colors.muted,
             )
+            if (
+                snapshot.phase == HeartRateDiagnosticPhase.RECEIVING &&
+                snapshot.selectedAddress != null
+            ) {
+                TrainlogButton(
+                    strings.getString(R.string.hr_diag_use_sensor),
+                    {
+                        val address = checkNotNull(snapshot.selectedAddress)
+                        val name =
+                            snapshot.devices
+                                .firstOrNull { it.address == address }
+                                ?.name
+                        diagnostics.close()
+                        HeartRateSensorPreferences(context).select(address, name)
+                        HeartRateSensorService.start(context)
+                        onSelected()
+                    },
+                    Modifier.fillMaxWidth(),
+                    style = TrainlogButtonStyle.SUCCESS,
+                )
+            }
         }
 
         TrainlogFrame(strings.getString(R.string.hr_diag_scan_section)) {

@@ -16,7 +16,10 @@ import com.labfytools.trainlog.data.SyncCatalogInbox
 import com.labfytools.trainlog.data.SyncRequestOutbox
 import com.labfytools.trainlog.data.BackgroundSyncSettings
 import com.labfytools.trainlog.data.SyncBackgroundService
+import com.labfytools.trainlog.data.HeartRateSensorPreferences
+import com.labfytools.trainlog.data.HeartRateSensorService
 import com.labfytools.trainlog.data.hasBluetoothConnectPermission
+import com.labfytools.trainlog.data.hasHeartRateBleRuntimePermissions
 import com.labfytools.trainlog.ui.TrainlogApp
 import com.labfytools.trainlog.ui.TrainlogAppState
 import com.labfytools.trainlog.ui.LanguagePresentation
@@ -38,6 +41,12 @@ class MainActivity : ComponentActivity() {
             hasBluetoothConnectPermission(applicationContext)
         ) {
             SyncBackgroundService.start(applicationContext)
+        }
+        if (
+            HeartRateSensorPreferences(applicationContext).selected() != null &&
+            hasHeartRateBleRuntimePermissions(applicationContext)
+        ) {
+            HeartRateSensorService.start(applicationContext)
         }
 
         val repository =

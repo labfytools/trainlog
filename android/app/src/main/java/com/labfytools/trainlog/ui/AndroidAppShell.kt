@@ -146,6 +146,7 @@ fun AndroidAppShell(
                         }
                     },
                     actions = {
+                        HeartRateIndicator()
                         if (!root) {
                             IconButton(
                                 onClick = { scope.launch { drawerState.open() } },

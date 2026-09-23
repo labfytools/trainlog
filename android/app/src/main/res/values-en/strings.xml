@@ -511,4 +511,18 @@
     <string name="hr_diag_hrs_advertised">Heart Rate advertised</string>
     <string name="hr_diag_hrs_not_advertised">Heart Rate not advertised</string>
     <string name="hr_diag_device_description">%1$s · %2$d dBm · %3$s</string>
+    <string name="hr_diag_use_sensor">Use this sensor</string>
+    <string name="heart_rate_service_channel">Heart-rate sensor</string>
+    <string name="heart_rate_service_title">Trainlog · cardio</string>
+    <string name="heart_rate_service_connecting">Connecting to sensor…</string>
+    <string name="heart_rate_service_reconnecting">Waiting for heart-rate signal…</string>
+    <string name="heart_rate_service_disconnected">Heart-rate sensor disconnected</string>
+    <string name="heart_rate_service_bpm">%1$d BPM</string>
+    <string name="heart_rate_a11y_connected">Heart rate %1$d BPM, sensor connected</string>
+    <string name="heart_rate_a11y_connecting">Heart-rate sensor connecting</string>
+    <string name="heart_rate_a11y_reconnecting">Heart-rate signal temporarily lost, reconnecting</string>
+    <string name="heart_rate_a11y_disconnected">Heart-rate sensor disconnected</string>
+    <string name="settings_cardio_configured">Heart-rate sensor configured.</string>
+    <string name="settings_cardio_forget">Forget sensor</string>
+    <string name="settings_cardio_forget_description">Stop heart-rate connection and remove the remembered sensor.</string>
 </resources>

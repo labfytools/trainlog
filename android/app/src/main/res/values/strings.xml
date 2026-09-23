@@ -521,4 +521,18 @@
     <string name="hr_diag_hrs_advertised">Heart Rate annoncé</string>
     <string name="hr_diag_hrs_not_advertised">Heart Rate non annoncé</string>
     <string name="hr_diag_device_description">%1$s · %2$d dBm · %3$s</string>
+    <string name="hr_diag_use_sensor">Utiliser ce capteur</string>
+    <string name="heart_rate_service_channel">Capteur cardio</string>
+    <string name="heart_rate_service_title">Trainlog · cardio</string>
+    <string name="heart_rate_service_connecting">Connexion au capteur…</string>
+    <string name="heart_rate_service_reconnecting">Signal cardio en attente…</string>
+    <string name="heart_rate_service_disconnected">Capteur cardio déconnecté</string>
+    <string name="heart_rate_service_bpm">%1$d BPM</string>
+    <string name="heart_rate_a11y_connected">Fréquence cardiaque %1$d BPM, capteur connecté</string>
+    <string name="heart_rate_a11y_connecting">Capteur cardio en connexion</string>
+    <string name="heart_rate_a11y_reconnecting">Signal cardio temporairement perdu, reconnexion en cours</string>
+    <string name="heart_rate_a11y_disconnected">Capteur cardio déconnecté</string>
+    <string name="settings_cardio_configured">Capteur cardio configuré.</string>
+    <string name="settings_cardio_forget">Oublier le capteur</string>
+    <string name="settings_cardio_forget_description">Arrêter la connexion cardio et supprimer le capteur mémorisé.</string>
 </resources>

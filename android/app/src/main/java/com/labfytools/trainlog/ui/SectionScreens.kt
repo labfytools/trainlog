@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +40,8 @@ import com.labfytools.trainlog.data.StartAiSessionDraftResult
 import com.labfytools.trainlog.data.TrainlogRepository
 import com.labfytools.trainlog.data.AndroidBackupService
 import com.labfytools.trainlog.data.AndroidBackupResult
+import com.labfytools.trainlog.data.HeartRateSensorPreferences
+import com.labfytools.trainlog.data.HeartRateSensorService
 import com.labfytools.trainlog.data.directStoragePermissionIntent
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.SessionExerciseDraft
@@ -484,6 +487,10 @@ fun SettingsScreen(
     val strings = localizedContext()
     var authorized by remember { mutableStateOf(inbox.hasFolderAccess()) }
     var message by remember { mutableStateOf<String?>(null) }
+    val heartRatePreferences = remember(context) { HeartRateSensorPreferences(context) }
+    var heartRateRevision by remember { mutableIntStateOf(0) }
+    val selectedHeartRateSensor =
+        remember(heartRateRevision) { heartRatePreferences.selected() }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         authorized = inbox.hasFolderAccess()
         message = strings.getString(if (authorized) R.string.settings_access_granted else R.string.settings_access_required)
@@ -539,11 +546,27 @@ fun SettingsScreen(
             }
         }
         TrainlogFrame(strings.getString(R.string.settings_cardio_section)) {
+            if (selectedHeartRateSensor != null) {
+                TrainlogInfo(
+                    strings.getString(R.string.settings_cardio_configured),
+                    colors.success,
+                )
+            }
             TrainlogAction(
                 strings.getString(R.string.settings_cardio_diagnostics),
                 strings.getString(R.string.settings_cardio_diagnostics_description),
                 onHeartRateDiagnostics,
             )
+            if (selectedHeartRateSensor != null) {
+                TrainlogAction(
+                    strings.getString(R.string.settings_cardio_forget),
+                    strings.getString(R.string.settings_cardio_forget_description),
+                    {
+                        HeartRateSensorService.forget(context)
+                        heartRateRevision++
+                    },
+                )
+            }
         }
         TrainlogFrame(strings.getString(R.string.settings_exchange_folder)) {
             TrainlogInfo(strings.getString(if (authorized) R.string.settings_folder_granted else R.string.settings_folder_required), if (authorized) colors.success else colors.warning)

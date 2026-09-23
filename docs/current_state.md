@@ -149,7 +149,8 @@ parallel implementation of its rules.
 | Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
 | Cardio persistence/sync | `TRAINLOG_CARDIO_PERSISTENCE_SYNC_V1=PASS`: Android v27 + desktop v30, strict optional `trainlog-heart-rate` V1 Android→desktop companion, generation relation and correlated ACK |
 | Cardio BLE diagnostics | `TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1=PASS`: real CYCPLUS H2 validated on Android; `0x180D` + `0x2A37`, Battery Service, approximately 1 Hz notifications and one raw RR interval per observed notification; contact and energy fields absent in the observed payloads |
-| Current operational cursor | `TRAINLOG_CARDIO_PERSISTENT_ACQUISITION_V1`: remember the validated sensor, persistent reconnecting Android acquisition service, stale-signal handling and global grey/orange/green `♥ BPM` indicator |
+| Cardio persistent acquisition | `TRAINLOG_CARDIO_PERSISTENT_ACQUISITION_V1=PASS`: selected sensor persists, dedicated connected-device foreground service reconnects, stale BPM is cleared, and the global Android `♥ BPM` indicator is grey/orange/green by connection state; real CYCPLUS restart and Bluetooth-off/on recovery validated on private vc40 |
+| Current operational cursor | `TRAINLOG_CARDIO_TRAINING_TIMELINE_V1`: persist real session/exercise start/end boundaries and correlate live heart-rate samples with the active stable `entry_id` |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

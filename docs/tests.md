@@ -1703,3 +1703,27 @@ in project documentation.
 
 The complete Android JVM inventory after this tranche reports **266 tests:
 261 passed, five skipped, zero failures/errors**, and `assembleDebug` succeeds.
+
+## Cardio persistent acquisition V1 validation
+
+`TRAINLOG_CARDIO_PERSISTENT_ACQUISITION_V1=PASS` adds a remembered Android
+heart-rate sensor, a dedicated connected-device foreground service, process-wide
+live state and the global app-bar `♥ BPM` indicator. A fresh measurement is
+green; connection/reconnection or stale signal is orange; no configured/active
+sensor is grey. A BPM older than three seconds is removed from presentation,
+and a stale GATT stream is forcibly recycled after eight seconds.
+
+Unit coverage proves durable sensor selection/clear and the live-state
+transition from connecting to measured BPM/RR, stale `-- BPM`, and
+disconnected. The complete Android JVM inventory after this tranche reports
+**268 tests: 263 passed, five skipped, zero failures/errors**; `assembleDebug`
+also passes.
+
+Real-device validation used the authorized CYCPLUS H2 on the private Trainlog
+0.1.5 versionCode 40 installation. With no selected sensor the global indicator
+rendered `♥ -- BPM` and the disconnected accessibility state. Selecting the
+validated sensor produced live `♥ 75 BPM`; a complete app force-stop/restart
+reloaded the remembered sensor and returned automatically at `♥ 72 BPM`.
+Disabling phone Bluetooth produced `♥ -- BPM` with the reconnecting state;
+reenabling Bluetooth restored the same foreground service automatically and
+returned to a fresh `♥ 79 BPM`. No uninstall or data clear occurred.

@@ -196,7 +196,7 @@ fun TrainlogApp(repository: TrainlogRepository, exporter: SyncExporter, inbox: S
             AppRoute.LatestMaxima -> LatestMaximaScreen(repository)
             AppRoute.Sync -> SyncScreen(repository, inbox, exporter, requestOutbox, { exportSnapshot(); catalogRevision++ }, { back() })
             AppRoute.Settings -> SettingsScreen(repository, inbox, { open(AppRoute.HeartRateDiagnostics) }) { exportSnapshot(); catalogRevision++ }
-            AppRoute.HeartRateDiagnostics -> HeartRateDiagnosticsScreen()
+            AppRoute.HeartRateDiagnostics -> HeartRateDiagnosticsScreen { back() }
         }}
     }
 

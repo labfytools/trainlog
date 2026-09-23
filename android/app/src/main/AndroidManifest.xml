@@ -50,5 +50,9 @@
             android:name=".data.SyncBackgroundService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync" />
+        <service
+            android:name=".data.HeartRateSensorService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 </manifest>

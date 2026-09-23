@@ -15,8 +15,15 @@
   HRS-filtered and expanded BLE scans, GATT service discovery and notification
   subscription without turning desktop/Web into sensor clients. Android 12+
   scan/connect permissions and the Android 11-and-older scan-location boundary
-  are explicit. Real armband notification characterization remains a hardware
-  validation gate before persistent acquisition.
+  are explicit. Real CYCPLUS H2 characterization then confirmed the standard
+  service/measurement path, Battery Service, ~1 Hz notifications and raw RR.
+- Added persistent Android heart-rate acquisition and the global `♥ BPM`
+  indicator. A validated sensor is remembered, a dedicated connected-device
+  foreground service reconnects across app restarts and Bluetooth loss, stale
+  measurements are cleared instead of displayed indefinitely, and the heart
+  uses grey/orange/green for disconnected/reconnecting/fresh states. The real
+  CYCPLUS H2 was validated through force-stop/restart and Bluetooth off/on
+  recovery on the private 0.1.5 versionCode 40 installation.
 
 Development opened after stable v0.1.4 release.
 
