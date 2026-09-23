@@ -9,7 +9,9 @@ export const MEASUREMENT_METRICS: readonly MeasurementMetric[] = [
   'left_forearm', 'right_forearm', 'left_thigh', 'right_thigh', 'left_calf', 'right_calf',
 ]
 
-export interface AnalysisActivityDay { date: string; sessions: number; sets: number }
+export interface AnalysisActivityDay { date: string; sessions: number; sets: number; exercises: number }
+export interface AnalysisExerciseGroupItem { exercise_id: string; name: string; occurrences: number; sessions: number; sets: number; measured_seconds: number; measured_occurrences: number }
+export interface AnalysisExerciseGroup { zone_id: string; label: string; exercises: AnalysisExerciseGroupItem[] }
 export interface AnalysisExerciseOption { exercise_id: string; name: string; tracking_mode: 'reps' | 'duration'; recording_mode: 'sets' | 'continuous' }
 export interface AnalysisExercisePoint {
   session_id: string; timestamp: string; load_mode: 'none' | 'external' | 'assistance'
@@ -39,8 +41,9 @@ export interface ActiveProgram {
 export interface AnalysisSnapshot {
   api_version: 1
   period: AnalysisPeriod
-  overview: { sessions: number; sets: number; duration_seconds: number | null }
+  overview: { sessions: number; sets: number; duration_seconds: number | null; distinct_exercises: number }
   activity: AnalysisActivityDay[]
+  exercise_groups: AnalysisExerciseGroup[]
   exercises: AnalysisExerciseOption[]
   exercise: AnalysisExercise | null
   body_zones: AnalysisZone[]
@@ -68,8 +71,12 @@ export function parseAnalysis(value: unknown): AnalysisSnapshot {
   if (!record(value) || value.api_version !== 1 || !period(value.period) || !record(value.overview) ||
       !Array.isArray(value.activity) || !Array.isArray(value.exercises) || !Array.isArray(value.body_zones) ||
       !record(value.measurements) || !record(value.meta)) throw new TypeError('analysis_invalid')
-  if (!count(value.overview.sessions) || !count(value.overview.sets) || !nullableFinite(value.overview.duration_seconds)) throw new TypeError('analysis_overview_invalid')
-  if (value.activity.length > 90 || !value.activity.every((item) => record(item) && typeof item.date === 'string' && count(item.sessions) && count(item.sets))) throw new TypeError('analysis_activity_invalid')
+  if (!count(value.overview.sessions) || !count(value.overview.sets) || !nullableFinite(value.overview.duration_seconds) || (value.overview.distinct_exercises !== undefined && !count(value.overview.distinct_exercises))) throw new TypeError('analysis_overview_invalid')
+  value.overview.distinct_exercises = Number(value.overview.distinct_exercises ?? 0)
+  if (value.activity.length > 90 || !value.activity.every((item) => record(item) && typeof item.date === 'string' && count(item.sessions) && count(item.sets) && (item.exercises === undefined || count(item.exercises)))) throw new TypeError('analysis_activity_invalid')
+  value.activity = value.activity.map((item) => ({ ...item, exercises: Number(item.exercises ?? 0) }))
+  if (value.exercise_groups === undefined) value.exercise_groups = []
+  if (!Array.isArray(value.exercise_groups) || !value.exercise_groups.every((group) => record(group) && typeof group.zone_id === 'string' && typeof group.label === 'string' && Array.isArray(group.exercises) && group.exercises.every((item) => record(item) && typeof item.exercise_id === 'string' && typeof item.name === 'string' && count(item.occurrences) && count(item.sessions) && count(item.sets) && count(item.measured_seconds) && count(item.measured_occurrences)))) throw new TypeError('analysis_exercise_groups_invalid')
   if (value.exercises.length > 128 || !value.exercises.every((item) => record(item) && typeof item.exercise_id === 'string' && typeof item.name === 'string' && (item.tracking_mode === 'reps' || item.tracking_mode === 'duration') && (item.recording_mode === 'sets' || item.recording_mode === 'continuous'))) throw new TypeError('analysis_exercises_invalid')
   if (value.exercise !== null) {
     if (!record(value.exercise) || typeof value.exercise.exercise_id !== 'string' || typeof value.exercise.name !== 'string' ||

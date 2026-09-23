@@ -24,6 +24,7 @@
 #include "trainlog/web_analysis.h"
 #include "trainlog/web_heart_rate.h"
 #include "trainlog/web_exercises.h"
+#include "trainlog/web_equipment.h"
 #include "trainlog/web_prepared_items.h"
 #include "trainlog/web_programs.h"
 #include "trainlog/web_session_deletions.h"
@@ -554,7 +555,8 @@ static enum MHD_Result queue_asset(struct MHD_Connection *connection,
 }
 
 static bool is_ui_route(const char *url) {
-    static const char *const routes[] = {"/", "/analyse", "/programmes", "/seances", "/exercices"};
+    static const char *const routes[] = {
+        "/", "/analyse", "/programmes", "/seances", "/exercices", "/equipements", "/parametres"};
     size_t index;
     for (index = 0U; index < sizeof(routes) / sizeof(routes[0]); ++index) {
         if (strcmp(url, routes[index]) == 0) {
@@ -1404,8 +1406,7 @@ static enum MHD_Result handle_request(void *closure,
         }
         (void)MHD_get_connection_values(
             connection, MHD_GET_ARGUMENT_KIND, validate_heart_rate_argument, &arguments);
-        context_id =
-            MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "context_id");
+        context_id = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "context_id");
         if (!arguments.valid || arguments.context_count != 1U ||
             !valid_heart_rate_context_id(context_id)) {
             return queue_json(connection,
@@ -1420,11 +1421,8 @@ static enum MHD_Result handle_request(void *closure,
                               "{\"error\":\"heart_rate_timeline_unavailable\"}\n",
                               NULL);
         }
-        status = trainlog_web_heart_rate_timeline_json(context->database,
-                                                       context_id,
-                                                       json,
-                                                       TRAINLOG_WEB_HEART_RATE_JSON_CAPACITY,
-                                                       &json_size);
+        status = trainlog_web_heart_rate_timeline_json(
+            context->database, context_id, json, TRAINLOG_WEB_HEART_RATE_JSON_CAPACITY, &json_size);
         if (status != TRAINLOG_STATUS_OK || json_size == 0U) {
             free(json);
             return queue_json(connection,
@@ -1644,6 +1642,62 @@ static enum MHD_Result handle_request(void *closure,
                               NULL);
         }
         return queue_json(connection, MHD_HTTP_OK, json, NULL);
+    }
+    if (strcmp(url, "/api/v1/equipment") == 0) {
+        char *json = NULL;
+        size_t json_size = 0U;
+        TrainlogStatus status;
+        enum MHD_Result queued;
+        if (!is_get) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "GET");
+        }
+        status = trainlog_web_equipment_list_json(context->database, &json, &json_size);
+        if (status != TRAINLOG_STATUS_OK || json == NULL || json_size == 0U) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_INTERNAL_SERVER_ERROR,
+                              "{\"error\":\"equipment_unavailable\"}\n",
+                              NULL);
+        }
+        queued = queue_json(connection, MHD_HTTP_OK, json, NULL);
+        free(json);
+        return queued;
+    }
+    if (strcmp(url, "/api/v1/equipment/merge") == 0) {
+        char *json = NULL;
+        size_t json_size = 0U;
+        TrainlogStatus status;
+        enum MHD_Result queued;
+        if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "POST");
+        }
+        if (!program_mutation_allowed(context, connection)) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        status = trainlog_web_equipment_merge_json(
+            context->database, state->body, state->body_size, &json, &json_size);
+        if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+            free(json);
+            return queue_json(connection,
+                              MHD_HTTP_UNPROCESSABLE_CONTENT,
+                              "{\"error\":\"invalid_equipment_merge\"}\n",
+                              NULL);
+        }
+        if (status != TRAINLOG_STATUS_OK || json == NULL || json_size == 0U) {
+            free(json);
+            return queue_json(
+                connection, MHD_HTTP_CONFLICT, "{\"error\":\"equipment_merge_failed\"}\n", NULL);
+        }
+        queued = queue_json(connection, MHD_HTTP_OK, json, NULL);
+        free(json);
+        return queued;
     }
     if (strcmp(url, "/api/v1/prepared-items") == 0) {
         char json[TRAINLOG_WEB_PREPARED_ITEMS_JSON_CAPACITY];

@@ -91,7 +91,12 @@ static bool add_overview(TrainlogDatabase *database,
         "se.id=ps.session_exercise_row_id JOIN eligible e ON e.id=se.session_row_id),"
         "CASE WHEN COUNT(*)>0 AND COUNT(*)=SUM(CASE WHEN ended_at IS NOT NULL AND "
         "unixepoch(ended_at)>=unixepoch(started_at) THEN 1 ELSE 0 END) THEN "
-        "SUM(unixepoch(ended_at)-unixepoch(started_at)) ELSE NULL END FROM eligible";
+        "SUM(unixepoch(ended_at)-unixepoch(started_at)) ELSE NULL END,"
+        "(SELECT COUNT(DISTINCT se.exercise_row_id) FROM session_exercises se JOIN eligible e "
+        "ON e.id=se.session_row_id WHERE EXISTS(SELECT 1 FROM performed_sets p WHERE "
+        "p.session_exercise_row_id=se.id) OR EXISTS(SELECT 1 FROM continuous_activity c WHERE "
+        "c.session_exercise_row_id=se.id) OR EXISTS(SELECT 1 FROM max_results m WHERE "
+        "m.session_exercise_row_id=se.id)) FROM eligible";
     sqlite3_stmt *statement = NULL;
     yyjson_mut_val *overview = yyjson_mut_obj(document);
     bool ok;
@@ -109,6 +114,8 @@ static bool add_overview(TrainlogDatabase *database,
               ? yyjson_mut_obj_add_null(document, overview, "duration_seconds")
               : yyjson_mut_obj_add_sint(
                     document, overview, "duration_seconds", sqlite3_column_int64(statement, 2))) &&
+         yyjson_mut_obj_add_sint(
+             document, overview, "distinct_exercises", sqlite3_column_int64(statement, 3)) &&
          yyjson_mut_obj_add_val(document, root, "overview", overview) &&
          sqlite3_step(statement) == SQLITE_DONE && sqlite3_finalize(statement) == SQLITE_OK;
     return ok;
@@ -120,7 +127,8 @@ static bool add_activity(TrainlogDatabase *database,
                          yyjson_mut_val *root,
                          bool *partial) {
     static const char SQL[] =
-        "SELECT substr(s.started_at,1,10),COUNT(DISTINCT s.id),COUNT(DISTINCT ps.id) FROM "
+        "SELECT substr(s.started_at,1,10),COUNT(DISTINCT s.id),COUNT(DISTINCT ps.id),"
+        "COUNT(DISTINCT se.id) FROM "
         "sessions s LEFT JOIN session_exercises se ON se.session_row_id=s.id LEFT JOIN "
         "performed_sets ps ON ps.session_exercise_row_id=se.id WHERE (?1 IS NULL OR "
         "unixepoch(s.started_at)>=?1) AND unixepoch(s.started_at)<=?2 AND (ps.id IS NOT NULL OR "
@@ -154,6 +162,8 @@ static bool add_activity(TrainlogDatabase *database,
             !yyjson_mut_obj_add_sint(
                 document, day, "sessions", sqlite3_column_int64(statement, 1)) ||
             !yyjson_mut_obj_add_sint(document, day, "sets", sqlite3_column_int64(statement, 2)) ||
+            !yyjson_mut_obj_add_sint(
+                document, day, "exercises", sqlite3_column_int64(statement, 3)) ||
             !yyjson_mut_arr_add_val(activity, day)) {
             (void)sqlite3_finalize(statement);
             return false;
@@ -162,6 +172,100 @@ static bool add_activity(TrainlogDatabase *database,
     }
     return step == SQLITE_DONE && sqlite3_finalize(statement) == SQLITE_OK &&
            yyjson_mut_obj_add_val(document, root, "activity", activity);
+}
+
+/* WHY: the analysis entry point must progress from primary BODY ZONE to
+ * exercise before showing an individual curve. CONTRACT: measured_seconds is
+ * derived only from imported occurrence start/end timestamps. INVARIANT: no
+ * duration is inferred from sets, repetitions, rest targets or session time. */
+static bool add_exercise_groups(TrainlogDatabase *database,
+                                const TrainlogWebAnalysisQuery *query,
+                                yyjson_mut_doc *document,
+                                yyjson_mut_val *root) {
+    static const char SQL[] =
+        "SELECT z.zone_id,e.exercise_id,e.name,"
+        "COUNT(DISTINCT CASE WHEN s.id IS NOT NULL THEN se.id END),"
+        "COUNT(DISTINCT s.id),COUNT(DISTINCT ps.id),"
+        "COALESCE((SELECT SUM(unixepoch(tt.ended_at)-unixepoch(tt.started_at)) FROM "
+        "session_exercise_timeline tt JOIN sessions ts ON ts.session_id=tt.session_id WHERE "
+        "tt.exercise_id=e.exercise_id AND tt.ended_at>=tt.started_at AND (?1 IS NULL OR "
+        "unixepoch(ts.started_at)>=?1) AND unixepoch(ts.started_at)<=?2),0),"
+        "(SELECT COUNT(*) FROM session_exercise_timeline tt JOIN sessions ts ON "
+        "ts.session_id=tt.session_id WHERE tt.exercise_id=e.exercise_id AND "
+        "tt.ended_at>=tt.started_at AND (?1 IS NULL OR unixepoch(ts.started_at)>=?1) AND "
+        "unixepoch(ts.started_at)<=?2) "
+        "FROM exercise_body_zones z JOIN exercises e ON e.id=z.exercise_row_id AND "
+        "z.role='primary' LEFT JOIN session_exercises se ON se.exercise_row_id=e.id "
+        "LEFT JOIN sessions s ON s.id=se.session_row_id AND (?1 IS NULL OR "
+        "unixepoch(s.started_at)>=?1) AND unixepoch(s.started_at)<=?2 "
+        "LEFT JOIN performed_sets ps ON ps.session_exercise_row_id=se.id AND s.id IS NOT NULL "
+        "GROUP BY z.zone_id,e.exercise_id,e.name "
+        "HAVING COUNT(DISTINCT s.id)>0 ORDER BY z.zone_id,e.name COLLATE NOCASE,e.exercise_id";
+    sqlite3_stmt *statement = NULL;
+    yyjson_mut_val *groups = yyjson_mut_arr(document);
+    yyjson_mut_val *group = NULL;
+    yyjson_mut_val *exercises = NULL;
+    char current_zone[64] = "";
+    int step;
+    if (groups == NULL || !prepare(database, SQL, &statement) || !bind_interval(statement, query)) {
+        if (statement != NULL) {
+            (void)sqlite3_finalize(statement);
+        }
+        return false;
+    }
+    while ((step = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *zone_id = (const char *)sqlite3_column_text(statement, 0);
+        const TrainlogBodyZone *zone = trainlog_body_zone_catalog_lookup(zone_id);
+        yyjson_mut_val *exercise;
+        if (zone == NULL) {
+            (void)sqlite3_finalize(statement);
+            return false;
+        }
+        if (strcmp(current_zone, zone_id) != 0) {
+            if (group != NULL && !yyjson_mut_obj_add_val(document, group, "exercises", exercises)) {
+                (void)sqlite3_finalize(statement);
+                return false;
+            }
+            group = yyjson_mut_obj(document);
+            exercises = yyjson_mut_arr(document);
+            if (group == NULL || exercises == NULL ||
+                !yyjson_mut_obj_add_strcpy(document, group, "zone_id", zone_id) ||
+                !yyjson_mut_obj_add_strcpy(document, group, "label", zone->display_name) ||
+                !yyjson_mut_arr_add_val(groups, group)) {
+                (void)sqlite3_finalize(statement);
+                return false;
+            }
+            (void)snprintf(current_zone, sizeof(current_zone), "%s", zone_id);
+        }
+        exercise = yyjson_mut_obj(document);
+        if (exercise == NULL ||
+            !yyjson_mut_obj_add_strcpy(document,
+                                       exercise,
+                                       "exercise_id",
+                                       (const char *)sqlite3_column_text(statement, 1)) ||
+            !yyjson_mut_obj_add_strcpy(
+                document, exercise, "name", (const char *)sqlite3_column_text(statement, 2)) ||
+            !yyjson_mut_obj_add_sint(
+                document, exercise, "occurrences", sqlite3_column_int64(statement, 3)) ||
+            !yyjson_mut_obj_add_sint(
+                document, exercise, "sessions", sqlite3_column_int64(statement, 4)) ||
+            !yyjson_mut_obj_add_sint(
+                document, exercise, "sets", sqlite3_column_int64(statement, 5)) ||
+            !yyjson_mut_obj_add_sint(
+                document, exercise, "measured_seconds", sqlite3_column_int64(statement, 6)) ||
+            !yyjson_mut_obj_add_sint(
+                document, exercise, "measured_occurrences", sqlite3_column_int64(statement, 7)) ||
+            !yyjson_mut_arr_add_val(exercises, exercise)) {
+            (void)sqlite3_finalize(statement);
+            return false;
+        }
+    }
+    if (group != NULL && !yyjson_mut_obj_add_val(document, group, "exercises", exercises)) {
+        (void)sqlite3_finalize(statement);
+        return false;
+    }
+    return step == SQLITE_DONE && sqlite3_finalize(statement) == SQLITE_OK &&
+           yyjson_mut_obj_add_val(document, root, "exercise_groups", groups);
 }
 
 static bool add_exercises(TrainlogDatabase *database,
@@ -553,7 +657,8 @@ add_program(TrainlogDatabase *database, yyjson_mut_doc *document, yyjson_mut_val
         "ps2.program_id=p.program_id AND COALESCE(pe2.state,'todo') NOT IN('completed','deleted') "
         "ORDER BY CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position "
         "LIMIT 1),"
-        "(SELECT ps2.planned_for FROM program_sessions ps2 LEFT JOIN program_session_executions pe2 "
+        "(SELECT ps2.planned_for FROM program_sessions ps2 LEFT JOIN program_session_executions "
+        "pe2 "
         "ON pe2.program_session_id=ps2.program_session_id WHERE ps2.program_id=p.program_id AND "
         "COALESCE(pe2.state,'todo') NOT IN('completed','deleted') ORDER BY "
         "CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position LIMIT 1) "
@@ -658,6 +763,7 @@ TrainlogStatus trainlog_web_analysis_json(TrainlogDatabase *database,
                                                                                     : "90d") ||
         !add_overview(database, query, document, root) ||
         !add_activity(database, query, document, root, &partial) ||
+        !add_exercise_groups(database, query, document, root) ||
         !add_exercises(database, query, document, root, selected_id, &partial) ||
         !add_exercise_detail(database, query, selected_id, document, root, &partial) ||
         !add_zones(database, query, document, root) ||

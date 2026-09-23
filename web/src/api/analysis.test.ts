@@ -4,8 +4,12 @@ import { fetchAnalysis, parseAnalysis, type AnalysisSnapshot } from './analysis'
 export const analysisFixture: AnalysisSnapshot = {
   api_version: 1,
   period: '30d',
-  overview: { sessions: 2, sets: 4, duration_seconds: null },
-  activity: [{ date: '2026-09-20', sessions: 2, sets: 4 }],
+  overview: { sessions: 2, sets: 4, duration_seconds: null, distinct_exercises: 1 },
+  activity: [{ date: '2026-09-20', sessions: 2, sets: 4, exercises: 1 }],
+  exercise_groups: [{ zone_id: 'thighs', label: 'Cuisses', exercises: [{
+    exercise_id: 'ex_10000000-0000-4000-8000-000000000001', name: 'Presse',
+    occurrences: 2, sessions: 2, sets: 4, measured_seconds: 0, measured_occurrences: 0,
+  }] }],
   exercises: [{ exercise_id: 'ex_10000000-0000-4000-8000-000000000001', name: 'Presse', tracking_mode: 'reps', recording_mode: 'sets' }],
   exercise: {
     exercise_id: 'ex_10000000-0000-4000-8000-000000000001', name: 'Presse', tracking_mode: 'reps', recording_mode: 'sets',
