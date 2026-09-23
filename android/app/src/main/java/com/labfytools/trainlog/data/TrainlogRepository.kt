@@ -14,6 +14,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.util.JsonReader
 import android.util.JsonToken
 import com.labfytools.trainlog.model.ActiveSessionDraft
+import com.labfytools.trainlog.model.ActiveSessionTimelineContext
 import com.labfytools.trainlog.model.AiSessionDraft
 import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.BodyObservationSummary
@@ -37,6 +38,7 @@ import com.labfytools.trainlog.model.SessionSummary
 import com.labfytools.trainlog.model.SessionDetail
 import com.labfytools.trainlog.model.SessionExerciseDetail
 import com.labfytools.trainlog.model.SessionExercisePlan
+import com.labfytools.trainlog.model.SessionExerciseTiming
 import com.labfytools.trainlog.model.SessionFollowUp
 import com.labfytools.trainlog.model.SessionLoadMode
 import com.labfytools.trainlog.model.SessionSetDraft
@@ -503,6 +505,14 @@ class TrainlogRepository(
         data object NotFound : HeartRateMutationResult
         data object Conflict : HeartRateMutationResult
         data object DatabaseError : HeartRateMutationResult
+    }
+
+    sealed interface SessionExerciseTimingResult {
+        data class Started(val timing: SessionExerciseTiming) : SessionExerciseTimingResult
+        data class Finished(val timing: SessionExerciseTiming) : SessionExerciseTimingResult
+        data class ActiveConflict(val activeEntryId: String) : SessionExerciseTimingResult
+        data class Invalid(val message: String) : SessionExerciseTimingResult
+        data class DatabaseError(val message: String) : SessionExerciseTimingResult
     }
 
     private fun sleepId(prefix: String): String = "${prefix}_${UUID.randomUUID()}"
@@ -1158,6 +1168,296 @@ class TrainlogRepository(
         )
     }
 
+    private fun ensureSessionTimelineForPersistedDraft(
+        db: SQLiteDatabase,
+        draft: ActiveSessionDraft,
+    ): Pair<String, String> {
+        val identity =
+            db.rawQuery(
+                "SELECT session_id,started_at FROM active_session_draft WHERE id=1",
+                null,
+            ).use { cursor ->
+                check(cursor.moveToFirst()) { "Active draft missing after persistence." }
+                check(!cursor.isNull(0) && !cursor.isNull(1)) {
+                    "Active draft is missing lifecycle identity."
+                }
+                cursor.getString(0) to cursor.getString(1)
+            }
+        db.execSQL(
+            "INSERT OR IGNORE INTO session_timeline_sessions(" +
+                "session_id,started_at,ended_at,acknowledged_at) VALUES(?,?,NULL,NULL)",
+            arrayOf(identity.first, identity.second),
+        )
+        val timelineStart =
+            db.rawQuery(
+                "SELECT started_at,ended_at FROM session_timeline_sessions WHERE session_id=?",
+                arrayOf(identity.first),
+            ).use { cursor ->
+                check(cursor.moveToFirst())
+                check(cursor.isNull(1)) { "Active session timeline is already completed." }
+                cursor.getString(0)
+            }
+        check(timelineStart == identity.second) {
+            "Active session timeline start conflicts with draft lifecycle."
+        }
+
+        val requested = draft.exercises.associate { it.entryId to it.exercise.exerciseId }
+        db.rawQuery(
+            "SELECT entry_id,exercise_id FROM session_timeline_exercises WHERE session_id=?",
+            arrayOf(identity.first),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val entryId = cursor.getString(0)
+                check(requested[entryId] == cursor.getString(1)) {
+                    "A started exercise cannot be removed or reassigned."
+                }
+            }
+        }
+        return identity
+    }
+
+    fun activeSessionTimelineContext(): ActiveSessionTimelineContext? {
+        val db = database.readableDatabase
+        return db.rawQuery(
+            "SELECT d.session_id,d.started_at,d.session_type,t.entry_id " +
+                "FROM active_session_draft d LEFT JOIN session_timeline_exercises t " +
+                "ON t.session_id=d.session_id AND t.active_slot=1 WHERE d.id=1",
+            null,
+        ).use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0) || cursor.isNull(1)) null
+            else ActiveSessionTimelineContext(
+                sessionId = cursor.getString(0),
+                startedAt = cursor.getString(1),
+                sessionType = SessionType.fromWire(cursor.getString(2)),
+                activeEntryId = if (cursor.isNull(3)) null else cursor.getString(3),
+            )
+        }
+    }
+
+    fun listActiveSessionExerciseTimings(): List<SessionExerciseTiming> {
+        val context = activeSessionTimelineContext() ?: return emptyList()
+        return buildList {
+            database.readableDatabase.rawQuery(
+                "SELECT entry_id,exercise_id,started_at,ended_at FROM " +
+                    "session_timeline_exercises WHERE session_id=? ORDER BY started_at,entry_id",
+                arrayOf(context.sessionId),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    add(
+                        SessionExerciseTiming(
+                            sessionId = context.sessionId,
+                            entryId = cursor.getString(0),
+                            exerciseId = cursor.getString(1),
+                            startedAt = cursor.getString(2),
+                            endedAt = if (cursor.isNull(3)) null else cursor.getString(3),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun startActiveSessionExercise(
+        entryId: String,
+        startedAt: String = OffsetDateTime.now().toString(),
+    ): SessionExerciseTimingResult {
+        if (!SESSION_ENTRY_ID_V4_PATTERN.matches(entryId) || TrainlogTimestamp.parse(startedAt) == null)
+            return SessionExerciseTimingResult.Invalid("Invalid exercise timing.")
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val active =
+                db.rawQuery(
+                    "SELECT session_id,started_at FROM active_session_draft " +
+                        "WHERE id=1 AND session_id IS NOT NULL AND started_at IS NOT NULL",
+                    null,
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getString(1)
+                } ?: return SessionExerciseTimingResult.Invalid("No active session.")
+            db.execSQL(
+                "INSERT OR IGNORE INTO session_timeline_sessions(" +
+                    "session_id,started_at,ended_at,acknowledged_at) VALUES(?,?,NULL,NULL)",
+                arrayOf(active.first, active.second),
+            )
+            val exerciseId =
+                db.rawQuery(
+                    "SELECT e.exercise_id FROM draft_session_exercises de " +
+                        "JOIN exercises e ON e.id=de.exercise_row_id " +
+                        "WHERE de.draft_id=1 AND de.entry_id=?",
+                    arrayOf(entryId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0)
+                } ?: return SessionExerciseTimingResult.Invalid("Exercise occurrence is not active.")
+            val existing =
+                db.rawQuery(
+                    "SELECT exercise_id,started_at,ended_at FROM session_timeline_exercises " +
+                        "WHERE session_id=? AND entry_id=?",
+                    arrayOf(active.first, entryId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else Triple(
+                        cursor.getString(0),
+                        cursor.getString(1),
+                        if (cursor.isNull(2)) null else cursor.getString(2),
+                    )
+                }
+            if (existing != null) {
+                if (existing.first != exerciseId) {
+                    return SessionExerciseTimingResult.Invalid(
+                        "Exercise identity conflicts with existing timing.",
+                    )
+                }
+                val timing =
+                    SessionExerciseTiming(
+                        active.first,
+                        entryId,
+                        exerciseId,
+                        existing.second,
+                        existing.third,
+                    )
+                return if (existing.third == null) {
+                    SessionExerciseTimingResult.Started(timing)
+                } else {
+                    SessionExerciseTimingResult.Invalid("Exercise has already been completed.")
+                }
+            }
+            val conflict =
+                db.rawQuery(
+                    "SELECT entry_id FROM session_timeline_exercises WHERE active_slot=1 LIMIT 1",
+                    null,
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            if (conflict != null) return SessionExerciseTimingResult.ActiveConflict(conflict)
+            check(TrainlogTimestamp.parse(startedAt)!! >= TrainlogTimestamp.parse(active.second)!!) {
+                "Exercise cannot start before session."
+            }
+            db.execSQL(
+                "INSERT INTO session_timeline_exercises(" +
+                    "session_id,entry_id,exercise_id,started_at,ended_at,active_slot) " +
+                    "VALUES(?,?,?,?,NULL,1)",
+                arrayOf(active.first, entryId, exerciseId, startedAt),
+            )
+            db.execSQL(
+                "UPDATE heart_rate_captures SET active_exercise_entry_id=? " +
+                    "WHERE active_slot=1 AND context_id=? " +
+                    "AND context_kind IN('session','cardio')",
+                arrayOf(entryId, active.first),
+            )
+            val timing =
+                SessionExerciseTiming(active.first, entryId, exerciseId, startedAt, null)
+            db.setTransactionSuccessful()
+            SessionExerciseTimingResult.Started(timing)
+        } catch (error: IllegalStateException) {
+            SessionExerciseTimingResult.Invalid(error.message ?: "Invalid exercise timing.")
+        } catch (error: Exception) {
+            SessionExerciseTimingResult.DatabaseError(error.message ?: "Exercise start failed.")
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun finishActiveSessionExercise(
+        entryId: String,
+        endedAt: String = OffsetDateTime.now().toString(),
+    ): SessionExerciseTimingResult {
+        if (!SESSION_ENTRY_ID_V4_PATTERN.matches(entryId) || TrainlogTimestamp.parse(endedAt) == null)
+            return SessionExerciseTimingResult.Invalid("Invalid exercise timing.")
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val row =
+                db.rawQuery(
+                    "SELECT session_id,exercise_id,started_at FROM session_timeline_exercises " +
+                        "WHERE entry_id=? AND active_slot=1",
+                    arrayOf(entryId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2))
+                } ?: return SessionExerciseTimingResult.Invalid("Exercise is not active.")
+            check(TrainlogTimestamp.parse(endedAt)!! >= TrainlogTimestamp.parse(row.third)!!) {
+                "Exercise cannot end before it starts."
+            }
+            val values = ContentValues().apply {
+                put("ended_at", endedAt)
+                putNull("active_slot")
+            }
+            check(
+                db.update(
+                    "session_timeline_exercises",
+                    values,
+                    "session_id=? AND entry_id=? AND active_slot=1",
+                    arrayOf(row.first, entryId),
+                ) == 1,
+            )
+            db.execSQL(
+                "UPDATE heart_rate_captures SET active_exercise_entry_id=NULL " +
+                    "WHERE active_slot=1 AND context_id=? AND active_exercise_entry_id=?",
+                arrayOf(row.first, entryId),
+            )
+            val timing =
+                SessionExerciseTiming(row.first, entryId, row.second, row.third, endedAt)
+            db.setTransactionSuccessful()
+            SessionExerciseTimingResult.Finished(timing)
+        } catch (error: IllegalStateException) {
+            SessionExerciseTimingResult.Invalid(error.message ?: "Invalid exercise timing.")
+        } catch (error: Exception) {
+            SessionExerciseTimingResult.DatabaseError(error.message ?: "Exercise end failed.")
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    internal fun recordLiveHeartRateForActiveSession(
+        sensorName: String?,
+        observedAt: String,
+        measurement: ParsedHeartRateMeasurement,
+    ): HeartRateMutationResult? {
+        val context = activeSessionTimelineContext() ?: return null
+        val contextKind =
+            if (context.sessionType.wireValue == "cardio") {
+                HeartRateContextKind.CARDIO
+            } else {
+                HeartRateContextKind.SESSION
+            }
+
+        var capture = activeHeartRateCapture()
+        if (capture == null) {
+            when (
+                startHeartRateCapture(
+                    contextKind,
+                    context.sessionId,
+                    context.startedAt,
+                    sensorName,
+                )
+            ) {
+                is StartHeartRateCaptureResult.Started -> capture = activeHeartRateCapture()
+                StartHeartRateCaptureResult.Conflict -> capture = activeHeartRateCapture()
+                else -> return HeartRateMutationResult.DatabaseError
+            }
+        }
+
+        val current = capture ?: return HeartRateMutationResult.NotFound
+        if (current.contextId != context.sessionId || current.contextKind != contextKind) return null
+
+        if (current.activeExerciseEntryId != context.activeEntryId) {
+            when (setHeartRateActiveExercise(current.captureId, context.activeEntryId)) {
+                is HeartRateMutationResult.Applied -> Unit
+                else -> return HeartRateMutationResult.DatabaseError
+            }
+        }
+
+        return appendHeartRateSample(
+            captureId = current.captureId,
+            observedAt = observedAt,
+            bpm = measurement.bpm,
+            sensorContactDetected = measurement.sensorContactDetected,
+            energyExpended = measurement.energyExpended,
+            rrIntervals =
+                measurement.rrIntervals1024.mapIndexed { index, value ->
+                    HeartRateRrInterval(index, value)
+                },
+        )
+    }
+
     private fun heartRateContextIdValid(kind: HeartRateContextKind, value: String): Boolean =
         when (kind) {
             HeartRateContextKind.SESSION,
@@ -1543,6 +1843,67 @@ class TrainlogRepository(
             .toString()
     }
 
+    internal fun buildSessionTimelineV1Json(): String {
+        val db = database.readableDatabase
+        val sessions = JSONArray()
+        db.rawQuery(
+            "SELECT t.session_id,t.started_at,t.ended_at FROM session_timeline_sessions t " +
+                "JOIN sessions s ON s.session_id=t.session_id " +
+                "WHERE t.ended_at IS NOT NULL AND s.started_at=t.started_at " +
+                "AND s.ended_at=t.ended_at AND t.acknowledged_at IS NULL " +
+                "AND EXISTS(SELECT 1 FROM session_timeline_exercises x " +
+                "WHERE x.session_id=t.session_id) AND NOT EXISTS(" +
+                "SELECT 1 FROM session_timeline_generation_sessions m " +
+                "JOIN sync_generations g ON g.generation_id=m.generation_id " +
+                "WHERE m.session_id=t.session_id AND " +
+                "g.status IN('captured','published','waiting_acknowledgement')) " +
+                "ORDER BY t.ended_at,t.session_id LIMIT ?",
+            arrayOf(MAX_SESSION_TIMELINE_SESSIONS_PER_GENERATION.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val sessionId = cursor.getString(0)
+                val exerciseRows = JSONArray()
+                db.rawQuery(
+                    "SELECT t.entry_id,t.exercise_id,t.started_at,t.ended_at " +
+                        "FROM session_timeline_exercises t " +
+                        "JOIN session_exercises se ON se.entry_id=t.entry_id " +
+                        "JOIN sessions s ON s.id=se.session_row_id AND s.session_id=t.session_id " +
+                        "JOIN exercises e ON e.id=se.exercise_row_id AND e.exercise_id=t.exercise_id " +
+                        "WHERE t.session_id=? ORDER BY t.started_at,t.entry_id",
+                    arrayOf(sessionId),
+                ).use { exerciseCursor ->
+                    var count = 0
+                    while (exerciseCursor.moveToNext()) {
+                        check(++count <= MAX_SESSION_TIMELINE_EXERCISES_PER_SESSION)
+                        check(!exerciseCursor.isNull(3)) {
+                            "Completed session timeline contains an active exercise."
+                        }
+                        exerciseRows.put(
+                            JSONObject()
+                                .put("entry_id", exerciseCursor.getString(0))
+                                .put("exercise_id", exerciseCursor.getString(1))
+                                .put("started_at", exerciseCursor.getString(2))
+                                .put("ended_at", exerciseCursor.getString(3)),
+                        )
+                    }
+                }
+                sessions.put(
+                    JSONObject()
+                        .put("session_id", sessionId)
+                        .put("started_at", cursor.getString(1))
+                        .put("ended_at", cursor.getString(2))
+                        .put("exercises", exerciseRows),
+                )
+            }
+        }
+        return JSONObject()
+            .put("format", "trainlog-session-timeline")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("sessions", sessions)
+            .toString()
+    }
+
     /** Create a transactionally consistent SQLite snapshot without exposing WAL files. */
     internal fun backupDatabaseTo(destination: File) {
         require(!destination.exists()) { "Backup snapshot destination already exists." }
@@ -1590,6 +1951,7 @@ class TrainlogRepository(
         artifacts["program-executions"] = buildProgramExecutionsV1Json()
         artifacts["sleep-diary"] = buildSleepDiaryV1Json()
         artifacts["heart-rate"] = buildHeartRateV1Json()
+        artifacts["session-timeline"] = buildSessionTimelineV1Json()
         artifacts
     }
 
@@ -3606,18 +3968,42 @@ class TrainlogRepository(
 
     fun discardActiveSessionDraft():
         ActiveDraftMutationResult {
+        val db = database.writableDatabase
+        db.beginTransaction()
         return try {
-            database.writableDatabase.delete(
+            val sessionId =
+                db.rawQuery(
+                    "SELECT session_id FROM active_session_draft WHERE id=?",
+                    arrayOf(ACTIVE_DRAFT_ID.toString()),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst() || cursor.isNull(0)) null else cursor.getString(0)
+                }
+            db.delete(
                 "active_session_draft",
                 "id = ?",
                 arrayOf(ACTIVE_DRAFT_ID.toString()),
             )
+            if (sessionId != null) {
+                db.delete(
+                    "heart_rate_captures",
+                    "active_slot=1 AND context_id=? AND context_kind IN('session','cardio')",
+                    arrayOf(sessionId),
+                )
+                db.delete(
+                    "session_timeline_sessions",
+                    "session_id=? AND ended_at IS NULL",
+                    arrayOf(sessionId),
+                )
+            }
+            db.setTransactionSuccessful()
             ActiveDraftMutationResult.Saved
         } catch (error: Exception) {
             ActiveDraftMutationResult.Error(
                 error.message
                     ?: "Suppression du brouillon impossible."
             )
+        } finally {
+            db.endTransaction()
         }
     }
 
@@ -3664,6 +4050,20 @@ class TrainlogRepository(
                 transactionOpen = false
                 return FinalizeActiveDraftResult.Invalid("The requested execution draft is not active.")
             }
+            val activeEntryId =
+                db.rawQuery(
+                    "SELECT entry_id FROM session_timeline_exercises " +
+                        "WHERE session_id=? AND active_slot=1 LIMIT 1",
+                    arrayOf(lifecycleSessionId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            if (activeEntryId != null) {
+                db.endTransaction()
+                transactionOpen = false
+                return FinalizeActiveDraftResult.Invalid(
+                    "ACTIVE_EXERCISE:$activeEntryId",
+                )
+            }
+            val finalizedAt = OffsetDateTime.now().toString()
 
             val completed =
                 SessionDraft(
@@ -3693,7 +4093,20 @@ class TrainlogRepository(
                     active.draft.sourceSessionId,
                     forcedSessionId = lifecycleSessionId,
                     forcedStartedAt = active.draft.startedAt,
+                    forcedEndedAt = finalizedAt,
                 )
+
+            db.execSQL(
+                "UPDATE session_timeline_sessions SET ended_at=? " +
+                    "WHERE session_id=? AND ended_at IS NULL",
+                arrayOf(finalizedAt, sessionId),
+            )
+            db.execSQL(
+                "UPDATE heart_rate_captures SET ended_at=?,active_slot=NULL," +
+                    "active_exercise_entry_id=NULL WHERE active_slot=1 AND context_id=? " +
+                    "AND context_kind IN('session','cardio')",
+                arrayOf(finalizedAt, sessionId),
+            )
 
             /* INVARIANT: completion moves the exact Program provenance from
              * the singleton draft to history in the same transaction. */
@@ -3726,7 +4139,7 @@ class TrainlogRepository(
                 ContentValues().apply {
                     put("session_id", lifecycleSessionId)
                     put("final_revision_id", active.draft.revisionId)
-                    put("finalized_at", OffsetDateTime.now().toString())
+                    put("finalized_at", finalizedAt)
                 },
             )
 
@@ -8664,6 +9077,8 @@ class TrainlogRepository(
             )
         }
 
+        ensureSessionTimelineForPersistedDraft(db, draft)
+
         /* CONTRACT: draft persistence currently rebuilds occurrence rows.
          * Preserve immutable feedback by stable entry_id across that rebuild;
          * feedback for an explicitly removed occurrence remains parent-owned
@@ -8835,6 +9250,7 @@ class TrainlogRepository(
         generalCorrection: Boolean = false,
         forcedSessionId: String? = null,
         forcedStartedAt: String? = null,
+        forcedEndedAt: String? = null,
     ): String {
         val sessionId: String
         val sessionRowId: Long
@@ -8849,7 +9265,7 @@ class TrainlogRepository(
                 put("started_at", forcedStartedAt ?: OffsetDateTime.now().toString())
                 /* CONTRACT: this exact explicit finalization instant anchors
                  * H+; old NULL values remain unknown and are never backfilled. */
-                put("ended_at", OffsetDateTime.now().toString())
+                put("ended_at", forcedEndedAt ?: OffsetDateTime.now().toString())
                 put("session_type", draft.sessionType.wireValue)
             }
             sessionRowId = db.insertOrThrow("sessions", null, sessionValues)
@@ -8892,7 +9308,7 @@ class TrainlogRepository(
                 .getOrPut(cursor.getString(0)) { mutableListOf() }
                 .add(Triple(cursor.getString(1), cursor.getString(2), cursor.getString(3))) }
             if (!generalCorrection) db.execSQL("UPDATE sessions SET ended_at=? WHERE id=?;",
-                arrayOf<Any>(OffsetDateTime.now().toString(), sessionRowId))
+                arrayOf<Any>(forcedEndedAt ?: OffsetDateTime.now().toString(), sessionRowId))
             /* INVARIANT: child replacement and draft deletion are in the
              * caller's transaction; failure restores the completed baseline. */
             db.delete(
@@ -9963,6 +10379,8 @@ private const val MAX_HEART_RATE_CAPTURES_PER_GENERATION = 256
 private const val MAX_HEART_RATE_SAMPLES_PER_CAPTURE = 200000
 private const val MAX_HEART_RATE_RR_PER_SAMPLE = 64
 private const val MAX_HEART_RATE_SENSOR_NAME_UTF8_BYTES = 160
+private const val MAX_SESSION_TIMELINE_SESSIONS_PER_GENERATION = 256
+private const val MAX_SESSION_TIMELINE_EXERCISES_PER_SESSION = 128
 private const val MAX_AI_DRAFT_ENTRIES = 64
 private const val MAX_AI_TARGET_SETS = 99
 private const val MAX_AI_TARGET_REPS = 999
@@ -9981,7 +10399,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    27,
+    28,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -10036,6 +10454,7 @@ private class TrainlogDatabaseHelper(
         createProgramExecutionProvenance(db)
         createSleepDiaryTables(db)
         createHeartRateTables(db)
+        createSessionTimelineTables(db)
         seedEquipment(db)
     }
 
@@ -10257,6 +10676,16 @@ private class TrainlogDatabaseHelper(
             createHeartRateTables(db)
             version = 27
         }
+        if (version < 28 && newVersion >= 28) {
+            /* WHY: exercise/cardio correlation requires genuine user-action
+             * boundaries that survive draft-row rebuilds. CONTRACT: v28 adds
+             * only stable session/occurrence timeline facts. INVARIANT: an
+             * existing active draft contributes only its already-authoritative
+             * session_id/started_at; no exercise timing is fabricated. */
+            createSessionTimelineTables(db)
+            seedActiveSessionTimeline(db)
+            version = 28
+        }
 
         if (version != newVersion) {
             error(
@@ -10458,6 +10887,61 @@ private class TrainlogDatabaseHelper(
             "CREATE INDEX IF NOT EXISTS heart_rate_captures_context " +
                 "ON heart_rate_captures(context_kind,context_id,started_at)",
         )
+    }
+
+    private fun createSessionTimelineTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS session_timeline_sessions(
+                session_id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                acknowledged_at TEXT,
+                CHECK(session_id GLOB 'se_*')
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS session_timeline_exercises(
+                session_id TEXT NOT NULL
+                    REFERENCES session_timeline_sessions(session_id) ON DELETE CASCADE,
+                entry_id TEXT NOT NULL,
+                exercise_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                active_slot INTEGER UNIQUE CHECK(active_slot IS NULL OR active_slot=1),
+                PRIMARY KEY(session_id,entry_id),
+                CHECK(entry_id GLOB 'sxe_*'),
+                CHECK(exercise_id GLOB 'ex_*')
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS session_timeline_generation_sessions(
+                generation_id TEXT NOT NULL
+                    REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,
+                session_id TEXT NOT NULL
+                    REFERENCES session_timeline_sessions(session_id) ON DELETE RESTRICT,
+                PRIMARY KEY(generation_id,session_id)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS session_timeline_exercises_time " +
+                "ON session_timeline_exercises(started_at,session_id,entry_id)",
+        )
+    }
+
+    private fun seedActiveSessionTimeline(db: SQLiteDatabase) {
+        db.rawQuery(
+            "SELECT session_id,started_at FROM active_session_draft " +
+                "WHERE id=1 AND session_id IS NOT NULL AND started_at IS NOT NULL",
+            null,
+        ).use { cursor ->
+            if (cursor.moveToFirst()) {
+                db.execSQL(
+                    "INSERT OR IGNORE INTO session_timeline_sessions(" +
+                        "session_id,started_at,ended_at,acknowledged_at) VALUES(?,?,NULL,NULL)",
+                    arrayOf(cursor.getString(0), cursor.getString(1)),
+                )
+            }
+        }
     }
 
     private fun createSyncDataLifecycleTables(db: SQLiteDatabase) {

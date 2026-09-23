@@ -24,6 +24,13 @@
   uses grey/orange/green for disconnected/reconnecting/fresh states. The real
   CYCPLUS H2 was validated through force-stop/restart and Bluetooth off/on
   recovery on the private 0.1.5 versionCode 40 installation.
+- Added the training execution timeline used for cardio correlation. Android
+  schema v28 records explicit start/end actions for stable exercise occurrences
+  while preserving the session lifecycle `started_at`/`ended_at` as canonical
+  bounds. Only one exercise can be active; session finalization refuses an
+  unclosed occurrence. Live heart-rate samples snapshot the active `entry_id`,
+  rest intervals remain unowned, and the optional `trainlog-session-timeline`
+  V1 companion imports idempotently into desktop schema v31.
 
 Development opened after stable v0.1.4 release.
 

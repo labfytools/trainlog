@@ -1,5 +1,19 @@
 # Desktop database
 
+## Schema v31: synchronized session exercise timeline
+
+Schema v31 additively owns Android-recorded execution timing for completed
+session occurrences in `session_exercise_timeline`. Each row is keyed by the
+stable `session_id + entry_id` pair and stores the matching catalogue
+`exercise_id`, the real user-action `started_at` and `ended_at`, and import
+time. The importer requires the existing canonical session and occurrence to
+match; it never creates workout history or infers exercise timing from order,
+sets, plans, or heart-rate samples.
+
+The session bounds remain the existing canonical `sessions.started_at` and
+`sessions.ended_at`. The separate `trainlog-session-timeline` V1 companion
+must match those exact values before occurrence timing can be imported.
+
 ## Schema v30: synchronized Heart Rate V1
 
 Schema v30 additively owns Android-recorded heart-rate captures after

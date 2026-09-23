@@ -831,6 +831,14 @@ test_schema_v30_migration = executable(
 )
 test('schema_v30_migration', test_schema_v30_migration)
 
+test_schema_v31_migration = executable(
+  'test_schema_v31_migration',
+  'tests/test_schema_v31_migration.c',
+  dependencies: trainlog_core_dep,
+  c_args: strict_c_args,
+)
+test('schema_v31_migration', test_schema_v31_migration)
+
 test_schema_v7_migration = executable(
   'test_schema_v7_migration',
   'tests/test_schema_v7_migration.c',
@@ -914,6 +922,11 @@ test(
   'heart_rate_exchange',
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_heart_rate_exchange.py'],
+)
+test(
+  'session_timeline_exchange',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_session_timeline_exchange.py'],
 )
 test(
   'session_preparation_export',

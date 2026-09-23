@@ -535,4 +535,15 @@
     <string name="settings_cardio_configured">Capteur cardio configuré.</string>
     <string name="settings_cardio_forget">Oublier le capteur</string>
     <string name="settings_cardio_forget_description">Arrêter la connexion cardio et supprimer le capteur mémorisé.</string>
+    <string name="exercise_timeline_start">Démarrer l’exercice</string>
+    <string name="exercise_timeline_finish">Terminer l’exercice</string>
+    <string name="exercise_timeline_completed">Exercice terminé</string>
+    <string name="exercise_timeline_started">%1$s · démarré</string>
+    <string name="exercise_timeline_finished">%1$s · terminé</string>
+    <string name="exercise_timeline_switch_title">Changer d’exercice ?</string>
+    <string name="exercise_timeline_switch_detail">%1$s est encore en cours. Le terminer maintenant puis démarrer %2$s ?</string>
+    <string name="exercise_timeline_switch_confirm">Terminer et démarrer</string>
+    <string name="exercise_timeline_finalize_title">Un exercice est encore en cours</string>
+    <string name="exercise_timeline_finalize_detail">%1$s est encore actif. Le terminer maintenant puis enregistrer la séance ?</string>
+    <string name="exercise_timeline_finalize_confirm">Terminer et enregistrer</string>
 </resources>

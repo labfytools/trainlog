@@ -525,4 +525,15 @@
     <string name="settings_cardio_configured">Heart-rate sensor configured.</string>
     <string name="settings_cardio_forget">Forget sensor</string>
     <string name="settings_cardio_forget_description">Stop heart-rate connection and remove the remembered sensor.</string>
+    <string name="exercise_timeline_start">Start exercise</string>
+    <string name="exercise_timeline_finish">Finish exercise</string>
+    <string name="exercise_timeline_completed">Exercise completed</string>
+    <string name="exercise_timeline_started">%1$s · started</string>
+    <string name="exercise_timeline_finished">%1$s · finished</string>
+    <string name="exercise_timeline_switch_title">Switch exercise?</string>
+    <string name="exercise_timeline_switch_detail">%1$s is still active. Finish it now and then start %2$s?</string>
+    <string name="exercise_timeline_switch_confirm">Finish and start</string>
+    <string name="exercise_timeline_finalize_title">An exercise is still active</string>
+    <string name="exercise_timeline_finalize_detail">%1$s is still active. Finish it now and then save the session?</string>
+    <string name="exercise_timeline_finalize_confirm">Finish and save</string>
 </resources>

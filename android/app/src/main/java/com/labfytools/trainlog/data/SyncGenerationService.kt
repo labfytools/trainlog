@@ -70,6 +70,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
                 "sleep-diary" to Kind("trainlog-sleep-diary", 1, "sleep-diary-v1.json", false),
                 "heart-rate" to Kind("trainlog-heart-rate", 1, "heart-rate-v1.json", false),
+                "session-timeline" to
+                    Kind("trainlog-session-timeline", 1, "session-timeline-v1.json", false),
             )
         private val SUPPORTED =
             (ANDROID_KINDS.values +
@@ -429,6 +431,18 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     db.execSQL(
                         "INSERT INTO heart_rate_generation_captures(generation_id,capture_id) VALUES(?,?)",
                         arrayOf(generationId, captures.getJSONObject(index).getString("capture_id")),
+                    )
+                }
+                val timeline = JSONObject(checkNotNull(artifacts["session-timeline"]))
+                val timelineSessions = timeline.getJSONArray("sessions")
+                for (index in 0 until timelineSessions.length()) {
+                    db.execSQL(
+                        "INSERT INTO session_timeline_generation_sessions(generation_id,session_id) " +
+                            "VALUES(?,?)",
+                        arrayOf(
+                            generationId,
+                            timelineSessions.getJSONObject(index).getString("session_id"),
+                        ),
                     )
                 }
             }
@@ -1074,6 +1088,14 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                                 "SELECT 1 FROM heart_rate_generation_captures m " +
                                 "WHERE m.generation_id=? AND " +
                                 "m.capture_id=heart_rate_captures.capture_id)",
+                            arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
+                        )
+                        db.execSQL(
+                            "UPDATE session_timeline_sessions SET acknowledged_at=? WHERE " +
+                                "acknowledged_at IS NULL AND EXISTS(" +
+                                "SELECT 1 FROM session_timeline_generation_sessions m " +
+                                "WHERE m.generation_id=? AND " +
+                                "m.session_id=session_timeline_sessions.session_id)",
                             arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
                         )
                     }

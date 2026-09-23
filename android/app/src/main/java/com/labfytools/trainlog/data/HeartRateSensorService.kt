@@ -23,6 +23,7 @@ import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.labfytools.trainlog.R
+import java.time.OffsetDateTime
 
 class HeartRateSensorService : Service() {
     private val main = Handler(Looper.getMainLooper())
@@ -36,6 +37,10 @@ class HeartRateSensorService : Service() {
     private var reconnectAttempt = 0
     private var lastMeasurementElapsed = 0L
     private var lastNotificationBpm: Int? = null
+    private var repository: TrainlogRepository? = null
+
+    private fun repository(): TrainlogRepository =
+        repository ?: TrainlogRepository(applicationContext).also { repository = it }
 
     private val reconnectRunnable = Runnable { connectSelected() }
     private val connectionTimeoutRunnable =
@@ -272,6 +277,11 @@ class HeartRateSensorService : Service() {
         if (parsed !is HeartRateMeasurementParseResult.Parsed) return
         lastMeasurementElapsed = SystemClock.elapsedRealtime()
         HeartRateLiveState.measurement(parsed.measurement)
+        repository().recordLiveHeartRateForActiveSession(
+            sensorName = selected?.name,
+            observedAt = OffsetDateTime.now().toString(),
+            measurement = parsed.measurement,
+        )
         if (lastNotificationBpm != parsed.measurement.bpm) {
             lastNotificationBpm = parsed.measurement.bpm
             updateForegroundNotification()
@@ -314,6 +324,8 @@ class HeartRateSensorService : Service() {
         main.removeCallbacks(connectionTimeoutRunnable)
         main.removeCallbacks(staleRunnable)
         closeGatt()
+        repository?.close()
+        repository = null
         HeartRateLiveState.disconnected()
         super.onDestroy()
     }

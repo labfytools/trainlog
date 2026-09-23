@@ -25,7 +25,7 @@ def main():
     con.row_factory = sqlite3.Row
     try:
         version = con.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30):
+        if version not in (17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31):
             raise SystemExit(f"EXERCISE_PROFILE_STATE_EXPORT=FAIL schema={version}")
         rows = con.execute("""
             SELECT e.exercise_id,e.recording_mode,e.tracking_mode,e.data_fields,

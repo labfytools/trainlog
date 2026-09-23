@@ -29,7 +29,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +59,7 @@ import com.labfytools.trainlog.data.FinalizeActiveDraftResult
 import com.labfytools.trainlog.data.ManualPercentMaxResult
 import com.labfytools.trainlog.data.SaveFeedbackResult
 import com.labfytools.trainlog.data.TrainlogRepository
+import com.labfytools.trainlog.data.TrainlogRepository.SessionExerciseTimingResult
 import com.labfytools.trainlog.model.ActiveSessionDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseProfile
@@ -152,6 +156,9 @@ fun SessionScreen(
     var pendingDestructiveEdit by remember { mutableStateOf<Pair<Int, SessionExerciseDraft>?>(null) }
     var feedbackRevision by remember { mutableStateOf(0) }
     var reorderedDuringGesture by remember { mutableStateOf(false) }
+    var timelineRevision by remember { mutableStateOf(0) }
+    var pendingExerciseSwitch by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingFinalizeActiveEntryId by remember { mutableStateOf<String?>(null) }
 
     val persistDraft:
         (ActiveSessionDraft, String?) -> Unit =
@@ -191,6 +198,12 @@ fun SessionScreen(
         }
 
         val currentDraft = activeDraft!!
+        val exerciseTimings =
+            remember(timelineRevision, currentDraft.exercises.map { it.entryId }) {
+                repository.listActiveSessionExerciseTimings()
+            }
+        val timingByEntry = exerciseTimings.associateBy { it.entryId }
+        val activeTiming = exerciseTimings.firstOrNull { it.active }
 
         val lastWriteFailed =
             message?.startsWith(
@@ -357,6 +370,88 @@ fun SessionScreen(
                             )
                         }
 
+                        val timing = timingByEntry[draft.entryId]
+                        when {
+                            timing == null -> {
+                                TrainlogButton(
+                                    label = strings.getString(R.string.exercise_timeline_start),
+                                    onClick = {
+                                        when (
+                                            val result =
+                                                repository.startActiveSessionExercise(draft.entryId)
+                                        ) {
+                                            is SessionExerciseTimingResult.Started -> {
+                                                timelineRevision++
+                                                message =
+                                                    strings.getString(
+                                                        R.string.exercise_timeline_started,
+                                                        draft.exercise.name,
+                                                    )
+                                            }
+                                            is SessionExerciseTimingResult.ActiveConflict -> {
+                                                pendingExerciseSwitch =
+                                                    result.activeEntryId to draft.entryId
+                                            }
+                                            is SessionExerciseTimingResult.Invalid ->
+                                                message = result.message
+                                            is SessionExerciseTimingResult.DatabaseError ->
+                                                message = result.message
+                                            is SessionExerciseTimingResult.Finished -> Unit
+                                        }
+                                    },
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .testTag("start-exercise-${draft.entryId}"),
+                                    style = TrainlogButtonStyle.SUCCESS,
+                                )
+                            }
+                            timing.active -> {
+                                TrainlogButton(
+                                    label = strings.getString(R.string.exercise_timeline_finish),
+                                    onClick = {
+                                        when (
+                                            val result =
+                                                repository.finishActiveSessionExercise(draft.entryId)
+                                        ) {
+                                            is SessionExerciseTimingResult.Finished -> {
+                                                timelineRevision++
+                                                message =
+                                                    strings.getString(
+                                                        R.string.exercise_timeline_finished,
+                                                        draft.exercise.name,
+                                                    )
+                                            }
+                                            is SessionExerciseTimingResult.Invalid ->
+                                                message = result.message
+                                            is SessionExerciseTimingResult.DatabaseError ->
+                                                message = result.message
+                                            is SessionExerciseTimingResult.Started,
+                                            is SessionExerciseTimingResult.ActiveConflict -> Unit
+                                        }
+                                    },
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .testTag("finish-exercise-${draft.entryId}"),
+                                    containerColor = colors.warning,
+                                    style = TrainlogButtonStyle.SECONDARY,
+                                )
+                            }
+                            else -> {
+                                TrainlogButton(
+                                    label = strings.getString(R.string.exercise_timeline_completed),
+                                    onClick = {},
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .testTag("completed-exercise-${draft.entryId}"),
+                                    enabled = false,
+                                    style = TrainlogButtonStyle.SECONDARY,
+                                )
+                            }
+                        }
+
                         TrainlogAction(
                             label = strings.getString(R.string.modify_name, draft.exercise.name),
                             description = strings.getString(R.string.edit_exercise_description),
@@ -518,22 +613,30 @@ fun SessionScreen(
                     Modifier.weight(1f).fillMaxHeight().testTag("active-session-create-exercise"),
                     containerColor = colors.surfaceAlt, maxLines = 2)
                 TrainlogButton(strings.getString(R.string.session_save), onClick = {
-                    when (
-                        val result =
-                            repository.finalizeActiveSessionDraft()
-                    ) {
-                        is FinalizeActiveDraftResult.Saved -> {
-                            onSessionSaved()
-                            onBack()
-                        }
+                    val activeEntryId = repository.activeSessionTimelineContext()?.activeEntryId
+                    if (activeEntryId != null) {
+                        pendingFinalizeActiveEntryId = activeEntryId
+                    } else {
+                        when (
+                            val result =
+                                repository.finalizeActiveSessionDraft()
+                        ) {
+                            is FinalizeActiveDraftResult.Saved -> {
+                                onSessionSaved()
+                                onBack()
+                            }
 
-                        is FinalizeActiveDraftResult.Invalid -> {
-                            message = localizedRepositoryMessage(strings, result.message)
-                        }
+                            is FinalizeActiveDraftResult.Invalid -> {
+                                message = localizedRepositoryMessage(strings, result.message)
+                            }
 
-                        is FinalizeActiveDraftResult.DatabaseError -> {
-                            message =
-                                strings.getString(R.string.finalize_failed, localizedRepositoryMessage(strings, result.message))
+                            is FinalizeActiveDraftResult.DatabaseError -> {
+                                message =
+                                    strings.getString(
+                                        R.string.finalize_failed,
+                                        localizedRepositoryMessage(strings, result.message),
+                                    )
+                            }
                         }
                     }
                 }, modifier = Modifier.weight(1f).fillMaxHeight().testTag("active-session-save"),
@@ -589,7 +692,19 @@ fun SessionScreen(
                             strings.getString(R.string.exercise_added) ||
                             message ==
                             strings.getString(R.string.exercise_removed) ||
-                            message == strings.getString(R.string.exercise_order_saved)
+                            message == strings.getString(R.string.exercise_order_saved) ||
+                            currentDraft.exercises.any { exercise ->
+                                message ==
+                                    strings.getString(
+                                        R.string.exercise_timeline_started,
+                                        exercise.exercise.name,
+                                    ) ||
+                                    message ==
+                                    strings.getString(
+                                        R.string.exercise_timeline_finished,
+                                        exercise.exercise.name,
+                                    )
+                            }
                         ) {
                             colors.success
                         } else {
@@ -637,6 +752,138 @@ fun SessionScreen(
                 onConfirm={
                     persistDraft(currentDraft.copy(exercises=currentDraft.exercises.mapIndexed{i,item->if(i==index)replacement else item},form=SessionDraftForm()),strings.getString(R.string.exercise_modified))
                     pendingDestructiveEdit=null
+                },
+            )
+        }
+
+        pendingExerciseSwitch?.let { (activeEntryId, targetEntryId) ->
+            val activeName =
+                currentDraft.exercises.firstOrNull { it.entryId == activeEntryId }
+                    ?.exercise?.name
+                    ?: strings.getString(R.string.exercise_title)
+            val targetName =
+                currentDraft.exercises.firstOrNull { it.entryId == targetEntryId }
+                    ?.exercise?.name
+                    ?: strings.getString(R.string.exercise_title)
+            AlertDialog(
+                onDismissRequest = { pendingExerciseSwitch = null },
+                title = { Text(strings.getString(R.string.exercise_timeline_switch_title)) },
+                text = {
+                    Text(
+                        strings.getString(
+                            R.string.exercise_timeline_switch_detail,
+                            activeName,
+                            targetName,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            when (
+                                val finished =
+                                    repository.finishActiveSessionExercise(activeEntryId)
+                            ) {
+                                is SessionExerciseTimingResult.Finished -> {
+                                    when (
+                                        val started =
+                                            repository.startActiveSessionExercise(targetEntryId)
+                                    ) {
+                                        is SessionExerciseTimingResult.Started -> {
+                                            timelineRevision++
+                                            message =
+                                                strings.getString(
+                                                    R.string.exercise_timeline_started,
+                                                    targetName,
+                                                )
+                                        }
+                                        is SessionExerciseTimingResult.Invalid ->
+                                            message = started.message
+                                        is SessionExerciseTimingResult.DatabaseError ->
+                                            message = started.message
+                                        is SessionExerciseTimingResult.ActiveConflict,
+                                        is SessionExerciseTimingResult.Finished -> Unit
+                                    }
+                                }
+                                is SessionExerciseTimingResult.Invalid ->
+                                    message = finished.message
+                                is SessionExerciseTimingResult.DatabaseError ->
+                                    message = finished.message
+                                is SessionExerciseTimingResult.Started,
+                                is SessionExerciseTimingResult.ActiveConflict -> Unit
+                            }
+                            pendingExerciseSwitch = null
+                        },
+                    ) {
+                        Text(strings.getString(R.string.exercise_timeline_switch_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingExerciseSwitch = null }) {
+                        Text(strings.getString(R.string.dialog_cancel))
+                    }
+                },
+            )
+        }
+
+        pendingFinalizeActiveEntryId?.let { activeEntryId ->
+            val activeName =
+                currentDraft.exercises.firstOrNull { it.entryId == activeEntryId }
+                    ?.exercise?.name
+                    ?: strings.getString(R.string.exercise_title)
+            AlertDialog(
+                onDismissRequest = { pendingFinalizeActiveEntryId = null },
+                title = { Text(strings.getString(R.string.exercise_timeline_finalize_title)) },
+                text = {
+                    Text(
+                        strings.getString(
+                            R.string.exercise_timeline_finalize_detail,
+                            activeName,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            when (
+                                val finished =
+                                    repository.finishActiveSessionExercise(activeEntryId)
+                            ) {
+                                is SessionExerciseTimingResult.Finished -> {
+                                    timelineRevision++
+                                    when (val result = repository.finalizeActiveSessionDraft()) {
+                                        is FinalizeActiveDraftResult.Saved -> {
+                                            pendingFinalizeActiveEntryId = null
+                                            onSessionSaved()
+                                            onBack()
+                                        }
+                                        is FinalizeActiveDraftResult.Invalid ->
+                                            message = localizedRepositoryMessage(strings, result.message)
+                                        is FinalizeActiveDraftResult.DatabaseError ->
+                                            message =
+                                                strings.getString(
+                                                    R.string.finalize_failed,
+                                                    localizedRepositoryMessage(strings, result.message),
+                                                )
+                                    }
+                                }
+                                is SessionExerciseTimingResult.Invalid ->
+                                    message = finished.message
+                                is SessionExerciseTimingResult.DatabaseError ->
+                                    message = finished.message
+                                is SessionExerciseTimingResult.Started,
+                                is SessionExerciseTimingResult.ActiveConflict -> Unit
+                            }
+                            pendingFinalizeActiveEntryId = null
+                        },
+                    ) {
+                        Text(strings.getString(R.string.exercise_timeline_finalize_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingFinalizeActiveEntryId = null }) {
+                        Text(strings.getString(R.string.dialog_cancel))
+                    }
                 },
             )
         }

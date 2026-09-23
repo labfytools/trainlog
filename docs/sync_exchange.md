@@ -1089,7 +1089,23 @@ MTP recovery, manifest/ACK framing, Sleep Diary V1 nor mobile-export semantics.
 Heart-rate BLE/GATT acquisition remains Android-only and is a separate
 implementation layer.
 
-## 20. Legacy active-protocol limitations
+## 20. Session timeline companion V1
+
+`trainlog-session-timeline` V1 is an optional Android→desktop full-generation
+participant. Android records the real execution interval of each stable
+`entry_id`; session start/end reuse the same lifecycle identity and timestamps
+that become canonical completed history.
+
+Only completed timelines are published. The desktop v31 consumer first proves
+that `session_id`, `started_at`, `ended_at`, `entry_id` and `exercise_id`
+already match canonical history, then inserts the occurrence timing facts.
+Exact replay is a no-op and conflicting reuse of an identity is rejected.
+
+Heart-rate samples use the same active `entry_id` at acquisition time. Samples
+between exercise end and the next exercise start retain no fabricated exercise
+owner and therefore remain factual rest/transition data.
+
+## 21. Legacy active-protocol limitations
 
 The Web end-to-end tranche adds an explicit opt-in application orchestrator.
 `POST /api/v1/sync` admits one correlated run and `GET /api/v1/sync/status` is

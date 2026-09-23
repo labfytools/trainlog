@@ -79,6 +79,24 @@ data class SessionDraft(
     val sessionType: SessionType = SessionType.TRAINING,
 )
 
+data class SessionExerciseTiming(
+    val sessionId: String,
+    val entryId: String,
+    val exerciseId: String,
+    val startedAt: String,
+    val endedAt: String?,
+) {
+    val active: Boolean get() = endedAt == null
+}
+
+data class ActiveSessionTimelineContext(
+    val sessionId: String,
+    val startedAt: String,
+    val sessionType: SessionType,
+    val activeEntryId: String?,
+)
+
+
 data class SessionDraftForm(
     val selectedExercise: ExerciseProfile? = null,
     /** Null means creation; otherwise replace this durable draft entry. */

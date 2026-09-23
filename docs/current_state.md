@@ -112,8 +112,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v30; synchronized Heart Rate V1 storage is additive in v30 |
-| Android SQLite | schema v27; Android-owned Heart Rate V1 capture storage is additive in v27 |
+| Desktop SQLite | schema v31; session exercise timeline import is additive in v31 |
+| Android SQLite | schema v28; active training timeline/outbox is additive in v28 |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
@@ -150,7 +150,8 @@ parallel implementation of its rules.
 | Cardio persistence/sync | `TRAINLOG_CARDIO_PERSISTENCE_SYNC_V1=PASS`: Android v27 + desktop v30, strict optional `trainlog-heart-rate` V1 Android→desktop companion, generation relation and correlated ACK |
 | Cardio BLE diagnostics | `TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1=PASS`: real CYCPLUS H2 validated on Android; `0x180D` + `0x2A37`, Battery Service, approximately 1 Hz notifications and one raw RR interval per observed notification; contact and energy fields absent in the observed payloads |
 | Cardio persistent acquisition | `TRAINLOG_CARDIO_PERSISTENT_ACQUISITION_V1=PASS`: selected sensor persists, dedicated connected-device foreground service reconnects, stale BPM is cleared, and the global Android `♥ BPM` indicator is grey/orange/green by connection state; real CYCPLUS restart and Bluetooth-off/on recovery validated on private vc40 |
-| Current operational cursor | `TRAINLOG_CARDIO_TRAINING_TIMELINE_V1`: persist real session/exercise start/end boundaries and correlate live heart-rate samples with the active stable `entry_id` |
+| Training timeline | `TRAINLOG_CARDIO_TRAINING_TIMELINE_V1=PASS`: real session bounds reuse canonical lifecycle timestamps; exercise start/end are explicit user actions; live BPM samples snapshot the active stable `entry_id`; session finalization refuses an unclosed exercise; timeline sync is Android→desktop idempotent |
+| Current operational cursor | `TRAINLOG_SLEEP_ANDROID_ONE_TAP_V1`: add the Android Sleep entry point with one-tap Couché / medication / Réveil / Levé, immediate undo, later correction, and sleep-linked cardio capture |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

@@ -1377,6 +1377,22 @@ static const char *const MIGRATE_V29_TO_V30_SQL =
     "heart_rate_captures(context_kind,context_id,started_at);"
     "PRAGMA user_version=30;COMMIT;";
 
+/* WHY: exercise/cardio correlation requires exact user-action boundaries on
+ * the canonical desktop history. CONTRACT: v31 imports only Android-recorded
+ * session occurrence timing facts. INVARIANT: no session or measurement time
+ * is inferred from order, reps, plans or heart-rate samples. */
+static const char *const MIGRATE_V30_TO_V31_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS session_exercise_timeline("
+    "session_id TEXT NOT NULL,entry_id TEXT NOT NULL,exercise_id TEXT NOT NULL,"
+    "started_at TEXT NOT NULL,ended_at TEXT NOT NULL,imported_at TEXT NOT NULL,"
+    "PRIMARY KEY(session_id,entry_id),"
+    "CHECK(session_id GLOB 'se_*'),CHECK(entry_id GLOB 'sxe_*'),"
+    "CHECK(exercise_id GLOB 'ex_*'));"
+    "CREATE INDEX IF NOT EXISTS session_exercise_timeline_time ON "
+    "session_exercise_timeline(started_at,session_id,entry_id);"
+    "PRAGMA user_version=31;COMMIT;";
+
 /* WHY: schema v29 was already opened on the private 0.1.4 review installation
  * before medication capture joined the same unreleased migration. CONTRACT:
  * this additive repair is identical to the tail of v28 -> v29 and runs only
@@ -2210,7 +2226,8 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     } else if (version == 11 || version == 12 || version == 13 || version == 14 || version == 15 ||
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
-               version == 26 || version == 27 || version == 28 || version == 29 || version == 30) {
+               version == 26 || version == 27 || version == 28 || version == 29 || version == 30 ||
+               version == 31) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2361,6 +2378,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 30) {
         status = execute_sql(database, MIGRATE_V29_TO_V30_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 31) {
+        status = execute_sql(database, MIGRATE_V30_TO_V31_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2380,7 +2400,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v30" : "migrate database to schema v30",
+                            version == 0 ? "create schema v31" : "migrate database to schema v31",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

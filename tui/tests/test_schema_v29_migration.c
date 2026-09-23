@@ -38,6 +38,10 @@ int main(void) {
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(sqlite3_exec(raw,
+                       "DROP TABLE session_exercise_timeline;"
+                       "DROP TABLE heart_rate_rr_intervals;"
+                       "DROP TABLE heart_rate_samples;"
+                       "DROP TABLE heart_rate_captures;"
                        "DROP TABLE sleep_diary_events;DROP TABLE sleep_diary_revisions;"
                        "DROP TABLE sleep_diary_entries;PRAGMA user_version=28;",
                        NULL,
@@ -49,7 +53,7 @@ int main(void) {
     trainlog_database_close(production);
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 30);
+    CHECK(scalar(raw, "PRAGMA user_version") == 31);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
                  "('sleep_diary_entries','sleep_diary_revisions','sleep_diary_events',"
@@ -74,9 +78,14 @@ int main(void) {
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(sqlite3_exec(raw,
+                       "DROP TABLE session_exercise_timeline;"
+                       "DROP TABLE heart_rate_rr_intervals;"
+                       "DROP TABLE heart_rate_samples;"
+                       "DROP TABLE heart_rate_captures;"
                        "DROP TABLE sleep_medication_intakes;"
                        "DROP TABLE sleep_medication_revisions;"
-                       "DROP TABLE sleep_medications;",
+                       "DROP TABLE sleep_medications;"
+                       "PRAGMA user_version=29;",
                        NULL,
                        NULL,
                        NULL) == SQLITE_OK);
@@ -88,7 +97,7 @@ int main(void) {
     trainlog_database_close(production);
     production = NULL;
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(scalar(raw, "PRAGMA user_version") == 30);
+    CHECK(scalar(raw, "PRAGMA user_version") == 31);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE "
                  "'sleep_medication%'") == 3);

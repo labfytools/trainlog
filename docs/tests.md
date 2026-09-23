@@ -1727,3 +1727,20 @@ reloaded the remembered sensor and returned automatically at `♥ 72 BPM`.
 Disabling phone Bluetooth produced `♥ -- BPM` with the reconnecting state;
 reenabling Bluetooth restored the same foreground service automatically and
 returned to a fresh `♥ 79 BPM`. No uninstall or data clear occurred.
+
+## Training timeline V1 validation
+
+`TRAINLOG_CARDIO_TRAINING_TIMELINE_V1=PASS` covers Android schema v28 and
+desktop schema v31. Repository tests prove explicit exercise start/end
+timestamps, one-active-exercise enforcement, restart-safe active ownership,
+finalization refusal while an exercise remains active, and heart-rate samples
+tagged with the active stable `entry_id` while rest samples remain unowned.
+
+The generation regression publishes a completed timeline through the production
+full-generation path, imports it through `trainlog-session-timeline` V1,
+accepts the correlated ACK, and verifies idempotent replay/conflict rejection.
+
+The 2026-09-23 closeout passes the complete native Meson inventory:
+**104/104 passed, 0 failed**. The complete Android JVM inventory reports
+**272 tests: 267 passed, five skipped, zero failures/errors**; `assembleDebug`
+also succeeds. The five skips remain optional historical/external fixture gates.

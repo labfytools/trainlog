@@ -35,7 +35,7 @@ class AndroidV26SleepMigrationTest {
                 context.getDatabasePath(name).path,
                 null,
                 SQLiteDatabase.OPEN_READONLY,
-            ).use { assertEquals(27, it.version) }
+            ).use { assertEquals(28, it.version) }
         } finally {
             repository.close()
             context.deleteDatabase(name)
