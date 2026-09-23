@@ -24,7 +24,7 @@ it never copies SQLite database files between devices.
 |---|---|
 | Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
 | Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.5 development) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, 18:00-to-18:00 agenda and local vector PDF export. |
+| Local Web (0.1.5) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, multi-night 18:00-to-18:00 agenda, factual heart-rate timelines and local vector PDF export. |
 
 No interface reconstructs business truth from SQLite tables. The local Web is
 a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
@@ -35,8 +35,12 @@ The top-level `/programmes` route is an operational daily calendar for active
 Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
 Web Exercises administration, the factual Dashboard/Analyse read model, and the
-synchronized Sleep Diary workspace are the stable v0.1.4 baseline. Version
-0.1.5 development now has validated persistent CYCPLUS acquisition, the global `♥ BPM` indicator, training exercise timestamps, one-tap Android Sleep capture, dedicated synchronized `cardio` sessions, versioned measured Cardio calibration, fresh-signal BPM-guided phases and factual Web heart-rate timelines in History/Sleep; software validation is complete; private-device visual review is the current implementation cursor.
+synchronized Sleep Diary workspace are the stable v0.1.4 baseline. Stable
+0.1.5 adds persistent CYCPLUS acquisition, the global `♥ BPM` indicator,
+training exercise timestamps, structured Android Sleep capture, dedicated
+synchronized `cardio` sessions, versioned measured Cardio calibration,
+fresh-signal BPM-guided phases and factual Web heart-rate timelines in
+History/Sleep.
 
 ## Releases
 
@@ -53,8 +57,8 @@ Each published stable release provides:
 - SHA-256 checksums.
 
 Both mirrors publish the same Trainlog product version and release assets. The
-latest stable version is **0.1.4** on Android and desktop; this is one shared
-Trainlog version, not separate interface versions. Version 0.1.3 is the
+latest stable version is **0.1.5** on Android and desktop; this is one shared
+Trainlog version, not separate interface versions. Version 0.1.4 is the
 previous stable release.
 
 Trainlog presents French by default, with English selectable
@@ -158,7 +162,7 @@ updates; generating a replacement key is not a normal release procedure.
 
 ### Linux runtime dependencies
 
-The published v0.1.4 x86-64 desktop runtime is dynamically linked. Its tagged
+The published v0.1.5 x86-64 desktop runtime is dynamically linked. Its tagged
 source directly requires compatible versions of:
 
 - glibc and the GCC support runtime;

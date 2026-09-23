@@ -116,7 +116,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v32; v32 additively gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
+| Trainlog product version | `0.1.5` stable, synchronized across Android and desktop; latest stable release: `v0.1.5` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
@@ -156,10 +156,10 @@ parallel implementation of its rules.
 | Cardio calibration | `TRAINLOG_CARDIO_CALIBRATION_V1=PASS`: reserved system Calibration cardio exercise, real measured observed peak, ≥3 min recovery with bounded +1/+2/+3 min factual samples, immutable profile and Android→desktop calibration companion |
 | Cardio BPM guidance | `TRAINLOG_CARDIO_BPM_GUIDANCE_V1=PASS`: absolute/calibration-derived immutable BPM targets, 2 BPM hysteresis, 3 s confirmation, stale-signal suspension, durable phase/condition history, Android live guidance UI and strict Android→desktop `trainlog-cardio-guidance` V1 sync |
 | Cardio Web visualization | `TRAINLOG_CARDIO_WEB_VISUALIZATION_V1=PASS`: one bounded factual heart-rate timeline read model/HTTP endpoint powers Web History and Sleep with raw BPM/RR, real session/exercise/Sleep markers, guided targets/instructions and calibration facts; no sleep-stage or medical inference |
-| Sleep tonight readiness delta | Software validated: Meson 111/111, import checks 6/6, Android `testDebugUnitTest` plus `assembleDebug`, and Web 191/191 plus typecheck/build. It adds no device rollout evidence and authorizes no stable release. |
-| 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=SOFTWARE_PASS / DEVICE_VISUAL_PASS`: native 111/111; Android 304 tests (299 pass + 5 historical skips) and debug APK build; Web 183/183 + typecheck/build baseline. Private vc46 preserves the live HR capture and samples across Training → Cardio, drives measured guidance, and renders Sommeil and Calibration cardio without mutation. No stable release is authorized by this status. |
+| Sleep tonight readiness delta | `TRAINLOG_SLEEP_TONIGHT_CLOSEOUT_V1=PASS`: Meson 111/111, import checks 6/6, Android `testDebugUnitTest` plus `assembleDebug`, Web 191/191 plus typecheck/build, exact V2 quantity replay, private vc47 schema-v32 migration, fresh CYCPLUS BPM and non-mutating Android/Web visual review. |
+| 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=PASS`: native 111/111; Android unit-test task and APK build; Web 191/191 plus typecheck/build; JSON/import, C-format and diff checks pass. Private vc47 preserves real data through schema v32, renders pre-bed medication quantity controls, reconnects the CYCPLUS and presents the multi-night Web Sleep agenda. |
 | Tomorrow session readiness | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: the private vc46 is clean on schema v31 with fresh CYCPLUS BPM and the next Program session is unambiguous; one combined regression proves two ordered occurrences loaded from the synchronized Program, Program provenance, factual timeline/HR ownership, finalization, full generation, desktop import, replay and correlated ACK |
-| Current operational cursor | Sleep Tonight Readiness V2 is software-validated; private-device rollout and visual review remain separate authorization, and no stable 0.1.5 tag or release is authorized. |
+| Current operational cursor | Stable v0.1.5 closes the cardio and Sleep Tonight cycle; subsequent development opens as 0.1.6 after the immutable release tag. |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

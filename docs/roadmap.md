@@ -30,14 +30,14 @@ estimates.
 
 ## Current baseline
 
-Stable v0.1.4 is the release baseline for the v0.1.5 development cycle.
-Desktop schema v29, Android schema v26, Notcurses, direct `Documents/Trainlog`
+Stable v0.1.5 is the release baseline for the next development cycle.
+Desktop schema v35, Android schema v32, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
 Generator V1 is hidden pending V2. AI session-draft exchange retains its
 explicit manual validation gate. APP_SHELL_V1 remains useful historical design
 evidence, but its September 2026 observations must be revalidated against the
-v0.1.4 baseline rather than treated as a current implementation plan.
+v0.1.5 baseline rather than treated as a current implementation plan.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
@@ -46,8 +46,9 @@ visualizations and Sessions V1 are implemented. The top-level `/programmes`
 route is an operational daily active-Program calendar, while
 Sessions → Programmes remains the technical administration/import, list,
 detail, archive, and delete surface. Web Exercises V1, the factual
-Dashboard/Analyse read-model foundation, and Sleep Diary V1 are included in
-stable v0.1.4.
+Dashboard/Analyse read-model foundation, Sleep Diary V1/V2, synchronized
+factual heart-rate timelines, and the complete Cardio V1
+capture/calibration/guidance chain are included in stable v0.1.5.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -56,29 +57,19 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
 
-Stable v0.1.4 closes the Analyse/Sleep Diary cycle and freezes the Bluetooth
-Classic synchronization transport independently from future sensor work.
-
-The 0.1.5 cycle owns cardio end to end. Android alone discovers and reads the
-heart-rate sensor, exposes the global ♥ BPM state, timestamps training
-session/exercise boundaries, provides one-tap Sleep capture, and records the
-new dedicated cardio session type. Cardio starts with a versioned Calibration
-exercise and later drives phase guidance from fresh BPM. Desktop/Web consume
-only synchronized recorded measurements and never connect directly to the
-sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
-Bluetooth synchronization transport contract.
+Stable v0.1.5 closes Cardio V1 and the Sleep Tonight readiness cycle. Android
+alone discovers and reads the heart-rate sensor; desktop/Web consume only
+synchronized factual measurements and never connect directly to the sensor.
+The heart-rate path remains independent from the frozen Bluetooth Trainlog
+synchronization transport.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=Sleep Tonight Readiness V2 software validation complete; private-device rollout remains a separate decision.
+CURRENT_OPERATIONAL_CURSOR=Stable v0.1.5 published; open 0.1.6 development without reopening frozen 0.1.5 contracts.
 ```
 
-The current development cursor is the validated Sleep Tonight readiness delta:
-V1 stays frozen/readable while active capable peers require `sleep-diary-v2`.
-The remaining operational work, if authorized separately, is a non-destructive
-private-device rollout and visual review; it must not be represented as a
-stable release or a medical/readiness claim. The Web’s relative HR rise/fall
-overlays are descriptive measured-series presentation only, never inferred
-sleep states or causes.
+Sleep Diary V1 stays frozen/readable while active capable peers require
+`sleep-diary-v2`. The Web’s relative HR rise/fall overlays remain descriptive
+measured-series presentation only, never inferred sleep states or causes.
 
 The vc45 real-device smoke found that selecting Cardio after live capture had
 already started on the default Training draft left the durable capture tagged
@@ -89,15 +80,13 @@ transition through an active exercise and guidance event. The vc46 re-smoke
 then passed with the same capture, preserved pre-transition samples, measured
 guidance, and non-mutating Sommeil/Calibration screen checks.
 
-Tomorrow's next synchronized Program session is unambiguously
-`S1 D — Haut du corps machines` on 2026-09-24 with seven occurrences. The
-private phone remains on Android schema v31 with integrity/FK checks clean and
-no active draft, timeline, HR capture, guidance phase or calibration. A single
-combined regression now proves Program start and provenance through two
-ordered occurrences originating in the synchronized Program payload, four HR
-ownership positions, finalization, full generation, desktop import, idempotent
-replay and correlated ACK. This readiness result does not authorize a stable
-0.1.5 tag or release.
+The private phone advanced non-destructively to Android schema v32 on vc47 with
+integrity/FK checks clean and preserved business counts. The preceding
+tomorrow-session readiness regression proves Program start and provenance
+through two ordered occurrences originating in the synchronized Program
+payload, four HR ownership positions, finalization, full generation, desktop
+import, idempotent replay and correlated ACK. That readiness evidence is now
+part of the stable v0.1.5 validation record rather than the active cursor.
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
 cursor: complete predecessor state, imported built-in authorization,

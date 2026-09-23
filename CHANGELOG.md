@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased — 0.1.5
+## 0.1.5 — 2026-09-23
 
-- Completed the software-validated Sleep Tonight readiness delta without a
-  device-rollout or stable-release claim. Pre-bed medication now creates or
+- Completed the Sleep Tonight readiness delta and its non-destructive private
+  vc47 rollout. Pre-bed medication now creates or
   reuses one durable pending 18:00-to-18:00 Sleep entry; Couché appends bedtime
   to that same stable identity, while Réveil/Levé remain unavailable before
   bedtime. Pending quick facts are publishable through a distinct marker and
