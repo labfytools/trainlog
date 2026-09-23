@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — 0.1.6
+
+Development opened after the stable v0.1.5 release. No 0.1.6 feature tranche
+is selected by this version-opening commit.
+
 ## 0.1.5 — 2026-09-23
 
 - Completed the Sleep Tonight readiness delta and its non-destructive private

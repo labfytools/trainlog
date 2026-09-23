@@ -118,7 +118,7 @@ def main() -> int:
         "source_commit": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
-        "product_version": "0.1.5",
+        "product_version": "0.1.6",
         "desktop_schema": 35,
         "android_schema": 32,
         "protocols": [

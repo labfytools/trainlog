@@ -116,7 +116,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v32; v32 additively gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.5` stable, synchronized across Android and desktop; latest stable release: `v0.1.5` |
+| Trainlog product version | `0.1.6` development, synchronized across Android and desktop; latest stable release: `v0.1.5` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
@@ -159,7 +159,7 @@ parallel implementation of its rules.
 | Sleep tonight readiness delta | `TRAINLOG_SLEEP_TONIGHT_CLOSEOUT_V1=PASS`: Meson 111/111, import checks 6/6, Android `testDebugUnitTest` plus `assembleDebug`, Web 191/191 plus typecheck/build, exact V2 quantity replay, private vc47 schema-v32 migration, fresh CYCPLUS BPM and non-mutating Android/Web visual review. |
 | 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=PASS`: native 111/111; Android unit-test task and APK build; Web 191/191 plus typecheck/build; JSON/import, C-format and diff checks pass. Private vc47 preserves real data through schema v32, renders pre-bed medication quantity controls, reconnects the CYCPLUS and presents the multi-night Web Sleep agenda. |
 | Tomorrow session readiness | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: the private vc46 is clean on schema v31 with fresh CYCPLUS BPM and the next Program session is unambiguous; one combined regression proves two ordered occurrences loaded from the synchronized Program, Program provenance, factual timeline/HR ownership, finalization, full generation, desktop import, replay and correlated ACK |
-| Current operational cursor | Stable v0.1.5 closes the cardio and Sleep Tonight cycle; subsequent development opens as 0.1.6 after the immutable release tag. |
+| Current operational cursor | 0.1.6 development is open after immutable stable v0.1.5; no new feature tranche is selected by the version-opening commit. |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
@@ -425,8 +425,8 @@ The full Android lint comparison against an isolated clean `main` worktree is
 unchanged at ten pre-existing errors: one `NewApi`, one
 `LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
 diagnostics. This UI tranche adds no lint error and changes no lint policy.
-The stable Android v0.1.4 tag uses `versionName=0.1.4` and public versionCode 5.
-The v0.1.5 development source starts at `versionName=0.1.5` and versionCode 6.
+The stable Android v0.1.5 tag uses `versionName=0.1.5` and public versionCode 6.
+The v0.1.6 development source starts at `versionName=0.1.6` and versionCode 7.
 Private validation builds may still supply only a strictly increasing
 `versionCode` as a build-time override; that does not create a public release
 or change schemas and protocols.

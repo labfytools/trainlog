@@ -65,7 +65,7 @@ class DeploymentToolsTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             inventory = json.loads((output / "candidate-inventory.json").read_text())
-            self.assertEqual(inventory["product_version"], "0.1.5")
+            self.assertEqual(inventory["product_version"], "0.1.6")
             self.assertEqual(inventory["desktop_schema"], 35)
             self.assertEqual(inventory["android_schema"], 32)
             self.assertIn("session-preparations-v2", inventory["protocols"])
@@ -102,7 +102,7 @@ class DeploymentToolsTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(linked.returncode, 0, linked.stderr)
-            self.assertIn("trainlog 0.1.5", linked.stdout)
+            self.assertIn("trainlog 0.1.6", linked.stdout)
             imported = subprocess.run(
                 [
                     "python3",

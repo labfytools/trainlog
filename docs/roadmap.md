@@ -30,7 +30,7 @@ estimates.
 
 ## Current baseline
 
-Stable v0.1.5 is the release baseline for the next development cycle.
+Stable v0.1.5 is the release baseline for the v0.1.6 development cycle.
 Desktop schema v35, Android schema v32, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
@@ -64,7 +64,7 @@ The heart-rate path remains independent from the frozen Bluetooth Trainlog
 synchronization transport.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=Stable v0.1.5 published; open 0.1.6 development without reopening frozen 0.1.5 contracts.
+CURRENT_OPERATIONAL_CURSOR=0.1.6 development open; next feature tranche not selected.
 ```
 
 Sleep Diary V1 stays frozen/readable while active capable peers require
