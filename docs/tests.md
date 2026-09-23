@@ -1862,3 +1862,35 @@ test covers valid empty GET, bad context rejection and GET-only semantics. The
 2026-09-23 closeout passes the complete native inventory **111/111** and the
 complete Web inventory **29 files / 183 tests**; Web typecheck and production
 build also succeed.
+
+## Trainlog 0.1.5 complete validation
+
+`TRAINLOG_0_1_5_VALIDATION_V1=SOFTWARE_PASS / DEVICE_VISUAL_PENDING` closes the
+complete software regression after Cardio Web visualization. The native Meson
+inventory passes **111/111**. Android reports **300 JVM tests: 295 passed, five
+historical/external skips, zero failures/errors**, and `assembleDebug`
+succeeds. Web passes **29 files / 183 tests**, TypeScript typecheck and the
+production Vite build.
+
+The authorized SM_G990B was backed up before the final private candidate. The
+pre-update `trainlog-android.db` was copied while the app was force-stopped and
+verified at 1,892,352 bytes. Private Trainlog 0.1.5 advanced in place from
+versionCode 42 to versionCode 43 using the exact same Android debug signing
+certificate; `adb install -r` succeeded without uninstall or data clear.
+
+Before and after vc43, the Android store remained schema v31 with identical
+high-level business counts: 12 completed sessions, 45 catalogue exercises and
+2 Sleep Diary entries. The four cardio-guidance tables are present after the
+update, `PRAGMA integrity_check` returns `ok`, and
+`PRAGMA foreign_key_check` returns no row.
+
+The locked-device background smoke test confirms both Trainlog foreground
+services remain alive. `HeartRateSensorService` continued receiving the real
+CYCPLUS H2 and exposed 94 then 95 BPM through its foreground notification while
+the phone was dozing, proving the final candidate still acquires live heart
+rate without requiring the activity to remain visible.
+
+The phone was locked during the final UI probe, so the visual smoke test of
+Sommeil, Calibration cardio and active guided-cardio presentation remains
+`DEVICE_VISUAL_PENDING`. No stable `v0.1.5` tag or release is authorized by
+this closeout.
