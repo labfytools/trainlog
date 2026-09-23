@@ -1,5 +1,19 @@
 # Desktop database
 
+## Schema v35: Sleep Diary quantity V2
+
+Schema v35 additively adds `sleep_medication_intakes.quantity`, a required
+integer in `1..99` with default `1`. It is the count of the separately stored
+per-unit dose, not a free-text convention and not a total-dose replacement.
+Thus `75 mg` with quantity `2` retains `dose_value=75`, `dose_unit=mg`, and
+`quantity=2`. Existing immutable intake rows read as one unit; the migration
+does not alter their revision identity, timestamps, causal ancestry, events,
+or medication snapshot.
+
+Sleep Diary V1 remains a frozen historical input. Quantity is carried by the
+separate V2 companion; desktop v35 validates the V2 bounded value while still
+hydrating historical V1 input as quantity one.
+
 ## Schema v34: synchronized Cardio guidance V1
 
 Schema v34 additively stores completed Android-owned guided-cardio runs. `cardio_guidance_runs` keeps the stable run/session identity and exact run bounds. `cardio_guidance_phases` stores the ordered `entry_id`-owned phase, its immutable resolved BPM target, optional exact calibration provenance, exit condition, phase bounds and final instruction. `cardio_guidance_events` stores only instruction changes, not another copy of the raw heart-rate curve.

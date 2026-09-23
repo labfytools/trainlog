@@ -24,6 +24,10 @@ const api = vi.hoisted(() => ({
   nextId: 0,
 }));
 
+const heartRateApi = vi.hoisted(() => ({
+  fetchHeartRateTimeline: vi.fn(),
+}));
+
 vi.mock("../api/sleepDiary", async (importOriginal) => {
   const original = await importOriginal<typeof import("../api/sleepDiary")>();
   return {
@@ -37,6 +41,11 @@ vi.mock("../api/sleepDiary", async (importOriginal) => {
     newSleepId: (prefix: "sle" | "mdi") =>
       `${prefix}_00000000-0000-4000-8000-${String(++api.nextId).padStart(12, "0")}`,
   };
+});
+
+vi.mock("../api/heartRate", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../api/heartRate")>();
+  return { ...original, fetchHeartRateTimeline: heartRateApi.fetchHeartRateTimeline };
 });
 
 const emptySnapshot: SleepSnapshot = {
@@ -162,6 +171,7 @@ const dayAEntry = (): SleepEntry => ({
       taken_at: "2026-09-20T22:30:00+02:00",
       dose_value: 5,
       dose_unit: "mg",
+      quantity: 1,
       note: "",
       created_at: "2026-09-20T22:30:00+02:00",
     },
@@ -176,6 +186,15 @@ describe("SleepDiaryWorkspace", () => {
     api.nextId = 0;
     api.fetchSleepDiary.mockResolvedValue(emptySnapshot);
     api.fetchSleepMedications.mockResolvedValue([]);
+    heartRateApi.fetchHeartRateTimeline.mockImplementation(async (contextId) => ({
+      api_version: 1,
+      context_id: contextId,
+      available: false,
+      capture: null,
+      events: [],
+      guidance: null,
+      calibration: null,
+    }));
     let revision = 0;
     api.saveSleepEntry.mockImplementation(async (input) => ({
       entry_id: input.entry_id || "sd_00000000-0000-4000-8000-000000000001",
@@ -185,6 +204,40 @@ describe("SleepDiaryWorkspace", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("renders every deduplicated period night and changes presentation selection", async () => {
+    const first = dayAEntry();
+    const second = {
+      ...dayAEntry(),
+      entry_id: "sl_00000000-0000-4000-8000-000000000021",
+      night_start_date: "2026-09-18",
+      night_end_date: "2026-09-19",
+    };
+    const third = {
+      ...dayAEntry(),
+      entry_id: "sl_00000000-0000-4000-8000-000000000022",
+      night_start_date: "2026-09-19",
+      night_end_date: "2026-09-20",
+    };
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([first, third, second, third]));
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    await screen.findByTestId(`sleep-agenda-row-${first.entry_id}`);
+    expect(screen.getAllByTestId(/^sleep-agenda-row-/)).toHaveLength(3);
+    const secondRow = screen.getByTestId(`sleep-agenda-row-${second.entry_id}`);
+    fireEvent.click(secondRow);
+    expect(secondRow).toHaveClass("sleep-row-selected");
+    await waitFor(() =>
+      expect(heartRateApi.fetchHeartRateTimeline).toHaveBeenLastCalledWith(
+        second.entry_id,
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(api.saveSleepEntry).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Traitement et remarques particulières")).toHaveValue(
+      "Observation du jour A",
+    );
   });
 
   it.each([
@@ -591,7 +644,7 @@ describe("SleepDiaryWorkspace", () => {
     );
   });
 
-  it("isolates an empty active night and restores the previous night without reload", async () => {
+  it("isolates an empty editor night while retaining the period agenda", async () => {
     api.fetchSleepDiary.mockResolvedValue(snapshotWith([dayAEntry()]));
     api.fetchSleepMedications.mockResolvedValue([medication]);
     render(<SleepDiaryWorkspace period="30d" language="fr" />);
@@ -616,9 +669,7 @@ describe("SleepDiaryWorkspace", () => {
     expect(screen.getByTestId("sleep-timeline")).toHaveTextContent(
       "Aucun événement enregistré pour cette nuit.",
     );
-    expect(
-      screen.getByText("Aucune donnée pour cette nuit."),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("sleep-agenda-event-bed_time")).toBeInTheDocument();
     expect(
       screen.getByLabelText("Traitement et remarques particulières"),
     ).toHaveValue("");

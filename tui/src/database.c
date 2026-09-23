@@ -1350,7 +1350,8 @@ static const char *const MIGRATE_V28_TO_V29_SQL =
 static const char *const MIGRATE_V29_TO_V30_SQL =
     "BEGIN IMMEDIATE;"
     "CREATE TABLE IF NOT EXISTS heart_rate_captures("
-    "capture_id TEXT PRIMARY KEY,context_kind TEXT NOT NULL CHECK(context_kind IN('session','cardio','sleep')),"
+    "capture_id TEXT PRIMARY KEY,context_kind TEXT NOT NULL CHECK(context_kind "
+    "IN('session','cardio','sleep')),"
     "context_id TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT NOT NULL,sensor_name TEXT,"
     "imported_at TEXT NOT NULL,CHECK(capture_id GLOB 'hrc_*'),"
     "CHECK((context_kind IN('session','cardio') AND context_id GLOB 'se_*') OR "
@@ -1397,9 +1398,8 @@ static const char *const MIGRATE_V30_TO_V31_SQL =
  * CONTRACT: v32 adds canonical local session_kind and backfills it exactly
  * from legacy history. INVARIANT: no legacy codec or MAX classification is
  * widened to cardio. */
-static const char *const MIGRATE_V31_TO_V32_SQL =
-    "BEGIN IMMEDIATE;"
-    "PRAGMA user_version=32;COMMIT;";
+static const char *const MIGRATE_V31_TO_V32_SQL = "BEGIN IMMEDIATE;"
+                                                  "PRAGMA user_version=32;COMMIT;";
 
 /* WHY: guided cardio must retain the exact measured calibration reference
  * independently from the raw HR samples. CONTRACT: v33 stores only completed
@@ -1433,18 +1433,22 @@ static const char *const MIGRATE_V32_TO_V33_SQL =
 static const char *const MIGRATE_V33_TO_V34_SQL =
     "BEGIN IMMEDIATE;"
     "CREATE TABLE IF NOT EXISTS cardio_guidance_runs("
-    "run_id TEXT PRIMARY KEY,session_id TEXT NOT NULL UNIQUE REFERENCES sessions(session_id) ON DELETE RESTRICT,"
+    "run_id TEXT PRIMARY KEY,session_id TEXT NOT NULL UNIQUE REFERENCES sessions(session_id) ON "
+    "DELETE RESTRICT,"
     "started_at TEXT NOT NULL,ended_at TEXT NOT NULL,imported_at TEXT NOT NULL,"
     "CHECK(run_id GLOB 'cgr_*'),CHECK(session_id GLOB 'se_*'));"
     "CREATE TABLE IF NOT EXISTS cardio_guidance_phases("
     "run_id TEXT NOT NULL REFERENCES cardio_guidance_runs(run_id) ON DELETE CASCADE,"
-    "phase_id TEXT NOT NULL UNIQUE,entry_id TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),"
+    "phase_id TEXT NOT NULL UNIQUE,entry_id TEXT NOT NULL,position INTEGER NOT NULL "
+    "CHECK(position>=0),"
     "kind TEXT NOT NULL CHECK(kind IN('warmup','work','recovery','cooldown')),"
     "target_min_bpm INTEGER,target_max_bpm INTEGER,calibration_id TEXT,"
     "calibration_observed_peak_bpm INTEGER,minimum_percent INTEGER,maximum_percent INTEGER,"
-    "exit_kind TEXT NOT NULL CHECK(exit_kind IN('fixed_duration','enter_target','recover_below','duration_or_recover')),"
+    "exit_kind TEXT NOT NULL CHECK(exit_kind "
+    "IN('fixed_duration','enter_target','recover_below','duration_or_recover')),"
     "exit_seconds INTEGER,exit_bpm INTEGER,started_at TEXT NOT NULL,ended_at TEXT NOT NULL,"
-    "final_instruction TEXT NOT NULL CHECK(final_instruction IN('accelerate','maintain','slow_down','suspended')),"
+    "final_instruction TEXT NOT NULL CHECK(final_instruction "
+    "IN('accelerate','maintain','slow_down','suspended')),"
     "PRIMARY KEY(run_id,phase_id),UNIQUE(run_id,position),CHECK(phase_id GLOB 'cgp_*'),"
     "CHECK(entry_id GLOB 'sxe_*'),"
     "CHECK((target_min_bpm IS NULL AND target_max_bpm IS NULL) OR "
@@ -1454,7 +1458,8 @@ static const char *const MIGRATE_V33_TO_V34_SQL =
     "(calibration_id GLOB 'cal_*' AND calibration_observed_peak_bpm BETWEEN 1 AND 65535 AND "
     "minimum_percent BETWEEN 1 AND 100 AND maximum_percent BETWEEN minimum_percent AND 100)),"
     "CHECK((exit_kind='fixed_duration' AND exit_seconds>0 AND exit_bpm IS NULL) OR "
-    "(exit_kind='enter_target' AND exit_seconds IS NULL AND exit_bpm IS NULL AND target_min_bpm IS NOT NULL) OR "
+    "(exit_kind='enter_target' AND exit_seconds IS NULL AND exit_bpm IS NULL AND target_min_bpm IS "
+    "NOT NULL) OR "
     "(exit_kind='recover_below' AND exit_seconds IS NULL AND exit_bpm BETWEEN 1 AND 65535) OR "
     "(exit_kind='duration_or_recover' AND exit_seconds>0 AND exit_bpm BETWEEN 1 AND 65535)));"
     "CREATE TABLE IF NOT EXISTS cardio_guidance_events("
@@ -1464,7 +1469,8 @@ static const char *const MIGRATE_V33_TO_V34_SQL =
     "bpm INTEGER CHECK(bpm IS NULL OR bpm BETWEEN 1 AND 65535),"
     "target_min_bpm INTEGER,target_max_bpm INTEGER,"
     "PRIMARY KEY(run_id,phase_id,sequence),"
-    "FOREIGN KEY(run_id,phase_id) REFERENCES cardio_guidance_phases(run_id,phase_id) ON DELETE CASCADE,"
+    "FOREIGN KEY(run_id,phase_id) REFERENCES cardio_guidance_phases(run_id,phase_id) ON DELETE "
+    "CASCADE,"
     "CHECK((target_min_bpm IS NULL AND target_max_bpm IS NULL) OR "
     "(target_min_bpm BETWEEN 1 AND 65535 AND target_max_bpm BETWEEN target_min_bpm AND 65535)));"
     "CREATE INDEX IF NOT EXISTS cardio_guidance_session ON "
@@ -1503,6 +1509,41 @@ static TrainlogStatus ensure_v32_session_kind(TrainlogDatabase *database) {
     if (found_legacy_type &&
         execute_sql(database, "UPDATE sessions SET session_kind=session_type;") !=
             TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return TRAINLOG_STATUS_OK;
+}
+
+static TrainlogStatus ensure_v35_medication_quantity(TrainlogDatabase *database) {
+    sqlite3_stmt *statement = NULL;
+    bool found = false;
+    int result = sqlite3_prepare_v2(
+        database->connection, "PRAGMA table_info(sleep_medication_intakes);", -1, &statement, NULL);
+    if (result != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *name = (const char *)sqlite3_column_text(statement, 1);
+        if (name != NULL && strcmp(name, "quantity") == 0) {
+            found = true;
+        }
+    }
+    if (result != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (execute_sql(database, "BEGIN IMMEDIATE;") != TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (!found &&
+        execute_sql(database,
+                    "ALTER TABLE sleep_medication_intakes ADD COLUMN quantity INTEGER NOT NULL "
+                    "DEFAULT 1 CHECK(quantity BETWEEN 1 AND 99);") != TRAINLOG_STATUS_OK) {
+        (void)execute_sql(database, "ROLLBACK;");
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (execute_sql(database, "PRAGMA user_version=35;") != TRAINLOG_STATUS_OK ||
+        execute_sql(database, "COMMIT;") != TRAINLOG_STATUS_OK) {
+        (void)execute_sql(database, "ROLLBACK;");
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
     return TRAINLOG_STATUS_OK;
@@ -2342,7 +2383,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
                version == 26 || version == 27 || version == 28 || version == 29 || version == 30 ||
-               version == 31 || version == 32 || version == 33 || version == 34) {
+               version == 31 || version == 32 || version == 33 || version == 34 || version == 35) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2508,6 +2549,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 34) {
         status = execute_sql(database, MIGRATE_V33_TO_V34_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 35) {
+        status = ensure_v35_medication_quantity(database);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2527,7 +2571,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v34" : "migrate database to schema v34",
+                            version == 0 ? "create schema v35" : "migrate database to schema v35",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
@@ -4046,9 +4090,10 @@ static TrainlogStatus lookup_session_row_id(TrainlogDatabase *database,
 static TrainlogStatus insert_session_header(TrainlogDatabase *database,
                                             const TrainlogSessionInput *session,
                                             sqlite3_int64 *output_row_id) {
-    static const char *const SQL = "INSERT INTO sessions("
-                                   "session_id, started_at, ended_at, session_type, session_kind, notes"
-                                   ") VALUES(?1, ?2, ?3, ?4, ?5, ?6);";
+    static const char *const SQL =
+        "INSERT INTO sessions("
+        "session_id, started_at, ended_at, session_type, session_kind, notes"
+        ") VALUES(?1, ?2, ?3, ?4, ?5, ?6);";
 
     sqlite3_stmt *statement = NULL;
     const char *session_kind;

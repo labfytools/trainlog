@@ -133,7 +133,8 @@ bool trainlog_sleep_diary_validate(const TrainlogSleepDiaryEntry *entry) {
             !timestamp_valid(intake->taken_at, &taken) ||
             !timestamp_valid(intake->created_at, &intake_created) ||
             (intake->has_dose && (!(intake->dose_value > 0.0) || intake->dose_unit[0] == '\0')) ||
-            (!intake->has_dose && (intake->dose_value != 0.0 || intake->dose_unit[0] != '\0'))) {
+            (!intake->has_dose && (intake->dose_value != 0.0 || intake->dose_unit[0] != '\0')) ||
+            intake->quantity < 1U || intake->quantity > 99U) {
             return false;
         }
         for (other = index + 1U; other < entry->intake_count; ++other) {
@@ -159,8 +160,8 @@ static TrainlogStatus insert_revision(TrainlogDatabase *database,
         "VALUES(?1,?2,?3,?4,?5)";
     static const char intake_sql[] =
         "INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,"
-        "medication_name,taken_at,dose_value,dose_unit,note,created_at) "
-        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)";
+        "medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at) "
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)";
     sqlite3_stmt *statement = NULL;
     size_t index;
     int result = sqlite3_prepare_v2(database->connection, revision_sql, -1, &statement, NULL);
@@ -266,8 +267,11 @@ static TrainlogStatus insert_revision(TrainlogDatabase *database,
                          ? sqlite3_bind_text(statement, 7, intake->dose_unit, -1, SQLITE_TRANSIENT)
                          : sqlite3_bind_null(statement, 7);
         }
-        BIND_INTAKE_TEXT(8, intake->note);
-        BIND_INTAKE_TEXT(9, intake->created_at);
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(statement, 8, (int)intake->quantity);
+        }
+        BIND_INTAKE_TEXT(9, intake->note);
+        BIND_INTAKE_TEXT(10, intake->created_at);
 #undef BIND_INTAKE_TEXT
         if (result == SQLITE_OK) {
             result = sqlite3_step(statement) == SQLITE_DONE ? SQLITE_OK
@@ -427,7 +431,8 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
         "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=?1 "
         "ORDER BY start_at COLLATE BINARY,event_id COLLATE BINARY";
     static const char intakes_sql[] =
-        "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,"
+        "SELECT "
+        "intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,"
         "created_at FROM sleep_medication_intakes WHERE revision_id=?1 "
         "ORDER BY taken_at COLLATE BINARY,intake_id COLLATE BINARY";
     sqlite3_stmt *statement = NULL;
@@ -567,8 +572,9 @@ static TrainlogStatus load_entry(TrainlogDatabase *database,
         intake->has_dose = sqlite3_column_type(statement, 4) != SQLITE_NULL;
         intake->dose_value = intake->has_dose ? sqlite3_column_double(statement, 4) : 0.0;
         COPY_INTAKE(dose_unit, 5);
-        COPY_INTAKE(note, 6);
-        COPY_INTAKE(created_at, 7);
+        intake->quantity = (unsigned int)sqlite3_column_int(statement, 6);
+        COPY_INTAKE(note, 7);
+        COPY_INTAKE(created_at, 8);
 #undef COPY_INTAKE
         result = sqlite3_step(statement);
     }

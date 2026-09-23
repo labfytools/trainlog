@@ -10,7 +10,7 @@
 #define CHECK(value)                                                                               \
     do {                                                                                           \
         if (!(value)) {                                                                            \
-            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                      \
+            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                       \
             goto cleanup;                                                                          \
         }                                                                                          \
     } while (0)
@@ -43,13 +43,15 @@ int main(void) {
     CHECK(sqlite3_exec(raw,
                        "DROP TABLE session_exercise_timeline;"
                        "PRAGMA user_version=30;",
-                       NULL, NULL, NULL) == SQLITE_OK);
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(production, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 34);
+    CHECK(version == 35);
     trainlog_database_close(production);
     production = NULL;
 
@@ -64,9 +66,15 @@ int main(void) {
     result = EXIT_SUCCESS;
 
 cleanup:
-    if (production != NULL) trainlog_database_close(production);
-    if (raw != NULL) (void)sqlite3_close(raw);
+    if (production != NULL) {
+        trainlog_database_close(production);
+    }
+    if (raw != NULL) {
+        (void)sqlite3_close(raw);
+    }
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v30 to v31 session timeline migration");
+    if (result == EXIT_SUCCESS) {
+        puts("PASS schema v30 to v31 session timeline migration");
+    }
     return result;
 }

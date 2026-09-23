@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export, validate and merge the versioned Sleep Diary V1 companion."""
+"""Export V2 and validate/merge strict Sleep Diary V1 or V2 companions."""
 
 import argparse
 import json
@@ -12,7 +12,7 @@ from trainlog_sqlite import connect_database
 
 
 FORMAT = "trainlog-sleep-diary"
-VERSION = 1
+VERSION = 2
 MAX_BYTES = 16 * 1024 * 1024
 MAX_ENTRIES = 3660
 MAX_EVENTS = 64
@@ -59,8 +59,9 @@ def timestamp(value: object) -> str:
 def validate(root: object) -> dict:
     if not isinstance(root, dict) or set(root) != {"format", "version", "generated_at", "entries", "medications"}:
         fail("invalid sleep diary envelope")
-    if root["format"] != FORMAT or type(root["version"]) is not int or root["version"] != VERSION:
+    if root["format"] != FORMAT or type(root["version"]) is not int or root["version"] not in (1, VERSION):
         fail("unsupported sleep diary format")
+    wire_version = root["version"]
     timestamp(root["generated_at"])
     entries = root["entries"]
     if not isinstance(entries, list) or len(entries) > MAX_ENTRIES:
@@ -136,7 +137,7 @@ def validate(root: object) -> dict:
         for intake in intakes:
             keys = {"intake_id", "medication_id", "medication_name", "taken_at",
                     "dose_value", "dose_unit", "note", "created_at"}
-            if not isinstance(intake, dict) or set(intake) != keys:
+            if not isinstance(intake, dict) or set(intake) != (keys if wire_version == 1 else keys | {"quantity"}):
                 fail("invalid medication intake")
             if (not INTAKE_ID.fullmatch(intake["intake_id"]) or
                     intake["intake_id"] in seen_intakes or
@@ -151,6 +152,8 @@ def validate(root: object) -> dict:
                     (type(intake["dose_value"]) not in (int, float) or intake["dose_value"] <= 0 or
                      not isinstance(intake["dose_unit"], str) or not intake["dose_unit"].strip())):
                 fail("invalid medication intake dose")
+            if wire_version == 2 and (type(intake["quantity"]) is not int or not 1 <= intake["quantity"] <= 99):
+                fail("invalid medication intake quantity")
     medications = root["medications"]
     if not isinstance(medications, list) or len(medications) > MAX_MEDICATIONS:
         fail("medication catalog bound exceeded")
@@ -250,8 +253,8 @@ def build(db: sqlite3.Connection) -> dict:
         ]
         intakes = [{"intake_id": row[0], "medication_id": row[1], "medication_name": row[2],
                     "taken_at": row[3], "dose_value": row[4], "dose_unit": row[5],
-                    "note": row[6], "created_at": row[7]}
-                   for row in db.execute("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id", (revision_id,))]
+                    "quantity": row[6], "note": row[7], "created_at": row[8]}
+                   for row in db.execute("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id", (revision_id,))]
         entries.append({"entry_id": entry_id, "night_start_date": night_start,
             "night_end_date": night_end, "created_at": created_at, "updated_at": updated_at,
             "revision_id": revision_id, "parent_revision_id": revision[0], "ancestry": ancestry,
@@ -296,6 +299,7 @@ def revision_is_ancestor(db: sqlite3.Connection, parent_sql: str, owner_id: str,
 
 def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
     validate(root)
+    wire_version = root["version"]
     applied = 0
     unchanged = 0
     for medication in root["medications"]:
@@ -342,6 +346,9 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             )
             persisted_payload = dict(persisted)
             incoming_payload = dict(item)
+            if wire_version == 1:
+                incoming_payload["intakes"] = [dict(intake, quantity=1)
+                                                for intake in incoming_payload["intakes"]]
             persisted_payload.pop("ancestry", None)
             incoming_payload.pop("ancestry", None)
             if persisted_payload != incoming_payload:
@@ -391,10 +398,10 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
         db.executemany("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
                        [(item["revision_id"], event["event_id"], event["type"], event["start_at"], event["end_at"])
                         for event in item["events"]])
-        db.executemany("INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?)",
+        db.executemany("INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                        [(item["revision_id"], intake["intake_id"], intake["medication_id"],
                          intake["medication_name"], intake["taken_at"], intake["dose_value"],
-                         intake["dose_unit"], intake["note"], intake["created_at"])
+                         intake["dose_unit"], intake.get("quantity", 1), intake["note"], intake["created_at"])
                         for intake in item["intakes"]])
         # An imported revision has already crossed the synchronization
         # boundary; recording both markers prevents it appearing as a draft.
@@ -422,8 +429,8 @@ def main() -> None:
     import_command.add_argument("--database", required=True, type=Path)
     args = parser.parse_args()
     with connect_database(args.database) as db:
-        if db.execute("PRAGMA user_version").fetchone()[0] not in (30, 31, 32, 33, 34):
-            fail("desktop schema v30-v34 required")
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (30, 31, 32, 33, 34, 35):
+            fail("desktop schema v30-v35 required")
         if args.command == "export":
             args.output.write_text(json.dumps(build(db), ensure_ascii=False, sort_keys=True,
                                                    separators=(",", ":")), encoding="utf-8")

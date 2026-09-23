@@ -71,8 +71,7 @@ static bool append_event(yyjson_mut_doc *document,
                          const char *entry_id,
                          const char *exercise_id) {
     yyjson_mut_val *event = yyjson_mut_obj(document);
-    if (event == NULL ||
-        !yyjson_mut_obj_add_strcpy(document, event, "type", type) ||
+    if (event == NULL || !yyjson_mut_obj_add_strcpy(document, event, "type", type) ||
         !yyjson_mut_obj_add_strcpy(document, event, "at", at) ||
         !add_nullable_string(document, event, "end_at", end_at) ||
         !add_nullable_string(document, event, "label", label) ||
@@ -88,8 +87,7 @@ static bool add_samples(TrainlogDatabase *database,
                         yyjson_mut_doc *document,
                         yyjson_mut_val *capture,
                         const char *capture_id) {
-    static const char COUNT_SQL[] =
-        "SELECT COUNT(*) FROM heart_rate_samples WHERE capture_id=?;";
+    static const char COUNT_SQL[] = "SELECT COUNT(*) FROM heart_rate_samples WHERE capture_id=?;";
     static const char SAMPLE_SQL[] =
         "SELECT s.sequence,s.observed_at,s.bpm,r.rr_index,r.value_1024 "
         "FROM heart_rate_samples s LEFT JOIN heart_rate_rr_intervals r "
@@ -114,8 +112,8 @@ static bool add_samples(TrainlogDatabase *database,
     }
     count = sqlite3_column_int64(count_statement, 0);
     if (sqlite3_step(count_statement) != SQLITE_DONE ||
-        sqlite3_finalize(count_statement) != SQLITE_OK ||
-        count < 0 || (uint64_t)count > HEART_RATE_SAMPLE_MAX ||
+        sqlite3_finalize(count_statement) != SQLITE_OK || count < 0 ||
+        (uint64_t)count > HEART_RATE_SAMPLE_MAX ||
         !yyjson_mut_obj_add_sint(document, capture, "sample_count", count) ||
         !prepare(database, SAMPLE_SQL, &statement) ||
         sqlite3_bind_text(statement, 1, capture_id, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
@@ -188,8 +186,7 @@ static bool add_session_events(TrainlogDatabase *database,
                       NULL,
                       NULL,
                       NULL) ||
-        sqlite3_step(statement) != SQLITE_DONE ||
-        sqlite3_finalize(statement) != SQLITE_OK) {
+        sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
         if (statement != NULL) {
             (void)sqlite3_finalize(statement);
         }
@@ -233,7 +230,7 @@ static bool add_sleep_events(TrainlogDatabase *database,
         "ON e.revision_id=d.current_revision_id "
         "WHERE d.entry_id=? AND d.deleted=0 ORDER BY e.start_at,e.event_id;";
     static const char INTAKE_SQL[] =
-        "SELECT i.taken_at,i.medication_name "
+        "SELECT i.taken_at,i.medication_name,i.quantity "
         "FROM sleep_diary_entries d JOIN sleep_medication_intakes i "
         "ON i.revision_id=d.current_revision_id "
         "WHERE d.entry_id=? AND d.deleted=0 ORDER BY i.taken_at,i.intake_id;";
@@ -277,13 +274,21 @@ static bool add_sleep_events(TrainlogDatabase *database,
         return false;
     }
     while ((step = sqlite3_step(statement)) == SQLITE_ROW) {
+        char label[256];
+        const char *name = (const char *)sqlite3_column_text(statement, 1);
+        int quantity = sqlite3_column_int(statement, 2);
+        if (quantity > 1) {
+            (void)snprintf(label, sizeof(label), "%s ×%d", name, quantity);
+        } else {
+            (void)snprintf(label, sizeof(label), "%s", name);
+        }
         if (++count > TIMELINE_EVENT_MAX ||
             !append_event(document,
                           events,
                           "medication",
                           (const char *)sqlite3_column_text(statement, 0),
                           NULL,
-                          (const char *)sqlite3_column_text(statement, 1),
+                          label,
                           NULL,
                           NULL)) {
             (void)sqlite3_finalize(statement);
@@ -297,9 +302,8 @@ static bool add_guidance(TrainlogDatabase *database,
                          yyjson_mut_doc *document,
                          yyjson_mut_val *root,
                          const char *session_id) {
-    static const char RUN_SQL[] =
-        "SELECT run_id,started_at,ended_at FROM cardio_guidance_runs "
-        "WHERE session_id=? ORDER BY ended_at DESC,run_id DESC LIMIT 1;";
+    static const char RUN_SQL[] = "SELECT run_id,started_at,ended_at FROM cardio_guidance_runs "
+                                  "WHERE session_id=? ORDER BY ended_at DESC,run_id DESC LIMIT 1;";
     static const char PHASE_SQL[] =
         "SELECT phase_id,entry_id,position,kind,target_min_bpm,target_max_bpm,"
         "calibration_id,calibration_observed_peak_bpm,minimum_percent,maximum_percent,"
@@ -342,21 +346,19 @@ static bool add_guidance(TrainlogDatabase *database,
                                    guidance,
                                    "started_at",
                                    (const char *)sqlite3_column_text(run_statement, 1)) ||
-        !yyjson_mut_obj_add_strcpy(document,
-                                   guidance,
-                                   "ended_at",
-                                   (const char *)sqlite3_column_text(run_statement, 2))) {
+        !yyjson_mut_obj_add_strcpy(
+            document, guidance, "ended_at", (const char *)sqlite3_column_text(run_statement, 2))) {
         (void)sqlite3_finalize(run_statement);
         return false;
     }
     {
         char stable_run_id[64];
         if (snprintf(stable_run_id, sizeof(stable_run_id), "%s", run_id) < 0 ||
-            strlen(run_id) >= sizeof(stable_run_id) ||
-            sqlite3_step(run_statement) != SQLITE_DONE ||
+            strlen(run_id) >= sizeof(stable_run_id) || sqlite3_step(run_statement) != SQLITE_DONE ||
             sqlite3_finalize(run_statement) != SQLITE_OK ||
             !prepare(database, PHASE_SQL, &phase_statement) ||
-            sqlite3_bind_text(phase_statement, 1, stable_run_id, -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+            sqlite3_bind_text(phase_statement, 1, stable_run_id, -1, SQLITE_TRANSIENT) !=
+                SQLITE_OK) {
             if (phase_statement != NULL) {
                 (void)sqlite3_finalize(phase_statement);
             }
@@ -374,9 +376,8 @@ static bool add_guidance(TrainlogDatabase *database,
             size_t event_count = 0U;
             int event_step;
 
-            if (++phase_count > GUIDANCE_PHASE_MAX || phase == NULL ||
-                exit_condition == NULL || instruction_events == NULL ||
-                strlen(phase_id) >= sizeof(stable_phase_id) ||
+            if (++phase_count > GUIDANCE_PHASE_MAX || phase == NULL || exit_condition == NULL ||
+                instruction_events == NULL || strlen(phase_id) >= sizeof(stable_phase_id) ||
                 snprintf(stable_phase_id, sizeof(stable_phase_id), "%s", phase_id) < 0 ||
                 !yyjson_mut_obj_add_strcpy(document, phase, "phase_id", phase_id) ||
                 !yyjson_mut_obj_add_strcpy(document,
@@ -401,10 +402,14 @@ static bool add_guidance(TrainlogDatabase *database,
             } else {
                 target = yyjson_mut_obj(document);
                 if (target == NULL ||
-                    !yyjson_mut_obj_add_sint(
-                        document, target, "minimum_bpm", sqlite3_column_int64(phase_statement, 4)) ||
-                    !yyjson_mut_obj_add_sint(
-                        document, target, "maximum_bpm", sqlite3_column_int64(phase_statement, 5)) ||
+                    !yyjson_mut_obj_add_sint(document,
+                                             target,
+                                             "minimum_bpm",
+                                             sqlite3_column_int64(phase_statement, 4)) ||
+                    !yyjson_mut_obj_add_sint(document,
+                                             target,
+                                             "maximum_bpm",
+                                             sqlite3_column_int64(phase_statement, 5)) ||
                     !add_nullable_column_string(
                         document, target, "calibration_id", phase_statement, 6) ||
                     !add_nullable_column_int(
@@ -419,27 +424,30 @@ static bool add_guidance(TrainlogDatabase *database,
                 }
             }
 
-            if (!yyjson_mut_obj_add_strcpy(document,
-                                           exit_condition,
-                                           "kind",
-                                           (const char *)sqlite3_column_text(phase_statement, 10)) ||
+            if (!yyjson_mut_obj_add_strcpy(
+                    document,
+                    exit_condition,
+                    "kind",
+                    (const char *)sqlite3_column_text(phase_statement, 10)) ||
                 !add_nullable_column_int(
                     document, exit_condition, "seconds", phase_statement, 11) ||
-                !add_nullable_column_int(
-                    document, exit_condition, "bpm", phase_statement, 12) ||
+                !add_nullable_column_int(document, exit_condition, "bpm", phase_statement, 12) ||
                 !yyjson_mut_obj_add_val(document, phase, "exit_condition", exit_condition) ||
-                !yyjson_mut_obj_add_strcpy(document,
-                                           phase,
-                                           "started_at",
-                                           (const char *)sqlite3_column_text(phase_statement, 13)) ||
-                !yyjson_mut_obj_add_strcpy(document,
-                                           phase,
-                                           "ended_at",
-                                           (const char *)sqlite3_column_text(phase_statement, 14)) ||
-                !yyjson_mut_obj_add_strcpy(document,
-                                           phase,
-                                           "final_instruction",
-                                           (const char *)sqlite3_column_text(phase_statement, 15)) ||
+                !yyjson_mut_obj_add_strcpy(
+                    document,
+                    phase,
+                    "started_at",
+                    (const char *)sqlite3_column_text(phase_statement, 13)) ||
+                !yyjson_mut_obj_add_strcpy(
+                    document,
+                    phase,
+                    "ended_at",
+                    (const char *)sqlite3_column_text(phase_statement, 14)) ||
+                !yyjson_mut_obj_add_strcpy(
+                    document,
+                    phase,
+                    "final_instruction",
+                    (const char *)sqlite3_column_text(phase_statement, 15)) ||
                 !prepare(database, EVENT_SQL, &event_statement) ||
                 sqlite3_bind_text(event_statement, 1, stable_run_id, -1, SQLITE_TRANSIENT) !=
                     SQLITE_OK ||
@@ -457,14 +465,16 @@ static bool add_guidance(TrainlogDatabase *database,
                 if (++event_count > GUIDANCE_EVENT_MAX || event == NULL ||
                     !yyjson_mut_obj_add_sint(
                         document, event, "sequence", sqlite3_column_int64(event_statement, 0)) ||
-                    !yyjson_mut_obj_add_strcpy(document,
-                                               event,
-                                               "observed_at",
-                                               (const char *)sqlite3_column_text(event_statement, 1)) ||
-                    !yyjson_mut_obj_add_strcpy(document,
-                                               event,
-                                               "instruction",
-                                               (const char *)sqlite3_column_text(event_statement, 2)) ||
+                    !yyjson_mut_obj_add_strcpy(
+                        document,
+                        event,
+                        "observed_at",
+                        (const char *)sqlite3_column_text(event_statement, 1)) ||
+                    !yyjson_mut_obj_add_strcpy(
+                        document,
+                        event,
+                        "instruction",
+                        (const char *)sqlite3_column_text(event_statement, 2)) ||
                     !add_nullable_column_int(document, event, "bpm", event_statement, 3) ||
                     !add_nullable_column_int(
                         document, event, "target_minimum_bpm", event_statement, 4) ||
@@ -643,18 +653,13 @@ TrainlogStatus trainlog_web_heart_rate_timeline_json(TrainlogDatabase *database,
         }
         context_kind = kind;
         capture = yyjson_mut_obj(document);
-        if (capture == NULL ||
-            !yyjson_mut_obj_add_bool(document, root, "available", true) ||
+        if (capture == NULL || !yyjson_mut_obj_add_bool(document, root, "available", true) ||
             !yyjson_mut_obj_add_strcpy(document, capture, "capture_id", capture_id) ||
             !yyjson_mut_obj_add_strcpy(document, capture, "context_kind", context_kind) ||
-            !yyjson_mut_obj_add_strcpy(document,
-                                       capture,
-                                       "started_at",
-                                       (const char *)sqlite3_column_text(statement, 2)) ||
-            !yyjson_mut_obj_add_strcpy(document,
-                                       capture,
-                                       "ended_at",
-                                       (const char *)sqlite3_column_text(statement, 3)) ||
+            !yyjson_mut_obj_add_strcpy(
+                document, capture, "started_at", (const char *)sqlite3_column_text(statement, 2)) ||
+            !yyjson_mut_obj_add_strcpy(
+                document, capture, "ended_at", (const char *)sqlite3_column_text(statement, 3)) ||
             !add_nullable_column_string(document, capture, "sensor_name", statement, 4) ||
             sqlite3_step(statement) != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK ||
             !add_samples(database, document, capture, capture_id) ||

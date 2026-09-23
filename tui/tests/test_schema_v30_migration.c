@@ -10,7 +10,7 @@
 #define CHECK(value)                                                                               \
     do {                                                                                           \
         if (!(value)) {                                                                            \
-            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                      \
+            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                       \
             goto cleanup;                                                                          \
         }                                                                                          \
     } while (0)
@@ -46,13 +46,15 @@ int main(void) {
                        "DROP TABLE heart_rate_samples;"
                        "DROP TABLE heart_rate_captures;"
                        "PRAGMA user_version=29;",
-                       NULL, NULL, NULL) == SQLITE_OK);
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(production, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 34);
+    CHECK(version == 35);
     trainlog_database_close(production);
     production = NULL;
 
@@ -64,13 +66,20 @@ int main(void) {
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN "
                  "('heart_rate_samples_time','heart_rate_captures_context')") == 2);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
-    CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_integrity_check WHERE integrity_check='ok'") == 1);
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_integrity_check WHERE integrity_check='ok'") ==
+          1);
     result = EXIT_SUCCESS;
 
 cleanup:
-    if (production != NULL) trainlog_database_close(production);
-    if (raw != NULL) (void)sqlite3_close(raw);
+    if (production != NULL) {
+        trainlog_database_close(production);
+    }
+    if (raw != NULL) {
+        (void)sqlite3_close(raw);
+    }
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v29 to v30 heart-rate migration");
+    if (result == EXIT_SUCCESS) {
+        puts("PASS schema v29 to v30 heart-rate migration");
+    }
     return result;
 }

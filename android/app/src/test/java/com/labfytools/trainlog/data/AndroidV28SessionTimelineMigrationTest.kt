@@ -78,7 +78,7 @@ class AndroidV28SessionTimelineMigrationTest {
                 null,
                 SQLiteDatabase.OPEN_READONLY,
             ).use { db ->
-                assertEquals(31, db.version)
+                assertEquals(32, db.version)
                 db.rawQuery(
                     "SELECT session_id,started_at,ended_at FROM session_timeline_sessions",
                     null,

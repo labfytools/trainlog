@@ -69,8 +69,16 @@ sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
 Bluetooth synchronization transport contract.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS
+CURRENT_OPERATIONAL_CURSOR=Sleep Tonight Readiness V2 software validation complete; private-device rollout remains a separate decision.
 ```
+
+The current development cursor is the validated Sleep Tonight readiness delta:
+V1 stays frozen/readable while active capable peers require `sleep-diary-v2`.
+The remaining operational work, if authorized separately, is a non-destructive
+private-device rollout and visual review; it must not be represented as a
+stable release or a medical/readiness claim. The Web’s relative HR rise/fall
+overlays are descriptive measured-series presentation only, never inferred
+sleep states or causes.
 
 The vc45 real-device smoke found that selecting Cardio after live capture had
 already started on the default Training draft left the durable capture tagged

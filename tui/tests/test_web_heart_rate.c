@@ -12,7 +12,13 @@
 #include "trainlog/web_heart_rate.h"
 #include "database_internal.h"
 
-#define CHECK(value) do { if (!(value)) {     fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);     goto cleanup; } } while (0)
+#define CHECK(value)                                                                               \
+    do {                                                                                           \
+        if (!(value)) {                                                                            \
+            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                       \
+            goto cleanup;                                                                          \
+        }                                                                                          \
+    } while (0)
 
 static const char *const SESSION_ID = "se_11111111-1111-4111-8111-111111111111";
 static const char *const ENTRY_ID = "sxe_22222222-2222-4222-8222-222222222222";
@@ -31,7 +37,8 @@ static bool execute_sql(sqlite3 *database, const char *sql) {
 
 static bool seed(sqlite3 *database) {
     const char *const statements[] = {
-        "INSERT INTO exercises(exercise_id,name,normalized_name,recording_mode,tracking_mode,data_fields)"
+        "INSERT INTO "
+        "exercises(exercise_id,name,normalized_name,recording_mode,tracking_mode,data_fields)"
         " VALUES('ex_33333333-3333-4333-8333-333333333333','Vélo guidé','velo guide',"
         "'continuous','duration',0);"
         "INSERT INTO sessions(session_id,started_at,ended_at,session_type,session_kind)"
@@ -44,13 +51,16 @@ static bool seed(sqlite3 *database) {
         "0,0,'none',0 FROM sessions s,exercises e WHERE "
         "s.session_id='se_11111111-1111-4111-8111-111111111111' AND "
         "e.exercise_id='ex_33333333-3333-4333-8333-333333333333';"
-        "INSERT INTO session_exercise_timeline(session_id,entry_id,exercise_id,started_at,ended_at,imported_at)"
+        "INSERT INTO "
+        "session_exercise_timeline(session_id,entry_id,exercise_id,started_at,ended_at,imported_at)"
         " VALUES('se_11111111-1111-4111-8111-111111111111',"
         "'sxe_22222222-2222-4222-8222-222222222222',"
         "'ex_33333333-3333-4333-8333-333333333333','2026-09-23T10:00:10+02:00',"
         "'2026-09-23T10:09:50+02:00','2026-09-23T10:11:00+02:00');",
 
-        "INSERT INTO heart_rate_captures(capture_id,context_kind,context_id,started_at,ended_at,sensor_name,imported_at)"
+        "INSERT INTO "
+        "heart_rate_captures(capture_id,context_kind,context_id,started_at,ended_at,sensor_name,"
+        "imported_at)"
         " VALUES('hrc_44444444-4444-4444-8444-444444444444','cardio',"
         "'se_11111111-1111-4111-8111-111111111111','2026-09-23T10:00:00+02:00',"
         "'2026-09-23T10:10:00+02:00','CYCPLUS H2','2026-09-23T10:11:00+02:00');"
@@ -69,7 +79,8 @@ static bool seed(sqlite3 *database) {
         "'se_11111111-1111-4111-8111-111111111111','sxe_22222222-2222-4222-8222-222222222222',"
         "'2026-09-23T10:00:00+02:00','2026-09-23T10:05:00+02:00','2026-09-23T10:10:00+02:00',"
         "'hrc_44444444-4444-4444-8444-444444444444',160,'2026-09-23T10:11:00+02:00');"
-        "INSERT INTO cardio_calibration_recovery(calibration_id,target_offset_seconds,observed_at,bpm)"
+        "INSERT INTO "
+        "cardio_calibration_recovery(calibration_id,target_offset_seconds,observed_at,bpm)"
         " VALUES('cal_77777777-7777-4777-8777-777777777777',60,'2026-09-23T10:06:00+02:00',140);",
 
         "INSERT INTO cardio_guidance_runs(run_id,session_id,started_at,ended_at,imported_at)"
@@ -77,12 +88,14 @@ static bool seed(sqlite3 *database) {
         "'se_11111111-1111-4111-8111-111111111111','2026-09-23T10:00:20+02:00',"
         "'2026-09-23T10:03:20+02:00','2026-09-23T10:11:00+02:00');"
         "INSERT INTO cardio_guidance_phases(run_id,phase_id,entry_id,position,kind,target_min_bpm,"
-        "target_max_bpm,calibration_id,calibration_observed_peak_bpm,minimum_percent,maximum_percent,"
+        "target_max_bpm,calibration_id,calibration_observed_peak_bpm,minimum_percent,maximum_"
+        "percent,"
         "exit_kind,exit_seconds,exit_bpm,started_at,ended_at,final_instruction)"
         " VALUES('cgr_55555555-5555-4555-8555-555555555555',"
         "'cgp_66666666-6666-4666-8666-666666666666','sxe_22222222-2222-4222-8222-222222222222',"
         "0,'work',120,140,'cal_77777777-7777-4777-8777-777777777777',160,75,88,"
-        "'fixed_duration',180,NULL,'2026-09-23T10:00:20+02:00','2026-09-23T10:03:20+02:00','maintain');",
+        "'fixed_duration',180,NULL,'2026-09-23T10:00:20+02:00','2026-09-23T10:03:20+02:00','"
+        "maintain');",
 
         "INSERT INTO cardio_guidance_events(run_id,phase_id,sequence,observed_at,instruction,bpm,"
         "target_min_bpm,target_max_bpm) VALUES"
@@ -91,8 +104,10 @@ static bool seed(sqlite3 *database) {
         "('cgr_55555555-5555-4555-8555-555555555555','cgp_66666666-6666-4666-8666-666666666666',"
         "1,'2026-09-23T10:00:40+02:00','maintain',130,120,140);",
 
-        "INSERT INTO sleep_diary_entries(entry_id,night_start_date,night_end_date,created_at,updated_at,"
-        "current_revision_id,deleted) VALUES('sl_88888888-8888-4888-8888-888888888888','2026-09-22',"
+        "INSERT INTO "
+        "sleep_diary_entries(entry_id,night_start_date,night_end_date,created_at,updated_at,"
+        "current_revision_id,deleted) "
+        "VALUES('sl_88888888-8888-4888-8888-888888888888','2026-09-22',"
         "'2026-09-23','2026-09-22T22:00:00+02:00','2026-09-23T06:30:00+02:00',"
         "'slr_99999999-9999-4999-8999-999999999999',0);"
         "INSERT INTO sleep_diary_revisions(revision_id,entry_id,parent_revision_id,created_at,"
@@ -103,22 +118,25 @@ static bool seed(sqlite3 *database) {
         "INSERT INTO sleep_diary_events(revision_id,event_id,event_type,start_at,end_at) VALUES"
         "('slr_99999999-9999-4999-8999-999999999999','sle_1','bed_time',"
         "'2026-09-22T22:30:00+02:00',NULL),"
-        "('slr_99999999-9999-4999-8999-999999999999','sle_2','night_get_up',"
-        "'2026-09-23T02:10:00+02:00',NULL),"
+        "('slr_99999999-9999-4999-8999-999999999999','sle_2','sleep',"
+        "'2026-09-23T02:10:00+02:00','2026-09-23T03:20:00+02:00'),"
         "('slr_99999999-9999-4999-8999-999999999999','sle_3','final_get_up',"
         "'2026-09-23T06:20:00+02:00',NULL);"
         "INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,medication_name,"
-        "taken_at,dose_value,dose_unit,note,created_at) VALUES("
+        "taken_at,dose_value,dose_unit,quantity,note,created_at) VALUES("
         "'slr_99999999-9999-4999-8999-999999999999','mdi_1','med_1','Médicament test',"
-        "'2026-09-22T22:40:00+02:00',NULL,NULL,NULL,'2026-09-22T22:40:00+02:00');",
+        "'2026-09-22T22:40:00+02:00',NULL,NULL,2,NULL,'2026-09-22T22:40:00+02:00');",
 
-        "INSERT INTO heart_rate_captures(capture_id,context_kind,context_id,started_at,ended_at,sensor_name,imported_at)"
+        "INSERT INTO "
+        "heart_rate_captures(capture_id,context_kind,context_id,started_at,ended_at,sensor_name,"
+        "imported_at)"
         " VALUES('hrc_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','sleep',"
         "'sl_88888888-8888-4888-8888-888888888888','2026-09-22T22:30:00+02:00',"
         "'2026-09-23T06:20:00+02:00','CYCPLUS H2','2026-09-23T07:00:00+02:00');"
         "INSERT INTO heart_rate_samples(capture_id,sequence,observed_at,bpm,exercise_entry_id,"
         "sensor_contact_detected,energy_expended) VALUES("
-        "'hrc_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',0,'2026-09-23T02:10:00+02:00',75,NULL,NULL,NULL);",
+        "'hrc_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',0,'2026-09-23T02:10:00+02:00',75,NULL,NULL,"
+        "NULL);",
     };
     size_t index;
 
@@ -137,11 +155,9 @@ static yyjson_doc *timeline(TrainlogDatabase *database, const char *context_id) 
     if (json == NULL) {
         return NULL;
     }
-    if (trainlog_web_heart_rate_timeline_json(database,
-                                              context_id,
-                                              json,
-                                              TRAINLOG_WEB_HEART_RATE_JSON_CAPACITY,
-                                              &size) == TRAINLOG_STATUS_OK &&
+    if (trainlog_web_heart_rate_timeline_json(
+            database, context_id, json, TRAINLOG_WEB_HEART_RATE_JSON_CAPACITY, &size) ==
+            TRAINLOG_STATUS_OK &&
         size > 0U) {
         document = yyjson_read(json, size, 0);
     }
@@ -188,7 +204,8 @@ int main(void) {
     CHECK(yyjson_arr_size(yyjson_obj_get(phase, "events")) == 2U);
     calibration = yyjson_obj_get(root, "calibration");
     CHECK(yyjson_is_obj(calibration));
-    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(calibration, "calibration_id")), CALIBRATION_ID) == 0);
+    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(calibration, "calibration_id")), CALIBRATION_ID) ==
+          0);
     CHECK(yyjson_get_int(yyjson_obj_get(calibration, "observed_peak_bpm")) == 160);
     CHECK(yyjson_arr_size(yyjson_obj_get(calibration, "recovery")) == 1U);
     yyjson_doc_free(document);
@@ -203,6 +220,17 @@ int main(void) {
     CHECK(yyjson_get_int(yyjson_obj_get(capture, "sample_count")) == 1);
     events = yyjson_obj_get(root, "events");
     CHECK(yyjson_arr_size(events) == 4U);
+    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(events, 0U), "at")),
+                 "2026-09-22T22:30:00+02:00") == 0);
+    CHECK(yyjson_is_null(yyjson_obj_get(yyjson_arr_get(events, 0U), "end_at")));
+    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(events, 1U), "at")),
+                 "2026-09-23T02:10:00+02:00") == 0);
+    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(events, 1U), "end_at")),
+                 "2026-09-23T03:20:00+02:00") == 0);
+    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(events, 3U), "at")),
+                 "2026-09-22T22:40:00+02:00") == 0);
+    CHECK(strcmp(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(events, 3U), "label")),
+                 "Médicament test ×2") == 0);
     CHECK(yyjson_is_null(yyjson_obj_get(root, "guidance")));
     CHECK(yyjson_is_null(yyjson_obj_get(root, "calibration")));
     yyjson_doc_free(document);
@@ -219,16 +247,23 @@ int main(void) {
     {
         char buffer[64];
         size_t size = 123U;
-        CHECK(trainlog_web_heart_rate_timeline_json(
-                  database, "bad", buffer, sizeof(buffer), &size) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+        CHECK(
+            trainlog_web_heart_rate_timeline_json(database, "bad", buffer, sizeof(buffer), &size) ==
+            TRAINLOG_STATUS_INVALID_ARGUMENT);
     }
 
     result = EXIT_SUCCESS;
 
 cleanup:
-    if (document != NULL) yyjson_doc_free(document);
-    if (database != NULL) trainlog_database_close(database);
+    if (document != NULL) {
+        yyjson_doc_free(document);
+    }
+    if (database != NULL) {
+        trainlog_database_close(database);
+    }
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS factual Web heart-rate timeline");
+    if (result == EXIT_SUCCESS) {
+        puts("PASS factual Web heart-rate timeline");
+    }
     return result;
 }

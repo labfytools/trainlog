@@ -24,6 +24,7 @@ export interface MedicationIntake {
   taken_at: string;
   dose_value: number | null;
   dose_unit: string | null;
+  quantity: number;
   note: string;
   created_at: string;
 }
@@ -157,6 +158,9 @@ function validEntry(value: unknown): value is SleepEntry {
         typeof intake.taken_at === "string" &&
         (intake.dose_value === null || typeof intake.dose_value === "number") &&
         (intake.dose_unit === null || typeof intake.dose_unit === "string") &&
+        Number.isInteger(intake.quantity) &&
+        Number(intake.quantity) >= 1 &&
+        Number(intake.quantity) <= 99 &&
         typeof intake.note === "string" &&
         typeof intake.created_at === "string",
     )

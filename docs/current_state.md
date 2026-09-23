@@ -112,8 +112,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v34; synchronized guided-cardio runs, phase snapshots and instruction changes are additive in v34 |
-| Android SQLite | schema v31; Android owns durable guided-cardio runs/phases/events in addition to calibration and HR capture |
+| Desktop SQLite | schema v35; v35 additively gives every Sleep medication intake a structured `quantity` (1..99), defaulting historical rows to 1 |
+| Android SQLite | schema v32; v32 additively gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
@@ -134,7 +134,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
-| Sleep Diary V1 | `SLEEP_DIARY_V1=PASS`: timestamped causal capture, Android/Web editing, full-generation synchronization, exact 18:00-to-18:00 agenda projection, medication snapshots, and localized FR/EN vector PDF export |
+| Sleep Diary V1/V2 | `SLEEP_DIARY_V1=PASS` remains frozen and readable. The active Sleep exchange requires `sleep-diary-v2` / `sleep-diary-v2.json`: structured per-intake quantity and quick-publishable current revisions supplement the existing causal diary model without changing V1. |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |
@@ -151,14 +151,15 @@ parallel implementation of its rules.
 | Cardio BLE diagnostics | `TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1=PASS`: real CYCPLUS H2 validated on Android; `0x180D` + `0x2A37`, Battery Service, approximately 1 Hz notifications and one raw RR interval per observed notification; contact and energy fields absent in the observed payloads |
 | Cardio persistent acquisition | `TRAINLOG_CARDIO_PERSISTENT_ACQUISITION_V1=PASS`: selected sensor persists, dedicated connected-device foreground service reconnects, stale BPM is cleared, and the global Android `♥ BPM` indicator is grey/orange/green by connection state; real CYCPLUS restart and Bluetooth-off/on recovery validated on private vc40 |
 | Training timeline | `TRAINLOG_CARDIO_TRAINING_TIMELINE_V1=PASS`: real session bounds reuse canonical lifecycle timestamps; exercise start/end are explicit user actions; live BPM samples snapshot the active stable `entry_id`; session finalization refuses an unclosed exercise; timeline sync is Android→desktop idempotent |
-| Sleep Android one-tap | `TRAINLOG_SLEEP_ANDROID_ONE_TAP_V1=PASS`: existing Sleep Diary V1 has one-tap Couché / medication / Réveil / Levé, guarded 10 s undo, full correction route and sleep-entry-owned cardio capture; the private vc46 Sommeil screen rendered correctly and was inspected without creating a night or capture |
+| Sleep Android one-tap | `TRAINLOG_SLEEP_ANDROID_ONE_TAP_V1=PASS`: existing one-tap Couché / medication / Réveil / Levé, guarded 10 s undo, correction route, and sleep-entry-owned cardio capture remain intact. The validated V2 development delta additionally creates/reuses one 18:00-to-18:00 pending entry for pre-bed medication, reuses its stable `entry_id` at Couché, and exposes a compact quantity control. |
 | Cardio session type | `TRAINLOG_CARDIO_SESSION_TYPE_V1=PASS`: Android v29 + desktop v32 use canonical `session_kind=cardio`; frozen mobile/history and draft formats keep legacy training/max_test; dedicated `trainlog-cardio-sessions` V1 syncs completed cardio sessions Android→desktop idempotently |
 | Cardio calibration | `TRAINLOG_CARDIO_CALIBRATION_V1=PASS`: reserved system Calibration cardio exercise, real measured observed peak, ≥3 min recovery with bounded +1/+2/+3 min factual samples, immutable profile and Android→desktop calibration companion |
 | Cardio BPM guidance | `TRAINLOG_CARDIO_BPM_GUIDANCE_V1=PASS`: absolute/calibration-derived immutable BPM targets, 2 BPM hysteresis, 3 s confirmation, stale-signal suspension, durable phase/condition history, Android live guidance UI and strict Android→desktop `trainlog-cardio-guidance` V1 sync |
 | Cardio Web visualization | `TRAINLOG_CARDIO_WEB_VISUALIZATION_V1=PASS`: one bounded factual heart-rate timeline read model/HTTP endpoint powers Web History and Sleep with raw BPM/RR, real session/exercise/Sleep markers, guided targets/instructions and calibration facts; no sleep-stage or medical inference |
+| Sleep tonight readiness delta | Software validated: Meson 111/111, import checks 6/6, Android `testDebugUnitTest` plus `assembleDebug`, and Web 191/191 plus typecheck/build. It adds no device rollout evidence and authorizes no stable release. |
 | 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=SOFTWARE_PASS / DEVICE_VISUAL_PASS`: native 111/111; Android 304 tests (299 pass + 5 historical skips) and debug APK build; Web 183/183 + typecheck/build baseline. Private vc46 preserves the live HR capture and samples across Training → Cardio, drives measured guidance, and renders Sommeil and Calibration cardio without mutation. No stable release is authorized by this status. |
 | Tomorrow session readiness | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: the private vc46 is clean on schema v31 with fresh CYCPLUS BPM and the next Program session is unambiguous; one combined regression proves two ordered occurrences loaded from the synchronized Program, Program provenance, factual timeline/HR ownership, finalization, full generation, desktop import, replay and correlated ACK |
-| Current operational cursor | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: tomorrow's recording path is ready; any stable 0.1.5 tag or release remains a separate explicit decision |
+| Current operational cursor | Sleep Tonight Readiness V2 is software-validated; private-device rollout and visual review remain separate authorization, and no stable 0.1.5 tag or release is authorized. |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
@@ -170,6 +171,14 @@ parallel implementation of its rules.
 
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
+
+The active Sleep V2 delta keeps the Web agenda period-owned: every returned
+night has one row on the shared 18:00-to-18:00 geometry, selecting a row is
+presentation-only, and the selected stable Sleep entry drives the full-width
+heart-rate detail. Its rise/fall overlays are descriptive relative measured
+variation only (five-minute trailing reference excluding the current 60-second
+window; threshold `max(10 BPM, 15%)`; gaps over three seconds excluded). They
+are not sleep events, sleep stages, causes, readiness, or medical inference.
 
 Language is device-local presentation state. Android keeps it in dedicated
 SharedPreferences; desktop keeps it in the XDG configuration file

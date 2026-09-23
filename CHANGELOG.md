@@ -2,6 +2,31 @@
 
 ## Unreleased — 0.1.5
 
+- Completed the software-validated Sleep Tonight readiness delta without a
+  device-rollout or stable-release claim. Pre-bed medication now creates or
+  reuses one durable pending 18:00-to-18:00 Sleep entry; Couché appends bedtime
+  to that same stable identity, while Réveil/Levé remain unavailable before
+  bedtime. Pending quick facts are publishable through a distinct marker and
+  are not day validation.
+- Added structured per-intake medication quantity (`1..99`) in Android schema
+  v32 and desktop schema v35. The active `trainlog-sleep-diary` V2 companion
+  (`sleep-diary-v2.json`) carries quantity; frozen V1 remains readable and
+  interprets missing quantity as one. Per-unit dose/unit remain separate from
+  quantity, which is rendered in Android, Web and PDF as appropriate (for
+  example `75 mg ×2`).
+- Kept sleep HR capture factual and sample-driven: pre-bed medication alone
+  creates no capture; the first real post-Couché sample opens/reuses the
+  entry-owned capture at bedtime; Réveil does not split it; and Levé closes it
+  exactly at final get-up. A no-sensor night fabricates neither capture nor
+  sample.
+- Updated the Web Sleep agenda to render every returned night in the selected
+  period on one shared 18:00-to-18:00 axis. Row selection is navigation only
+  and shows the selected entry’s full-width HR detail. Relative measured HR
+  rises/falls use a trailing five-minute reference excluding the current
+  60-second window, thresholds of `max(10 BPM, 15%)`, and ignore gaps over
+  three seconds; labels remain descriptive and make no sleep-stage, medical,
+  or causal inference.
+
 - Added the Cardio V1 persistence/synchronization foundation. Android schema
   v27 owns durable timestamped heart-rate captures, samples and raw RR values;
   desktop schema v30 imports the optional `trainlog-heart-rate` V1 companion

@@ -45,7 +45,7 @@ class AndroidV27HeartRateMigrationTest {
                 context.getDatabasePath(name).path,
                 null,
                 SQLiteDatabase.OPEN_READONLY,
-            ).use { assertEquals(31, it.version) }
+            ).use { assertEquals(32, it.version) }
         } finally {
             repository.close()
             context.deleteDatabase(name)

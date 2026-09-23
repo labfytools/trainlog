@@ -395,8 +395,8 @@ def main() -> None:
     args = parser.parse_args()
     root = load(args.input)
     with connect_database(args.database) as db:
-        if db.execute("PRAGMA user_version").fetchone()[0] != 34:
-            fail("desktop schema v34 required")
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (34, 35):
+            fail("desktop schema v34-v35 required")
         db.execute("BEGIN IMMEDIATE")
         apply(db, root)
         db.commit()

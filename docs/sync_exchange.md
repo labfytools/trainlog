@@ -3,29 +3,37 @@
 ## Sleep Diary companion
 
 `trainlog-sleep-diary` version 1 is finalized in stable v0.1.4 with both the
-medication catalog and the entry-owned intake snapshots.
+medication catalog and the entry-owned intake snapshots. It remains frozen and
+readable historical input. The active Sleep exchange requires the separate
+`sleep-diary-v2` capability and `sleep-diary-v2.json` with
+`format=trainlog-sleep-diary`, `version=2`.
 The artifact preserves catalog and diary causal parents, rejects concurrent
 siblings and resurrection, and treats an exact revision replay as idempotent.
 This completion happened before publication or freezing of the companion;
 `TRAINLOG_FORMAT_V1` remains unchanged and frozen.
 
-Every field edit commits locally as a new immutable diary revision but does
-not itself enter a generation. Explicit day validation marks only the guarded
-current tip publishable and starts no transport. Generation capture exports
-validated current tips, records each exact generation/revision relation, and
-only a correlated consumed ACK advances the acknowledged marker. A correction
-after ACK therefore remains local and appears as modified until it is
-revalidated and acknowledged by a later generation. Imported tips are already
-validated and acknowledged because their containing generation was durably
-consumed. Draft and synchronized state are not inferred from wall-clock time.
+Every field edit commits locally as a new immutable diary revision. Explicit
+day validation marks only the guarded current tip publishable and starts no
+transport. V2 also permits the current revision of a quick-captured pending
+night to be marked quick-publishable: this is a distinct exact-revision marker,
+not day validation, and it does not validate an incomplete night. Generation
+capture exports either eligible current tip, records each exact
+generation/revision relation, and only a correlated consumed ACK advances the
+acknowledged marker. A correction after ACK therefore remains local and
+appears as modified until it is revalidated or quick-published again and
+acknowledged by a later generation. Imported tips are already validated and
+acknowledged because their containing generation was durably consumed. Draft
+and synchronized state are not inferred from wall-clock time.
 
-`trainlog-sleep-diary`, version 1, is emitted by full generations in stable
-v0.1.4. It is optional when consuming an older generation so a pre-domain
-artifact remains replayable. It carries bounded complete entry snapshots with
+`trainlog-sleep-diary`, version 2, is the active full-generation companion.
+It carries bounded complete entry snapshots with
 stable identities, the current immutable revision and causal parent,
-offset-bearing timestamps, appreciations, notes and logical deletion. Exact
-revision replay is unchanged; sibling revisions and resurrection after deletion
-are rejected in the generation consumption transaction.
+offset-bearing timestamps, appreciations, notes, logical deletion, and an
+integer `quantity` in `1..99` on every medication intake. `dose_value` and
+`dose_unit` remain the per-unit snapshot; quantity is never encoded in notes.
+V1 input omits `quantity` and is normalized to one unit. Exact revision replay
+is unchanged; sibling revisions and resurrection after deletion are rejected
+in the generation consumption transaction.
 
 This does not change `TRAINLOG_FORMAT_V1`, manifests, ACKs or causal
 ownership.

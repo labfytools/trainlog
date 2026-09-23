@@ -7,7 +7,13 @@
 
 #include "trainlog/database.h"
 
-#define CHECK(value) do { if (!(value)) {     fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);     goto cleanup; } } while (0)
+#define CHECK(value)                                                                               \
+    do {                                                                                           \
+        if (!(value)) {                                                                            \
+            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                       \
+            goto cleanup;                                                                          \
+        }                                                                                          \
+    } while (0)
 
 static int scalar(sqlite3 *database, const char *sql) {
     sqlite3_stmt *statement = NULL;
@@ -38,13 +44,15 @@ int main(void) {
                        "DROP TABLE cardio_calibration_recovery;"
                        "DROP TABLE cardio_calibrations;"
                        "PRAGMA user_version=32;",
-                       NULL, NULL, NULL) == SQLITE_OK);
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(production, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 34);
+    CHECK(version == 35);
     trainlog_database_close(production);
     production = NULL;
 
@@ -59,9 +67,15 @@ int main(void) {
     result = EXIT_SUCCESS;
 
 cleanup:
-    if (production != NULL) trainlog_database_close(production);
-    if (raw != NULL) (void)sqlite3_close(raw);
+    if (production != NULL) {
+        trainlog_database_close(production);
+    }
+    if (raw != NULL) {
+        (void)sqlite3_close(raw);
+    }
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v32 to v33 cardio calibration migration");
+    if (result == EXIT_SUCCESS) {
+        puts("PASS schema v32 to v33 cardio calibration migration");
+    }
     return result;
 }

@@ -177,6 +177,7 @@ add_entry(yyjson_mut_doc *document, yyjson_mut_val *items, const TrainlogSleepDi
             !(intake->has_dose
                   ? yyjson_mut_obj_add_strcpy(document, item, "dose_unit", intake->dose_unit)
                   : yyjson_mut_obj_add_null(document, item, "dose_unit")) ||
+            !yyjson_mut_obj_add_uint(document, item, "quantity", intake->quantity) ||
             !yyjson_mut_obj_add_strcpy(document, item, "note", intake->note) ||
             !yyjson_mut_obj_add_strcpy(document, item, "created_at", intake->created_at) ||
             !yyjson_mut_arr_add_val(intakes, item)) {
@@ -430,6 +431,7 @@ static bool parse_entry(const char *body,
         yyjson_val *value = yyjson_arr_get(intakes, index);
         yyjson_val *dose_value = yyjson_obj_get(value, "dose_value");
         yyjson_val *dose_unit = yyjson_obj_get(value, "dose_unit");
+        yyjson_val *quantity = yyjson_obj_get(value, "quantity");
         TrainlogMedicationIntake *intake = &entry->intakes[index];
         valid =
             yyjson_is_obj(value) &&
@@ -448,12 +450,15 @@ static bool parse_entry(const char *body,
             copy_string(value, "note", intake->note, sizeof(intake->note), false) &&
             copy_string(
                 value, "created_at", intake->created_at, sizeof(intake->created_at), false) &&
+            yyjson_is_uint(quantity) && yyjson_get_uint(quantity) >= 1U &&
+            yyjson_get_uint(quantity) <= 99U &&
             ((yyjson_is_null(dose_value) && yyjson_is_null(dose_unit)) ||
              (yyjson_is_num(dose_value) && yyjson_get_num(dose_value) > 0.0 &&
               copy_string(
                   value, "dose_unit", intake->dose_unit, sizeof(intake->dose_unit), false)));
         intake->has_dose = yyjson_is_num(dose_value);
         intake->dose_value = intake->has_dose ? yyjson_get_num(dose_value) : 0.0;
+        intake->quantity = yyjson_is_uint(quantity) ? (unsigned int)yyjson_get_uint(quantity) : 0U;
         if (valid && intake->intake_id[0] == '\0') {
             valid = trainlog_id_generate("mdi", intake->intake_id, sizeof(intake->intake_id)) ==
                     TRAINLOG_STATUS_OK;

@@ -679,15 +679,19 @@ h2 {
   max-width: 100%;
 }
 .sleep-agenda {
+  --sleep-label-column: 12rem;
+  --sleep-track-column: minmax(28rem, 1fr);
+  --sleep-facts-column: 25rem;
+  --sleep-column-gap: 0.6rem;
   min-width: 1120px;
   display: grid;
   gap: 0.35rem;
 }
 .sleep-axis-row {
   display: grid;
-  grid-template-columns: 12rem minmax(28rem, 1fr) 25rem;
+  grid-template-columns: var(--sleep-label-column) var(--sleep-track-column) var(--sleep-facts-column);
   align-items: end;
-  gap: 0.6rem;
+  gap: var(--sleep-column-gap);
   padding: 0 0.45rem;
   min-height: 1.2rem;
   color: var(--subtext-0);
@@ -712,9 +716,9 @@ h2 {
 }
 .sleep-row {
   display: grid;
-  grid-template-columns: 12rem minmax(28rem, 1fr) 25rem;
+  grid-template-columns: var(--sleep-label-column) var(--sleep-track-column) var(--sleep-facts-column);
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--sleep-column-gap);
   min-height: 3rem;
   padding: 0.3rem 0.45rem;
   color: var(--text);
@@ -726,6 +730,10 @@ h2 {
 .sleep-row:hover,
 .sleep-row:focus-visible {
   border-color: var(--lavender);
+}
+.sleep-row-selected {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
 }
 .sleep-row strong {
   display: grid;
@@ -3003,6 +3011,20 @@ h2 {
 }
 .heart-rate-event-band {
   fill: rgb(180 190 254 / 6%);
+}
+.heart-rate-variation {
+  opacity: 0.2;
+  pointer-events: auto;
+}
+.heart-rate-variation-rise {
+  fill: var(--red);
+}
+.heart-rate-variation-fall {
+  fill: var(--peach);
+}
+.heart-rate-variation-legend {
+  color: var(--subtext-0);
+  font-size: 0.78rem;
 }
 .heart-rate-marker {
   stroke: var(--surface-2);

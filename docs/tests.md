@@ -1894,3 +1894,38 @@ The phone was locked during the final UI probe, so the visual smoke test of
 Sommeil, Calibration cardio and active guided-cardio presentation remains
 `DEVICE_VISUAL_PENDING`. No stable `v0.1.5` tag or release is authorized by
 this closeout.
+
+## Sleep tonight readiness V2 validation
+
+The validated development delta retains frozen Sleep Diary V1 input and tests
+the active V2 companion separately. Android migration coverage advances schema
+v31 to v32 and proves the additive `quantity` column defaults historical
+intakes to `1`, while the separate quick-publication state does not mark a day
+validated. Desktop migration coverage advances v34 to v35 with the same
+bounded `1..99` quantity contract.
+
+Focused Android repository/service coverage proves the full factual lifecycle:
+pre-bed medication creates one durable pending 18:00-to-18:00 entry; additional
+intakes reuse it; Couché adds `BED_TIME` to that same stable entry; and a
+quantity of two remains distinct from the per-unit dose. It also proves
+pre-bed medication opens no HR capture, the first real post-bedtime CYCPLUS
+sample opens/reuses one sleep capture at factual bedtime, Réveil leaves it
+open, Levé closes it at factual final get-up, and a later sample cannot append.
+The no-sensor path proves Couché through Levé creates neither capture nor
+sample.
+
+Generation/import coverage proves a pending entry can synchronize without a
+fabricated `BED_TIME`, the later bedtime revision advances the same identity,
+quantity round-trips exactly, V1 intake input reads as quantity one, and replay
+remains idempotent. The Web suite covers all period nights, row selection and
+the selected full-width Sleep HR detail, shared 18:00-axis geometry, quantity
+editing/presentation and PDF `×N` presentation. HR variation unit coverage
+includes stable, rise, fall, insufficient-baseline, short-capture, gap and
+boundary cases.
+
+The reported validation passes the complete Meson inventory **111/111**, both
+import-contract checks **6/6**, Android `testDebugUnitTest` and `assembleDebug`,
+and the complete Web inventory **191/191** with typecheck and production build.
+JSON validators, changed-file formatting, and `git diff --check` also pass.
+This is software evidence only: it records no device rollout and authorizes no
+stable release.

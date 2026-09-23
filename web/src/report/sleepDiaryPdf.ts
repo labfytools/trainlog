@@ -185,7 +185,7 @@ function row(
         `${intake.taken_at.slice(11, 16)} — ${intake.medication_name}${
           intake.dose_value === null
             ? ""
-            : ` — ${formatDose(intake.dose_value)} ${intake.dose_unit ?? ""}`
+            : ` — ${formatDose(intake.dose_value)} ${intake.dose_unit ?? ""}${intake.quantity > 1 ? ` ×${intake.quantity}` : ""}`
         }`,
     )
     .join(" ; ");

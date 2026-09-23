@@ -20,6 +20,47 @@ class SleepQuickCaptureTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
+    fun pendingMedicationSurvivesReopenAndBedTimeKeepsEntryIdentity() {
+        val name = "sleep-reopen-" + UUID.randomUUID()
+        var repository = TrainlogRepository(context, name)
+        try {
+            val medication =
+                repository.saveSleepMedication(
+                    SleepMedication(
+                        medicationId = "",
+                        revisionId = "",
+                        createdAt = "2026-09-23T20:00:00+02:00",
+                        updatedAt = "2026-09-23T20:00:00+02:00",
+                        name = "Test medication",
+                        defaultDoseValue = 5.0,
+                        defaultDoseUnit = "mg",
+                        form = "",
+                        note = "",
+                        active = true,
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            val pending =
+                repository.quickSleepMedication(
+                    medication.entryId,
+                    "2026-09-23T22:20:00+02:00",
+                    quantity = 2,
+                ) as TrainlogRepository.SleepQuickActionResult.Applied
+
+            repository.close()
+            repository = TrainlogRepository(context, name)
+
+            val bed =
+                repository.quickSleepBedTime("2026-09-23T22:30:00+02:00")
+                    as TrainlogRepository.SleepQuickActionResult.Applied
+            assertEquals(pending.receipt.entryId, bed.receipt.entryId)
+            assertEquals(2, repository.listSleepDiary().single().intakes.single().quantity)
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
     fun oneTapNightRecordsMedicationWakesAndSleepHeartRate() {
         val name = "sleep-quick-" + UUID.randomUUID()
         val repository = TrainlogRepository(context, name)
@@ -44,9 +85,26 @@ class SleepQuickCaptureTest {
                     it.medicationId == medicationCreated.entryId
                 }
 
+            val preBed = repository.quickSleepMedication(
+                medication.medicationId,
+                "2026-09-23T22:20:00+02:00",
+                quantity = 2,
+            ) as TrainlogRepository.SleepQuickActionResult.Applied
+            assertNull(repository.activeHeartRateCapture())
+            val pending = repository.listSleepDiary().single()
+            assertTrue(pending.events.none { it.type == SleepEventType.BED_TIME })
+            assertEquals(2, pending.intakes.single().quantity)
+            val preBedExport = JSONObject(repository.buildSleepDiaryV1Json())
+            val exportedPending = preBedExport.getJSONArray("entries").getJSONObject(0)
+            assertEquals(preBed.receipt.entryId, exportedPending.getString("entry_id"))
+            assertEquals(preBed.receipt.appliedRevisionId, exportedPending.getString("revision_id"))
+            assertEquals(0, exportedPending.getJSONArray("events").length())
+            assertEquals(1, exportedPending.getJSONArray("intakes").length())
+
             val bed =
                 repository.quickSleepBedTime("2026-09-23T22:30:00+02:00")
                     as TrainlogRepository.SleepQuickActionResult.Applied
+            assertEquals(preBed.receipt.entryId, bed.receipt.entryId)
             assertEquals("2026-09-23", repository.listSleepDiary().single().nightStartDate)
 
             val measurement =
@@ -86,14 +144,30 @@ class SleepQuickCaptureTest {
                 2,
                 beforeGetUp.events.count { it.type == SleepEventType.NIGHT_GET_UP },
             )
-            assertEquals(1, beforeGetUp.intakes.size)
-            assertEquals(5.0, checkNotNull(beforeGetUp.intakes.single().doseValue), 0.0)
+            assertEquals(2, beforeGetUp.intakes.size)
+            assertEquals(2, beforeGetUp.intakes.first().quantity)
+            assertEquals(5.0, checkNotNull(beforeGetUp.intakes.first().doseValue), 0.0)
+
+            assertTrue(
+                repository.recordLiveHeartRateForActiveSleep(
+                    "CYCPLUS H2",
+                    "2026-09-24T04:43:00+02:00",
+                    measurement.copy(bpm = 65),
+                ) is TrainlogRepository.HeartRateMutationResult.Applied,
+            )
 
             assertTrue(
                 repository.quickSleepFinalGetUp("2026-09-24T06:31:00+02:00")
                     is TrainlogRepository.SleepQuickActionResult.Applied,
             )
             assertNull(repository.activeHeartRateCapture())
+            assertNull(
+                repository.recordLiveHeartRateForActiveSleep(
+                    "CYCPLUS H2",
+                    "2026-09-24T06:32:00+02:00",
+                    measurement.copy(bpm = 70),
+                ),
+            )
             val finalEntry = repository.listSleepDiary().single()
             assertEquals(
                 1,
@@ -106,6 +180,9 @@ class SleepQuickCaptureTest {
             assertEquals("sleep", capture.getString("context_kind"))
             assertEquals(finalEntry.entryId, capture.getString("context_id"))
             assertEquals(62, capture.getJSONArray("samples").getJSONObject(0).getInt("bpm"))
+            assertEquals("2026-09-23T22:30:00+02:00", capture.getString("started_at"))
+            assertEquals("2026-09-24T06:31:00+02:00", capture.getString("ended_at"))
+            assertEquals(2, capture.getJSONArray("samples").length())
         } finally {
             repository.close()
             context.deleteDatabase(name)
@@ -142,6 +219,24 @@ class SleepQuickCaptureTest {
                 night.events
                     .filter { it.type == SleepEventType.NIGHT_GET_UP }
                     .map { it.startAt },
+            )
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun bedtimeAndFinalGetUpWithoutMeasurementFabricateNoCapture() {
+        val name = "sleep-no-sensor-" + UUID.randomUUID()
+        val repository = TrainlogRepository(context, name)
+        try {
+            repository.quickSleepBedTime("2026-09-23T22:30:00+02:00")
+            repository.quickSleepFinalGetUp("2026-09-24T06:31:00+02:00")
+            assertNull(repository.activeHeartRateCapture())
+            assertEquals(
+                0,
+                JSONObject(repository.buildHeartRateV1Json()).getJSONArray("captures").length(),
             )
         } finally {
             repository.close()

@@ -168,7 +168,7 @@ const medicationLabel = (medication: SleepMedication) =>
 const intakeLabel = (intake: MedicationIntake) =>
   intake.dose_value === null
     ? intake.medication_name
-    : `${intake.medication_name} — ${formatDose(intake.dose_value)} ${intake.dose_unit ?? ""}`.trim();
+    : `${intake.medication_name} — ${formatDose(intake.dose_value)} ${intake.dose_unit ?? ""}${intake.quantity > 1 ? ` ×${intake.quantity}` : ""}`.trim();
 const countAndDuration = (count: number, seconds: number) =>
   `${count} · ${formatDuration(seconds)}`;
 
@@ -287,6 +287,8 @@ export function SleepDiaryWorkspace({
   const [intakeTime, setIntakeTime] = useState("22:00");
   const [intakeDose, setIntakeDose] = useState("");
   const [intakeUnit, setIntakeUnit] = useState("mg");
+  const [intakeQuantity, setIntakeQuantity] = useState(1);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const identity = useRef<{ entry_id: string; revision_id: string } | null>(
     null,
   );
@@ -529,6 +531,7 @@ export function SleepDiaryWorkspace({
       taken_at: takenAt,
       dose_value: dose,
       dose_unit: dose === null ? null : intakeUnit,
+      quantity: intakeQuantity,
       note: "",
       created_at: sleepTimestamp(),
     };
@@ -659,7 +662,17 @@ export function SleepDiaryWorkspace({
     (entry) => entry.night_start_date === activeNight,
   );
   const activeFacts = activeEntry ? sleepEntryFacts(activeEntry) : null;
-  const agendaEntries = activeEntry ? [activeEntry] : [];
+  const agendaEntries = Array.from(
+    new Map(entries.map((entry) => [entry.entry_id, entry])).values(),
+  ).sort(
+    (left, right) =>
+      left.night_start_date.localeCompare(right.night_start_date) ||
+      left.entry_id.localeCompare(right.entry_id),
+  );
+  const selectedEntry =
+    agendaEntries.find((entry) => entry.entry_id === selectedEntryId) ??
+    activeEntry ??
+    agendaEntries[0];
   return (
     <div className="sleep-workspace" data-testid="sleep-workspace">
       <article className="analysis-panel analysis-wide">
@@ -729,10 +742,11 @@ export function SleepDiaryWorkspace({
                 return (
                   <button
                     type="button"
-                    className="sleep-row"
+                    className={`sleep-row${selectedEntry?.entry_id === entry.entry_id ? " sleep-row-selected" : ""}`}
                     data-testid={`sleep-agenda-row-${entry.entry_id}`}
                     key={entry.entry_id}
-                    onClick={() => edit(entry)}
+                    onClick={() => setSelectedEntryId(entry.entry_id)}
+                    onDoubleClick={() => edit(entry)}
                   >
                     <strong>
                       {t.night} {entry.night_start_date}
@@ -892,7 +906,11 @@ export function SleepDiaryWorkspace({
         )}
       </article>
 
-      {activeEntry && <HeartRateTimelinePanel contextId={activeEntry.entry_id} />}
+      {selectedEntry && (
+        <div className="analysis-wide">
+          <HeartRateTimelinePanel contextId={selectedEntry.entry_id} />
+        </div>
+      )}
 
       <article className="analysis-panel analysis-wide sleep-entry-card">
         <header className="sleep-entry-header">
@@ -1175,6 +1193,25 @@ export function SleepDiaryWorkspace({
                       />
                     </label>
                     <span>{item.intake.dose_unit ?? ""}</span>
+                    <label>
+                      {language === "fr" ? "Quantité" : "Quantity"}
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={item.intake.quantity}
+                        onChange={(event) =>
+                          change(
+                            "intakes",
+                            draft.intakes.map((value, position) =>
+                              position === item.index
+                                ? { ...value, quantity: Number(event.target.value) }
+                                : value,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
                     <button
                       className="quiet-action"
                       type="button"
@@ -1243,6 +1280,17 @@ export function SleepDiaryWorkspace({
                 data-testid="sleep-intake-unit"
                 value={intakeUnit}
                 onChange={(event) => setIntakeUnit(event.target.value)}
+              />
+            </label>
+            <label>
+              {language === "fr" ? "Quantité" : "Quantity"}
+              <input
+                data-testid="sleep-intake-quantity"
+                type="number"
+                min="1"
+                max="99"
+                value={intakeQuantity}
+                onChange={(event) => setIntakeQuantity(Number(event.target.value))}
               />
             </label>
             <button

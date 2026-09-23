@@ -90,6 +90,7 @@ const completeEntry = (index: number): SleepEntry => {
       taken_at: at("22:30"),
       dose_value: Number(dose),
       dose_unit: "mg",
+      quantity: name === "venlafaxine" && dose === 75 ? 2 : 1,
       note: "",
       created_at: at("18:00"),
     })),
@@ -203,6 +204,12 @@ describe("sleep diary PDF", () => {
     );
     expect(content).not.toContain("jour(s)");
     expect(content).not.toContain("nuit(s)");
+  });
+
+  it("prints structured medication quantity without replacing the unit dose", async () => {
+    const content = await textualContent(buildSleepDiaryPdf(snapshot(1), "fr"));
+    expect(content).toContain("venlafaxine — 75");
+    expect(content).toContain("mg ×2");
   });
 
   it("keeps the English document independently localized", async () => {

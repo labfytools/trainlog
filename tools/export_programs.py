@@ -16,7 +16,7 @@ def nullable(row, index):
 
 def export_programs(database: Path) -> dict:
     with closing(connect_database(database)) as db:
-        if db.execute("PRAGMA user_version").fetchone()[0] not in (26, 27, 28, 29, 30, 31, 32, 33, 34):
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (26, 27, 28, 29, 30, 31, 32, 33, 34, 35):
             raise ValueError("desktop schema v26 through v32 required")
         programs = []
         for row in db.execute(

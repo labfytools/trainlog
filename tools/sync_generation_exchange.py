@@ -81,7 +81,7 @@ ARTIFACTS = (
      "session-preparations-v2.json", False, "export_session_preparations.py", ()),
     ("programs-v1", "trainlog-programs", 1, "programs-v1.json", False,
      "export_programs.py", ()),
-    ("sleep-diary", "trainlog-sleep-diary", 1, "sleep-diary-v1.json", False,
+    ("sleep-diary", "trainlog-sleep-diary", 2, "sleep-diary-v2.json", False,
      "sleep_diary_exchange.py", ("export",)),
 )
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS} | {
@@ -219,9 +219,9 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34)
+    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        raise GenerationError("desktop schema v24 through v34 required")
+        raise GenerationError("desktop schema v24 through v35 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -508,7 +508,7 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                     )
                     if cursor.rowcount != 1:
                         raise GenerationError("program deletion changed during capture")
-            sleep_path = stage / "sleep-diary-v1.json"
+            sleep_path = stage / "sleep-diary-v2.json"
             if sleep_path.is_file():
                 captured_sleep = sleep_diary_exchange.load(sleep_path)
                 db.executemany(

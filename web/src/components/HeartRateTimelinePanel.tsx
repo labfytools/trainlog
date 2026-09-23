@@ -5,6 +5,7 @@ import {
   type HeartRateTimeline,
   type HeartRateTimelineEvent,
 } from '../api/heartRate'
+import { heartRateVariations } from './heartRateVariation'
 
 const WIDTH = 1000
 const HEIGHT = 280
@@ -108,7 +109,7 @@ export function HeartRateTimelinePanel({ contextId }: { contextId: string }) {
       rrCount += sample.rr_1024.length
     }
     const average = total / samples.length
-    return { minimum, maximum, average, rrCount, display: project(samples) }
+    return { minimum, maximum, average, rrCount, display: project(samples), variations: heartRateVariations(samples) }
   }, [timeline])
 
   if (failed) {
@@ -178,6 +179,18 @@ export function HeartRateTimelinePanel({ contextId }: { contextId: string }) {
           return <rect key={'interval-' + index} className="heart-rate-event-band"
             x={eventX} y={TOP} width={width} height={HEIGHT - TOP - BOTTOM} />
         })}
+        {calculated.variations.map((variation, index) => {
+          const variationX = x(variation.started_at)
+          const width = Math.max(2, x(variation.ended_at) - variationX)
+          const label = variation.direction === 'rise'
+            ? (french ? 'Hausse notable' : 'Notable rise')
+            : (french ? 'Baisse notable' : 'Notable fall')
+          return <rect key={'variation-' + index}
+            className={'heart-rate-variation heart-rate-variation-' + variation.direction}
+            x={variationX} y={TOP} width={width} height={HEIGHT - TOP - BOTTOM}>
+            <title>{label + ': ' + variation.observed_bpm.toFixed(1) + ' BPM / ' + variation.reference_bpm.toFixed(1) + ' BPM'}</title>
+          </rect>
+        })}
         <line className="chart-axis" x1={LEFT} y1={HEIGHT - BOTTOM}
           x2={WIDTH - RIGHT} y2={HEIGHT - BOTTOM} />
         <polyline className="heart-rate-line" points={points} fill="none" />
@@ -210,6 +223,11 @@ export function HeartRateTimelinePanel({ contextId }: { contextId: string }) {
             : 'Bounded chart projection preserves minima/maxima; statistics use every measurement.'}
         </figcaption>}
     </figure>
+    <p className="heart-rate-variation-legend">
+      {french
+        ? 'Rouge : hausse notable · pêche : baisse notable. Variations relatives mesurées, sans inférence sur le sommeil ni leur cause.'
+        : 'Red: notable rise · peach: notable fall. Relative measured variations, with no sleep-state or cause inference.'}
+    </p>
 
     {timeline.guidance && <div className="heart-rate-phases">
       <h4>{french ? 'Phases guidées' : 'Guided phases'}</h4>

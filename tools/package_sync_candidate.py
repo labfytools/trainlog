@@ -119,8 +119,8 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.5",
-        "desktop_schema": 34,
-        "android_schema": 31,
+        "desktop_schema": 35,
+        "android_schema": 32,
         "protocols": [
             "mobile-export-v3",
             "mobile-history-v4",
@@ -135,7 +135,7 @@ def main() -> int:
             "ai-session-drafts-v2",
             "programs-v1",
             "program-executions-v1",
-            "sleep-diary-v1",
+            "sleep-diary-v2",
             "cardio-sessions-v1",
             "cardio-calibrations-v1",
             "cardio-guidance-v1",

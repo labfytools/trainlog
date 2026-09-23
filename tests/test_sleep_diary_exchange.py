@@ -35,7 +35,7 @@ class SleepExchangeTest(unittest.TestCase):
           CREATE TABLE sleep_diary_events(revision_id TEXT,event_id TEXT,event_type TEXT,start_at TEXT,end_at TEXT,PRIMARY KEY(revision_id,event_id));
           CREATE TABLE sleep_medications(medication_id TEXT PRIMARY KEY,created_at TEXT,updated_at TEXT,current_revision_id TEXT,deleted INTEGER);
           CREATE TABLE sleep_medication_revisions(revision_id TEXT PRIMARY KEY,medication_id TEXT,parent_revision_id TEXT,created_at TEXT,name TEXT,default_dose_value REAL,default_dose_unit TEXT,form TEXT,note TEXT,active INTEGER);
-          CREATE TABLE sleep_medication_intakes(revision_id TEXT,intake_id TEXT,medication_id TEXT,medication_name TEXT,taken_at TEXT,dose_value REAL,dose_unit TEXT,note TEXT,created_at TEXT,PRIMARY KEY(revision_id,intake_id));
+          CREATE TABLE sleep_medication_intakes(revision_id TEXT,intake_id TEXT,medication_id TEXT,medication_name TEXT,taken_at TEXT,dose_value REAL,dose_unit TEXT,quantity INTEGER NOT NULL DEFAULT 1 CHECK(quantity BETWEEN 1 AND 99),note TEXT,created_at TEXT,PRIMARY KEY(revision_id,intake_id));
           CREATE TABLE sleep_diary_publication_state(entry_id TEXT PRIMARY KEY,validated_revision_id TEXT,validated_at TEXT,acknowledged_revision_id TEXT,acknowledged_at TEXT);
         """)
 
@@ -57,6 +57,60 @@ class SleepExchangeTest(unittest.TestCase):
             exchange.apply(self.db, self.document(entry("slr_50000000-0000-4000-8000-000000000005", second, False)))
         exported = exchange.build(self.db)
         self.assertTrue(exported["entries"][0]["deleted"])
+
+    def test_v1_hydrates_quantity_one_and_v2_preserves_quantity(self):
+        first = "slr_20000000-0000-4000-8000-000000000002"
+        legacy = self.document(entry(first))
+        self.assertEqual((1, 0), exchange.apply(self.db, legacy))
+        self.assertEqual(1, self.db.execute(
+            "SELECT quantity FROM sleep_medication_intakes"
+        ).fetchone()[0])
+
+        second = "slr_40000000-0000-4000-8000-000000000004"
+        evolved = self.document(entry(second, first))
+        evolved["version"] = 2
+        evolved["entries"][0]["intakes"][0]["quantity"] = 2
+        self.assertEqual((1, 0), exchange.apply(self.db, evolved))
+        self.assertEqual(2, self.db.execute(
+            "SELECT quantity FROM sleep_medication_intakes WHERE revision_id=?",
+            (second,),
+        ).fetchone()[0])
+
+        state_before_replay = {
+            "entry": self.db.execute(
+                "SELECT current_revision_id,deleted FROM sleep_diary_entries"
+            ).fetchall(),
+            "revisions": self.db.execute(
+                "SELECT revision_id,parent_revision_id FROM sleep_diary_revisions "
+                "ORDER BY revision_id"
+            ).fetchall(),
+            "intakes": self.db.execute(
+                "SELECT revision_id,intake_id,quantity FROM sleep_medication_intakes "
+                "ORDER BY revision_id,intake_id"
+            ).fetchall(),
+        }
+        self.assertEqual((0, 1), exchange.apply(self.db, evolved))
+        self.assertEqual(state_before_replay, {
+            "entry": self.db.execute(
+                "SELECT current_revision_id,deleted FROM sleep_diary_entries"
+            ).fetchall(),
+            "revisions": self.db.execute(
+                "SELECT revision_id,parent_revision_id FROM sleep_diary_revisions "
+                "ORDER BY revision_id"
+            ).fetchall(),
+            "intakes": self.db.execute(
+                "SELECT revision_id,intake_id,quantity FROM sleep_medication_intakes "
+                "ORDER BY revision_id,intake_id"
+            ).fetchall(),
+        })
+        self.assertEqual(2, self.db.execute(
+            "SELECT COUNT(*) FROM sleep_diary_revisions"
+        ).fetchone()[0])
+        self.assertEqual((1, 2), self.db.execute(
+            "SELECT COUNT(*),MIN(quantity) FROM sleep_medication_intakes "
+            "WHERE revision_id=?",
+            (second,),
+        ).fetchone())
 
     def test_stale_ancestor_snapshot_does_not_regress_newer_tip(self):
         first = "slr_20000000-0000-4000-8000-000000000002"

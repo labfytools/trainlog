@@ -70,7 +70,7 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     Kind("trainlog-causal-deletions", 1, "causal-deletions-v1.json"),
                 "program-executions" to
                     Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
-                "sleep-diary" to Kind("trainlog-sleep-diary", 1, "sleep-diary-v1.json", false),
+                "sleep-diary" to Kind("trainlog-sleep-diary", 2, "sleep-diary-v2.json", false),
                 "heart-rate" to Kind("trainlog-heart-rate", 1, "heart-rate-v1.json", false),
                 "cardio-calibrations" to
                     Kind("trainlog-cardio-calibrations", 1, "cardio-calibrations-v1.json", false),

@@ -74,6 +74,12 @@ private fun SleepNightCaptureScreen(
             entry.events.any { it.type == SleepEventType.BED_TIME } &&
                 entry.events.none { it.type == SleepEventType.FINAL_GET_UP }
         }
+    val pending =
+        entries.firstOrNull { entry ->
+            entry.events.none { it.type == SleepEventType.BED_TIME } &&
+                entry.events.none { it.type == SleepEventType.FINAL_GET_UP }
+        }
+    val visibleNight = active ?: pending
     val medications =
         remember(revision) {
             repository.listSleepMedications(includeInactive = false)
@@ -117,7 +123,7 @@ private fun SleepNightCaptureScreen(
             Text(stringResource(R.string.sleep_night_capture_title))
         }
         item {
-            active?.let { night ->
+            visibleNight?.let { night ->
                 Text(
                     stringResource(
                         R.string.sleep_night_in_progress,
@@ -144,22 +150,43 @@ private fun SleepNightCaptureScreen(
         if (medications.isNotEmpty()) {
             item { Text(stringResource(R.string.sleep_medications)) }
             items(medications, key = { it.medicationId }) { medication ->
-                Button(
-                    onClick = {
-                        apply(
-                            strings.getString(R.string.sleep_medication_recorded, medication.name),
-                            repository.quickSleepMedication(medication.medicationId),
-                        )
-                    },
-                    enabled = active != null,
+                var quantity by remember(medication.medicationId) { mutableStateOf(1) }
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    val dose =
-                        medication.defaultDoseValue?.let { doseValue ->
-                            " · " + doseValue.toString().trimEnd('0').trimEnd('.') +
-                                " " + medication.defaultDoseUnit.orEmpty()
-                        }.orEmpty()
-                    Text("💊 " + medication.name + dose)
+                    Button(onClick = { if (quantity > 1) quantity-- }) { Text("−") }
+                    Text("×$quantity", modifier = Modifier.padding(top = 12.dp))
+                    Button(onClick = { if (quantity < 99) quantity++ }) { Text("+") }
+                    Button(
+                        onClick = {
+                            val selectedQuantity = quantity
+                            val result =
+                                repository.quickSleepMedication(
+                                    medication.medicationId,
+                                    quantity = selectedQuantity,
+                                )
+                            apply(
+                                strings.getString(
+                                    R.string.sleep_medication_recorded,
+                                    medication.name +
+                                        if (selectedQuantity > 1) " ×$selectedQuantity" else "",
+                                ),
+                                result,
+                            )
+                            if (result is TrainlogRepository.SleepQuickActionResult.Applied) {
+                                quantity = 1
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        val dose =
+                            medication.defaultDoseValue?.let { doseValue ->
+                                " · " + doseValue.toString().trimEnd('0').trimEnd('.') +
+                                    " " + medication.defaultDoseUnit.orEmpty()
+                            }.orEmpty()
+                        Text("💊 " + medication.name + dose)
+                    }
                 }
             }
         }
@@ -223,7 +250,7 @@ private fun SleepNightCaptureScreen(
                 }
             }
         }
-        active?.let { night ->
+        visibleNight?.let { night ->
             item {
                 Card {
                     Column(
@@ -235,7 +262,11 @@ private fun SleepNightCaptureScreen(
                             Text(eventLabelPlain(event.type, strings) + " · " + shortTime(event.startAt))
                         }
                         night.intakes.sortedBy { it.takenAt }.forEach { intake ->
-                            Text("💊 " + intake.medicationName + " · " + shortTime(intake.takenAt))
+                            Text(
+                                "💊 " + intake.medicationName +
+                                    (if (intake.quantity > 1) " ×${intake.quantity}" else "") +
+                                    " · " + shortTime(intake.takenAt),
+                            )
                         }
                     }
                 }

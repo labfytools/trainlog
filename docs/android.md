@@ -1,6 +1,6 @@
 # Android application
 
-## Sleep Diary V1
+## Sleep Diary V1 and active V2 companion
 
 Android schema v26 additively mirrors the Sleep Diary revision/event model for
 local-first capture. The unreleased schema-v26 contract also includes the
@@ -17,6 +17,30 @@ closing the screen or killing the process does not require validation or sync.
 The screen resumes the most recent entry and distinguishes draft, ready,
 synchronized and modified tips. “Validate day” marks the current revision for
 the existing global synchronization action and never makes it immutable.
+
+Android schema v32 additively stores each immutable medication-intake
+`quantity` as an integer in `1..99`, with `1` backfilled for historical rows.
+It also adds a separate quick-publication marker for the exact current
+revision. Quick publication makes a current fact eligible for generation; it
+does not validate a day and does not change the existing validation/ACK
+lifecycle.
+
+The quick Sleep capture derives one night identity from the existing
+18:00-to-18:00 date rule. A medication action can create that pending entry
+before `BED_TIME`, later medication actions reuse it, and Couché appends
+`BED_TIME` to the same stable `entry_id`. Réveil and Levé remain unavailable
+until bedtime. The compact quantity control defaults to one and resets after a
+successful intake; the per-unit dose and unit remain independent structured
+facts. Pending entries persist through restart and can synchronize without
+inventing bedtime.
+
+Sleep-owned HR capture remains sample-driven. A pending medication alone opens
+no capture. After Couché, the first fresh real measurement creates or resumes
+one `context_kind=sleep` capture for that entry, with `started_at` equal to the
+factual bedtime and each measurement retaining its observed timestamp, BPM and
+raw RR values. Réveil neither stops nor splits it; Levé closes it at the exact
+final-get-up timestamp. No sensor measurement means no fabricated capture or
+sample.
 
 ## Background USB and private Drive synchronization
 

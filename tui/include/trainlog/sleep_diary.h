@@ -44,6 +44,7 @@ typedef struct TrainlogMedicationIntake {
     bool has_dose;
     double dose_value;
     char dose_unit[TRAINLOG_MEDICATION_UNIT_CAPACITY];
+    unsigned int quantity;
     char note[TRAINLOG_MEDICATION_NOTE_CAPACITY];
     char created_at[TRAINLOG_SLEEP_TIMESTAMP_CAPACITY];
 } TrainlogMedicationIntake;

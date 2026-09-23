@@ -8,7 +8,13 @@
 
 #include "trainlog/database.h"
 
-#define CHECK(value) do { if (!(value)) {     fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);     goto cleanup; } } while (0)
+#define CHECK(value)                                                                               \
+    do {                                                                                           \
+        if (!(value)) {                                                                            \
+            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                       \
+            goto cleanup;                                                                          \
+        }                                                                                          \
+    } while (0)
 
 static int scalar(sqlite3 *database, const char *sql) {
     sqlite3_stmt *statement = NULL;
@@ -38,13 +44,15 @@ int main(void) {
     CHECK(sqlite3_exec(raw,
                        "ALTER TABLE sessions DROP COLUMN session_kind;"
                        "PRAGMA user_version=31;",
-                       NULL, NULL, NULL) == SQLITE_OK);
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(production, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 34);
+    CHECK(version == 35);
     trainlog_database_close(production);
     production = NULL;
 
@@ -52,12 +60,15 @@ int main(void) {
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM pragma_table_info('sessions') "
                  "WHERE name='session_kind'") == 1);
-    CHECK(sqlite3_exec(raw,
-                       "INSERT INTO sessions(session_id,started_at,ended_at,session_type,session_kind)"
-                       "VALUES('se_11111111-1111-4111-8111-111111111111',"
-                       "'2026-09-23T09:00:00+02:00','2026-09-23T09:30:00+02:00',"
-                       "'training','cardio');",
-                       NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(
+              raw,
+              "INSERT INTO sessions(session_id,started_at,ended_at,session_type,session_kind)"
+              "VALUES('se_11111111-1111-4111-8111-111111111111',"
+              "'2026-09-23T09:00:00+02:00','2026-09-23T09:30:00+02:00',"
+              "'training','cardio');",
+              NULL,
+              NULL,
+              NULL) == SQLITE_OK);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sessions WHERE session_type='training' "
                  "AND session_kind='cardio'") == 1);
@@ -65,9 +76,15 @@ int main(void) {
     result = EXIT_SUCCESS;
 
 cleanup:
-    if (production != NULL) trainlog_database_close(production);
-    if (raw != NULL) (void)sqlite3_close(raw);
+    if (production != NULL) {
+        trainlog_database_close(production);
+    }
+    if (raw != NULL) {
+        (void)sqlite3_close(raw);
+    }
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v31 to v32 cardio session kind migration");
+    if (result == EXIT_SUCCESS) {
+        puts("PASS schema v31 to v32 cardio session kind migration");
+    }
     return result;
 }

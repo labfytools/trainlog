@@ -7,7 +7,13 @@
 
 #include "trainlog/database.h"
 
-#define CHECK(value) do { if (!(value)) {     fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);     goto cleanup; } } while (0)
+#define CHECK(value)                                                                               \
+    do {                                                                                           \
+        if (!(value)) {                                                                            \
+            fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value);                       \
+            goto cleanup;                                                                          \
+        }                                                                                          \
+    } while (0)
 
 static int scalar(sqlite3 *database, const char *sql) {
     sqlite3_stmt *statement = NULL;
@@ -34,18 +40,28 @@ int main(void) {
     production = NULL;
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(sqlite3_exec(raw,
-                       "DROP TABLE cardio_guidance_events;"
-                       "DROP TABLE cardio_guidance_phases;"
-                       "DROP TABLE cardio_guidance_runs;"
-                       "PRAGMA user_version=33;",
-                       NULL, NULL, NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(
+              raw,
+              "PRAGMA foreign_keys=OFF;"
+              "CREATE TABLE sleep_medication_intakes_v34("
+              "revision_id TEXT NOT NULL,intake_id TEXT NOT NULL,medication_id TEXT NOT NULL,"
+              "medication_name TEXT NOT NULL,taken_at TEXT NOT NULL,dose_value REAL,dose_unit TEXT,"
+              "note TEXT,created_at TEXT NOT NULL,PRIMARY KEY(revision_id,intake_id));"
+              "DROP TABLE sleep_medication_intakes;"
+              "ALTER TABLE sleep_medication_intakes_v34 RENAME TO sleep_medication_intakes;"
+              "DROP TABLE cardio_guidance_events;"
+              "DROP TABLE cardio_guidance_phases;"
+              "DROP TABLE cardio_guidance_runs;"
+              "PRAGMA user_version=33;",
+              NULL,
+              NULL,
+              NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
     CHECK(trainlog_database_open(path, &production) == TRAINLOG_STATUS_OK);
     CHECK(trainlog_database_schema_version(production, &version) == TRAINLOG_STATUS_OK);
-    CHECK(version == 34);
+    CHECK(version == 35);
     trainlog_database_close(production);
     production = NULL;
 
@@ -57,13 +73,22 @@ int main(void) {
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
                  "AND name IN('cardio_guidance_session','cardio_guidance_event_time')") == 2);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM cardio_guidance_runs") == 0);
+    CHECK(scalar(raw,
+                 "SELECT COUNT(*) FROM pragma_table_info('sleep_medication_intakes') "
+                 "WHERE name='quantity' AND \"notnull\"=1 AND dflt_value='1'") == 1);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
     result = EXIT_SUCCESS;
 
 cleanup:
-    if (production != NULL) trainlog_database_close(production);
-    if (raw != NULL) (void)sqlite3_close(raw);
+    if (production != NULL) {
+        trainlog_database_close(production);
+    }
+    if (raw != NULL) {
+        (void)sqlite3_close(raw);
+    }
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v33 to v34 cardio guidance migration");
+    if (result == EXIT_SUCCESS) {
+        puts("PASS schema v33 through v35 cardio guidance and medication quantity migration");
+    }
     return result;
 }

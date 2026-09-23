@@ -135,6 +135,7 @@ int main(void) {
                    medication.created_at);
     entry.intakes[0].has_dose = true;
     entry.intakes[0].dose_value = 5.0;
+    entry.intakes[0].quantity = 1U;
     (void)snprintf(entry.intakes[0].dose_unit, sizeof(entry.intakes[0].dose_unit), "mg");
     entry.intakes[1] = entry.intakes[0];
     (void)trainlog_id_generate(

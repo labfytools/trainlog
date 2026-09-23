@@ -16,7 +16,7 @@ data class SleepMedication(
 data class MedicationIntake(
     val intakeId: String, val medicationId: String, val medicationName: String,
     val takenAt: String, val doseValue: Double?, val doseUnit: String?, val note: String,
-    val createdAt: String,
+    val createdAt: String, val quantity: Int = 1,
 )
 data class SleepDiaryEntry(
     val entryId: String, val nightStartDate: String, val nightEndDate: String,

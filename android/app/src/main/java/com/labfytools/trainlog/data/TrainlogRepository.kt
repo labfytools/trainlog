@@ -662,6 +662,7 @@ class TrainlogRepository(
                 OffsetDateTime.parse(intake.takenAt)
                 OffsetDateTime.parse(intake.createdAt)
                 intake.medicationId.startsWith("med_") && intake.medicationName.isNotBlank() &&
+                    intake.quantity in 1..99 &&
                     ((intake.doseValue == null && intake.doseUnit == null) ||
                         (intake.doseValue != null && intake.doseValue > 0.0 &&
                             !intake.doseUnit.isNullOrBlank()))
@@ -670,7 +671,13 @@ class TrainlogRepository(
 
     /** CONTRACT: one transaction appends an immutable revision and advances
      * the guarded tip. Wall time never resolves a concurrent edit. */
-    fun saveSleepDiary(draft: SleepDiaryDraft): SaveSleepDiaryResult {
+    fun saveSleepDiary(draft: SleepDiaryDraft): SaveSleepDiaryResult =
+        saveSleepDiary(draft, quickPublicationAt = null)
+
+    private fun saveSleepDiary(
+        draft: SleepDiaryDraft,
+        quickPublicationAt: String?,
+    ): SaveSleepDiaryResult {
         if (!sleepDraftValid(draft)) return SaveSleepDiaryResult.Invalid
         val creating = draft.entryId == null && draft.expectedRevision == null
         if (!creating && (draft.entryId == null || draft.expectedRevision == null)) return SaveSleepDiaryResult.Invalid
@@ -701,11 +708,39 @@ class TrainlogRepository(
                 arrayOf(revisionId,event.eventId.ifEmpty { sleepId("sle") },event.type.wireValue,event.startAt,event.endAt),
             ) }
             draft.intakes.forEach { intake -> db.execSQL(
-                "INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?,?)",
                 arrayOf<Any?>(revisionId, intake.intakeId.ifEmpty { sleepId("mdi") }, intake.medicationId,
                     intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
+                    intake.quantity,
                     intake.note, intake.createdAt),
             ) }
+            if (quickPublicationAt != null) {
+                /* WHY: generation may publish a quick fact before day validation.
+                 * CONTRACT: the immutable revision, guarded current tip, and its
+                 * exact quick-publication marker commit or roll back together. */
+                db.execSQL(
+                    "INSERT OR IGNORE INTO sleep_diary_publication_state(entry_id," +
+                        "validated_revision_id,validated_at,acknowledged_revision_id," +
+                        "acknowledged_at) SELECT entry_id,NULL,NULL,NULL,NULL FROM " +
+                        "sleep_diary_entries WHERE entry_id=? AND current_revision_id=?",
+                    arrayOf(entryId, revisionId),
+                )
+                val marked = db.compileStatement(
+                    "INSERT INTO sleep_diary_quick_publication_state(entry_id," +
+                        "publishable_revision_id,published_at) SELECT entry_id,?,? FROM " +
+                        "sleep_diary_entries WHERE entry_id=? AND current_revision_id=? " +
+                        "ON CONFLICT(entry_id) DO UPDATE SET " +
+                        "publishable_revision_id=excluded.publishable_revision_id," +
+                        "published_at=excluded.published_at",
+                )
+                marked.bindString(1, revisionId)
+                marked.bindString(2, quickPublicationAt)
+                marked.bindString(3, entryId)
+                marked.bindString(4, revisionId)
+                if (marked.executeInsert() < 0) throw android.database.sqlite.SQLiteException(
+                    "Quick Sleep publication tip invariant failed",
+                )
+            }
             db.setTransactionSuccessful()
             SaveSleepDiaryResult.Saved(entryId,revisionId)
         } catch (_: android.database.sqlite.SQLiteConstraintException) {
@@ -721,6 +756,14 @@ class TrainlogRepository(
                 entry.events.none { it.type == SleepEventType.FINAL_GET_UP }
         }
 
+    private fun pendingSleepDiaryEntry(at: String): SleepDiaryEntry? {
+        val dates = quickSleepDates(at) ?: return null
+        return listSleepDiary().firstOrNull { entry ->
+            entry.nightStartDate == dates.first &&
+                entry.events.none { it.type == SleepEventType.FINAL_GET_UP }
+        }
+    }
+
     private fun quickSleepDates(at: String): Pair<String, String>? =
         runCatching {
             val moment = OffsetDateTime.parse(at)
@@ -731,6 +774,20 @@ class TrainlogRepository(
     fun quickSleepBedTime(at: String = OffsetDateTime.now().toString()): SleepQuickActionResult {
         if (activeSleepDiaryEntry() != null) return SleepQuickActionResult.AlreadyActive
         val dates = quickSleepDates(at) ?: return SleepQuickActionResult.Error
+        val pending = pendingSleepDiaryEntry(at)
+        if (pending != null) {
+            return mutateSleepEntry(pending, at) { current ->
+                current.quickDraft(
+                    at,
+                    events = current.events + SleepDiaryEvent(
+                        sleepId("sle"),
+                        SleepEventType.BED_TIME,
+                        at,
+                        null,
+                    ),
+                )
+            }
+        }
         val result = saveSleepDiary(
             SleepDiaryDraft(
                 nightStartDate = dates.first,
@@ -743,6 +800,7 @@ class TrainlogRepository(
                 treatmentAndNotes = "",
                 events = listOf(SleepDiaryEvent(sleepId("sle"), SleepEventType.BED_TIME, at, null)),
             ),
+            quickPublicationAt = at,
         )
         return when (result) {
             is SaveSleepDiaryResult.Saved ->
@@ -760,7 +818,16 @@ class TrainlogRepository(
     ): SleepQuickActionResult {
         if (runCatching { OffsetDateTime.parse(at) }.isFailure) return SleepQuickActionResult.Error
         val current = activeSleepDiaryEntry() ?: return SleepQuickActionResult.NoActiveNight
-        return when (val result = saveSleepDiary(transform(current))) {
+        return mutateSleepEntry(current, at, transform)
+    }
+
+    private fun mutateSleepEntry(
+        current: SleepDiaryEntry,
+        at: String,
+        transform: (SleepDiaryEntry) -> SleepDiaryDraft,
+    ): SleepQuickActionResult {
+        if (runCatching { OffsetDateTime.parse(at) }.isFailure) return SleepQuickActionResult.Error
+        return when (val result = saveSleepDiary(transform(current), quickPublicationAt = at)) {
             is SaveSleepDiaryResult.Saved ->
                 SleepQuickActionResult.Applied(
                     SleepQuickActionReceipt(current.entryId, current.revisionId, result.revisionId),
@@ -805,26 +872,61 @@ class TrainlogRepository(
     fun quickSleepMedication(
         medicationId: String,
         at: String = OffsetDateTime.now().toString(),
+        quantity: Int = 1,
     ): SleepQuickActionResult {
+        if (quantity !in 1..99) return SleepQuickActionResult.Error
         val medication =
             listSleepMedications(includeInactive = false)
                 .firstOrNull { it.medicationId == medicationId }
                 ?: return SleepQuickActionResult.InvalidMedication
-        return mutateActiveSleep(at) { current ->
-            current.quickDraft(
+        val dates = quickSleepDates(at) ?: return SleepQuickActionResult.Error
+        val current = pendingSleepDiaryEntry(at)
+        val result = if (current == null) {
+            saveSleepDiary(
+                SleepDiaryDraft(
+                    nightStartDate = dates.first,
+                    nightEndDate = dates.second,
+                    createdAt = at,
+                    updatedAt = at,
+                    sleepQuality = null,
+                    wakeQuality = null,
+                    dayForm = null,
+                    treatmentAndNotes = "",
+                    events = emptyList(),
+                    intakes = listOf(
+                        MedicationIntake(
+                            sleepId("mdi"), medication.medicationId, medication.name, at,
+                            medication.defaultDoseValue, medication.defaultDoseUnit, "", at, quantity,
+                        ),
+                    ),
+                ),
+                quickPublicationAt = at,
+            ).let { saved ->
+                when (saved) {
+                    is SaveSleepDiaryResult.Saved -> SleepQuickActionResult.Applied(
+                        SleepQuickActionReceipt(saved.entryId, null, saved.revisionId),
+                    )
+                    SaveSleepDiaryResult.Conflict -> SleepQuickActionResult.Conflict
+                    else -> SleepQuickActionResult.Error
+                }
+            }
+        } else mutateSleepEntry(current, at) { currentEntry ->
+            currentEntry.quickDraft(
                 at,
-                intakes = current.intakes + MedicationIntake(
+                intakes = currentEntry.intakes + MedicationIntake(
                     intakeId = sleepId("mdi"),
                     medicationId = medication.medicationId,
                     medicationName = medication.name,
                     takenAt = at,
                     doseValue = medication.defaultDoseValue,
                     doseUnit = medication.defaultDoseUnit,
+                    quantity = quantity,
                     note = "",
                     createdAt = at,
                 ),
             )
         }
+        return result
     }
 
     fun quickSleepFinalGetUp(at: String = OffsetDateTime.now().toString()): SleepQuickActionResult {
@@ -876,11 +978,11 @@ class TrainlogRepository(
             while (c.moveToNext()) add(SleepDiaryEvent(c.getString(0), SleepEventType.entries.single { it.wireValue == c.getString(1) }, c.getString(2), if (c.isNull(3)) null else c.getString(3)))
         } }
         val intakes = db.rawQuery(
-            "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at " +
+            "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at " +
                 "FROM sleep_medication_intakes WHERE revision_id=? ORDER BY taken_at,intake_id",
             arrayOf(revisionId),
         ).use { c -> buildList {
-            while (c.moveToNext()) add(MedicationIntake(c.getString(0), c.getString(1), c.getString(2), c.getString(3), if (c.isNull(4)) null else c.getDouble(4), if (c.isNull(5)) null else c.getString(5), c.getString(6), c.getString(7)))
+            while (c.moveToNext()) add(MedicationIntake(c.getString(0), c.getString(1), c.getString(2), c.getString(3), if (c.isNull(4)) null else c.getDouble(4), if (c.isNull(5)) null else c.getString(5), c.getString(7), c.getString(8), c.getInt(6)))
         } }
         fun quality(v: String?) = v?.let { text -> SleepQuality.entries.single { it.wireValue == text } }
         return SleepDiaryEntry(entryId, owner[0], owner[1], owner[2], owner[3], revisionId,
@@ -921,7 +1023,7 @@ class TrainlogRepository(
                 events = previous.events,
                 intakes = previous.intakes,
             )
-        return when (val result = saveSleepDiary(compensating)) {
+        return when (val result = saveSleepDiary(compensating, quickPublicationAt = at)) {
             is SaveSleepDiaryResult.Saved ->
                 SleepQuickActionResult.Applied(
                     SleepQuickActionReceipt(current.entryId, current.revisionId, result.revisionId),
@@ -979,7 +1081,7 @@ class TrainlogRepository(
                     val revision = cursor.getString(5)
                     val values = db.rawQuery("SELECT sleep_quality,wake_quality,day_form,treatment_and_notes FROM sleep_diary_revisions WHERE revision_id=?", arrayOf(revision)).use { detail -> check(detail.moveToFirst()); arrayOf(detail.getString(0),detail.getString(1),detail.getString(2),detail.getString(3)) }
                     val events = db.rawQuery("SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events WHERE revision_id=? ORDER BY start_at,event_id", arrayOf(revision)).use { eventCursor -> buildList { while (eventCursor.moveToNext()) add(SleepDiaryEvent(eventCursor.getString(0), SleepEventType.entries.single { it.wireValue == eventCursor.getString(1) }, eventCursor.getString(2), if (eventCursor.isNull(3)) null else eventCursor.getString(3))) } }
-                    val intakes = db.rawQuery("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY taken_at,intake_id", arrayOf(revision)).use { intakeCursor -> buildList { while (intakeCursor.moveToNext()) add(MedicationIntake(intakeCursor.getString(0), intakeCursor.getString(1), intakeCursor.getString(2), intakeCursor.getString(3), if (intakeCursor.isNull(4)) null else intakeCursor.getDouble(4), if (intakeCursor.isNull(5)) null else intakeCursor.getString(5), intakeCursor.getString(6), intakeCursor.getString(7))) } }
+                    val intakes = db.rawQuery("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY taken_at,intake_id", arrayOf(revision)).use { intakeCursor -> buildList { while (intakeCursor.moveToNext()) add(MedicationIntake(intakeCursor.getString(0), intakeCursor.getString(1), intakeCursor.getString(2), intakeCursor.getString(3), if (intakeCursor.isNull(4)) null else intakeCursor.getDouble(4), if (intakeCursor.isNull(5)) null else intakeCursor.getString(5), intakeCursor.getString(7), intakeCursor.getString(8), intakeCursor.getInt(6))) } }
                     fun quality(value: String?) = value?.let { text -> SleepQuality.entries.single { it.wireValue == text } }
                     val validated = if (cursor.isNull(6)) null else cursor.getString(6)
                     val acknowledged = if (cursor.isNull(7)) null else cursor.getString(7)
@@ -1096,7 +1198,7 @@ class TrainlogRepository(
             )
             db.execSQL(
                 "INSERT INTO sleep_medication_intakes SELECT ?,intake_id,medication_id," +
-                    "medication_name,taken_at,dose_value,dose_unit,note,created_at " +
+                    "medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at " +
                     "FROM sleep_medication_intakes WHERE revision_id=?",
                 arrayOf(revisionId, expectedRevision),
             )
@@ -1130,9 +1232,11 @@ class TrainlogRepository(
         val db = database.readableDatabase
         db.rawQuery(
             "SELECT e.entry_id,e.night_start_date,e.night_end_date,e.created_at,e.updated_at," +
-                "e.current_revision_id,e.deleted FROM sleep_diary_entries e JOIN " +
-                "sleep_diary_publication_state p ON p.entry_id=e.entry_id AND " +
-                "p.validated_revision_id=e.current_revision_id ORDER BY e.entry_id",
+                "e.current_revision_id,e.deleted FROM sleep_diary_entries e LEFT JOIN " +
+                "sleep_diary_publication_state p ON p.entry_id=e.entry_id LEFT JOIN " +
+                "sleep_diary_quick_publication_state q ON q.entry_id=e.entry_id WHERE " +
+                "p.validated_revision_id=e.current_revision_id OR " +
+                "q.publishable_revision_id=e.current_revision_id ORDER BY e.entry_id",
             null,
         ).use { cursor ->
             while (cursor.moveToNext()) {
@@ -1161,14 +1265,15 @@ class TrainlogRepository(
                 val intakes = JSONArray()
                 db.rawQuery(
                     "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit," +
-                        "note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id",
+                        "quantity,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id",
                     arrayOf(revisionId),
                 ).use { values -> while (values.moveToNext()) intakes.put(JSONObject()
                     .put("intake_id", values.getString(0)).put("medication_id", values.getString(1))
                     .put("medication_name", values.getString(2)).put("taken_at", values.getString(3))
                     .put("dose_value", if (values.isNull(4)) JSONObject.NULL else values.getDouble(4))
                     .put("dose_unit", if (values.isNull(5)) JSONObject.NULL else values.getString(5))
-                    .put("note", values.getString(6)).put("created_at", values.getString(7))) }
+                    .put("quantity", values.getInt(6))
+                    .put("note", values.getString(7)).put("created_at", values.getString(8))) }
                 val ancestry = sleepRevisionAncestry(
                     db,
                     "SELECT parent_revision_id FROM sleep_diary_revisions " +
@@ -1217,7 +1322,7 @@ class TrainlogRepository(
                 )
             }
         }
-        return JSONObject().put("format", "trainlog-sleep-diary").put("version", 1)
+        return JSONObject().put("format", "trainlog-sleep-diary").put("version", 2)
             .put("generated_at", OffsetDateTime.now().toString()).put("entries", entries)
             .put("medications", medications).toString()
     }
@@ -1227,8 +1332,9 @@ class TrainlogRepository(
             return SleepDiaryImportResult.Rejected("invalid JSON")
         }
         if (!jsonHasUniqueObjectKeys(json) || root.optString("format") != "trainlog-sleep-diary" ||
-            root.opt("version") != 1 || !root.has("entries") || !root.has("medications"))
+            root.optInt("version", 0) !in 1..2 || !root.has("entries") || !root.has("medications"))
             return SleepDiaryImportResult.Rejected("invalid envelope")
+        val wireVersion = root.getInt("version")
         val values = root.optJSONArray("entries") ?: return SleepDiaryImportResult.Rejected("invalid entries")
         if (values.length() > 3660) return SleepDiaryImportResult.Rejected("entry bound exceeded")
         val db = database.writableDatabase
@@ -1352,7 +1458,7 @@ class TrainlogRepository(
                     for (intakeIndex in 0 until replayIntakes.length()) {
                         val intake = replayIntakes.getJSONObject(intakeIndex)
                         sameEvents = sameEvents && db.rawQuery("SELECT medication_id,medication_name," +
-                            "taken_at,dose_value,dose_unit,note,created_at FROM sleep_medication_intakes " +
+                            "taken_at,dose_value,dose_unit,quantity,note,created_at FROM sleep_medication_intakes " +
                             "WHERE revision_id=? AND intake_id=?", arrayOf(revisionId, intake.getString("intake_id"))).use { current ->
                             current.moveToFirst() && current.getString(0) == intake.getString("medication_id") &&
                                 current.getString(1) == intake.getString("medication_name") &&
@@ -1361,8 +1467,10 @@ class TrainlogRepository(
                                     (if (intake.isNull("dose_value")) null else intake.getDouble("dose_value")) &&
                                 (if (current.isNull(4)) null else current.getString(4)) ==
                                     (if (intake.isNull("dose_unit")) null else intake.getString("dose_unit")) &&
-                                current.getString(5) == intake.getString("note") &&
-                                current.getString(6) == intake.getString("created_at")
+                                current.getInt(5) ==
+                                    (if (wireVersion == 1) 1 else intake.getInt("quantity")) &&
+                                current.getString(6) == intake.getString("note") &&
+                                current.getString(7) == intake.getString("created_at")
                         }
                     }
                     if (!sameEvents) return SleepDiaryImportResult.Rejected(
@@ -1419,11 +1527,19 @@ class TrainlogRepository(
                         if (intakes.length() > 32) throw IllegalArgumentException("intake bound")
                         for (intakeIndex in 0 until intakes.length()) {
                             val intake = intakes.getJSONObject(intakeIndex)
+                            val expectedKeys = mutableSetOf(
+                                "intake_id", "medication_id", "medication_name", "taken_at",
+                                "dose_value", "dose_unit", "note", "created_at",
+                            )
+                            if (wireVersion == 2) expectedKeys += "quantity"
+                            if (intake.keys().asSequence().toSet() != expectedKeys)
+                                throw IllegalArgumentException("invalid medication intake fields")
                             val dose = if (intake.isNull("dose_value")) null else intake.getDouble("dose_value")
                             val unit = if (intake.isNull("dose_unit")) null else intake.getString("dose_unit")
+                            val quantity = if (wireVersion == 1) 1 else intake.getInt("quantity")
                             add(MedicationIntake(intake.getString("intake_id"), intake.getString("medication_id"),
                                 intake.getString("medication_name"), intake.getString("taken_at"), dose, unit,
-                                intake.getString("note"), intake.getString("created_at")))
+                                intake.getString("note"), intake.getString("created_at"), quantity))
                         }
                     })
                 if (!sleepDraftValid(draft)) return SleepDiaryImportResult.Rejected("invalid entry")
@@ -1436,9 +1552,10 @@ class TrainlogRepository(
                 draft.events.forEach { event -> db.execSQL("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
                     arrayOf(revisionId,event.eventId,event.type.wireValue,event.startAt,event.endAt)) }
                 draft.intakes.forEach { intake -> db.execSQL(
-                    "INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?,?)",
                     arrayOf<Any?>(revisionId, intake.intakeId, intake.medicationId,
                         intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
+                        intake.quantity,
                         intake.note, intake.createdAt),
                 ) }
                 markSleepDiaryImported(db, entryId, revisionId, root.getString("generated_at"))
@@ -11873,7 +11990,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    31,
+    32,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -12206,6 +12323,19 @@ private class TrainlogDatabaseHelper(
             createCardioGuidanceTables(db)
             version = 31
         }
+        if (version < 32 && newVersion >= 32) {
+            /* CONTRACT: quantity is a per-intake fact. Existing immutable
+             * revisions hydrate to one unit; quick publication is a distinct
+             * exact-revision marker and never validates an entire diary day. */
+            if (!tableHasColumn(db, "sleep_medication_intakes", "quantity")) {
+                db.execSQL(
+                    "ALTER TABLE sleep_medication_intakes ADD COLUMN quantity INTEGER NOT NULL " +
+                        "DEFAULT 1 CHECK(quantity BETWEEN 1 AND 99)",
+                )
+            }
+            createSleepQuickPublicationTable(db)
+            version = 32
+        }
 
         if (version != newVersion) {
             error(
@@ -12324,13 +12454,16 @@ private class TrainlogDatabaseHelper(
         db.execSQL("""CREATE TABLE IF NOT EXISTS sleep_medication_intakes(
             revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
             intake_id TEXT NOT NULL, medication_id TEXT NOT NULL, medication_name TEXT NOT NULL,
-            taken_at TEXT NOT NULL, dose_value REAL, dose_unit TEXT, note TEXT, created_at TEXT NOT NULL,
+            taken_at TEXT NOT NULL, dose_value REAL, dose_unit TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1 CHECK(quantity BETWEEN 1 AND 99),
+            note TEXT, created_at TEXT NOT NULL,
             PRIMARY KEY(revision_id,intake_id), CHECK(intake_id GLOB 'mdi_*'),
             CHECK(length(trim(medication_name)) BETWEEN 1 AND 160),
             CHECK((dose_value IS NULL AND dose_unit IS NULL) OR
                 (dose_value>0 AND length(trim(dose_unit)) BETWEEN 1 AND 32)))""".trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS sleep_medications_active ON sleep_medications(deleted,updated_at)")
         db.execSQL("CREATE INDEX IF NOT EXISTS sleep_medication_intakes_time ON sleep_medication_intakes(taken_at,medication_id)")
+        createSleepQuickPublicationTable(db)
         db.execSQL("""CREATE TABLE IF NOT EXISTS sleep_diary_publication_state(
             entry_id TEXT PRIMARY KEY REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
             validated_revision_id TEXT, validated_at TEXT, acknowledged_revision_id TEXT,
@@ -12342,6 +12475,15 @@ private class TrainlogDatabaseHelper(
             entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
             revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
             PRIMARY KEY(generation_id,entry_id))""".trimIndent())
+    }
+
+    private fun createSleepQuickPublicationTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS sleep_diary_quick_publication_state(
+                entry_id TEXT PRIMARY KEY REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
+                publishable_revision_id TEXT NOT NULL, published_at TEXT NOT NULL
+            )""".trimIndent(),
+        )
     }
 
     private fun createCardioCalibrationTables(db: SQLiteDatabase) {
