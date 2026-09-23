@@ -86,9 +86,10 @@ Tomorrow's next synchronized Program session is unambiguously
 private phone remains on Android schema v31 with integrity/FK checks clean and
 no active draft, timeline, HR capture, guidance phase or calibration. A single
 combined regression now proves Program start and provenance through two
-explicit exercise intervals, four HR ownership positions, finalization, full
-generation, desktop import, idempotent replay and correlated ACK. This
-readiness result does not authorize a stable 0.1.5 tag or release.
+ordered occurrences originating in the synchronized Program payload, four HR
+ownership positions, finalization, full generation, desktop import, idempotent
+replay and correlated ACK. This readiness result does not authorize a stable
+0.1.5 tag or release.
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
 cursor: complete predecessor state, imported built-in authorization,

@@ -4,11 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.model.HeartRateContextKind
-import com.labfytools.trainlog.model.NewExerciseProfile
-import com.labfytools.trainlog.model.RecordingMode
-import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
-import com.labfytools.trainlog.model.TrackingMode
 import java.nio.file.Files
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -67,21 +63,31 @@ class ProgramSessionCardioReadinessTest {
         try {
             val programId = "pg_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
             val programSessionId = "pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-            val programExerciseId = "ex_dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+            val programExerciseAId = "ex_dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+            val programExerciseBId = "ex_11111111-1111-4111-8111-111111111111"
             val catalog =
                 JSONObject()
                     .put("format", "trainlog-pc-catalog")
                     .put("version", 1)
                     .put(
                         "exercises",
-                        JSONArray().put(
-                            JSONObject()
-                                .put("exercise_id", programExerciseId)
-                                .put("name", "Program exercise fixture")
-                                .put("recording_mode", "sets")
-                                .put("tracking_mode", "reps")
-                                .put("data_fields", 0),
-                        ),
+                        JSONArray()
+                            .put(
+                                JSONObject()
+                                    .put("exercise_id", programExerciseAId)
+                                    .put("name", "Program exercise fixture A")
+                                    .put("recording_mode", "sets")
+                                    .put("tracking_mode", "reps")
+                                    .put("data_fields", 0),
+                            )
+                            .put(
+                                JSONObject()
+                                    .put("exercise_id", programExerciseBId)
+                                    .put("name", "Program exercise fixture B")
+                                    .put("recording_mode", "sets")
+                                    .put("tracking_mode", "reps")
+                                    .put("data_fields", 0),
+                            ),
                     )
                     .toString()
             assertTrue(android.applyPcCatalogJson(catalog) is PcCatalogImportResult.Applied)
@@ -110,22 +116,39 @@ class ProgramSessionCardioReadinessTest {
                                 .put("note", JSONObject.NULL)
                                 .put(
                                     "occurrences",
-                                    JSONArray().put(
-                                        JSONObject()
-                                            .put(
-                                                "entry_id",
-                                                "pge_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-                                            )
-                                            .put("exercise_id", programExerciseId)
-                                            .put("equipment_id", JSONObject.NULL)
-                                            .put("load_mode", "external")
-                                            .put("rest_seconds", 90)
-                                            .put("target_sets", 1)
-                                            .put("target_reps", 8)
-                                            .put("target_duration_seconds", JSONObject.NULL)
-                                            .put("target_weight_kg", 40.0)
-                                            .put("notes", JSONObject.NULL),
-                                    ),
+                                    JSONArray()
+                                        .put(
+                                            JSONObject()
+                                                .put(
+                                                    "entry_id",
+                                                    "pge_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                                                )
+                                                .put("exercise_id", programExerciseAId)
+                                                .put("equipment_id", JSONObject.NULL)
+                                                .put("load_mode", "external")
+                                                .put("rest_seconds", 90)
+                                                .put("target_sets", 1)
+                                                .put("target_reps", 8)
+                                                .put("target_duration_seconds", JSONObject.NULL)
+                                                .put("target_weight_kg", 40.0)
+                                                .put("notes", JSONObject.NULL),
+                                        )
+                                        .put(
+                                            JSONObject()
+                                                .put(
+                                                    "entry_id",
+                                                    "pge_22222222-2222-4222-8222-222222222222",
+                                                )
+                                                .put("exercise_id", programExerciseBId)
+                                                .put("equipment_id", JSONObject.NULL)
+                                                .put("load_mode", "external")
+                                                .put("rest_seconds", 60)
+                                                .put("target_sets", 1)
+                                                .put("target_reps", 10)
+                                                .put("target_duration_seconds", JSONObject.NULL)
+                                                .put("target_weight_kg", 25.0)
+                                                .put("notes", JSONObject.NULL),
+                                        ),
                                 ),
                         ),
                     )
@@ -141,15 +164,6 @@ class ProgramSessionCardioReadinessTest {
                 ProgramsImportResult.Applied(1, 0, 0),
                 android.applyProgramsV1Json(programs),
             )
-            val exerciseB =
-                (android.createExercise(
-                    NewExerciseProfile(
-                        "Readiness exercise B",
-                        RecordingMode.SETS,
-                        TrackingMode.REPS,
-                        0,
-                    ),
-                ) as CreateExerciseResult.Created).exercise
 
             assertEquals(
                 StartProgramSessionResult.Started,
@@ -160,12 +174,12 @@ class ProgramSessionCardioReadinessTest {
             val sessionStartedAt = checkNotNull(opened.draft.startedAt)
             assertEquals(programId, opened.draft.sourceProgramId)
             assertEquals(programSessionId, opened.draft.sourceProgramSessionId)
-            val exerciseA = opened.draft.exercises.single()
-            val exerciseBEntry =
-                SessionExerciseDraft(
-                    exercise = exerciseB,
-                    sets = listOf(SessionSetDraft(reps = 10, weightKg = 25.0)),
-                )
+            assertEquals(2, opened.draft.exercises.size)
+            val exerciseA = opened.draft.exercises[0]
+            val exerciseBEntry = opened.draft.exercises[1]
+            assertEquals(programExerciseAId, exerciseA.exercise.exerciseId)
+            assertEquals(programExerciseBId, exerciseBEntry.exercise.exerciseId)
+            assertTrue(exerciseA.entryId != exerciseBEntry.entryId)
             assertEquals(
                 ActiveDraftMutationResult.Saved,
                 android.saveActiveSessionDraft(
@@ -175,7 +189,9 @@ class ProgramSessionCardioReadinessTest {
                                 exerciseA.copy(
                                     sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0)),
                                 ),
-                                exerciseBEntry,
+                                exerciseBEntry.copy(
+                                    sets = listOf(SessionSetDraft(reps = 10, weightKg = 25.0)),
+                                ),
                             ),
                     ),
                 ),
