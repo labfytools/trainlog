@@ -296,7 +296,7 @@ class StatisticsRepositoryTest {
     }
 
     private fun session(db: SQLiteDatabase, id: String, timestamp: String, type: String = "training") {
-        db.execSQL("INSERT INTO sessions(session_id,started_at,session_type) VALUES(?,?,?)", arrayOf(id, timestamp, type))
+        db.execSQL("INSERT INTO sessions(session_id,started_at,session_type,session_kind) VALUES(?,?,?,?)", arrayOf(id, timestamp, type, type))
     }
 
     private fun occurrence(

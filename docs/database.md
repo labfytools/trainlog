@@ -1,5 +1,27 @@
 # Desktop database
 
+## Schema v32: canonical cardio session kind
+
+Schema v32 adds the product-owned `sessions.session_kind` column with the
+explicit domain `training | max_test | cardio`. The pre-existing
+`sessions.session_type` column remains intentionally frozen to
+`training | max_test` for compatibility with historical codecs and MAX
+semantics. A cardio row therefore stores `session_type=training` only as a
+legacy compatibility projection and `session_kind=cardio` as the canonical
+product fact.
+
+The v31→v32 migration introspects historical `sessions` layouts before
+backfill. When the legacy `session_type` column exists it seeds
+`session_kind` from it; very old historical fixtures that legitimately lack
+that column keep the session kind produced by their earlier migration chain.
+No existing session identity, occurrence, set, timeline, Program provenance or
+heart-rate fact is rewritten.
+
+Completed cardio sessions synchronize Android→desktop through the separate
+optional `trainlog-cardio-sessions` V1 generation companion. The frozen
+mobile/history V4 and execution-draft formats are not widened to a third
+session type.
+
 ## Schema v31: synchronized session exercise timeline
 
 Schema v31 additively owns Android-recorded execution timing for completed

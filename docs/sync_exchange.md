@@ -1105,7 +1105,29 @@ Heart-rate samples use the same active `entry_id` at acquisition time. Samples
 between exercise end and the next exercise start retain no fabricated exercise
 owner and therefore remain factual rest/transition data.
 
-## 21. Legacy active-protocol limitations
+## 21. Cardio sessions companion V1
+
+`trainlog-cardio-sessions` V1 is an optional Android→desktop
+full-generation participant. It carries completed sessions whose canonical
+Android `session_kind` is `cardio`. These sessions are deliberately absent
+from the frozen `history-v4` artifact.
+
+The companion reuses the same bounded exercise/occurrence/set/continuous fact
+shape internally but owns its own envelope and requires every public
+`session_type` to be exactly `cardio`. Desktop schema v32 imports those
+facts transactionally, stores legacy `session_type=training` only for
+compatibility, and stores canonical `session_kind=cardio`.
+
+Exact replay is idempotent. Reusing a cardio `session_id` that already belongs
+to non-cardio canonical history is rejected. The companion is consumed before
+session-timeline and heart-rate participants in the same generation, so the
+stable `session_id` and occurrence facts exist before their timing and sensor
+facts are applied.
+
+Programs, manual preparations, AI execution drafts, mobile V3/V4 and
+`TRAINLOG_FORMAT_V1` are not widened by this companion.
+
+## 22. Legacy active-protocol limitations
 
 The Web end-to-end tranche adds an explicit opt-in application orchestrator.
 `POST /api/v1/sync` admits one correlated run and `GET /api/v1/sync/status` is

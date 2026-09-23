@@ -112,8 +112,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v31; session exercise timeline import is additive in v31 |
-| Android SQLite | schema v28; active training timeline/outbox is additive in v28 |
+| Desktop SQLite | schema v32; canonical `session_kind` adds true cardio sessions while frozen legacy `session_type` remains training/max_test |
+| Android SQLite | schema v29; canonical `session_kind` adds true cardio sessions while legacy draft/history codecs remain training/max_test |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
@@ -152,7 +152,8 @@ parallel implementation of its rules.
 | Cardio persistent acquisition | `TRAINLOG_CARDIO_PERSISTENT_ACQUISITION_V1=PASS`: selected sensor persists, dedicated connected-device foreground service reconnects, stale BPM is cleared, and the global Android `♥ BPM` indicator is grey/orange/green by connection state; real CYCPLUS restart and Bluetooth-off/on recovery validated on private vc40 |
 | Training timeline | `TRAINLOG_CARDIO_TRAINING_TIMELINE_V1=PASS`: real session bounds reuse canonical lifecycle timestamps; exercise start/end are explicit user actions; live BPM samples snapshot the active stable `entry_id`; session finalization refuses an unclosed exercise; timeline sync is Android→desktop idempotent |
 | Sleep Android one-tap | `TRAINLOG_SLEEP_ANDROID_ONE_TAP_V1=SOFTWARE_PASS / DEVICE_VISUAL_PENDING`: existing Sleep Diary V1 now has one-tap Couché / medication / Réveil / Levé, guarded 10 s undo, full correction route and sleep-entry-owned cardio capture; vc41 installed without data clear, but final visual device review was blocked by the phone lock screen |
-| Current operational cursor | `TRAINLOG_CARDIO_SESSION_TYPE_V1`: add the true `cardio` session type without silently widening frozen legacy formats |
+| Cardio session type | `TRAINLOG_CARDIO_SESSION_TYPE_V1=PASS`: Android v29 + desktop v32 use canonical `session_kind=cardio`; frozen mobile/history and draft formats keep legacy training/max_test; dedicated `trainlog-cardio-sessions` V1 syncs completed cardio sessions Android→desktop idempotently |
+| Current operational cursor | `TRAINLOG_CARDIO_CALIBRATION_V1`: add the first versioned Calibration cardio exercise, observed peak BPM and recovery timeline without claiming a physiological maximum |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

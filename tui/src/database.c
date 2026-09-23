@@ -1393,6 +1393,49 @@ static const char *const MIGRATE_V30_TO_V31_SQL =
     "session_exercise_timeline(started_at,session_id,entry_id);"
     "PRAGMA user_version=31;COMMIT;";
 
+/* WHY: legacy session_type is a frozen training/max_test compatibility column.
+ * CONTRACT: v32 adds canonical local session_kind and backfills it exactly
+ * from legacy history. INVARIANT: no legacy codec or MAX classification is
+ * widened to cardio. */
+static const char *const MIGRATE_V31_TO_V32_SQL =
+    "BEGIN IMMEDIATE;"
+    "PRAGMA user_version=32;COMMIT;";
+
+static TrainlogStatus ensure_v32_session_kind(TrainlogDatabase *database) {
+    sqlite3_stmt *statement = NULL;
+    bool found_kind = false;
+    bool found_legacy_type = false;
+    int result = sqlite3_prepare_v2(
+        database->connection, "PRAGMA table_info(sessions);", -1, &statement, NULL);
+    if (result != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        const char *name = (const char *)sqlite3_column_text(statement, 1);
+        if (name != NULL && strcmp(name, "session_kind") == 0) {
+            found_kind = true;
+        } else if (name != NULL && strcmp(name, "session_type") == 0) {
+            found_legacy_type = true;
+        }
+    }
+    if (result != SQLITE_DONE || sqlite3_finalize(statement) != SQLITE_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (!found_kind &&
+        execute_sql(database,
+                    "ALTER TABLE sessions ADD COLUMN session_kind TEXT NOT NULL "
+                    "DEFAULT 'training' CHECK(session_kind IN('training','max_test','cardio'));") !=
+            TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    if (found_legacy_type &&
+        execute_sql(database, "UPDATE sessions SET session_kind=session_type;") !=
+            TRAINLOG_STATUS_OK) {
+        return TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    return TRAINLOG_STATUS_OK;
+}
+
 /* WHY: schema v29 was already opened on the private 0.1.4 review installation
  * before medication capture joined the same unreleased migration. CONTRACT:
  * this additive repair is identical to the tail of v28 -> v29 and runs only
@@ -2227,7 +2270,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
                version == 26 || version == 27 || version == 28 || version == 29 || version == 30 ||
-               version == 31) {
+               version == 31 || version == 32) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2381,6 +2424,12 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 31) {
         status = execute_sql(database, MIGRATE_V30_TO_V31_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 32) {
+        status = ensure_v32_session_kind(database);
+    }
+    if (status == TRAINLOG_STATUS_OK && version < 32) {
+        status = execute_sql(database, MIGRATE_V31_TO_V32_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2400,7 +2449,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v31" : "migrate database to schema v31",
+                            version == 0 ? "create schema v32" : "migrate database to schema v32",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);
@@ -2903,6 +2952,9 @@ static const char *session_type_to_sql(TrainlogSessionType type) {
     case TRAINLOG_SESSION_MAX_TEST:
         return "max_test";
 
+    case TRAINLOG_SESSION_CARDIO:
+        return "cardio";
+
     default:
         return NULL;
     }
@@ -3132,6 +3184,11 @@ static bool session_type_from_sql(const char *text, TrainlogSessionType *output)
 
     if (strcmp(text, "max_test") == 0) {
         *output = TRAINLOG_SESSION_MAX_TEST;
+        return true;
+    }
+
+    if (strcmp(text, "cardio") == 0) {
+        *output = TRAINLOG_SESSION_CARDIO;
         return true;
     }
 
@@ -3912,16 +3969,19 @@ static TrainlogStatus insert_session_header(TrainlogDatabase *database,
                                             const TrainlogSessionInput *session,
                                             sqlite3_int64 *output_row_id) {
     static const char *const SQL = "INSERT INTO sessions("
-                                   "session_id, started_at, ended_at, session_type, notes"
-                                   ") VALUES(?1, ?2, ?3, ?4, ?5);";
+                                   "session_id, started_at, ended_at, session_type, session_kind, notes"
+                                   ") VALUES(?1, ?2, ?3, ?4, ?5, ?6);";
 
     sqlite3_stmt *statement = NULL;
-    const char *session_type;
+    const char *session_kind;
+    const char *legacy_session_type;
     int rc;
 
-    session_type = session_type_to_sql(session->session_type);
+    session_kind = session_type_to_sql(session->session_type);
+    legacy_session_type =
+        session->session_type == TRAINLOG_SESSION_CARDIO ? "training" : session_kind;
 
-    if (session_type == NULL) {
+    if (session_kind == NULL || legacy_session_type == NULL) {
         return TRAINLOG_STATUS_INVALID_ARGUMENT;
     }
 
@@ -3943,13 +4003,17 @@ static TrainlogStatus insert_session_header(TrainlogDatabase *database,
     }
 
     if (rc == SQLITE_OK) {
-        rc = sqlite3_bind_text(statement, 4, session_type, -1, SQLITE_STATIC);
+        rc = sqlite3_bind_text(statement, 4, legacy_session_type, -1, SQLITE_STATIC);
+    }
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_bind_text(statement, 5, session_kind, -1, SQLITE_STATIC);
     }
 
     if (rc == SQLITE_OK) {
         rc = session->notes != NULL && session->notes[0] != '\0'
-                 ? sqlite3_bind_text(statement, 5, session->notes, -1, SQLITE_TRANSIENT)
-                 : sqlite3_bind_null(statement, 5);
+                 ? sqlite3_bind_text(statement, 6, session->notes, -1, SQLITE_TRANSIENT)
+                 : sqlite3_bind_null(statement, 6);
     }
 
     if (rc != SQLITE_OK) {
@@ -4524,7 +4588,7 @@ trainlog_database_replace_session_exercises(TrainlogDatabase *database,
     }
 
     rc = sqlite3_prepare_v2(database->connection,
-                            "SELECT session_type FROM sessions WHERE id=?1;",
+                            "SELECT session_kind FROM sessions WHERE id=?1;",
                             -1,
                             &statement,
                             NULL);
@@ -4736,7 +4800,7 @@ TrainlogStatus trainlog_database_list_sessions(TrainlogDatabase *database,
         "s.session_id, "
         "s.started_at, "
         "COALESCE(s.ended_at, ''), "
-        "s.session_type, "
+        "s.session_kind, "
         "COUNT(se.id) "
         "FROM sessions AS s "
         "LEFT JOIN session_exercises AS se "
@@ -5254,7 +5318,7 @@ trainlog_database_get_session_details(TrainlogDatabase *database,
                                       TrainlogPersistedExerciseDetail *output_exercises,
                                       size_t exercise_capacity,
                                       size_t *output_exercise_count) {
-    static const char *const HEADER_SQL = "SELECT started_at, COALESCE(ended_at, ''), session_type "
+    static const char *const HEADER_SQL = "SELECT started_at, COALESCE(ended_at, ''), session_kind "
                                           "FROM sessions "
                                           "WHERE session_id = ?1;";
 
@@ -5781,7 +5845,7 @@ TrainlogStatus trainlog_database_list_exercise_performance(TrainlogDatabase *dat
     static const char *const SQL = "SELECT "
                                    "s.session_id, "
                                    "s.started_at, "
-                                   "s.session_type, "
+                                   "s.session_kind, "
                                    "se.tracking_mode, "
                                    "se.load_mode, "
                                    "ps.id, "

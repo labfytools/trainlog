@@ -52,6 +52,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
             linkedMapOf(
                 "catalog" to Kind("trainlog-pc-catalog", 1, "catalog-v1.json"),
                 "history" to Kind("trainlog-mobile-export", 4, "history-v4.json"),
+                "cardio-sessions" to
+                    Kind("trainlog-cardio-sessions", 1, "cardio-sessions-v1.json", false),
                 "execution-drafts" to
                     Kind("trainlog-execution-drafts", 1, "execution-drafts-v1.json"),
                 "exercise-aliases" to

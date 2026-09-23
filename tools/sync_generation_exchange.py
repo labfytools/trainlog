@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 
 from trainlog_sqlite import connect_database
 import causal_delete_exchange
+import cardio_session_exchange
 import execution_draft_exchange
 import heart_rate_exchange
 import session_timeline_exchange
@@ -83,6 +84,7 @@ ARTIFACTS = (
 )
 SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS} | {
     ("trainlog-program-executions", 1),
+    ("trainlog-cardio-sessions", 1),
     ("trainlog-heart-rate", 1),
     ("trainlog-session-timeline", 1),
 }
@@ -213,9 +215,9 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31)
+    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        raise GenerationError("desktop schema v24, v25, v26, v27, v28 or v29 required")
+        raise GenerationError("desktop schema v24, v25, v26 through v32 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -665,6 +667,12 @@ def consume_desktop(database: Path, directory: Path) -> dict:
     history = import_mobile_export.load_payload(required("history"))
     known_equipment = set(reserved) | {item[0] for item in definitions}
     import_mobile_export.validate_payload(history, known_equipment)
+    cardio_sessions = (
+        cardio_session_exchange.load(listed["cardio-sessions"])
+        if "cardio-sessions" in listed else None
+    )
+    if cardio_sessions is not None:
+        cardio_session_exchange.validate(cardio_sessions, known_equipment)
     association_payload = strict_json(required("equipment-associations").read_bytes(), MAX_ARTIFACT)
     zones_payload = strict_json(required("body-zones").read_bytes(), MAX_ARTIFACT)
     parsed_zones = import_exercise_body_zones.parse_payload(zones_payload)
@@ -704,6 +712,12 @@ def consume_desktop(database: Path, directory: Path) -> dict:
             import_exercise_profile_state.apply_profile_state(db, profile, allow_pending=True)
             import_equipment_definitions.apply_definitions(db, definitions, complete_causal_envelope=True)
             import_mobile_export.apply_payload(db, history, complete_causal_envelope=True)
+            if cardio_sessions is not None:
+                cardio_session_exchange.apply(
+                    db,
+                    cardio_sessions,
+                    complete_causal_envelope=True,
+                )
             import_exercise_profile_state.apply_profile_state(db, profile)
             import_exercise_aliases.apply_aliases(db, aliases)
             import_equipment_associations.apply_associations(

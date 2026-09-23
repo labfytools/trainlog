@@ -9,17 +9,14 @@ enum class SessionType(
     val wireValue: String,
 ) {
     TRAINING("training"),
-    MAX_TEST("max_test");
+    MAX_TEST("max_test"),
+    CARDIO("cardio");
 
     companion object {
         fun fromWire(
             value: String,
         ): SessionType =
-            if (value == "max_test") {
-                MAX_TEST
-            } else {
-                TRAINING
-            }
+            entries.firstOrNull { it.wireValue == value } ?: TRAINING
     }
 }
 

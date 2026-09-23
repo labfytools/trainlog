@@ -37,6 +37,14 @@
   causal compensating revision, while Corriger la nuit retains the complete
   editor. Heart-rate acquisition links directly to the stable sleep `entry_id`
   and closes at Levé; no return-to-sleep or sleep-stage inference is added.
+- Added the true `cardio` session type without widening frozen session
+  codecs. Android schema v29 and desktop schema v32 introduce canonical
+  `session_kind=training|max_test|cardio` while the historical
+  `session_type` compatibility column remains `training|max_test`.
+  Completed cardio sessions are excluded from `history-v4` and move through
+  the separate optional `trainlog-cardio-sessions` V1 generation companion;
+  exact replay is idempotent and identity collision with non-cardio history is
+  rejected.
 
 Development opened after stable v0.1.4 release.
 

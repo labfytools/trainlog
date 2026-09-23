@@ -36,7 +36,7 @@ Programs. Sessions → Programmes remains the technical administration/import,
 list, detail, archive, and delete surface.
 Web Exercises administration, the factual Dashboard/Analyse read model, and the
 synchronized Sleep Diary workspace are the stable v0.1.4 baseline. Version
-0.1.5 development now has Android/desktop heart-rate persistence and sync plus validated persistent CYCPLUS acquisition and the global `♥ BPM` indicator; training exercise timestamps are the current implementation cursor.
+0.1.5 development now has validated persistent CYCPLUS acquisition, the global `♥ BPM` indicator, training exercise timestamps, one-tap Android Sleep capture, and the dedicated synchronized `cardio` session type; Calibration cardio is the current implementation cursor.
 
 ## Releases
 

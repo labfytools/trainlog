@@ -47,7 +47,8 @@ typedef enum TrainlogLoadMode {
 
 typedef enum TrainlogSessionType {
     TRAINLOG_SESSION_TRAINING = 0,
-    TRAINLOG_SESSION_MAX_TEST
+    TRAINLOG_SESSION_MAX_TEST,
+    TRAINLOG_SESSION_CARDIO
 } TrainlogSessionType;
 
 typedef struct TrainlogExercise {

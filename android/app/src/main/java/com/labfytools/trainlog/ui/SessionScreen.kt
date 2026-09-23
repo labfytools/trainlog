@@ -256,6 +256,19 @@ fun SessionScreen(
                     )
                     },
                 )
+                val cardio = currentDraft.sessionType == SessionType.CARDIO
+                TrainlogButton(
+                    label = strings.getString(R.string.session_cardio),
+                    modifier = Modifier.weight(1f),
+                    style = if (cardio) TrainlogButtonStyle.SUCCESS else TrainlogButtonStyle.SECONDARY,
+                    maxLines = 2,
+                    onClick = {
+                    persistDraft(
+                        currentDraft.copy(sessionType = SessionType.CARDIO),
+                        null,
+                    )
+                    },
+                )
             }
         }
 
@@ -279,23 +292,19 @@ fun SessionScreen(
         ) {
             TrainlogInfo(
                 text =
-                    strings.getString(R.string.session_type_value,
-                        if (
-                            currentDraft.sessionType ==
-                            SessionType.MAX_TEST
-                        ) {
-                            strings.getString(R.string.session_max_test)
-                        } else {
-                            strings.getString(R.string.session_training)
-                        }),
+                    strings.getString(
+                        R.string.session_type_value,
+                        when (currentDraft.sessionType) {
+                            SessionType.TRAINING -> strings.getString(R.string.session_training)
+                            SessionType.MAX_TEST -> strings.getString(R.string.session_max_test)
+                            SessionType.CARDIO -> strings.getString(R.string.session_cardio)
+                        },
+                    ),
                 color =
-                    if (
-                        currentDraft.sessionType ==
-                        SessionType.MAX_TEST
-                    ) {
-                        colors.warning
-                    } else {
-                        colors.accent
+                    when (currentDraft.sessionType) {
+                        SessionType.MAX_TEST -> colors.warning
+                        SessionType.CARDIO -> colors.success
+                        SessionType.TRAINING -> colors.accent
                     },
             )
 

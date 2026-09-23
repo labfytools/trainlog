@@ -360,7 +360,7 @@ class SessionPreparationExchangeTest {
             repository = TrainlogRepository(context, name)
             assertEquals(1, repository.listPreparedSessions().size)
             repository.close()
-            assertEquals("28", scalarText(name, "PRAGMA user_version"))
+            assertEquals("29", scalarText(name, "PRAGMA user_version"))
             assertEquals(
                 "0",
                 scalarText(name, "SELECT COUNT(*) FROM session_preparation_withdrawals"),

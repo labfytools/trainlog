@@ -530,6 +530,9 @@ class TrainlogRepository(
         data class DatabaseError(val message: String) : SessionExerciseTimingResult
     }
 
+    private fun legacySessionTypeWire(type: SessionType): String =
+        if (type == SessionType.MAX_TEST) SessionType.MAX_TEST.wireValue else SessionType.TRAINING.wireValue
+
     private fun sleepId(prefix: String): String = "${prefix}_${UUID.randomUUID()}"
 
     private fun sleepIdentity(value: String, prefix: String): Boolean =
@@ -1485,7 +1488,7 @@ class TrainlogRepository(
     fun activeSessionTimelineContext(): ActiveSessionTimelineContext? {
         val db = database.readableDatabase
         return db.rawQuery(
-            "SELECT d.session_id,d.started_at,d.session_type,t.entry_id " +
+            "SELECT d.session_id,d.started_at,d.session_kind,t.entry_id " +
                 "FROM active_session_draft d LEFT JOIN session_timeline_exercises t " +
                 "ON t.session_id=d.session_id AND t.active_slot=1 WHERE d.id=1",
             null,
@@ -1742,13 +1745,13 @@ class TrainlogRepository(
             HeartRateContextKind.SESSION ->
                 db.rawQuery(
                     "SELECT 1 FROM active_session_draft WHERE id=1 AND session_id=? " +
-                        "AND session_type IN('training','max_test') LIMIT 1",
+                        "AND session_kind IN('training','max_test') LIMIT 1",
                     arrayOf(contextId),
                 ).use { it.moveToFirst() }
             HeartRateContextKind.CARDIO ->
                 db.rawQuery(
                     "SELECT 1 FROM active_session_draft WHERE id=1 AND session_id=? " +
-                        "AND session_type='cardio' LIMIT 1",
+                        "AND session_kind='cardio' LIMIT 1",
                     arrayOf(contextId),
                 ).use { it.moveToFirst() }
             HeartRateContextKind.SLEEP ->
@@ -2206,6 +2209,7 @@ class TrainlogRepository(
         val artifacts = linkedMapOf("catalog" to buildPcCatalogJson())
         afterFirstArtifact?.invoke()
         artifacts["history"] = buildMobileExport(4, true)
+        artifacts["cardio-sessions"] = buildCardioSessionsV1Json()
         artifacts["execution-drafts"] = buildExecutionDraftExportV1Json()
         artifacts["exercise-aliases"] = buildExerciseAliasesJson()
         artifacts["exercise-profile-state"] = buildExerciseProfileStateJson()
@@ -2379,7 +2383,7 @@ class TrainlogRepository(
         data class FrequencyCount(var all: Int = 0, var maxima: Int = 0)
         val frequency = sortedMapOf<String, FrequencyCount>()
         val sessionTimes = mutableListOf<Pair<TrainlogTimestampKey, String>>()
-        query("SELECT started_at,session_type FROM sessions AS s WHERE $ACTUAL_SESSION_PREDICATE") { c ->
+        query("SELECT started_at,session_kind FROM sessions AS s WHERE $ACTUAL_SESSION_PREDICATE") { c ->
             val time = timestamp(c.getString(0)) ?: return@query
             sessionTimes += time to c.getString(1)
             if (included(time)) {
@@ -4489,11 +4493,8 @@ class TrainlogRepository(
                         startedAt
                     )
 
-                    put(
-                        "session_type",
-                        draft.sessionType
-                            .wireValue
-                    )
+                    put("session_type", legacySessionTypeWire(draft.sessionType))
+                    put("session_kind", draft.sessionType.wireValue)
                     put("ended_at", endedAt)
                 }
 
@@ -4719,7 +4720,7 @@ class TrainlogRepository(
             SELECT
                 s.session_id,
                 s.started_at,
-                s.session_type,
+                s.session_kind,
                 COUNT(se.id)
             FROM sessions AS s
             LEFT JOIN session_exercises AS se
@@ -5680,7 +5681,7 @@ class TrainlogRepository(
     }
 
     private fun causalSessionSnapshot(db: SQLiteDatabase, sessionId: String): JSONArray? {
-        val header = db.rawQuery("SELECT id,session_id,started_at,ended_at,session_type,notes FROM sessions WHERE session_id=?", arrayOf(sessionId)).use { cursor ->
+        val header = db.rawQuery("SELECT id,session_id,started_at,ended_at,session_kind,notes FROM sessions WHERE session_id=?", arrayOf(sessionId)).use { cursor ->
             if (!cursor.moveToFirst()) null else Pair(cursor.getLong(0), causalCursorRow(cursor).also { it.remove(0) })
         } ?: return null
         val occurrences = JSONArray()
@@ -6030,7 +6031,11 @@ class TrainlogRepository(
             if (note.isNull("value")) null else note.getString("value"))
     }
 
-    private fun buildMobileExport(version: Int, completeCausalEnvelope: Boolean = false): String {
+    private fun buildMobileExport(
+        version: Int,
+        completeCausalEnvelope: Boolean = false,
+        cardioOnly: Boolean = false,
+    ): String {
         require(version in 1..4)
         if (!completeCausalEnvelope && database.readableDatabase.rawQuery(
                 "SELECT 1 FROM sync_causal_state WHERE deleted=1 LIMIT 1", null,
@@ -6059,8 +6064,11 @@ class TrainlogRepository(
         val sessionArray = JSONArray()
         /* CONTRACT: only completed `sessions` are part of mobile export v1;
          * active draft tables are intentionally outside the frozen artifact. */
+        val sessionFilter =
+            if (cardioOnly) "session_kind='cardio'" else "session_kind<>'cardio'"
         db.rawQuery(
-            "SELECT id,session_id,started_at,session_type,ended_at,notes FROM sessions ORDER BY started_at ASC,id ASC;",
+            "SELECT id,session_id,started_at,session_type,ended_at,notes FROM sessions " +
+                "WHERE $sessionFilter ORDER BY started_at ASC,id ASC;",
             null,
         ).use { sessions ->
             while (sessions.moveToNext()) {
@@ -6285,6 +6293,23 @@ class TrainlogRepository(
     /** Explicit staged enriched-history codec; normal synchronization remains V3. */
     fun buildMobileExportV4Json(): String = buildMobileExport(4)
 
+    /**
+     * Cardio history is a separate companion so frozen mobile V4 never gains a
+     * third session_type. The internal V4-shaped fact projection is rewritten
+     * only at this new envelope boundary.
+     */
+    internal fun buildCardioSessionsV1Json(): String {
+        val projected = JSONObject(buildMobileExport(4, true, cardioOnly = true))
+        projected.put("format", "trainlog-cardio-sessions")
+        projected.put("version", 1)
+        projected.remove("body_observations")
+        val sessions = projected.getJSONArray("sessions")
+        for (index in 0 until sessions.length()) {
+            sessions.getJSONObject(index).put("session_type", "cardio")
+        }
+        return projected.toString()
+    }
+
     /** Deterministic staged lifecycle artifact; raw form/UI columns are excluded. */
     fun buildExecutionDraftExportV1Json(): String {
         val db = database.readableDatabase
@@ -6293,7 +6318,7 @@ class TrainlogRepository(
         val drafts = JSONArray()
         db.rawQuery(
             "SELECT session_id,session_type,source_session_id,started_at,revision_id,parent_revision_id,notes " +
-                "FROM active_session_draft WHERE id=1;", null,
+                "FROM active_session_draft WHERE id=1 AND session_kind<>'cardio';", null,
         ).use { header -> if (header.moveToFirst()) {
             val sessionId = checkNotNull(if (header.isNull(0)) null else header.getString(0))
             drafts.put(buildExecutionDraftJson(db, sessionId, header.getString(1),
@@ -6677,7 +6702,7 @@ class TrainlogRepository(
                 }
                 val rowId = existingRowId ?: run {
                     val values = ContentValues().apply {
-                        put("session_id", sessionId); put("started_at", startedAt); put("session_type", type)
+                        put("session_id", sessionId); put("started_at", startedAt); put("session_type", type); put("session_kind", type)
                         if (version == 4 && !session.isNull("ended_at")) put("ended_at", session.getString("ended_at"))
                     }
                     db.insertOrThrow("sessions", null, values)
@@ -8870,7 +8895,7 @@ class TrainlogRepository(
         val kept = if (hasMore) selected.take(limit) else selected
         val rows = kept.map { selectedRow ->
             db.rawQuery(
-                """SELECT se.id,s.session_id,se.entry_id,s.started_at,s.session_type,
+                """SELECT se.id,s.session_id,se.entry_id,s.started_at,s.session_kind,
                           eq.equipment_id,eq.display_name,eq.load_semantics,
                           se.recording_mode,se.tracking_mode,se.data_fields,
                           ca.duration_seconds,ca.speed_kmh,ca.distance_km
@@ -9025,7 +9050,7 @@ class TrainlogRepository(
             db.rawQuery(
                 """
                 SELECT
-                    d.session_type,
+                    d.session_kind,
                     d.set_count_text,
                     d.reps_text,
                     d.duration_text,
@@ -9295,7 +9320,8 @@ class TrainlogRepository(
         val now = OffsetDateTime.now().toString()
         val values =
             ContentValues().apply {
-                put("session_type", draft.sessionType.wireValue)
+                put("session_type", legacySessionTypeWire(draft.sessionType))
+                put("session_kind", draft.sessionType.wireValue)
                 draft.sessionId?.let { put("session_id", it) }
                 draft.startedAt?.let { put("started_at", it) }
                 put("revision_id", draft.revisionId)
@@ -9532,7 +9558,8 @@ class TrainlogRepository(
                 /* CONTRACT: this exact explicit finalization instant anchors
                  * H+; old NULL values remain unknown and are never backfilled. */
                 put("ended_at", forcedEndedAt ?: OffsetDateTime.now().toString())
-                put("session_type", draft.sessionType.wireValue)
+                put("session_type", legacySessionTypeWire(draft.sessionType))
+                put("session_kind", draft.sessionType.wireValue)
             }
             sessionRowId = db.insertOrThrow("sessions", null, sessionValues)
         } else {
@@ -10665,7 +10692,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    28,
+    29,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -10951,6 +10978,31 @@ private class TrainlogDatabaseHelper(
             createSessionTimelineTables(db)
             seedActiveSessionTimeline(db)
             version = 28
+        }
+        if (version < 29 && newVersion >= 29) {
+            /* WHY: frozen legacy session_type admits only training/max_test.
+             * CONTRACT: v29 adds the canonical product session_kind without
+             * widening that legacy compatibility column. INVARIANT: old rows
+             * preserve their exact type and cardio never leaks into V3/V4. */
+            if (!tableHasColumn(db, "sessions", "session_kind")) {
+                db.execSQL(
+                    "ALTER TABLE sessions ADD COLUMN session_kind TEXT NOT NULL " +
+                        "DEFAULT 'training' CHECK(session_kind IN('training','max_test','cardio'));",
+                )
+            }
+            db.execSQL(
+                "UPDATE sessions SET session_kind=session_type;",
+            )
+            if (!tableHasColumn(db, "active_session_draft", "session_kind")) {
+                db.execSQL(
+                    "ALTER TABLE active_session_draft ADD COLUMN session_kind TEXT NOT NULL " +
+                        "DEFAULT 'training' CHECK(session_kind IN('training','max_test','cardio'));",
+                )
+            }
+            db.execSQL(
+                "UPDATE active_session_draft SET session_kind=session_type;",
+            )
+            version = 29
         }
 
         if (version != newVersion) {
@@ -11938,6 +11990,8 @@ private class TrainlogDatabaseHelper(
                             'max_test'
                         )
                     ),
+                session_kind TEXT NOT NULL DEFAULT 'training'
+                    CHECK(session_kind IN ('training','max_test','cardio')),
                 source_program_id TEXT,
                 source_program_session_id TEXT,
                 CHECK(
@@ -12159,6 +12213,8 @@ private class TrainlogDatabaseHelper(
                             'max_test'
                         )
                     ),
+                session_kind TEXT NOT NULL DEFAULT 'training'
+                    CHECK(session_kind IN ('training','max_test','cardio')),
                 selected_exercise_row_id INTEGER
                     REFERENCES exercises(id)
                     ON DELETE SET NULL,

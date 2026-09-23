@@ -1770,3 +1770,31 @@ The private Android installation was advanced non-destructively to Trainlog
 data clear. The device locked before the final visual Sleep-screen inspection,
 so no lock bypass was attempted and no real Sleep business button was pressed;
 that visual review remains explicitly pending.
+
+## Cardio session type V1 validation
+
+`TRAINLOG_CARDIO_SESSION_TYPE_V1=PASS` covers the new canonical session kind
+without widening frozen historical codecs. Android schema v29 migration tests
+prove that v28 training/max-test rows backfill from the legacy
+`session_type`, including a structurally adversarial retained-column fixture.
+A product-level Android regression creates, reloads and finalizes a real
+`SessionType.CARDIO` draft, verifies legacy `session_type=training` plus
+canonical `session_kind=cardio`, and proves the cardio session is absent from
+`history-v4`.
+
+The end-to-end generation regression proves the complementary path:
+`history-v4` contains zero cardio sessions, `cardio-sessions-v1.json`
+contains the completed cardio session, the production desktop generation
+consumer imports it as legacy training/canonical cardio with its performed set,
+the correlated ACK is accepted, and exact replay remains idempotent.
+
+Desktop schema v32 migration coverage validates the additive canonical column,
+historical-layout tolerance and foreign-key integrity.
+`cardio_session_exchange` separately covers strict cardio-only validation,
+exact replay and rejection of a stable identity colliding with non-cardio
+history.
+
+The 2026-09-23 closeout passes the complete native Meson inventory:
+**106/106 passed, 0 failed**. The complete Android JVM inventory reports
+**277 tests: 272 passed, five skipped, zero failures/errors**; `assembleDebug`
+also succeeds. The five skips remain optional historical/external fixture gates.
