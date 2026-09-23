@@ -1690,10 +1690,16 @@ On 2026-09-23 the diagnostic APK was installed non-destructively on the
 authorized SM_G990B as Trainlog 0.1.5 versionCode 38 using the same Android
 debug signing certificate as the existing private installation. Application
 startup completed without SQLite/crash errors and the diagnostic route opened.
-The first real 10-second HRS-filtered scan completed cleanly but found no
-device advertising Heart Rate Service. Real armband identification, GATT HRS
-confirmation and notification-field characterization therefore remain
-`HARDWARE_VALIDATION_PENDING` and are not represented as PASS.
+The first real 10-second HRS-filtered scan completed cleanly before the armband
+was positively identified. A subsequent expanded scan identified the real
+CYCPLUS H2 advertising Heart Rate Service. Trainlog connected through GATT,
+discovered `0x180D`, `0x2A37` and Battery Service, enabled notifications and
+received live BPM successfully. The observed payloads carried one raw RR
+interval, no sensor-contact field and no energy-expended field. A 12-second
+measurement window advanced from 43 to 56 notifications (13 notifications),
+confirming an approximately 1 Hz emission cadence. This closes the real-sensor
+hardware characterization gate without recording device-specific MAC identity
+in project documentation.
 
 The complete Android JVM inventory after this tranche reports **266 tests:
 261 passed, five skipped, zero failures/errors**, and `assembleDebug` succeeds.
