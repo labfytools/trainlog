@@ -1670,3 +1670,30 @@ The 2026-09-23 closeout passes the complete native Meson inventory:
 **258 tests: 253 passed, five skipped, zero failures/errors**. The five skips
 remain optional historical/external fixture gates and are not Cardio V1
 failures.
+
+## Cardio BLE diagnostics V1 validation
+
+`TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1=SOFTWARE_PASS / HARDWARE_VALIDATION_PENDING`
+keeps BLE protocol parsing separate from Android GATT transport. Unit coverage
+exercises 8-bit and 16-bit BPM, nullable sensor-contact semantics, cumulative
+energy, one/multiple raw RR intervals, combined flags, boundary BPM values,
+reserved flags, missing fields, truncated RR/energy values and unexpected
+trailing bytes.
+
+The Android diagnostic uses a 10-second Heart Rate Service-filtered scan with
+an explicit expanded BLE fallback, then discovers `0x180D`, locates `0x2A37`,
+checks optional Battery Service and enables the CCC notification descriptor.
+It is screen-scoped and does not implement the later persistent foreground
+acquisition owner.
+
+On 2026-09-23 the diagnostic APK was installed non-destructively on the
+authorized SM_G990B as Trainlog 0.1.5 versionCode 38 using the same Android
+debug signing certificate as the existing private installation. Application
+startup completed without SQLite/crash errors and the diagnostic route opened.
+The first real 10-second HRS-filtered scan completed cleanly but found no
+device advertising Heart Rate Service. Real armband identification, GATT HRS
+confirmation and notification-field characterization therefore remain
+`HARDWARE_VALIDATION_PENDING` and are not represented as PASS.
+
+The complete Android JVM inventory after this tranche reports **266 tests:
+261 passed, five skipped, zero failures/errors**, and `assembleDebug` succeeds.

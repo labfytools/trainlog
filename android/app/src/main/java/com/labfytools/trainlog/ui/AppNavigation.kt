@@ -39,6 +39,7 @@ sealed interface AppRoute {
     data object LatestMaxima : AppRoute { override val section = AppSection.EXERCISES }
     data object Sync : AppRoute { override val section = AppSection.SYNC }
     data object Settings : AppRoute { override val section = AppSection.SETTINGS }
+    data object HeartRateDiagnostics : AppRoute { override val section = AppSection.SETTINGS }
 }
 
 fun AppSection.rootRoute(): AppRoute = when (this) {

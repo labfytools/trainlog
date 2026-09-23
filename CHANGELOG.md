@@ -9,6 +9,14 @@
   consumed ACK, after which those stopped captures remain local history but are
   excluded from ordinary re-publication. Desktop/Web remain sensor consumers
   only; Bluetooth Classic Trainlog synchronization is unchanged.
+- Added the Android Heart Rate Service diagnostic foundation. The independent
+  `0x2A37` parser covers 8/16-bit BPM, contact, energy and raw RR flags with
+  strict malformed-payload rejection. A settings diagnostic provides bounded
+  HRS-filtered and expanded BLE scans, GATT service discovery and notification
+  subscription without turning desktop/Web into sensor clients. Android 12+
+  scan/connect permissions and the Android 11-and-older scan-location boundary
+  are explicit. Real armband notification characterization remains a hardware
+  validation gate before persistent acquisition.
 
 Development opened after stable v0.1.4 release.
 

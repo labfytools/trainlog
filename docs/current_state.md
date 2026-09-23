@@ -148,7 +148,8 @@ parallel implementation of its rules.
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
 | Cardio persistence/sync | `TRAINLOG_CARDIO_PERSISTENCE_SYNC_V1=PASS`: Android v27 + desktop v30, strict optional `trainlog-heart-rate` V1 Android→desktop companion, generation relation and correlated ACK |
-| Current operational cursor | `TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1`: standard Heart Rate Service parser, Android BLE discovery and real-sensor characterization |
+| Cardio BLE diagnostics | `TRAINLOG_CARDIO_BLE_DIAGNOSTICS_V1=SOFTWARE_PASS / HARDWARE_VALIDATION_PENDING`: strict `0x2A37` parser, bounded HRS/expanded BLE scan, GATT service discovery and notification subscription are installed on Android 0.1.5 vc38; filtered real-device scan observed no advertising HRS device on 2026-09-23 |
+| Current operational cursor | `TRAINLOG_CARDIO_BLE_HARDWARE_VALIDATION_V1`: identify the real armband, confirm `0x180D/0x2A37`, notification cadence and optional RR/contact/energy fields before persistent acquisition |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

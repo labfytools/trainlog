@@ -472,7 +472,12 @@ private fun catalogCountsText(context: android.content.Context, imported: Int, r
     ).joinToString(", ")
 
 @Composable
-fun SettingsScreen(repository: TrainlogRepository, inbox: SyncCatalogInbox, onCatalogChanged: () -> Unit) {
+fun SettingsScreen(
+    repository: TrainlogRepository,
+    inbox: SyncCatalogInbox,
+    onHeartRateDiagnostics: () -> Unit,
+    onCatalogChanged: () -> Unit,
+) {
     val colors = LocalTrainlogColors.current
     val context = LocalContext.current
     val language = LocalLanguagePresentation.current
@@ -532,6 +537,13 @@ fun SettingsScreen(repository: TrainlogRepository, inbox: SyncCatalogInbox, onCa
                     enabled = language.language != AppLanguage.ENGLISH,
                 )
             }
+        }
+        TrainlogFrame(strings.getString(R.string.settings_cardio_section)) {
+            TrainlogAction(
+                strings.getString(R.string.settings_cardio_diagnostics),
+                strings.getString(R.string.settings_cardio_diagnostics_description),
+                onHeartRateDiagnostics,
+            )
         }
         TrainlogFrame(strings.getString(R.string.settings_exchange_folder)) {
             TrainlogInfo(strings.getString(if (authorized) R.string.settings_folder_granted else R.string.settings_folder_required), if (authorized) colors.success else colors.warning)

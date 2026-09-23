@@ -77,6 +77,7 @@ fun AndroidAppShell(
         AppRoute.BodyMeasurements -> R.string.route_body_measurements; AppRoute.LatestMaxima -> R.string.route_latest_maxima
         AppRoute.SleepDiary -> R.string.nav_sleep
         AppRoute.Sync -> R.string.nav_sync; AppRoute.Settings -> R.string.nav_settings
+        AppRoute.HeartRateDiagnostics -> R.string.route_heart_rate_diagnostics
     })
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
