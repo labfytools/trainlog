@@ -72,6 +72,15 @@ Bluetooth synchronization transport contract.
 CURRENT_OPERATIONAL_CURSOR=TRAINLOG_0_1_5_DEVICE_VISUAL_REVIEW_V1
 ```
 
+The vc45 real-device smoke found that selecting Cardio after live capture had
+already started on the default Training draft left the durable capture tagged
+as `session`, starving Cardio guidance despite fresh global BPM. Repository
+persistence now reconciles the same capture atomically while retaining its
+identity, sample order and raw BPM/RR facts; automated coverage reproduces the
+transition through an active exercise and guidance event. The cursor remains
+pending until the corrected flow is re-smoked on the separately deployed vc46
+candidate.
+
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this
 cursor: complete predecessor state, imported built-in authorization,
 cross-platform draft revision identity and resource-bound admission are closed.

@@ -61,6 +61,16 @@
   timeline, calibration provenance and exact raw HR evidence for instruction
   events carrying BPM before accepting them.
 
+- Fixed live Cardio guidance after changing an already-started manual draft
+  from Training to Cardio. Draft persistence now atomically reconciles the
+  same active heart-rate capture from `session` to `cardio` without replacing
+  its identity or losing existing BPM/RR samples and sequence. A transition
+  away from Cardio remains possible before Cardio-only facts exist, but is
+  rejected once durable guidance or calibration facts would make it
+  ambiguous. Repository coverage reproduces the real ordering through an
+  active exercise and guidance event; a private vc46 device re-smoke remains
+  required.
+
 - Added factual synchronized heart-rate timelines to the local Web. One bounded C17 read model and loopback GET endpoint now project raw BPM/RR measurements with canonical workout exercise intervals or Sleep Diary/medication markers. Cardio history additionally presents resolved phase targets, instruction changes and calibration peak/recovery facts. History and Sleep reuse one responsive SVG component; full-sample min/max/mean statistics remain exact while only very large chart projections retain bounded bucket extrema. No sleep stage, HRV, readiness or medical inference is added.
 
 Development opened after stable v0.1.4 release.

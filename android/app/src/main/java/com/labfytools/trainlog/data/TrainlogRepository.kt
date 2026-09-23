@@ -10404,6 +10404,21 @@ class TrainlogRepository(
         db: SQLiteDatabase,
         draft: ActiveSessionDraft,
     ) {
+        val persistedSession =
+            db.rawQuery(
+                "SELECT session_id,session_kind FROM active_session_draft WHERE id=?",
+                arrayOf(ACTIVE_DRAFT_ID.toString()),
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getString(1)
+            }
+        if (
+            persistedSession != null &&
+            persistedSession.second == SessionType.CARDIO.wireValue &&
+            draft.sessionType != SessionType.CARDIO &&
+            hasCardioOnlyFacts(db, persistedSession.first)
+        ) {
+            error("A cardio session with guidance or calibration facts cannot change type.")
+        }
         val selectedRowId =
             draft.form.selectedExercise
                 ?.let {
@@ -10463,6 +10478,8 @@ class TrainlogRepository(
                 values,
             )
         }
+
+        reconcileActiveSessionHeartRateContext(db, draft.sessionType)
 
         ensureSessionTimelineForPersistedDraft(db, draft)
 
@@ -10628,6 +10645,48 @@ class TrainlogRepository(
                 }
             }
         }
+    }
+
+    private fun hasCardioOnlyFacts(
+        db: SQLiteDatabase,
+        sessionId: String,
+    ): Boolean =
+        db.rawQuery(
+            "SELECT 1 FROM cardio_guidance_runs WHERE session_id=? " +
+                "UNION ALL SELECT 1 FROM cardio_calibrations WHERE session_id=? LIMIT 1",
+            arrayOf(sessionId, sessionId),
+        ).use { it.moveToFirst() }
+
+    private fun reconcileActiveSessionHeartRateContext(
+        db: SQLiteDatabase,
+        sessionType: SessionType,
+    ) {
+        val sessionId =
+            db.rawQuery(
+                "SELECT session_id FROM active_session_draft WHERE id=?",
+                arrayOf(ACTIVE_DRAFT_ID.toString()),
+            ).use { cursor ->
+                check(cursor.moveToFirst())
+                cursor.getString(0)
+            }
+        val expectedContext =
+            if (sessionType == SessionType.CARDIO) {
+                HeartRateContextKind.CARDIO
+            } else {
+                HeartRateContextKind.SESSION
+            }
+
+        /* WHY: the sensor service can open the capture while a new manual draft still has its
+         * default Training type, before the user selects Cardio.
+         * CONTRACT: every successful mutable draft-type save atomically reconciles the same
+         * session's active capture; cardio-only durable facts prevent a later transition away.
+         * INVARIANT: capture identity, samples, RR facts, sequence and the single active slot are
+         * preserved; only the compatible session/cardio context discriminator may change. */
+        db.execSQL(
+            "UPDATE heart_rate_captures SET context_kind=? WHERE active_slot=1 " +
+                "AND context_id=? AND context_kind IN('session','cardio') AND context_kind<>?",
+            arrayOf(expectedContext.wireValue, sessionId, expectedContext.wireValue),
+        )
     }
 
     private fun insertCompletedSession(
