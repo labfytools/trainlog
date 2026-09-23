@@ -1,5 +1,13 @@
 # Desktop database
 
+## Schema v34: synchronized Cardio guidance V1
+
+Schema v34 additively stores completed Android-owned guided-cardio runs. `cardio_guidance_runs` keeps the stable run/session identity and exact run bounds. `cardio_guidance_phases` stores the ordered `entry_id`-owned phase, its immutable resolved BPM target, optional exact calibration provenance, exit condition, phase bounds and final instruction. `cardio_guidance_events` stores only instruction changes, not another copy of the raw heart-rate curve.
+
+The importer requires the referenced canonical session to be `cardio`, every phase `entry_id` to exist in that session, and every phase interval to remain inside the synchronized exercise timeline. Calibration-derived targets must reference an imported calibration with the same observed peak. Any guidance event carrying BPM must match an exact synchronized raw heart-rate sample at the same timestamp; suspended events intentionally carry no BPM.
+
+No migration invents phases, instructions, BPM or calibration references.
+
 ## Schema v33: synchronized Cardio calibration V1
 
 Schema v33 additively stores completed Android-owned Cardio calibration profiles. `cardio_calibrations` is keyed by stable `calibration_id` and retains protocol version, canonical cardio `session_id`, stable occurrence `entry_id`, exact calibration/effort/end timestamps, the synchronized heart-rate `capture_id`, observed peak BPM and import time.

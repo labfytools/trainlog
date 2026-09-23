@@ -1808,3 +1808,32 @@ The calibration system exercise keeps a stable `exercise_id` for occurrence fore
 Recovery cannot complete before three minutes after effort end. The +60/+120/+180 second references accept only a real HR sample arriving from the target instant through ten seconds after it. A missing sensor interval remains missing rather than being populated by a later reconnect.
 
 The desktop importer independently rejects a peak not supported by the raw HR capture and rejects a recovery point that is not an exact raw sample. The 2026-09-23 closeout passes the complete native inventory **108/108** and the complete Android JVM inventory **281 tests: 276 passed, five skipped, zero failures/errors**; `assembleDebug` also succeeds.
+
+## Cardio BPM guidance V1 validation
+
+`TRAINLOG_CARDIO_BPM_GUIDANCE_V1=PASS` covers Android schema v31, desktop
+schema v34, pure guidance logic, persistent phase/run history, live CYCPLUS
+integration, strict synchronization and the Android active-session UI.
+
+The guidance engine resolves either absolute BPM targets or calibration-relative
+percentages into an immutable BPM snapshot before execution. The default
+control-stability parameters are a 2 BPM hysteresis band and a 3 second
+confirmation interval; these are UI/control parameters, not physiological zone
+claims. A stale or missing heart-rate signal suspends guidance immediately and
+never reuses the last BPM.
+
+Supported phase exit conditions are fixed duration, entry into the resolved BPM
+target, recovery below a threshold, and duration-or-recovery. Only time-based
+conditions can complete without a fresh BPM measurement.
+
+Android records ordered phases against the active stable cardio `entry_id`,
+persists target/calibration provenance and stores only instruction changes.
+The full-generation regression proves a completed run with raw BPM evidence is
+imported through `trainlog-cardio-guidance` V1, receives a correlated consumed
+ACK, and is excluded from the next ordinary Android publication. Desktop
+independently verifies canonical cardio session ownership, exercise timeline,
+calibration provenance and exact raw BPM evidence for non-suspended events.
+
+The 2026-09-23 closeout passes the complete native Meson inventory
+**110/110**, and the complete Android JVM inventory reports **300 tests:
+295 passed, five skipped, zero failures/errors**. `assembleDebug` succeeds.

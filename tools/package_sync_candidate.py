@@ -20,6 +20,7 @@ RUNTIME_TOOLS = [
     "sleep_diary_exchange.py",
     "cardio_session_exchange.py",
         "cardio_calibration_exchange.py",
+        "cardio_guidance_exchange.py",
         "heart_rate_exchange.py",
     "session_timeline_exchange.py",
     "trainlog_sqlite.py",
@@ -118,8 +119,8 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.5",
-        "desktop_schema": 33,
-        "android_schema": 30,
+        "desktop_schema": 34,
+        "android_schema": 31,
         "protocols": [
             "mobile-export-v3",
             "mobile-history-v4",
@@ -136,6 +137,7 @@ def main() -> int:
             "sleep-diary-v1",
             "cardio-sessions-v1",
             "cardio-calibrations-v1",
+            "cardio-guidance-v1",
             "heart-rate-v1",
             "session-timeline-v1",
         ],

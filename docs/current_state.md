@@ -112,8 +112,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v33; versioned cardio calibration profiles/recovery are additive on top of canonical cardio session kind |
-| Android SQLite | schema v30; Android owns active/completed cardio calibration profiles in addition to cardio sessions and HR capture |
+| Desktop SQLite | schema v34; synchronized guided-cardio runs, phase snapshots and instruction changes are additive in v34 |
+| Android SQLite | schema v31; Android owns durable guided-cardio runs/phases/events in addition to calibration and HR capture |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
@@ -154,7 +154,8 @@ parallel implementation of its rules.
 | Sleep Android one-tap | `TRAINLOG_SLEEP_ANDROID_ONE_TAP_V1=SOFTWARE_PASS / DEVICE_VISUAL_PENDING`: existing Sleep Diary V1 now has one-tap Couché / medication / Réveil / Levé, guarded 10 s undo, full correction route and sleep-entry-owned cardio capture; vc41 installed without data clear, but final visual device review was blocked by the phone lock screen |
 | Cardio session type | `TRAINLOG_CARDIO_SESSION_TYPE_V1=PASS`: Android v29 + desktop v32 use canonical `session_kind=cardio`; frozen mobile/history and draft formats keep legacy training/max_test; dedicated `trainlog-cardio-sessions` V1 syncs completed cardio sessions Android→desktop idempotently |
 | Cardio calibration | `TRAINLOG_CARDIO_CALIBRATION_V1=PASS`: reserved system Calibration cardio exercise, real measured observed peak, ≥3 min recovery with bounded +1/+2/+3 min factual samples, immutable profile and Android→desktop calibration companion |
-| Current operational cursor | `TRAINLOG_CARDIO_BPM_GUIDANCE_V1`: define phase targets, hysteresis, persistence and fresh-signal-only ACCÉLÈRE / MAINTIENS / RALENTIS guidance |
+| Cardio BPM guidance | `TRAINLOG_CARDIO_BPM_GUIDANCE_V1=PASS`: absolute/calibration-derived immutable BPM targets, 2 BPM hysteresis, 3 s confirmation, stale-signal suspension, durable phase/condition history, Android live guidance UI and strict Android→desktop `trainlog-cardio-guidance` V1 sync |
+| Current operational cursor | `TRAINLOG_CARDIO_WEB_VISUALIZATION_V1`: factual Web timelines/curves for training, cardio guidance/calibration and Sleep without inventing measurements or sleep states |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

@@ -21,7 +21,7 @@ static int scalar(sqlite3 *database, const char *sql) {
 }
 
 int main(void) {
-    char path[] = "/tmp/trainlog-schema-v33-XXXXXX";
+    char path[] = "/tmp/trainlog-schema-v34-XXXXXX";
     TrainlogDatabase *production = NULL;
     sqlite3 *raw = NULL;
     int descriptor = mkstemp(path);
@@ -35,9 +35,10 @@ int main(void) {
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(sqlite3_exec(raw,
-                       "DROP TABLE cardio_calibration_recovery;"
-                       "DROP TABLE cardio_calibrations;"
-                       "PRAGMA user_version=32;",
+                       "DROP TABLE cardio_guidance_events;"
+                       "DROP TABLE cardio_guidance_phases;"
+                       "DROP TABLE cardio_guidance_runs;"
+                       "PRAGMA user_version=33;",
                        NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
@@ -51,10 +52,11 @@ int main(void) {
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN("
-                 "'cardio_calibrations','cardio_calibration_recovery')") == 2);
+                 "'cardio_guidance_runs','cardio_guidance_phases','cardio_guidance_events')") == 3);
     CHECK(scalar(raw,
                  "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
-                 "AND name='cardio_calibration_session'") == 1);
+                 "AND name IN('cardio_guidance_session','cardio_guidance_event_time')") == 2);
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM cardio_guidance_runs") == 0);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
     result = EXIT_SUCCESS;
 
@@ -62,6 +64,6 @@ cleanup:
     if (production != NULL) trainlog_database_close(production);
     if (raw != NULL) (void)sqlite3_close(raw);
     (void)unlink(path);
-    if (result == EXIT_SUCCESS) puts("PASS schema v32 to v33 cardio calibration migration");
+    if (result == EXIT_SUCCESS) puts("PASS schema v33 to v34 cardio guidance migration");
     return result;
 }

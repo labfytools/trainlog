@@ -1135,7 +1135,15 @@ Before import, desktop proves that the referenced session/occurrence and HR capt
 
 Android generation membership is retained until a correlated consumed ACK. Acknowledged profiles remain local history and are not ordinarily republished. No calibration artifact claims a physiological maximum: the persisted value is the highest BPM actually observed in that calibration capture before recovery.
 
-## 23. Legacy active-protocol limitations
+## 23. Cardio guidance companion V1
+
+`trainlog-cardio-guidance` V1 is an optional Android→desktop full-generation participant containing only completed guided-cardio runs. Each run owns ordered phases, the exact target snapshot used at execution time, its exit condition and only the chronological instruction changes (`accelerate`, `maintain`, `slow_down`, `suspended`). Raw BPM/RR remain exclusively in Heart Rate V1.
+
+A calibration-derived target carries `calibration_id`, the observed peak snapshot and the percentages that resolved the BPM bounds. Desktop requires that reference to match an already imported completed calibration. Every non-suspended instruction event carrying BPM must match an exact raw heart-rate sample for the same cardio session and timestamp. Suspended events carry no BPM and therefore cannot silently reuse a stale measurement.
+
+Exact replay is idempotent. Reusing a stable run/phase identity with different target, condition, interval or event history is rejected. Android records exact `run_id -> generation_id` membership; only a correlated consumed ACK marks the run acknowledged and excludes it from ordinary future publication.
+
+## 24. Legacy active-protocol limitations
 
 The Web end-to-end tranche adds an explicit opt-in application orchestrator.
 `POST /api/v1/sync` admits one correlated run and `GET /api/v1/sync/status` is

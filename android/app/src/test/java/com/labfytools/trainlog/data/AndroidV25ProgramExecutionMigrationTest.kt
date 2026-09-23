@@ -69,7 +69,7 @@ class AndroidV25ProgramExecutionMigrationTest {
             reopened.close()
         }
         SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(30, scalar(db, "PRAGMA user_version"))
+            assertEquals(31, scalar(db, "PRAGMA user_version"))
             assertEquals(0, scalar(db, "SELECT COUNT(*) FROM sessions WHERE source_program_id IS NOT NULL"))
             assertEquals("ok", text(db, "PRAGMA integrity_check"))
             db.rawQuery("PRAGMA foreign_key_check", null).use { cursor ->

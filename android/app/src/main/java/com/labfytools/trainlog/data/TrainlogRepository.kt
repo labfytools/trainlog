@@ -20,6 +20,15 @@ import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.CardioCalibrationPhase
 import com.labfytools.trainlog.model.CardioCalibrationProfile
 import com.labfytools.trainlog.model.CardioCalibrationRecoveryPoint
+import com.labfytools.trainlog.model.CardioGuidanceEvent
+import com.labfytools.trainlog.model.CardioGuidanceInstruction
+import com.labfytools.trainlog.model.CardioGuidanceOutput
+import com.labfytools.trainlog.model.CardioGuidancePhaseRecord
+import com.labfytools.trainlog.model.CardioGuidanceRun
+import com.labfytools.trainlog.model.CardioGuidedPhase
+import com.labfytools.trainlog.model.CardioPhaseExitCondition
+import com.labfytools.trainlog.model.CardioPhaseKind
+import com.labfytools.trainlog.model.CardioTargetSnapshot
 import com.labfytools.trainlog.model.BodyObservationSummary
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseProfile
@@ -539,6 +548,15 @@ class TrainlogRepository(
         data class Invalid(val message: String) : CardioCalibrationResult
         data object Conflict : CardioCalibrationResult
         data class DatabaseError(val message: String) : CardioCalibrationResult
+    }
+
+    sealed interface CardioGuidanceMutationResult {
+        data class Applied(val phase: CardioGuidancePhaseRecord? = null) :
+            CardioGuidanceMutationResult
+        data class Invalid(val message: String) : CardioGuidanceMutationResult
+        data class ActiveConflict(val phaseId: String) : CardioGuidanceMutationResult
+        data object NotFound : CardioGuidanceMutationResult
+        data class DatabaseError(val message: String) : CardioGuidanceMutationResult
     }
 
     private fun legacySessionTypeWire(type: SessionType): String =
@@ -1673,6 +1691,12 @@ class TrainlogRepository(
                     "WHERE active_slot=1 AND context_id=? AND active_exercise_entry_id=?",
                 arrayOf(row.first, entryId),
             )
+            db.execSQL(
+                "UPDATE cardio_guidance_phases SET ended_at=?,active_slot=NULL " +
+                    "WHERE entry_id=? AND active_slot=1 AND run_id IN(" +
+                    "SELECT run_id FROM cardio_guidance_runs WHERE session_id=?)",
+                arrayOf(endedAt, entryId, row.first),
+            )
             val timing =
                 SessionExerciseTiming(row.first, entryId, row.second, row.third, endedAt)
             db.setTransactionSuccessful()
@@ -1818,6 +1842,443 @@ class TrainlogRepository(
             .put("generated_at", OffsetDateTime.now().toString())
             .put("calibrations", calibrations)
             .toString()
+    }
+
+
+    private fun guidanceInstructionWire(value: CardioGuidanceInstruction): String =
+        when (value) {
+            CardioGuidanceInstruction.ACCELERATE -> "accelerate"
+            CardioGuidanceInstruction.MAINTAIN -> "maintain"
+            CardioGuidanceInstruction.SLOW_DOWN -> "slow_down"
+            CardioGuidanceInstruction.SUSPENDED -> "suspended"
+        }
+
+    private fun guidanceInstructionFromWire(value: String): CardioGuidanceInstruction =
+        when (value) {
+            "accelerate" -> CardioGuidanceInstruction.ACCELERATE
+            "maintain" -> CardioGuidanceInstruction.MAINTAIN
+            "slow_down" -> CardioGuidanceInstruction.SLOW_DOWN
+            "suspended" -> CardioGuidanceInstruction.SUSPENDED
+            else -> error("Unknown cardio guidance instruction: $value")
+        }
+
+    private fun readCardioGuidancePhase(
+        db: SQLiteDatabase,
+        selection: String,
+        args: Array<String>,
+    ): CardioGuidancePhaseRecord? =
+        db.rawQuery(
+            "SELECT r.run_id,r.session_id,p.entry_id,p.phase_id,p.position,p.kind," +
+                "p.target_min_bpm,p.target_max_bpm,p.calibration_id," +
+                "p.calibration_observed_peak_bpm,p.minimum_percent,p.maximum_percent," +
+                "p.exit_kind,p.exit_seconds,p.exit_bpm,p.started_at,p.ended_at," +
+                "p.current_instruction FROM cardio_guidance_phases p " +
+                "JOIN cardio_guidance_runs r ON r.run_id=p.run_id WHERE $selection LIMIT 1",
+            args,
+        ).use { c ->
+            if (!c.moveToFirst()) return null
+            val target =
+                if (c.isNull(6)) {
+                    null
+                } else {
+                    CardioTargetSnapshot(
+                        minimumBpm = c.getInt(6),
+                        maximumBpm = c.getInt(7),
+                        calibrationId = if (c.isNull(8)) null else c.getString(8),
+                        calibrationObservedPeakBpm = if (c.isNull(9)) null else c.getInt(9),
+                        minimumPercent = if (c.isNull(10)) null else c.getInt(10),
+                        maximumPercent = if (c.isNull(11)) null else c.getInt(11),
+                    )
+                }
+            val exit =
+                when (c.getString(12)) {
+                    "fixed_duration" -> CardioPhaseExitCondition.FixedDuration(c.getInt(13))
+                    "enter_target" -> CardioPhaseExitCondition.EnterTarget
+                    "recover_below" -> CardioPhaseExitCondition.RecoverBelow(c.getInt(14))
+                    "duration_or_recover" ->
+                        CardioPhaseExitCondition.DurationOrRecoverBelow(
+                            c.getInt(13),
+                            c.getInt(14),
+                        )
+                    else -> error("Unknown cardio guidance exit condition.")
+                }
+            CardioGuidancePhaseRecord(
+                runId = c.getString(0),
+                sessionId = c.getString(1),
+                entryId = c.getString(2),
+                phase =
+                    CardioGuidedPhase(
+                        phaseId = c.getString(3),
+                        kind =
+                            CardioPhaseKind.entries.first {
+                                it.wireValue == c.getString(5)
+                            },
+                        target = target,
+                        exitCondition = exit,
+                    ),
+                position = c.getInt(4),
+                startedAt = c.getString(15),
+                endedAt = if (c.isNull(16)) null else c.getString(16),
+                currentInstruction = guidanceInstructionFromWire(c.getString(17)),
+            )
+        }
+
+    fun activeCardioGuidancePhase(): CardioGuidancePhaseRecord? =
+        readCardioGuidancePhase(
+            database.readableDatabase,
+            "p.active_slot=1",
+            emptyArray(),
+        )
+
+    fun listCardioGuidanceEvents(phaseId: String): List<CardioGuidanceEvent> {
+        if (!sleepIdentity(phaseId, "cgp")) return emptyList()
+        val phase =
+            readCardioGuidancePhase(
+                database.readableDatabase,
+                "p.phase_id=?",
+                arrayOf(phaseId),
+            ) ?: return emptyList()
+        val output = mutableListOf<CardioGuidanceEvent>()
+        database.readableDatabase.rawQuery(
+            "SELECT sequence,observed_at,instruction,bpm,target_min_bpm,target_max_bpm " +
+                "FROM cardio_guidance_events WHERE run_id=? AND phase_id=? ORDER BY sequence",
+            arrayOf(phase.runId, phaseId),
+        ).use { c ->
+            while (c.moveToNext()) {
+                output +=
+                    CardioGuidanceEvent(
+                        sequence = c.getLong(0),
+                        observedAt = c.getString(1),
+                        instruction = guidanceInstructionFromWire(c.getString(2)),
+                        bpm = if (c.isNull(3)) null else c.getInt(3),
+                        targetMinimumBpm = if (c.isNull(4)) null else c.getInt(4),
+                        targetMaximumBpm = if (c.isNull(5)) null else c.getInt(5),
+                    )
+            }
+        }
+        return output
+    }
+
+    private fun validateGuidanceTarget(
+        db: SQLiteDatabase,
+        target: CardioTargetSnapshot?,
+    ): String? {
+        if (target == null) return null
+        if (
+            target.minimumBpm !in 1..65535 ||
+            target.maximumBpm !in target.minimumBpm..65535
+        ) return "Invalid cardio guidance target."
+        val hasCalibration = target.calibrationId != null
+        val provenanceComplete =
+            target.calibrationObservedPeakBpm != null &&
+                target.minimumPercent != null &&
+                target.maximumPercent != null
+        if (hasCalibration != provenanceComplete) {
+            return "Incomplete cardio calibration target provenance."
+        }
+        if (!hasCalibration) {
+            if (
+                target.calibrationObservedPeakBpm != null ||
+                target.minimumPercent != null ||
+                target.maximumPercent != null
+            ) return "Unexpected cardio target provenance."
+            return null
+        }
+        if (
+            !sleepIdentity(checkNotNull(target.calibrationId), "cal") ||
+            target.calibrationObservedPeakBpm !in 1..65535 ||
+            target.minimumPercent !in 1..100 ||
+            target.maximumPercent !in checkNotNull(target.minimumPercent)..100
+        ) return "Invalid cardio calibration target provenance."
+        val exact =
+            db.rawQuery(
+                "SELECT 1 FROM cardio_calibrations WHERE calibration_id=? " +
+                    "AND phase='completed' AND observed_peak_bpm=? LIMIT 1",
+                arrayOf(
+                    target.calibrationId,
+                    target.calibrationObservedPeakBpm.toString(),
+                ),
+            ).use { it.moveToFirst() }
+        if (!exact) return "Cardio calibration reference is unavailable."
+        return null
+    }
+
+    private fun validateGuidedPhase(
+        db: SQLiteDatabase,
+        phase: CardioGuidedPhase,
+    ): String? {
+        if (!sleepIdentity(phase.phaseId, "cgp")) return "Invalid cardio phase identity."
+        validateGuidanceTarget(db, phase.target)?.let { return it }
+        return when (val exit = phase.exitCondition) {
+            is CardioPhaseExitCondition.FixedDuration ->
+                if (exit.seconds in 1..86400) null else "Invalid fixed cardio phase duration."
+            CardioPhaseExitCondition.EnterTarget ->
+                if (phase.target != null) null else "Target-entry phase requires a BPM target."
+            is CardioPhaseExitCondition.RecoverBelow ->
+                if (exit.bpm in 1..65535) null else "Invalid recovery threshold."
+            is CardioPhaseExitCondition.DurationOrRecoverBelow ->
+                if (exit.maximumSeconds in 1..86400 && exit.bpm in 1..65535) null
+                else "Invalid bounded recovery condition."
+        }
+    }
+
+    fun startCardioGuidancePhase(
+        entryId: String,
+        phase: CardioGuidedPhase,
+        startedAt: String = OffsetDateTime.now().toString(),
+    ): CardioGuidanceMutationResult {
+        if (
+            !SESSION_ENTRY_ID_V4_PATTERN.matches(entryId) ||
+            TrainlogTimestamp.parse(startedAt) == null
+        ) return CardioGuidanceMutationResult.Invalid("Invalid cardio phase start.")
+        val context = activeSessionTimelineContext()
+            ?: return CardioGuidanceMutationResult.Invalid("No active cardio session.")
+        if (context.sessionType != SessionType.CARDIO || context.activeEntryId != entryId) {
+            return CardioGuidanceMutationResult.Invalid(
+                "Cardio guidance requires the active cardio exercise.",
+            )
+        }
+
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val exerciseStartedAt =
+                db.rawQuery(
+                    "SELECT started_at FROM session_timeline_exercises " +
+                        "WHERE session_id=? AND entry_id=? AND active_slot=1 LIMIT 1",
+                    arrayOf(context.sessionId, entryId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null else cursor.getString(0)
+                } ?: return CardioGuidanceMutationResult.Invalid(
+                    "Active cardio exercise timing is unavailable.",
+                )
+            if (
+                TrainlogTimestamp.parse(startedAt)!! <
+                TrainlogTimestamp.parse(exerciseStartedAt)!!
+            ) {
+                return CardioGuidanceMutationResult.Invalid(
+                    "Cardio phase cannot start before its exercise.",
+                )
+            }
+            validateGuidedPhase(db, phase)?.let {
+                return CardioGuidanceMutationResult.Invalid(it)
+            }
+            val conflict =
+                db.rawQuery(
+                    "SELECT phase_id FROM cardio_guidance_phases WHERE active_slot=1 LIMIT 1",
+                    null,
+                ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            if (conflict != null) return CardioGuidanceMutationResult.ActiveConflict(conflict)
+
+            val existingRun =
+                db.rawQuery(
+                    "SELECT run_id,ended_at FROM cardio_guidance_runs WHERE session_id=?",
+                    arrayOf(context.sessionId),
+                ).use { c ->
+                    if (!c.moveToFirst()) null
+                    else c.getString(0) to if (c.isNull(1)) null else c.getString(1)
+                }
+            if (existingRun?.second != null) {
+                return CardioGuidanceMutationResult.Invalid("Cardio guidance run is already closed.")
+            }
+            val runId =
+                existingRun?.first ?: sleepId("cgr").also {
+                    db.execSQL(
+                        "INSERT INTO cardio_guidance_runs(" +
+                            "run_id,session_id,started_at,ended_at,acknowledged_at) " +
+                            "VALUES(?,?,?,NULL,NULL)",
+                        arrayOf(it, context.sessionId, startedAt),
+                    )
+                }
+            val position =
+                db.rawQuery(
+                    "SELECT COALESCE(MAX(position),-1)+1 FROM cardio_guidance_phases WHERE run_id=?",
+                    arrayOf(runId),
+                ).use { c -> check(c.moveToFirst()); c.getInt(0) }
+            val target = phase.target
+            val exit = phase.exitCondition
+            val exitKind: String
+            var exitSeconds: Int? = null
+            var exitBpm: Int? = null
+            when (exit) {
+                is CardioPhaseExitCondition.FixedDuration -> {
+                    exitKind = "fixed_duration"
+                    exitSeconds = exit.seconds
+                }
+                CardioPhaseExitCondition.EnterTarget -> exitKind = "enter_target"
+                is CardioPhaseExitCondition.RecoverBelow -> {
+                    exitKind = "recover_below"
+                    exitBpm = exit.bpm
+                }
+                is CardioPhaseExitCondition.DurationOrRecoverBelow -> {
+                    exitKind = "duration_or_recover"
+                    exitSeconds = exit.maximumSeconds
+                    exitBpm = exit.bpm
+                }
+            }
+            db.execSQL(
+                "INSERT INTO cardio_guidance_phases(" +
+                    "run_id,phase_id,entry_id,position,kind,target_min_bpm,target_max_bpm," +
+                    "calibration_id,calibration_observed_peak_bpm,minimum_percent,maximum_percent," +
+                    "exit_kind,exit_seconds,exit_bpm,started_at,ended_at,active_slot,current_instruction) " +
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,1,'maintain')",
+                arrayOf<Any?>(
+                    runId,
+                    phase.phaseId,
+                    entryId,
+                    position,
+                    phase.kind.wireValue,
+                    target?.minimumBpm,
+                    target?.maximumBpm,
+                    target?.calibrationId,
+                    target?.calibrationObservedPeakBpm,
+                    target?.minimumPercent,
+                    target?.maximumPercent,
+                    exitKind,
+                    exitSeconds,
+                    exitBpm,
+                    startedAt,
+                ),
+            )
+            val stored = checkNotNull(
+                readCardioGuidancePhase(db, "p.phase_id=?", arrayOf(phase.phaseId)),
+            )
+            db.setTransactionSuccessful()
+            CardioGuidanceMutationResult.Applied(stored)
+        } catch (error: SQLiteConstraintException) {
+            CardioGuidanceMutationResult.Invalid(error.message ?: "Cardio phase constraint failed.")
+        } catch (error: Exception) {
+            CardioGuidanceMutationResult.DatabaseError(error.message ?: "Cardio phase start failed.")
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun recordCardioGuidanceOutput(
+        phaseId: String,
+        observedAt: String,
+        output: CardioGuidanceOutput,
+    ): CardioGuidanceMutationResult {
+        if (!sleepIdentity(phaseId, "cgp") || TrainlogTimestamp.parse(observedAt) == null) {
+            return CardioGuidanceMutationResult.Invalid("Invalid cardio guidance event.")
+        }
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val phase =
+                readCardioGuidancePhase(db, "p.phase_id=? AND p.active_slot=1", arrayOf(phaseId))
+                    ?: return CardioGuidanceMutationResult.NotFound
+            if (output.target != phase.phase.target) {
+                return CardioGuidanceMutationResult.Invalid("Cardio guidance target changed during phase.")
+            }
+            if (
+                (output.instruction == CardioGuidanceInstruction.SUSPENDED && output.bpm != null) ||
+                (output.instruction != CardioGuidanceInstruction.SUSPENDED &&
+                    (output.bpm == null || output.bpm !in 1..65535))
+            ) return CardioGuidanceMutationResult.Invalid("Invalid cardio guidance measurement.")
+
+            val current = phase.currentInstruction
+            if (current == output.instruction) {
+                db.setTransactionSuccessful()
+                return CardioGuidanceMutationResult.Applied(phase)
+            }
+            val sequence =
+                db.rawQuery(
+                    "SELECT COALESCE(MAX(sequence),-1)+1 FROM cardio_guidance_events " +
+                        "WHERE run_id=? AND phase_id=?",
+                    arrayOf(phase.runId, phaseId),
+                ).use { c -> check(c.moveToFirst()); c.getLong(0) }
+            db.execSQL(
+                "INSERT INTO cardio_guidance_events(" +
+                    "run_id,phase_id,sequence,observed_at,instruction,bpm,target_min_bpm,target_max_bpm) " +
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                arrayOf<Any?>(
+                    phase.runId,
+                    phaseId,
+                    sequence,
+                    observedAt,
+                    guidanceInstructionWire(output.instruction),
+                    output.bpm,
+                    output.target?.minimumBpm,
+                    output.target?.maximumBpm,
+                ),
+            )
+            db.execSQL(
+                "UPDATE cardio_guidance_phases SET current_instruction=? WHERE phase_id=?",
+                arrayOf(guidanceInstructionWire(output.instruction), phaseId),
+            )
+            val updated = checkNotNull(
+                readCardioGuidancePhase(db, "p.phase_id=?", arrayOf(phaseId)),
+            )
+            db.setTransactionSuccessful()
+            CardioGuidanceMutationResult.Applied(updated)
+        } catch (error: Exception) {
+            CardioGuidanceMutationResult.DatabaseError(
+                error.message ?: "Cardio guidance event failed.",
+            )
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun finishCardioGuidancePhase(
+        phaseId: String,
+        endedAt: String = OffsetDateTime.now().toString(),
+    ): CardioGuidanceMutationResult {
+        if (!sleepIdentity(phaseId, "cgp") || TrainlogTimestamp.parse(endedAt) == null) {
+            return CardioGuidanceMutationResult.Invalid("Invalid cardio phase end.")
+        }
+        val db = database.writableDatabase
+        db.beginTransaction()
+        return try {
+            val phase =
+                readCardioGuidancePhase(db, "p.phase_id=? AND p.active_slot=1", arrayOf(phaseId))
+                    ?: return CardioGuidanceMutationResult.NotFound
+            check(TrainlogTimestamp.parse(endedAt)!! >= TrainlogTimestamp.parse(phase.startedAt)!!) {
+                "Cardio phase cannot end before it starts."
+            }
+            val values = ContentValues().apply {
+                put("ended_at", endedAt)
+                putNull("active_slot")
+            }
+            check(
+                db.update(
+                    "cardio_guidance_phases",
+                    values,
+                    "phase_id=? AND active_slot=1",
+                    arrayOf(phaseId),
+                ) == 1,
+            )
+            val updated = checkNotNull(
+                readCardioGuidancePhase(db, "p.phase_id=?", arrayOf(phaseId)),
+            )
+            db.setTransactionSuccessful()
+            CardioGuidanceMutationResult.Applied(updated)
+        } catch (error: IllegalStateException) {
+            CardioGuidanceMutationResult.Invalid(error.message ?: "Invalid cardio phase end.")
+        } catch (error: Exception) {
+            CardioGuidanceMutationResult.DatabaseError(error.message ?: "Cardio phase end failed.")
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun closeCardioGuidanceRunForSession(
+        db: SQLiteDatabase,
+        sessionId: String,
+        endedAt: String,
+    ) {
+        val active =
+            db.rawQuery(
+                "SELECT 1 FROM cardio_guidance_phases p JOIN cardio_guidance_runs r " +
+                    "ON r.run_id=p.run_id WHERE r.session_id=? AND p.active_slot=1 LIMIT 1",
+                arrayOf(sessionId),
+            ).use { it.moveToFirst() }
+        check(!active) { "Cardio guidance phase is still active." }
+        db.execSQL(
+            "UPDATE cardio_guidance_runs SET ended_at=? WHERE session_id=? AND ended_at IS NULL",
+            arrayOf(endedAt, sessionId),
+        )
     }
 
     fun startCardioCalibration(
@@ -2573,6 +3034,145 @@ class TrainlogRepository(
             .toString()
     }
 
+
+    internal fun buildCardioGuidanceV1Json(): String {
+        val db = database.readableDatabase
+        val runs = JSONArray()
+        db.rawQuery(
+            "SELECT r.run_id,r.session_id,r.started_at,r.ended_at FROM cardio_guidance_runs r " +
+                "JOIN sessions s ON s.session_id=r.session_id AND s.session_kind='cardio' " +
+                "WHERE r.ended_at IS NOT NULL AND r.acknowledged_at IS NULL AND NOT EXISTS(" +
+                "SELECT 1 FROM cardio_guidance_generation m " +
+                "JOIN sync_generations g ON g.generation_id=m.generation_id " +
+                "WHERE m.run_id=r.run_id AND " +
+                "g.status IN('captured','published','waiting_acknowledgement')) " +
+                "ORDER BY r.ended_at,r.run_id LIMIT ?",
+            arrayOf(MAX_CARDIO_GUIDANCE_RUNS_PER_GENERATION.toString()),
+        ).use { runCursor ->
+            while (runCursor.moveToNext()) {
+                val runId = runCursor.getString(0)
+                val phases = JSONArray()
+                db.rawQuery(
+                    "SELECT phase_id,entry_id,position,kind,target_min_bpm,target_max_bpm," +
+                        "calibration_id,calibration_observed_peak_bpm,minimum_percent,maximum_percent," +
+                        "exit_kind,exit_seconds,exit_bpm,started_at,ended_at,current_instruction " +
+                        "FROM cardio_guidance_phases WHERE run_id=? ORDER BY position,phase_id",
+                    arrayOf(runId),
+                ).use { phaseCursor ->
+                    var phaseCount = 0
+                    while (phaseCursor.moveToNext()) {
+                        check(++phaseCount <= MAX_CARDIO_GUIDANCE_PHASES_PER_RUN)
+                        check(!phaseCursor.isNull(14)) {
+                            "Completed cardio guidance run contains an active phase."
+                        }
+                        val target =
+                            if (phaseCursor.isNull(4)) {
+                                JSONObject.NULL
+                            } else {
+                                JSONObject()
+                                    .put("minimum_bpm", phaseCursor.getInt(4))
+                                    .put("maximum_bpm", phaseCursor.getInt(5))
+                                    .put(
+                                        "calibration_id",
+                                        if (phaseCursor.isNull(6)) JSONObject.NULL
+                                        else phaseCursor.getString(6),
+                                    )
+                                    .put(
+                                        "calibration_observed_peak_bpm",
+                                        if (phaseCursor.isNull(7)) JSONObject.NULL
+                                        else phaseCursor.getInt(7),
+                                    )
+                                    .put(
+                                        "minimum_percent",
+                                        if (phaseCursor.isNull(8)) JSONObject.NULL
+                                        else phaseCursor.getInt(8),
+                                    )
+                                    .put(
+                                        "maximum_percent",
+                                        if (phaseCursor.isNull(9)) JSONObject.NULL
+                                        else phaseCursor.getInt(9),
+                                    )
+                            }
+                        val exit =
+                            JSONObject()
+                                .put("kind", phaseCursor.getString(10))
+                                .put(
+                                    "seconds",
+                                    if (phaseCursor.isNull(11)) JSONObject.NULL
+                                    else phaseCursor.getInt(11),
+                                )
+                                .put(
+                                    "bpm",
+                                    if (phaseCursor.isNull(12)) JSONObject.NULL
+                                    else phaseCursor.getInt(12),
+                                )
+                        val events = JSONArray()
+                        db.rawQuery(
+                            "SELECT sequence,observed_at,instruction,bpm,target_min_bpm,target_max_bpm " +
+                                "FROM cardio_guidance_events WHERE run_id=? AND phase_id=? ORDER BY sequence",
+                            arrayOf(runId, phaseCursor.getString(0)),
+                        ).use { eventCursor ->
+                            var expected = 0L
+                            var count = 0
+                            while (eventCursor.moveToNext()) {
+                                check(++count <= MAX_CARDIO_GUIDANCE_EVENTS_PER_PHASE)
+                                check(eventCursor.getLong(0) == expected++)
+                                events.put(
+                                    JSONObject()
+                                        .put("sequence", eventCursor.getLong(0))
+                                        .put("observed_at", eventCursor.getString(1))
+                                        .put("instruction", eventCursor.getString(2))
+                                        .put(
+                                            "bpm",
+                                            if (eventCursor.isNull(3)) JSONObject.NULL
+                                            else eventCursor.getInt(3),
+                                        )
+                                        .put(
+                                            "target_minimum_bpm",
+                                            if (eventCursor.isNull(4)) JSONObject.NULL
+                                            else eventCursor.getInt(4),
+                                        )
+                                        .put(
+                                            "target_maximum_bpm",
+                                            if (eventCursor.isNull(5)) JSONObject.NULL
+                                            else eventCursor.getInt(5),
+                                        ),
+                                )
+                            }
+                        }
+                        phases.put(
+                            JSONObject()
+                                .put("phase_id", phaseCursor.getString(0))
+                                .put("entry_id", phaseCursor.getString(1))
+                                .put("position", phaseCursor.getInt(2))
+                                .put("kind", phaseCursor.getString(3))
+                                .put("target", target)
+                                .put("exit_condition", exit)
+                                .put("started_at", phaseCursor.getString(13))
+                                .put("ended_at", phaseCursor.getString(14))
+                                .put("final_instruction", phaseCursor.getString(15))
+                                .put("events", events),
+                        )
+                    }
+                }
+                runs.put(
+                    JSONObject()
+                        .put("run_id", runId)
+                        .put("session_id", runCursor.getString(1))
+                        .put("started_at", runCursor.getString(2))
+                        .put("ended_at", runCursor.getString(3))
+                        .put("phases", phases),
+                )
+            }
+        }
+        return JSONObject()
+            .put("format", "trainlog-cardio-guidance")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("runs", runs)
+            .toString()
+    }
+
     internal fun buildSessionTimelineV1Json(): String {
         val db = database.readableDatabase
         val sessions = JSONArray()
@@ -2683,6 +3283,7 @@ class TrainlogRepository(
         artifacts["sleep-diary"] = buildSleepDiaryV1Json()
         artifacts["heart-rate"] = buildHeartRateV1Json()
         artifacts["cardio-calibrations"] = buildCardioCalibrationsV1Json()
+        artifacts["cardio-guidance"] = buildCardioGuidanceV1Json()
         artifacts["session-timeline"] = buildSessionTimelineV1Json()
         artifacts
     }
@@ -4720,6 +5321,11 @@ class TrainlogRepository(
             )
             if (sessionId != null) {
                 db.delete(
+                    "cardio_guidance_runs",
+                    "session_id=? AND ended_at IS NULL",
+                    arrayOf(sessionId),
+                )
+                db.delete(
                     "heart_rate_captures",
                     "active_slot=1 AND context_id=? AND context_kind IN('session','cardio')",
                     arrayOf(sessionId),
@@ -4799,6 +5405,24 @@ class TrainlogRepository(
                 )
             }
             val finalizedAt = OffsetDateTime.now().toString()
+            val latestExerciseEnd =
+                db.rawQuery(
+                    "SELECT MAX(ended_at) FROM session_timeline_exercises WHERE session_id=?",
+                    arrayOf(lifecycleSessionId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst() || cursor.isNull(0)) null else cursor.getString(0)
+                }
+            if (
+                latestExerciseEnd != null &&
+                TrainlogTimestamp.parse(latestExerciseEnd)!! >
+                TrainlogTimestamp.parse(finalizedAt)!!
+            ) {
+                db.endTransaction()
+                transactionOpen = false
+                return FinalizeActiveDraftResult.Invalid(
+                    "Session cannot end before its last exercise marker.",
+                )
+            }
 
             val completed =
                 SessionDraft(
@@ -4842,6 +5466,7 @@ class TrainlogRepository(
                     "AND context_kind IN('session','cardio')",
                 arrayOf(finalizedAt, sessionId),
             )
+            closeCardioGuidanceRunForSession(db, sessionId, finalizedAt)
 
             /* INVARIANT: completion moves the exact Program provenance from
              * the singleton draft to history in the same transaction. */
@@ -11165,6 +11790,9 @@ private const val CARDIO_CALIBRATION_EXERCISE_ID =
     "ex_ca1b4a7e-1c2d-4f00-8a11-000000000001"
 private const val CARDIO_CALIBRATION_EXERCISE_NAME = "Calibration cardio"
 private const val MAX_CARDIO_CALIBRATIONS_PER_GENERATION = 128
+private const val MAX_CARDIO_GUIDANCE_RUNS_PER_GENERATION = 128
+private const val MAX_CARDIO_GUIDANCE_PHASES_PER_RUN = 128
+private const val MAX_CARDIO_GUIDANCE_EVENTS_PER_PHASE = 4096
 private val CARDIO_CALIBRATION_RECOVERY_OFFSETS = intArrayOf(60, 120, 180)
 private const val CARDIO_CALIBRATION_MIN_RECOVERY_SECONDS = 180L
 private const val CARDIO_CALIBRATION_RECOVERY_SAMPLE_MAX_LAG_SECONDS = 10L
@@ -11186,7 +11814,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    30,
+    31,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -11243,6 +11871,7 @@ private class TrainlogDatabaseHelper(
         createHeartRateTables(db)
         createSessionTimelineTables(db)
         createCardioCalibrationTables(db)
+        createCardioGuidanceTables(db)
         ensureCardioCalibrationExercise(db)
         seedEquipment(db)
     }
@@ -11510,6 +12139,14 @@ private class TrainlogDatabaseHelper(
             ensureCardioCalibrationExercise(db)
             version = 30
         }
+        if (version < 31 && newVersion >= 31) {
+            /* WHY: guided cardio phases must retain the exact target snapshot
+             * and instruction changes actually used during the session.
+             * CONTRACT: v31 is additive and Android-owned. INVARIANT: no BPM,
+             * calibration, workout or historical phase is reconstructed. */
+            createCardioGuidanceTables(db)
+            version = 31
+        }
 
         if (version != newVersion) {
             error(
@@ -11697,6 +12334,105 @@ private class TrainlogDatabaseHelper(
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS cardio_calibration_session " +
                 "ON cardio_calibrations(session_id,started_at);",
+        )
+    }
+
+
+    private fun createCardioGuidanceTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_guidance_runs(
+                run_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL UNIQUE,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                acknowledged_at TEXT,
+                CHECK(run_id GLOB 'cgr_*'),
+                CHECK(session_id GLOB 'se_*')
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_guidance_phases(
+                run_id TEXT NOT NULL
+                    REFERENCES cardio_guidance_runs(run_id) ON DELETE CASCADE,
+                phase_id TEXT NOT NULL UNIQUE,
+                entry_id TEXT NOT NULL,
+                position INTEGER NOT NULL CHECK(position>=0),
+                kind TEXT NOT NULL CHECK(kind IN('warmup','work','recovery','cooldown')),
+                target_min_bpm INTEGER,
+                target_max_bpm INTEGER,
+                calibration_id TEXT,
+                calibration_observed_peak_bpm INTEGER,
+                minimum_percent INTEGER,
+                maximum_percent INTEGER,
+                exit_kind TEXT NOT NULL
+                    CHECK(exit_kind IN('fixed_duration','enter_target','recover_below','duration_or_recover')),
+                exit_seconds INTEGER,
+                exit_bpm INTEGER,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                active_slot INTEGER UNIQUE CHECK(active_slot IS NULL OR active_slot=1),
+                current_instruction TEXT NOT NULL DEFAULT 'maintain'
+                    CHECK(current_instruction IN('accelerate','maintain','slow_down','suspended')),
+                PRIMARY KEY(run_id,phase_id),
+                UNIQUE(run_id,position),
+                CHECK(entry_id GLOB 'sxe_*'),
+                CHECK(phase_id GLOB 'cgp_*'),
+                CHECK(
+                    (target_min_bpm IS NULL AND target_max_bpm IS NULL) OR
+                    (target_min_bpm BETWEEN 1 AND 65535 AND
+                     target_max_bpm BETWEEN target_min_bpm AND 65535)
+                ),
+                CHECK(
+                    (calibration_id IS NULL AND calibration_observed_peak_bpm IS NULL AND
+                     minimum_percent IS NULL AND maximum_percent IS NULL) OR
+                    (calibration_id GLOB 'cal_*' AND calibration_observed_peak_bpm BETWEEN 1 AND 65535 AND
+                     minimum_percent BETWEEN 1 AND 100 AND maximum_percent BETWEEN minimum_percent AND 100)
+                ),
+                CHECK(
+                    (exit_kind='fixed_duration' AND exit_seconds>0 AND exit_bpm IS NULL) OR
+                    (exit_kind='enter_target' AND exit_seconds IS NULL AND exit_bpm IS NULL AND target_min_bpm IS NOT NULL) OR
+                    (exit_kind='recover_below' AND exit_seconds IS NULL AND exit_bpm BETWEEN 1 AND 65535) OR
+                    (exit_kind='duration_or_recover' AND exit_seconds>0 AND exit_bpm BETWEEN 1 AND 65535)
+                )
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_guidance_events(
+                run_id TEXT NOT NULL,
+                phase_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL CHECK(sequence>=0),
+                observed_at TEXT NOT NULL,
+                instruction TEXT NOT NULL
+                    CHECK(instruction IN('accelerate','maintain','slow_down','suspended')),
+                bpm INTEGER CHECK(bpm IS NULL OR bpm BETWEEN 1 AND 65535),
+                target_min_bpm INTEGER,
+                target_max_bpm INTEGER,
+                PRIMARY KEY(run_id,phase_id,sequence),
+                FOREIGN KEY(run_id,phase_id)
+                    REFERENCES cardio_guidance_phases(run_id,phase_id) ON DELETE CASCADE,
+                CHECK(
+                    (target_min_bpm IS NULL AND target_max_bpm IS NULL) OR
+                    (target_min_bpm BETWEEN 1 AND 65535 AND
+                     target_max_bpm BETWEEN target_min_bpm AND 65535)
+                )
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            """CREATE TABLE IF NOT EXISTS cardio_guidance_generation(
+                generation_id TEXT NOT NULL
+                    REFERENCES sync_generations(generation_id) ON DELETE RESTRICT,
+                run_id TEXT NOT NULL
+                    REFERENCES cardio_guidance_runs(run_id) ON DELETE RESTRICT,
+                PRIMARY KEY(generation_id,run_id)
+            )""".trimIndent(),
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS cardio_guidance_session " +
+                "ON cardio_guidance_runs(session_id,started_at);",
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS cardio_guidance_event_time " +
+                "ON cardio_guidance_events(observed_at,run_id,phase_id,sequence);",
         )
     }
 

@@ -87,7 +87,7 @@ def load(path: Path) -> dict:
 
 
 def apply_executions(db: sqlite3.Connection, root: dict) -> tuple[int, int, int]:
-    if db.execute("PRAGMA user_version").fetchone()[0] not in (27, 28, 29, 30, 31, 32, 33):
+    if db.execute("PRAGMA user_version").fetchone()[0] not in (27, 28, 29, 30, 31, 32, 33, 34):
         fail("desktop schema v27 through v32 required")
     added = 0
     advanced = 0

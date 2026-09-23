@@ -74,6 +74,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 "heart-rate" to Kind("trainlog-heart-rate", 1, "heart-rate-v1.json", false),
                 "cardio-calibrations" to
                     Kind("trainlog-cardio-calibrations", 1, "cardio-calibrations-v1.json", false),
+                "cardio-guidance" to
+                    Kind("trainlog-cardio-guidance", 1, "cardio-guidance-v1.json", false),
                 "session-timeline" to
                     Kind("trainlog-session-timeline", 1, "session-timeline-v1.json", false),
             )
@@ -445,6 +447,17 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                         arrayOf(
                             generationId,
                             calibrationItems.getJSONObject(index).getString("calibration_id"),
+                        ),
+                    )
+                }
+                val guidance = JSONObject(checkNotNull(artifacts["cardio-guidance"]))
+                val guidanceRuns = guidance.getJSONArray("runs")
+                for (index in 0 until guidanceRuns.length()) {
+                    db.execSQL(
+                        "INSERT INTO cardio_guidance_generation(generation_id,run_id) VALUES(?,?)",
+                        arrayOf(
+                            generationId,
+                            guidanceRuns.getJSONObject(index).getString("run_id"),
                         ),
                     )
                 }
@@ -1111,6 +1124,14 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                                 "SELECT 1 FROM cardio_calibration_generation m " +
                                 "WHERE m.generation_id=? AND " +
                                 "m.calibration_id=cardio_calibrations.calibration_id)",
+                            arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
+                        )
+                        db.execSQL(
+                            "UPDATE cardio_guidance_runs SET acknowledged_at=? WHERE " +
+                                "acknowledged_at IS NULL AND EXISTS(" +
+                                "SELECT 1 FROM cardio_guidance_generation m " +
+                                "WHERE m.generation_id=? AND " +
+                                "m.run_id=cardio_guidance_runs.run_id)",
                             arrayOf(ack.getString("consumed_at"), ack.getString("generation_id")),
                         )
                         db.execSQL(

@@ -23,6 +23,8 @@ import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.labfytools.trainlog.R
+import com.labfytools.trainlog.model.CardioGuidanceInstruction
+import java.time.Duration
 import java.time.OffsetDateTime
 
 class HeartRateSensorService : Service() {
@@ -38,6 +40,8 @@ class HeartRateSensorService : Service() {
     private var lastMeasurementElapsed = 0L
     private var lastNotificationBpm: Int? = null
     private var repository: TrainlogRepository? = null
+    private var guidancePhaseId: String? = null
+    private var guidanceEngine: CardioGuidanceEngine? = null
 
     private fun repository(): TrainlogRepository =
         repository ?: TrainlogRepository(applicationContext).also { repository = it }
@@ -61,6 +65,7 @@ class HeartRateSensorService : Service() {
                         HeartRateLiveState.current().phase == HeartRateLivePhase.CONNECTED
                     ) {
                         HeartRateLiveState.stale()
+                        suspendCardioGuidance()
                         updateForegroundNotification()
                     }
                     if (age >= STALE_RECONNECT_AFTER_MS && gatt != null) {
@@ -279,19 +284,142 @@ class HeartRateSensorService : Service() {
         HeartRateLiveState.measurement(parsed.measurement)
         val observedAt = OffsetDateTime.now().toString()
         val repository = repository()
-        repository.recordLiveHeartRateForActiveSession(
-            sensorName = selected?.name,
-            observedAt = observedAt,
-            measurement = parsed.measurement,
-        ) ?: repository.recordLiveHeartRateForActiveSleep(
-            sensorName = selected?.name,
-            observedAt = observedAt,
-            measurement = parsed.measurement,
-        )
+        val sessionRecorded =
+            repository.recordLiveHeartRateForActiveSession(
+                sensorName = selected?.name,
+                observedAt = observedAt,
+                measurement = parsed.measurement,
+            )
+        if (sessionRecorded != null) {
+            processCardioGuidance(repository, observedAt, parsed.measurement.bpm)
+        } else {
+            repository.recordLiveHeartRateForActiveSleep(
+                sensorName = selected?.name,
+                observedAt = observedAt,
+                measurement = parsed.measurement,
+            )
+            clearCardioGuidanceEngine()
+        }
         if (lastNotificationBpm != parsed.measurement.bpm) {
             lastNotificationBpm = parsed.measurement.bpm
             updateForegroundNotification()
         }
+    }
+
+
+    private fun processCardioGuidance(
+        repository: TrainlogRepository,
+        observedAt: String,
+        bpm: Int,
+    ) {
+        val phase = repository.activeCardioGuidancePhase()
+        if (phase == null) {
+            clearCardioGuidanceEngine()
+            return
+        }
+        if (guidancePhaseId != phase.phase.phaseId || guidanceEngine == null) {
+            guidancePhaseId = phase.phase.phaseId
+            guidanceEngine =
+                CardioGuidanceEngine(initialInstruction = phase.currentInstruction)
+        }
+        val engine = checkNotNull(guidanceEngine)
+        val output =
+            engine.evaluate(
+                target = phase.phase.target,
+                bpm = bpm,
+                fresh = true,
+                nowMs = SystemClock.elapsedRealtime(),
+            )
+        repository.recordCardioGuidanceOutput(
+            phase.phase.phaseId,
+            observedAt,
+            output,
+        )
+        CardioGuidanceLiveState.publish(
+            CardioGuidanceLiveSnapshot(
+                phaseId = phase.phase.phaseId,
+                phaseKind = phase.phase.kind,
+                instruction = output.instruction,
+                bpm = output.bpm,
+                target = phase.phase.target,
+                startedAt = phase.startedAt,
+            ),
+        )
+        maybeFinishCardioGuidancePhase(repository, phase, observedAt, bpm, fresh = true)
+    }
+
+    private fun suspendCardioGuidance() {
+        val repository = repository ?: return
+        val phase = repository.activeCardioGuidancePhase() ?: run {
+            clearCardioGuidanceEngine()
+            return
+        }
+        if (guidancePhaseId != phase.phase.phaseId || guidanceEngine == null) {
+            guidancePhaseId = phase.phase.phaseId
+            guidanceEngine =
+                CardioGuidanceEngine(initialInstruction = phase.currentInstruction)
+        }
+        val output =
+            checkNotNull(guidanceEngine).evaluate(
+                target = phase.phase.target,
+                bpm = null,
+                fresh = false,
+                nowMs = SystemClock.elapsedRealtime(),
+            )
+        val observedAt = OffsetDateTime.now().toString()
+        repository.recordCardioGuidanceOutput(
+            phase.phase.phaseId,
+            observedAt,
+            output,
+        )
+        CardioGuidanceLiveState.publish(
+            CardioGuidanceLiveSnapshot(
+                phaseId = phase.phase.phaseId,
+                phaseKind = phase.phase.kind,
+                instruction = CardioGuidanceInstruction.SUSPENDED,
+                bpm = null,
+                target = phase.phase.target,
+                startedAt = phase.startedAt,
+            ),
+        )
+        maybeFinishCardioGuidancePhase(repository, phase, observedAt, null, fresh = false)
+    }
+
+    private fun maybeFinishCardioGuidancePhase(
+        repository: TrainlogRepository,
+        phase: com.labfytools.trainlog.model.CardioGuidancePhaseRecord,
+        observedAt: String,
+        bpm: Int?,
+        fresh: Boolean,
+    ) {
+        val elapsedSeconds =
+            runCatching {
+                    Duration.between(
+                        OffsetDateTime.parse(phase.startedAt),
+                        OffsetDateTime.parse(observedAt),
+                    ).seconds
+                }
+                .getOrNull()
+                ?.coerceIn(0L, Int.MAX_VALUE.toLong())
+                ?.toInt()
+                ?: return
+        if (
+            CardioPhaseCompletion.isComplete(
+                phase.phase,
+                elapsedSeconds,
+                bpm,
+                fresh,
+            )
+        ) {
+            repository.finishCardioGuidancePhase(phase.phase.phaseId, observedAt)
+            clearCardioGuidanceEngine()
+        }
+    }
+
+    private fun clearCardioGuidanceEngine() {
+        guidancePhaseId = null
+        guidanceEngine = null
+        CardioGuidanceLiveState.clear()
     }
 
     private fun failConnection() {

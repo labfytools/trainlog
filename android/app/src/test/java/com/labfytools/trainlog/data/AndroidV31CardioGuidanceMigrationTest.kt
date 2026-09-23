@@ -13,29 +13,30 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
-class AndroidV30CardioCalibrationMigrationTest {
+class AndroidV31CardioGuidanceMigrationTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun v29AddsEmptyCalibrationDomainAndReservedExercise() {
-        val name = "calibration-v29-" + UUID.randomUUID() + ".db"
+    fun v30AddsEmptyGuidanceDomainAndReopens() {
+        val name = "guidance-v30-" + UUID.randomUUID() + ".db"
         var repository = TrainlogRepository(context, name)
         try {
-            repository.listExercises()
+            repository.listSessions()
             repository.close()
             SQLiteDatabase.openDatabase(
                 context.getDatabasePath(name).path,
                 null,
                 SQLiteDatabase.OPEN_READWRITE,
             ).use { db ->
-                db.execSQL("DROP TABLE cardio_calibration_generation")
-                db.execSQL("DROP TABLE cardio_calibration_recovery")
-                db.execSQL("DROP TABLE cardio_calibrations")
-                db.version = 29
+                db.execSQL("DROP TABLE cardio_guidance_generation")
+                db.execSQL("DROP TABLE cardio_guidance_events")
+                db.execSQL("DROP TABLE cardio_guidance_phases")
+                db.execSQL("DROP TABLE cardio_guidance_runs")
+                db.version = 30
             }
 
             repository = TrainlogRepository(context, name)
-            assertTrue(repository.listExercises().none { it.name == "Calibration cardio" })
+            assertTrue(repository.activeCardioGuidancePhase() == null)
             SQLiteDatabase.openDatabase(
                 context.getDatabasePath(name).path,
                 null,
@@ -43,22 +44,17 @@ class AndroidV30CardioCalibrationMigrationTest {
             ).use { db ->
                 assertEquals(31, db.version)
                 db.rawQuery(
-                    "SELECT COUNT(*) FROM exercises WHERE " +
-                        "exercise_id='ex_ca1b4a7e-1c2d-4f00-8a11-000000000001' " +
-                        "AND name='Calibration cardio'",
-                    null,
-                ).use { cursor ->
-                    assertTrue(cursor.moveToFirst())
-                    assertEquals(1, cursor.getInt(0))
-                }
-                db.rawQuery(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN(" +
-                        "'cardio_calibrations','cardio_calibration_recovery'," +
-                        "'cardio_calibration_generation')",
+                        "'cardio_guidance_runs','cardio_guidance_phases'," +
+                        "'cardio_guidance_events','cardio_guidance_generation')",
                     null,
-                ).use { cursor ->
-                    assertTrue(cursor.moveToFirst())
-                    assertEquals(3, cursor.getInt(0))
+                ).use { c ->
+                    assertTrue(c.moveToFirst())
+                    assertEquals(4, c.getInt(0))
+                }
+                db.rawQuery("SELECT COUNT(*) FROM cardio_guidance_runs", null).use { c ->
+                    assertTrue(c.moveToFirst())
+                    assertEquals(0, c.getInt(0))
                 }
             }
         } finally {

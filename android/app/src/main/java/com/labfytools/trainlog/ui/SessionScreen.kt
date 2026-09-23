@@ -461,6 +461,16 @@ fun SessionScreen(
                             }
                         }
 
+                        if (
+                            currentDraft.sessionType == SessionType.CARDIO &&
+                            timing?.active == true
+                        ) {
+                            CardioGuidancePanel(
+                                repository = repository,
+                                entryId = draft.entryId,
+                            )
+                        }
+
                         TrainlogAction(
                             label = strings.getString(R.string.modify_name, draft.exercise.name),
                             description = strings.getString(R.string.edit_exercise_description),

@@ -82,7 +82,7 @@ class AndroidV29CardioSessionMigrationTest {
                 null,
                 SQLiteDatabase.OPEN_READONLY,
             ).use { db ->
-                assertEquals(30, db.version)
+                assertEquals(31, db.version)
                 db.rawQuery(
                     "SELECT session_type,session_kind FROM sessions",
                     null,

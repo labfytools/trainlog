@@ -154,7 +154,7 @@ static bool test_v9_to_v10_failure_rolls_back(void) {
     CHECK(trainlog_database_open_with_diagnostic(path, &database, diagnostic, sizeof(diagnostic)) ==
           TRAINLOG_STATUS_DATABASE_ERROR);
     CHECK(database == NULL);
-    CHECK(strstr(diagnostic, "migrate database to schema v33") != NULL);
+    CHECK(strstr(diagnostic, "migrate database to schema v34") != NULL);
     CHECK(strstr(diagnostic, "performed_sets_v9") != NULL);
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
