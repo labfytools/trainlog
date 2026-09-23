@@ -59,14 +59,17 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 Stable v0.1.4 closes the Analyse/Sleep Diary cycle and freezes the Bluetooth
 Classic synchronization transport independently from future sensor work.
 
-The next development cycle is 0.1.5 cardio. Android will own heart-rate sensor
-discovery/acquisition and timestamped local capture; synchronized desktop/Web
-surfaces will consume recorded measurements and will not connect directly to
-the sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
+The 0.1.5 cycle owns cardio end to end. Android alone discovers and reads the
+heart-rate sensor, exposes the global ♥ BPM state, timestamps training
+session/exercise boundaries, provides one-tap Sleep capture, and records the
+new dedicated cardio session type. Cardio starts with a versioned Calibration
+exercise and later drives phase guidance from fresh BPM. Desktop/Web consume
+only synchronized recorded measurements and never connect directly to the
+sensor. Heart-rate ingestion must not reuse or overload the frozen Trainlog
 Bluetooth synchronization transport contract.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=TRAINLOG_CARDIO_V1_NEXT_CONTRACT
+CURRENT_OPERATIONAL_CURSOR=TRAINLOG_CARDIO_PERSISTENCE_SYNC_V1
 ```
 
 The focused `TRAINLOG_SYNC_CAUSAL_DELETE_V1_CLOSEOUT` is complete before this

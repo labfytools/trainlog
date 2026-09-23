@@ -81,7 +81,7 @@ The rollout packager now keeps the legacy request daemon and one-shot helper in
 the same relocatable, hashed bundle as the Web generation coordinator, avoiding
 mixed-checkout user-service execution during the controlled rollout.
 
-Snapshot date: **2026-09-22**.
+Snapshot date: **2026-09-23**.
 
 `TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,
 generation/ACK, Android-backup, Web Dashboard serialization, tests, doubles and
@@ -112,8 +112,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v29; Sleep Diary V1 is additive in v29 |
-| Android SQLite | schema v26; Sleep Diary V1 is additive in v26 |
+| Desktop SQLite | schema v29; Sleep Diary V1 is additive in v29; Cardio v30 work is implementation-started but not yet closed |
+| Android SQLite | schema v26; Sleep Diary V1 is additive in v26; Cardio v27 work is implementation-started but not yet closed |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.5` development, synchronized across Android and desktop; latest stable release: `v0.1.4` |
@@ -147,7 +147,7 @@ parallel implementation of its rules.
 | Private full-generation rollout | `TRAINLOG_SYNC_FINALIZATION_AND_ROLLOUT_V1=PASS` (authenticated Bluetooth primary transport with direct MTP recovery on one authorized phone) |
 | Local Web | `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED` |
 | Web Exercises V1 | `TRAINLOG_WEB_EXERCISES_V1=PASS` |
-| Current operational cursor | `TRAINLOG_CARDIO_V1_NEXT_CONTRACT`: heart-rate sensor ingestion starts in 0.1.5 and remains distinct from the frozen Bluetooth synchronization transport |
+| Current operational cursor | `TRAINLOG_CARDIO_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`: Android-only sensor ownership, training timeline, Sleep one-tap capture, cardio session/calibration and BPM-guidance contract frozen; persistence/sync implementation is the next closeout gate |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
