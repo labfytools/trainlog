@@ -217,8 +217,50 @@ def revision_ancestry(db: sqlite3.Connection, parent_sql: str, owner_id: str,
     return result
 
 
+def _persisted_entry(db: sqlite3.Connection, row: tuple) -> dict:
+    """Build one durable entry independently of its publication state."""
+    entry_id, night_start, night_end, created_at, updated_at, revision_id, deleted = row
+    revision = db.execute(
+        "SELECT parent_revision_id,sleep_quality,wake_quality,day_form,treatment_and_notes "
+        "FROM sleep_diary_revisions WHERE revision_id=? AND entry_id=?", (revision_id, entry_id)
+    ).fetchone()
+    if revision is None:
+        fail("sleep diary current revision is missing")
+    ancestry = revision_ancestry(
+        db,
+        "SELECT parent_revision_id FROM sleep_diary_revisions "
+        "WHERE entry_id=? AND revision_id=?",
+        entry_id,
+        revision_id,
+        REVISION_ID,
+    )
+    events = [
+        {"event_id": value[0], "type": value[1], "start_at": value[2], "end_at": value[3]}
+        for value in db.execute(
+            "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events "
+            "WHERE revision_id=? ORDER BY event_id", (revision_id,)
+        )
+    ]
+    intakes = [
+        {"intake_id": value[0], "medication_id": value[1], "medication_name": value[2],
+         "taken_at": value[3], "dose_value": value[4], "dose_unit": value[5],
+         "quantity": value[6], "note": value[7], "created_at": value[8]}
+        for value in db.execute(
+            "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,"
+            "quantity,note,created_at FROM sleep_medication_intakes "
+            "WHERE revision_id=? ORDER BY intake_id", (revision_id,)
+        )
+    ]
+    return {
+        "entry_id": entry_id, "night_start_date": night_start, "night_end_date": night_end,
+        "created_at": created_at, "updated_at": updated_at, "revision_id": revision_id,
+        "parent_revision_id": revision[0], "ancestry": ancestry, "deleted": bool(deleted),
+        "sleep_quality": revision[1], "wake_quality": revision[2], "day_form": revision[3],
+        "treatment_and_notes": revision[4] or "", "events": events, "intakes": intakes,
+    }
+
+
 def build(db: sqlite3.Connection) -> dict:
-    entries = []
     # CONTRACT: local durability does not publish a draft. A generation may
     # capture only the current tip explicitly validated by the user.
     rows = db.execute(
@@ -229,37 +271,7 @@ def build(db: sqlite3.Connection) -> dict:
     ).fetchall()
     if len(rows) > MAX_ENTRIES:
         fail("sleep diary entry bound exceeded")
-    for entry_id, night_start, night_end, created_at, updated_at, revision_id, deleted in rows:
-        revision = db.execute(
-            "SELECT parent_revision_id,sleep_quality,wake_quality,day_form,treatment_and_notes "
-            "FROM sleep_diary_revisions WHERE revision_id=? AND entry_id=?", (revision_id, entry_id)
-        ).fetchone()
-        if revision is None:
-            fail("sleep diary current revision is missing")
-        ancestry = revision_ancestry(
-            db,
-            "SELECT parent_revision_id FROM sleep_diary_revisions "
-            "WHERE entry_id=? AND revision_id=?",
-            entry_id,
-            revision_id,
-            REVISION_ID,
-        )
-        events = [
-            {"event_id": row[0], "type": row[1], "start_at": row[2], "end_at": row[3]}
-            for row in db.execute(
-                "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events "
-                "WHERE revision_id=? ORDER BY event_id", (revision_id,)
-            )
-        ]
-        intakes = [{"intake_id": row[0], "medication_id": row[1], "medication_name": row[2],
-                    "taken_at": row[3], "dose_value": row[4], "dose_unit": row[5],
-                    "quantity": row[6], "note": row[7], "created_at": row[8]}
-                   for row in db.execute("SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at FROM sleep_medication_intakes WHERE revision_id=? ORDER BY intake_id", (revision_id,))]
-        entries.append({"entry_id": entry_id, "night_start_date": night_start,
-            "night_end_date": night_end, "created_at": created_at, "updated_at": updated_at,
-            "revision_id": revision_id, "parent_revision_id": revision[0], "ancestry": ancestry,
-            "deleted": bool(deleted), "sleep_quality": revision[1], "wake_quality": revision[2], "day_form": revision[3],
-            "treatment_and_notes": revision[4] or "", "events": events, "intakes": intakes})
+    entries = [_persisted_entry(db, row) for row in rows]
     medications = []
     for row in db.execute("SELECT m.medication_id,m.created_at,m.updated_at,m.current_revision_id,m.deleted,r.parent_revision_id,r.name,r.default_dose_value,r.default_dose_unit,r.form,r.note,r.active FROM sleep_medications m JOIN sleep_medication_revisions r ON r.revision_id=m.current_revision_id ORDER BY m.medication_id"):
         ancestry = revision_ancestry(
@@ -347,8 +359,17 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             (item["entry_id"],),
         ).fetchone()
         if local is not None and local[0] == item["revision_id"]:
-            persisted = next(
-                value for value in build(db)["entries"] if value["entry_id"] == item["entry_id"]
+            # INVARIANT: an identical durable revision may still be a local
+            # draft because publication state is intentionally separate. The
+            # incoming validated snapshot must compare the durable content
+            # directly before it acknowledges that revision.
+            persisted = _persisted_entry(
+                db,
+                db.execute(
+                    "SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,"
+                    "current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
+                    (item["entry_id"],),
+                ).fetchone(),
             )
             persisted_payload = dict(persisted)
             incoming_payload = dict(item)

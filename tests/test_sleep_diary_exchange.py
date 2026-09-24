@@ -251,6 +251,35 @@ class SleepExchangeTest(unittest.TestCase):
             (item["entry_id"], revision, item["updated_at"]))
         self.assertEqual(revision, exchange.build(self.db)["entries"][0]["revision_id"])
 
+    def test_identical_remote_revision_validates_unpublished_local_draft(self):
+        revision = "slr_20000000-0000-4000-8000-000000000002"
+        document = self.document(entry(revision))
+        self.assertEqual((1, 0), exchange.apply(self.db, document))
+        self.db.execute(
+            "DELETE FROM sleep_diary_publication_state WHERE entry_id=?",
+            (document["entries"][0]["entry_id"],),
+        )
+
+        self.assertEqual([], exchange.build(self.db)["entries"])
+        self.assertEqual((0, 1), exchange.apply(self.db, document))
+        self.assertEqual(
+            revision,
+            self.db.execute(
+                "SELECT acknowledged_revision_id FROM sleep_diary_publication_state "
+                "WHERE entry_id=?",
+                (document["entries"][0]["entry_id"],),
+            ).fetchone()[0],
+        )
+
+        self.db.execute(
+            "DELETE FROM sleep_diary_publication_state WHERE entry_id=?",
+            (document["entries"][0]["entry_id"],),
+        )
+        conflicting = json.loads(json.dumps(document))
+        conflicting["entries"][0]["treatment_and_notes"] = "Different content"
+        with self.assertRaisesRegex(ValueError, "identity reused"):
+            exchange.apply(self.db, conflicting)
+
 
 if __name__ == "__main__":
     unittest.main()

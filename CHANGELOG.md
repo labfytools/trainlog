@@ -2,6 +2,19 @@
 
 ## Unreleased — 0.1.6
 
+- Fixed Android finalization of Program-derived sessions containing a completed
+  target-only continuous occurrence. The repository now materializes the
+  performed duration from the persisted exercise timeline, including preserved
+  drafts closed by an older build, while keeping planned set counts independent
+  from valid actual sets, repetitions and loads. A strictly identity-bound
+  private recovery build may supply the factual session end; immutable late
+  heart-rate samples remain retained inside their capture bounds.
+- Hardened desktop Sleep generation consumption when an identical durable
+  revision has no local publication row. Content comparison now reads the
+  durable revision directly, acknowledges an exact match, and reports a real
+  revision-identity conflict instead of an empty rejection diagnostic when the
+  same ID carries different content.
+
 Development opened after the stable v0.1.5 release. The Web refinement tranche
 adds persistent French/English settings, denser shared surfaces, ISO-week
 Dashboard activity, factual exercise-count overview charts, measured-timeline

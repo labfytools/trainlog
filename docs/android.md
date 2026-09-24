@@ -678,7 +678,22 @@ resume action after relaunch.
 Final save validates the durable draft, inserts the completed session and actual
 values, and removes the draft in one SQLite transaction. Failure rolls back and
 retains the draft for retry; repeated completion does not create duplicates.
-The existing completed-session save-time timestamp behavior is unchanged.
+Planned targets remain prescriptions: finalization accepts fewer or more valid
+performed sets and actual repetitions or loads that differ from their targets.
+Finishing a target-only continuous occurrence with no supplemental fields
+materializes its performed duration from that occurrence's already persisted
+timeline start/end interval. This also repairs a preserved draft whose interval
+was closed by an older build without creating the performed row. Existing
+performed values are never overwritten, and continuous occurrences that require
+speed or distance still require those measured values explicitly.
+
+Ordinary completion uses the save-time timestamp. A private recovery build may
+embed one exact session identity and one explicit offset-aware factual end time;
+only that matching draft uses the supplied time. The repository rejects an end
+before the session start or latest exercise marker. When immutable heart-rate
+samples arrived after a failed factual session end, the session retains the
+factual end while the stopped capture remains bounded by its latest retained
+sample; no BPM or RR measurement is deleted or retimed.
 
 PC catalog reconciliation preserves draft references through catalog row
 ownership. If an editing selection no longer resolves, only the selection is

@@ -1,3 +1,4 @@
+import java.time.OffsetDateTime
 import java.util.Properties
 
 plugins {
@@ -45,6 +46,37 @@ val trainlogVersionCode =
             ?: throw GradleException("TRAINLOG_ANDROID_VERSION_CODE must be a positive integer")
     } ?: 7
 
+/*
+ * WHY: a user may need to finish one preserved draft after a completion bug
+ * has been repaired, while its factual end time predates the repair build.
+ * CONTRACT: both values are private-build inputs, must be supplied together,
+ * and are embedded only after strict identity/timestamp validation.
+ * INVARIANT: ordinary builds use empty values and every non-matching future
+ * session continues to finalize at the live clock time.
+ */
+val recoverySessionId =
+    providers.environmentVariable("TRAINLOG_ANDROID_RECOVERY_SESSION_ID").orNull.orEmpty()
+val recoveryEndedAt =
+    providers.environmentVariable("TRAINLOG_ANDROID_RECOVERY_ENDED_AT").orNull.orEmpty()
+if (recoverySessionId.isEmpty() != recoveryEndedAt.isEmpty()) {
+    throw GradleException(
+        "TRAINLOG_ANDROID_RECOVERY_SESSION_ID and " +
+            "TRAINLOG_ANDROID_RECOVERY_ENDED_AT must be supplied together",
+    )
+}
+if (recoverySessionId.isNotEmpty()) {
+    val sessionPattern =
+        Regex("^se_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    if (!sessionPattern.matches(recoverySessionId)) {
+        throw GradleException("TRAINLOG_ANDROID_RECOVERY_SESSION_ID is invalid")
+    }
+    try {
+        OffsetDateTime.parse(recoveryEndedAt)
+    } catch (_: Exception) {
+        throw GradleException("TRAINLOG_ANDROID_RECOVERY_ENDED_AT is invalid")
+    }
+}
+
 android {
     namespace = "com.labfytools.trainlog"
     compileSdk = 37
@@ -56,6 +88,8 @@ android {
 
         versionCode = trainlogVersionCode
         versionName = "0.1.6"
+        buildConfigField("String", "ACTIVE_SESSION_RECOVERY_ID", "\"$recoverySessionId\"")
+        buildConfigField("String", "ACTIVE_SESSION_RECOVERY_ENDED_AT", "\"$recoveryEndedAt\"")
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -86,6 +120,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     sourceSets {

@@ -80,6 +80,17 @@ execution and verifies Web `1 / 24` presentation. Related regressions cover
 planned continuous activity capture and fresh-peer Sleep Diary bootstrap from
 non-root current revisions.
 
+Android session-finalization coverage includes a Program-derived mixed session
+whose continuous target is completed from its measured timeline, several prior
+occurrences, feedback, an active heart-rate capture, and a planned `2 x 10`
+occurrence performed as three valid `10 @ 23 kg` sets. It recreates the legacy
+state with a closed continuous timeline but no performed row, finalizes at an
+explicit factual timestamp, and proves that plan, actual sets, feedback,
+timeline, BPM samples, and RR intervals remain distinct and intact. Desktop
+Sleep exchange coverage also verifies that replay of an identical durable but
+unpublished revision acknowledges it without `StopIteration`, while different
+content under the same revision identity remains an explicit conflict.
+
 `web_analysis` covers empty history, every 7/30/90/all period selector,
 loaded and unloaded repetitions, continuous duration/distance/speed, explicit
 persisted MAX, multiple primary BODY ZONES, partial measurements, one- and

@@ -65,6 +65,12 @@ occurrences: opening an existing stable entry renders its prefilled form,
 keeps the independent target intact on save, and leaves sibling occurrences
 unchanged on save or cancellation. A set-based target-only occurrence can add
 or change equipment without fabricating a performed set.
+Session completion now also turns a completed target-only continuous timeline
+into its measured performed duration when no supplemental field is required.
+Program targets remain independent from facts, so a valid execution may contain
+fewer or more sets and different repetitions or loads. A strictly session-bound
+private recovery build can supply a past factual end without retiming exercise
+markers or immutable heart-rate samples.
 
 The full-generation path is operational on the paired daily installation.
 Bluetooth Classic is the primary local byte transport, MTP remains the wired

@@ -1858,6 +1858,55 @@ class TrainlogRepository(
                     "SELECT run_id FROM cardio_guidance_runs WHERE session_id=?)",
                 arrayOf(endedAt, entryId, row.first),
             )
+
+            val continuous =
+                db.rawQuery(
+                    "SELECT de.id,de.data_fields,ca.draft_exercise_row_id " +
+                        "FROM draft_session_exercises de " +
+                        "LEFT JOIN draft_continuous_activity ca " +
+                        "ON ca.draft_exercise_row_id=de.id " +
+                        "WHERE de.draft_id=1 AND de.entry_id=? " +
+                        "AND de.recording_mode='continuous'",
+                    arrayOf(entryId),
+                ).use { cursor ->
+                    if (!cursor.moveToFirst()) null
+                    else Triple(
+                        cursor.getLong(0),
+                        cursor.getInt(1),
+                        !cursor.isNull(2),
+                    )
+                }
+            if (continuous != null && !continuous.third) {
+                check(continuous.second == 0) {
+                    "Continuous speed or distance must be recorded before the exercise is finished."
+                }
+                val measuredSeconds =
+                    Duration.between(
+                        OffsetDateTime.parse(row.third),
+                        OffsetDateTime.parse(endedAt),
+                    ).seconds
+                check(measuredSeconds in 1..MAX_PLAN_DURATION_SECONDS.toLong()) {
+                    "Measured continuous exercise duration is invalid."
+                }
+                /*
+                 * WHY: a Program occurrence starts as prescription-only, but
+                 * pressing Finish makes its already-recorded timeline interval
+                 * an actual performance fact.
+                 * CONTRACT: only a target-only continuous occurrence without
+                 * supplemental fields is materialized from its own measured
+                 * start/end markers; an entered fact is never overwritten.
+                 * INVARIANT: timeline completion and performed-duration
+                 * creation commit or roll back together.
+                 */
+                db.insertOrThrow(
+                    "draft_continuous_activity",
+                    null,
+                    ContentValues().apply {
+                        put("draft_exercise_row_id", continuous.first)
+                        put("duration_seconds", measuredSeconds)
+                    },
+                )
+            }
             val timing =
                 SessionExerciseTiming(row.first, entryId, row.second, row.third, endedAt)
             db.setTransactionSuccessful()
@@ -1868,6 +1917,61 @@ class TrainlogRepository(
             SessionExerciseTimingResult.DatabaseError(error.message ?: "Exercise end failed.")
         } finally {
             db.endTransaction()
+        }
+    }
+
+    /**
+     * WHY: an older build could close a target-only continuous timeline while
+     * leaving its performed row absent, making the preserved draft impossible
+     * to finalize after upgrade.
+     * CONTRACT: only completed timeline facts for continuous occurrences with
+     * no supplemental fields may supply the missing performed duration.
+     * INVARIANT: existing performed rows and recorded timestamps are never
+     * changed; every inserted duration is positive, bounded, and transaction
+     * owned by the caller.
+     */
+    private fun materializeCompletedContinuousTimings(
+        db: SQLiteDatabase,
+        sessionId: String,
+    ) {
+        val missing = mutableListOf<Triple<Long, String, String>>()
+        db.rawQuery(
+            "SELECT de.id,t.started_at,t.ended_at,de.data_fields " +
+                "FROM draft_session_exercises de " +
+                "JOIN active_session_draft d ON d.id=de.draft_id " +
+                "JOIN session_timeline_exercises t ON t.session_id=d.session_id " +
+                "AND t.entry_id=de.entry_id " +
+                "LEFT JOIN draft_continuous_activity ca " +
+                "ON ca.draft_exercise_row_id=de.id " +
+                "WHERE d.id=1 AND d.session_id=? " +
+                "AND de.recording_mode='continuous' AND t.ended_at IS NOT NULL " +
+                "AND ca.draft_exercise_row_id IS NULL",
+            arrayOf(sessionId),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                check(cursor.getInt(3) == 0) {
+                    "Continuous speed or distance is missing from a completed exercise."
+                }
+                missing += Triple(cursor.getLong(0), cursor.getString(1), cursor.getString(2))
+            }
+        }
+        missing.forEach { (draftExerciseRowId, startedAt, endedAt) ->
+            val measuredSeconds =
+                Duration.between(
+                    OffsetDateTime.parse(startedAt),
+                    OffsetDateTime.parse(endedAt),
+                ).seconds
+            check(measuredSeconds in 1..MAX_PLAN_DURATION_SECONDS.toLong()) {
+                "Measured continuous exercise duration is invalid."
+            }
+            db.insertOrThrow(
+                "draft_continuous_activity",
+                null,
+                ContentValues().apply {
+                    put("draft_exercise_row_id", draftExerciseRowId)
+                    put("duration_seconds", measuredSeconds)
+                },
+            )
         }
     }
 
@@ -5509,15 +5613,32 @@ class TrainlogRepository(
         }
     }
 
-    fun finalizeActiveSessionDraft(): FinalizeActiveDraftResult =
-        finalizeActiveSessionDraftInternal(null)
+    /**
+     * Finalize the active singleton atomically. An explicit offset-aware end
+     * is reserved for factual recovery; null retains the live-clock behavior.
+     */
+    fun finalizeActiveSessionDraft(endedAt: String? = null): FinalizeActiveDraftResult =
+        finalizeActiveSessionDraftInternal(null, endedAt)
 
-    /** Finalize exactly one lifecycle identity; retry after commit is idempotent. */
-    fun finalizeExecutionDraft(sessionId: String): FinalizeActiveDraftResult =
-        finalizeActiveSessionDraftInternal(sessionId)
+    /**
+     * Finalize exactly one lifecycle identity; retry after commit is
+     * idempotent. The optional factual end follows the same bounds as active
+     * singleton finalization.
+     */
+    fun finalizeExecutionDraft(
+        sessionId: String,
+        endedAt: String? = null,
+    ): FinalizeActiveDraftResult =
+        finalizeActiveSessionDraftInternal(sessionId, endedAt)
 
-    private fun finalizeActiveSessionDraftInternal(expectedSessionId: String?):
+    private fun finalizeActiveSessionDraftInternal(
+        expectedSessionId: String?,
+        requestedEndedAt: String?,
+    ):
         FinalizeActiveDraftResult {
+        val finalizedAt = requestedEndedAt ?: OffsetDateTime.now().toString()
+        val parsedFinalizedAt = TrainlogTimestamp.parse(finalizedAt)
+            ?: return FinalizeActiveDraftResult.Invalid("Invalid session end timestamp.")
         var db: SQLiteDatabase? = null
         var transactionOpen = false
         return try {
@@ -5536,7 +5657,7 @@ class TrainlogRepository(
                     return FinalizeActiveDraftResult.Saved(expectedSessionId)
                 }
             }
-            val active =
+            var active =
                 loadActiveSessionDraft(db)
             if (active == null) {
                 db.endTransaction()
@@ -5565,7 +5686,15 @@ class TrainlogRepository(
                     "ACTIVE_EXERCISE:$activeEntryId",
                 )
             }
-            val finalizedAt = OffsetDateTime.now().toString()
+            val sessionStartedAt = TrainlogTimestamp.parse(active.draft.startedAt!!)
+                ?: error("Active execution draft has an invalid started_at.")
+            if (parsedFinalizedAt < sessionStartedAt) {
+                db.endTransaction()
+                transactionOpen = false
+                return FinalizeActiveDraftResult.Invalid(
+                    "Session cannot end before it starts.",
+                )
+            }
             val latestExerciseEnd =
                 db.rawQuery(
                     "SELECT MAX(ended_at) FROM session_timeline_exercises WHERE session_id=?",
@@ -5576,13 +5705,18 @@ class TrainlogRepository(
             if (
                 latestExerciseEnd != null &&
                 TrainlogTimestamp.parse(latestExerciseEnd)!! >
-                TrainlogTimestamp.parse(finalizedAt)!!
+                parsedFinalizedAt
             ) {
                 db.endTransaction()
                 transactionOpen = false
                 return FinalizeActiveDraftResult.Invalid(
                     "Session cannot end before its last exercise marker.",
                 )
+            }
+
+            materializeCompletedContinuousTimings(db, lifecycleSessionId)
+            active = checkNotNull(loadActiveSessionDraft(db)) {
+                "Active execution draft disappeared during finalization."
             }
 
             val completed =
@@ -5621,12 +5755,47 @@ class TrainlogRepository(
                     "WHERE session_id=? AND ended_at IS NULL",
                 arrayOf(finalizedAt, sessionId),
             )
-            db.execSQL(
-                "UPDATE heart_rate_captures SET ended_at=?,active_slot=NULL," +
-                    "active_exercise_entry_id=NULL WHERE active_slot=1 AND context_id=? " +
-                    "AND context_kind IN('session','cardio')",
-                arrayOf(finalizedAt, sessionId),
-            )
+            val activeCapture =
+                db.rawQuery(
+                    "SELECT capture_id FROM heart_rate_captures " +
+                        "WHERE active_slot=1 AND context_id=? " +
+                        "AND context_kind IN('session','cardio')",
+                    arrayOf(sessionId),
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            if (activeCapture != null) {
+                var captureEndedAt = finalizedAt
+                var captureEndKey = parsedFinalizedAt
+                db.rawQuery(
+                    "SELECT observed_at FROM heart_rate_samples WHERE capture_id=?",
+                    arrayOf(activeCapture),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val observedAt = cursor.getString(0)
+                        val observedKey = TrainlogTimestamp.parse(observedAt)
+                            ?: error("Heart-rate sample has an invalid timestamp.")
+                        if (observedKey > captureEndKey) {
+                            captureEndKey = observedKey
+                            captureEndedAt = observedAt
+                        }
+                    }
+                }
+                /*
+                 * WHY: delayed recovery can establish a factual session end
+                 * earlier than samples recorded while the failed draft stayed
+                 * open. Dropping or retiming those immutable measurements
+                 * would be data loss.
+                 * CONTRACT: the session/timeline use the requested factual
+                 * end; the sensor capture expands only to its latest observed
+                 * sample so Heart Rate V1 remains internally valid.
+                 * INVARIANT: every retained sample lies within its stopped
+                 * capture and no sample/RR identity or payload is rewritten.
+                 */
+                db.execSQL(
+                    "UPDATE heart_rate_captures SET ended_at=?,active_slot=NULL," +
+                        "active_exercise_entry_id=NULL WHERE capture_id=? AND active_slot=1",
+                    arrayOf(captureEndedAt, activeCapture),
+                )
+            }
             closeCardioGuidanceRunForSession(db, sessionId, finalizedAt)
 
             /* INVARIANT: completion moves the exact Program provenance from

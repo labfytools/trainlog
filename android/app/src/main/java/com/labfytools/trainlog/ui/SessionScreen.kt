@@ -52,6 +52,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.labfytools.trainlog.BuildConfig
+import com.labfytools.trainlog.R
 import com.labfytools.trainlog.data.ActiveDraftLoadResult
 import com.labfytools.trainlog.data.ActiveDraftMutationResult
 import com.labfytools.trainlog.data.EquipmentLoadSemantics
@@ -75,7 +77,18 @@ import com.labfytools.trainlog.ui.theme.LocalTrainlogColors
 import com.labfytools.trainlog.ui.theme.TrainlogTypography
 import java.text.Normalizer
 import java.util.Locale
-import com.labfytools.trainlog.R
+
+/**
+ * CONTRACT: a private recovery build may override finalization time for one
+ * exact stable lifecycle identity only. Empty build inputs and every other
+ * draft retain the normal repository clock default.
+ */
+private fun recoveryEndedAt(draft: ActiveSessionDraft): String? =
+    BuildConfig.ACTIVE_SESSION_RECOVERY_ENDED_AT.takeIf {
+        BuildConfig.ACTIVE_SESSION_RECOVERY_ID.isNotEmpty() &&
+            BuildConfig.ACTIVE_SESSION_RECOVERY_ID == draft.sessionId &&
+            it.isNotEmpty()
+    }
 
 @Composable
 fun SessionScreen(
@@ -638,7 +651,9 @@ fun SessionScreen(
                     } else {
                         when (
                             val result =
-                                repository.finalizeActiveSessionDraft()
+                                repository.finalizeActiveSessionDraft(
+                                    recoveryEndedAt(currentDraft),
+                                )
                         ) {
                             is FinalizeActiveDraftResult.Saved -> {
                                 onSessionSaved()
@@ -870,7 +885,11 @@ fun SessionScreen(
                             ) {
                                 is SessionExerciseTimingResult.Finished -> {
                                     timelineRevision++
-                                    when (val result = repository.finalizeActiveSessionDraft()) {
+                                    when (
+                                        val result = repository.finalizeActiveSessionDraft(
+                                            recoveryEndedAt(currentDraft),
+                                        )
+                                    ) {
                                         is FinalizeActiveDraftResult.Saved -> {
                                             pendingFinalizeActiveEntryId = null
                                             onSessionSaved()
