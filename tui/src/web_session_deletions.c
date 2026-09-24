@@ -126,7 +126,10 @@ static TrainlogStatus load_current_revision(TrainlogDatabase *database,
                                             char revision[TRAINLOG_ID_MAX + 1U],
                                             bool *active_draft) {
     static const char DRAFT_SQL[] =
-        "SELECT revision_id,state FROM execution_drafts WHERE session_id=?1 AND NOT EXISTS("
+        "SELECT revision_id,CASE WHEN state='active' AND "
+        "COALESCE(json_array_length(payload_json,'$.exercises'),"
+        "json_array_length(payload_json,'$.entries'),0)>0 THEN 'active' ELSE '' END "
+        "FROM execution_drafts WHERE session_id=?1 AND NOT EXISTS("
         "SELECT 1 FROM sync_causal_state WHERE target_kind='execution_draft' AND target_id=?1 "
         "AND deleted=1)";
     static const char HISTORY_SQL[] =
@@ -156,6 +159,11 @@ static TrainlogStatus load_current_revision(TrainlogDatabase *database,
         return TRAINLOG_STATUS_DATABASE_ERROR;
     }
     (void)snprintf(revision, TRAINLOG_ID_MAX + 1U, "%s", current);
+    /* WHY: an imported zero-occurrence active row is an orphaned projection,
+     * not a resumable Android workout. CONTRACT: Web may causally delete that
+     * exact canonical row, while a genuinely active draft with occurrences
+     * remains protected from concurrent deletion. INVARIANT: the tombstone is
+     * stored by the existing transaction and prevents replay resurrection. */
     *active_draft = strcmp((const char *)sqlite3_column_text(statement, 1), "active") == 0;
     return sqlite3_finalize(statement) == SQLITE_OK ? TRAINLOG_STATUS_OK
                                                     : TRAINLOG_STATUS_DATABASE_ERROR;

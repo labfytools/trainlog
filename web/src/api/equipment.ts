@@ -1,4 +1,4 @@
-import { mutationCsrfToken } from './sync'
+import { mutationCsrfToken, newUuidV4 } from './sync'
 
 export interface EquipmentItem {
   equipment_id: string
@@ -41,7 +41,7 @@ export async function mergeEquipment(canonicalId: string, duplicateId: string): 
     headers: {
       Accept: 'application/json', 'Content-Type': 'application/json',
       'X-Trainlog-CSRF-Token': await mutationCsrfToken(),
-      'X-Trainlog-Request-ID': crypto.randomUUID(),
+      'X-Trainlog-Request-ID': newUuidV4(),
     },
     body: JSON.stringify({ canonical_id: canonicalId, duplicate_id: duplicateId }),
   })

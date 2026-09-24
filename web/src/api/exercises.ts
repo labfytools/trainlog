@@ -1,4 +1,4 @@
-import { mutationCsrfToken } from './sync'
+import { mutationCsrfToken, newUuidV4 } from './sync'
 
 export type RecordingMode = 'sets' | 'continuous'
 export type TrackingMode = 'reps' | 'duration'
@@ -113,7 +113,7 @@ export async function fetchBodyZones(signal?: AbortSignal): Promise<BodyZoneChoi
 async function mutation(path: string, method: 'POST' | 'PUT' | 'DELETE',
   input?: ExerciseInput, revision?: string): Promise<ExerciseDetail | { state: 'retired' }> {
   const csrf = await mutationCsrfToken()
-  const requestId = crypto.randomUUID()
+  const requestId = newUuidV4()
   const headers: Record<string, string> = {
     Accept: 'application/json', 'Content-Type': 'application/json',
     'X-Trainlog-CSRF-Token': csrf,

@@ -158,7 +158,8 @@ static bool active_draft_conflicts_without_mutation(void) {
     CHECK(sqlite3_exec(database->connection,
                        "INSERT INTO execution_drafts VALUES("
                        "'se_55555555-5555-4555-8555-555555555555','training',NULL,"
-                       "'2026-09-18T10:00:00Z','mu_active',NULL,'active','{}');",
+                       "'2026-09-18T10:00:00Z','mu_active',NULL,'active',"
+                       "'{\"exercises\":[{\"entry_id\":\"entry_live\"}]}');",
                        NULL,
                        NULL,
                        NULL) == SQLITE_OK);
@@ -172,6 +173,53 @@ static bool active_draft_conflicts_without_mutation(void) {
     CHECK(response == NULL && response_size == 0U);
     CHECK(scalar(database, "SELECT COUNT(*) FROM execution_drafts") == 1);
     CHECK(scalar(database, "SELECT COUNT(*) FROM sync_causal_operations") == 0);
+    trainlog_database_close(database);
+    CHECK(unlink(path) == 0);
+    return true;
+}
+
+static bool empty_active_draft_is_causally_deleted_and_replay_safe(void) {
+    char path[] = "/tmp/trainlog-web-delete-empty-active-XXXXXX";
+    TrainlogDatabase *database = NULL;
+    char *response = NULL;
+    char *replayed = NULL;
+    size_t response_size = 0U;
+    size_t replayed_size = 0U;
+    int descriptor = mkstemp(path);
+
+    CHECK(descriptor >= 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(trainlog_database_open(path, &database) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO execution_drafts VALUES("
+                       "'se_56565656-5656-4565-8565-565656565656','training',NULL,"
+                       "'2026-09-20T10:00:00Z','mu_empty',NULL,'active',"
+                       "'{\"exercises\":[]}');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_session_delete_json(database,
+                                           "draft",
+                                           "se_56565656-5656-4565-8565-565656565656",
+                                           "mu_empty",
+                                           "request-delete-empty",
+                                           &response,
+                                           &response_size) == TRAINLOG_STATUS_OK);
+    CHECK(trainlog_web_session_delete_json(database,
+                                           "draft",
+                                           "se_56565656-5656-4565-8565-565656565656",
+                                           "mu_empty",
+                                           "request-delete-empty",
+                                           &replayed,
+                                           &replayed_size) == TRAINLOG_STATUS_OK);
+    CHECK(response_size == replayed_size && memcmp(response, replayed, response_size) == 0);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM execution_drafts") == 0);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sync_causal_state WHERE target_kind='execution_draft' "
+                 "AND target_id='se_56565656-5656-4565-8565-565656565656' AND deleted=1") == 1);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM sync_causal_operations") == 1);
+    free(replayed);
+    free(response);
     trainlog_database_close(database);
     CHECK(unlink(path) == 0);
     return true;
@@ -276,6 +324,7 @@ int main(void) {
     return proposal_deletion_is_durable_and_preserves_derivatives() &&
                    draft_and_history_use_causal_deletion() &&
                    active_draft_conflicts_without_mutation() &&
+                   empty_active_draft_is_causally_deleted_and_replay_safe() &&
                    completed_program_execution_deletion_is_atomic_and_idempotent()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;

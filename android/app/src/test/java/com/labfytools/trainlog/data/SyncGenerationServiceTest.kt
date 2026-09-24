@@ -872,6 +872,13 @@ class SyncGenerationServiceTest {
                         events = emptyList(),
                     ),
                 ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    sleepEntry.entryId,
+                    sleepEntry.revisionId,
+                    "2026-09-23T07:00:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
+            )
             val heartCapture =
                 source.startHeartRateCapture(
                     HeartRateContextKind.SLEEP,
@@ -933,6 +940,10 @@ class SyncGenerationServiceTest {
                 sourceService.acceptAcknowledgement(androidAckFile.readBytes()),
             )
             assertEquals(
+                "unchanged",
+                sourceService.acceptAcknowledgement(androidAckFile.readBytes()),
+            )
+            assertEquals(
                 0,
                 JSONObject(source.buildHeartRateV1Json()).getJSONArray("captures").length(),
             )
@@ -954,6 +965,69 @@ class SyncGenerationServiceTest {
                         "sqlite3",
                         desktopConsumerDb.absolutePath,
                         "SELECT count(*) FROM sessions WHERE session_id='$androidSessionId';",
+                    )
+                    .trim(),
+            )
+
+            /* A second Sleep-only mutation must advance the same diary entry
+             * after the first correlated ACK. No new workout is created, and
+             * replaying either generation remains strictly idempotent. */
+            val revisedSleep =
+                source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        entryId = sleepEntry.entryId,
+                        expectedRevision = sleepEntry.revisionId,
+                        nightStartDate = "2026-09-22",
+                        nightEndDate = "2026-09-23",
+                        createdAt = "2026-09-22T22:00:00+02:00",
+                        updatedAt = "2026-09-23T08:00:00+02:00",
+                        sleepQuality = null,
+                        wakeQuality = null,
+                        dayForm = null,
+                        treatmentAndNotes = "second sleep-only revision",
+                        events = emptyList(),
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    revisedSleep.entryId,
+                    revisedSleep.revisionId,
+                    "2026-09-23T08:01:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved,
+            )
+            val secondSleepGeneration = sourceService.capture(root, desktopPeer)
+            val secondSleepPublished =
+                sourceService.publish(
+                    secondSleepGeneration,
+                    java.io.File(root, "android-desktop-objects"),
+                )
+            val secondAckFile = java.io.File(root, "android-desktop-second-ack.json")
+            run(
+                "python3",
+                java.io.File(repositoryRoot, "tools/sync_generation_exchange.py").absolutePath,
+                "consume-desktop",
+                secondSleepPublished.absolutePath,
+                "--database",
+                desktopConsumerDb.absolutePath,
+                "--ack-output",
+                secondAckFile.absolutePath,
+            )
+            assertEquals(
+                "acknowledged",
+                sourceService.acceptAcknowledgement(secondAckFile.readBytes()),
+            )
+            assertEquals(
+                "unchanged",
+                sourceService.acceptAcknowledgement(secondAckFile.readBytes()),
+            )
+            assertEquals(
+                "1|${revisedSleep.revisionId}|1",
+                run(
+                        "sqlite3",
+                        desktopConsumerDb.absolutePath,
+                        "SELECT count(*) || '|' || current_revision_id || '|' || " +
+                            "(SELECT count(*) FROM sessions WHERE session_id='$androidSessionId') " +
+                            "FROM sleep_diary_entries WHERE entry_id='${sleepEntry.entryId}';",
                     )
                     .trim(),
             )

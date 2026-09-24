@@ -294,7 +294,20 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
         repository.inSyncGenerationTransaction { db ->
             val retained =
                 db.rawQuery(
-                    "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? AND status IN('captured','published','waiting_acknowledgement','acknowledged') AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id)",
+                    /* WHY: early deployed generation builds could advance a
+                     * producer row to acknowledged without retaining the ACK
+                     * ledger row. Such terminal rows cannot be archived
+                     * safely because Trainlog must not fabricate evidence,
+                     * but they must not exhaust the active admission window
+                     * forever. Current acknowledgements always have durable
+                     * ledger evidence and remain counted until archived.
+                     * INVARIANT: captured, published and unacknowledged rows
+                     * are always retained and never pruned for capacity. */
+                    "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? AND " +
+                        "(status IN('captured','published','waiting_acknowledgement') OR " +
+                        "(status='acknowledged' AND EXISTS(SELECT 1 FROM sync_acknowledgements k " +
+                        "WHERE k.generation_id=g.generation_id))) AND NOT EXISTS(" +
+                        "SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id)",
                         arrayOf(consumerPeerId),
                     )
                     .use {

@@ -46,7 +46,8 @@ static const ListDefinition LISTS[] = {
     {"draft",
      "SELECT "
      "d.session_id,d.session_type,substr(d.started_at,1,10),d.state,COALESCE(json_array_length(d."
-     "payload_json,'$.exercises'),0),COALESCE(d.started_at,''),NULL,NULL "
+     "payload_json,'$.exercises'),json_array_length(d.payload_json,'$.entries'),0),"
+     "COALESCE(d.started_at,''),NULL,NULL "
      "FROM execution_drafts d WHERE NOT EXISTS(SELECT 1 FROM execution_draft_finalizations f WHERE "
      "f.session_id=d.session_id) "
      "AND NOT EXISTS(SELECT 1 FROM sync_causal_state c WHERE c.target_kind='execution_draft' AND "

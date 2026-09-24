@@ -157,7 +157,7 @@ export async function startSync(requestId: string): Promise<SyncStatus> {
   if (/^[0-9a-f]{64}$/.test(token)) csrfToken = token
   return parse(value)
 }
-export function newRequestId(): string {
+export function newUuidV4(): string {
   /*
    * WHY: trainlog.perf is loopback-routed HTTP but is not a browser secure
    * context, so randomUUID() is legitimately unavailable there.
@@ -176,7 +176,10 @@ export function newRequestId(): string {
     hexadecimal.slice(8, 10).join(''),
     hexadecimal.slice(10, 16).join(''),
   ].join('-')
-  return `sy_${uuid}`
+  return uuid
+}
+export function newRequestId(): string {
+  return `sy_${newUuidV4()}`
 }
 export function syncIsActive(phase: SyncPhase): boolean {
   return !['idle', 'completed', 'failed', 'interrupted', 'explicitly_degraded'].includes(phase)
