@@ -160,12 +160,18 @@ function row(
     );
     const shade = range.kind === "sleep"
       ? range.estimated ? 0.88 : 0.75
-      : range.kind === "awake"
-        ? 0.5
-        : event?.type === "half_sleep" ? 0.87 : 0.93;
-    stream.push(
-      `${shade} g ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0 G ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S\n`,
-    );
+      : event?.type === "half_sleep" ? 0.87 : 0.93;
+    if (range.kind === "awake") {
+      // CONTRACT: structured awakening intervals use the same orange semantic
+      // role in Web, HR, preview, and PDF; point markers remain separate.
+      stream.push(
+        `0.98 0.70 0.53 rg ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0.78 0.42 0.22 RG ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S 0 G 0 g\n`,
+      );
+    } else {
+      stream.push(
+        `${shade} g ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0 G ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S\n`,
+      );
+    }
     if (eventWidth > 24) {
       const label = event
         ? eventLabels[language][event.type]

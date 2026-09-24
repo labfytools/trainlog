@@ -320,14 +320,15 @@ name/dose/unit snapshot. Full editing remains available later.
 
 ### Réveil
 
-There is no `Rendormi` button.
+There is no `Rendormi` button. One tap records a structured `long_awake`
+interval beginning at the factual tap time and ending 30 minutes later under
+the explicit capture policy. Nothing else is required before the user tries to
+return to sleep. A second tap within that window resets its end to 30 minutes
+after the latest tap. Levé truncates an overlapping interval to the factual
+final-get-up timestamp.
 
-One tap records one punctual night wake event. Nothing else is required before
-the user tries to return to sleep.
-
-Trainlog does not infer a certain return-to-sleep time from BPM or RR data.
-An approximate interval may be completed later only if the user chooses to
-provide it.
+The 30-minute end is user-approved product policy, not an inference from BPM or
+RR data. Later correction remains available when the actual duration is known.
 
 ### Levé
 
@@ -347,11 +348,11 @@ Undo is scoped to that exact action and must not roll back unrelated newer
 state.
 
 `Corriger la nuit` provides later editing of timestamps, medication
-intakes, accidental wake points, forgotten events, and existing subjective
+intakes, awakening intervals, forgotten events, and existing subjective
 Sleep Diary fields.
 
-The night-time rule is: one tap, one timestamp, then no further required
-interaction.
+The night-time rule is: one tap, one 30-minute awakening window, then no further
+required interaction.
 
 ## Sleep + cardio factual timeline
 
@@ -361,7 +362,7 @@ After synchronization, Analyse may superpose factual events and measurements:
 
 - Couché;
 - medication intakes;
-- wake points;
+- structured 30-minute awakening windows;
 - Levé;
 - BPM;
 - RR when supplied;

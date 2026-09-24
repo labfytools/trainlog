@@ -185,7 +185,7 @@ describe("sleep diary PDF", () => {
     const source = await buildSleepDiaryPdf(snapshot(1), "fr").text();
     const firstSleep = source.indexOf("0.75 g 216.17 509.00 83.33 18.00 re f");
     const longAwakening = source.indexOf(
-      "0.5 g 299.50 509.00 15.63 18.00 re f",
+      "0.98 0.70 0.53 rg 299.50 509.00 15.63 18.00 re f",
     );
     const secondSleep = source.indexOf("0.75 g 315.13 509.00 67.71 18.00 re f");
     expect(firstSleep).toBeGreaterThan(-1);

@@ -42,6 +42,13 @@ stale intake-free ancestor and a later current revision. This is the executable
 contract for lifecycle and synchronization retention; it does not infer facts
 that are absent from a device database.
 
+The one-tap Réveil action records `long_awake` rather than a point
+`night_get_up`: its factual start is the tap timestamp and its policy end is 30
+minutes later. Another tap inside that window extends the same interval to 30
+minutes after the latest tap; Levé clamps an overlapping interval to the exact
+final-get-up timestamp. This explicit default requires no Rendormi interaction,
+remains revisioned/undoable, and is not derived from heart-rate measurements.
+
 Sleep-owned HR capture remains sample-driven. A pending medication alone opens
 no capture. After Couché, the first fresh real measurement creates or resumes
 one `context_kind=sleep` capture for that entry, with `started_at` equal to the

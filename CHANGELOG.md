@@ -67,6 +67,11 @@ also refined.
   sleep intervals or, only when none exist, uses the displayed Couché +45 min
   to Levé -10 min estimate minus structured awakenings; the estimate is never
   written to SQLite.
+- Changed future Android one-tap Réveil capture from punctual `night_get_up`
+  facts to structured `long_awake` windows under the user-approved 30-minute
+  default. A repeated tap inside the window extends its end to 30 minutes after
+  the latest tap, while Levé clamps it to the factual final-get-up timestamp.
+  The policy is revisioned, undoable, and independent of BPM/RR inference.
 
 ## 0.1.5 — 2026-09-23
 

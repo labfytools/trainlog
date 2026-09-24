@@ -554,7 +554,7 @@
     <string name="sleep_quick_wake">👁 RÉVEIL</string>
     <string name="sleep_quick_get_up">☀ LEVÉ</string>
     <string name="sleep_bed_recorded">Couché enregistré.</string>
-    <string name="sleep_wake_recorded">Réveil enregistré.</string>
+    <string name="sleep_wake_recorded">Réveil de 30 minutes enregistré.</string>
     <string name="sleep_get_up_recorded">Levé enregistré.</string>
     <string name="sleep_medication_recorded">%1$s enregistré.</string>
     <string name="sleep_undo">ANNULER</string>

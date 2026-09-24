@@ -80,6 +80,8 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatterBuilder
+import java.time.temporal.ChronoField
 import java.time.temporal.WeekFields
 import java.util.Locale
 import java.util.UUID
@@ -88,6 +90,11 @@ private val PROFILE_REVISION_NAMESPACE = UUID.fromString("4f4c8ea6-18f6-5e48-9d6
 private val PROFILE_REVISION_PATTERN = Regex("^pr2_[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 private val PROTOTYPE_PROFILE_REVISION_PATTERN = Regex("^pr1\\|(sets|continuous)\\|(reps|duration)\\|([0-9]+)$")
 private const val PROFILE_HISTORY_MAX = 32
+private val SLEEP_QUICK_TIMESTAMP = DateTimeFormatterBuilder()
+    .appendPattern("uuuu-MM-dd'T'HH:mm:ss")
+    .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+    .appendOffsetId()
+    .toFormatter()
 
 /** Fixed-width UUIDv5 identity over the direct causal parent and resulting profile. */
 internal fun exerciseProfileRevision(parent: String, recording: String, tracking: String, fields: Int): String {
@@ -858,15 +865,37 @@ class TrainlogRepository(
 
     fun quickSleepWake(at: String = OffsetDateTime.now().toString()): SleepQuickActionResult =
         mutateActiveSleep(at) { current ->
-            current.quickDraft(
-                at,
-                events = current.events + SleepDiaryEvent(
+            val wake = OffsetDateTime.parse(at)
+            val inferredEnd = wake.plusMinutes(30).format(SLEEP_QUICK_TIMESTAMP)
+            val openIndex = current.events.indexOfLast { event ->
+                event.type == SleepEventType.LONG_AWAKE &&
+                    event.endAt != null &&
+                    !wake.isBefore(OffsetDateTime.parse(event.startAt)) &&
+                    !wake.isAfter(OffsetDateTime.parse(event.endAt))
+            }
+            /*
+             * WHY: one-tap capture cannot require a second interaction from a
+             * partly awake user, but a point event cannot drive an awakening
+             * interval in agenda/PDF projections.
+             * CONTRACT: Réveil records a 30-minute LONG_AWAKE interval. A new
+             * tap inside that window resets its inferred end to 30 minutes
+             * after the latest tap; Levé may subsequently clamp it.
+             * INVARIANT: this is explicit product policy, never an inference
+             * from BPM/RR, and every persisted LONG_AWAKE has start < end.
+             */
+            val events = if (openIndex >= 0) {
+                current.events.mapIndexed { index, event ->
+                    if (index == openIndex) event.copy(endAt = inferredEnd) else event
+                }
+            } else {
+                current.events + SleepDiaryEvent(
                     sleepId("sle"),
-                    SleepEventType.NIGHT_GET_UP,
+                    SleepEventType.LONG_AWAKE,
                     at,
-                    null,
-                ),
-            )
+                    inferredEnd,
+                )
+            }
+            current.quickDraft(at, events = events)
         }
 
     fun quickSleepMedication(
@@ -933,9 +962,24 @@ class TrainlogRepository(
         val activeBefore = activeSleepDiaryEntry() ?: return SleepQuickActionResult.NoActiveNight
         val result =
             mutateActiveSleep(at) { current ->
+                val finalGetUp = OffsetDateTime.parse(at)
+                val boundedEvents = current.events.map { event ->
+                    if (
+                        event.type == SleepEventType.LONG_AWAKE &&
+                        event.endAt != null &&
+                        OffsetDateTime.parse(event.startAt).isBefore(finalGetUp) &&
+                        OffsetDateTime.parse(event.endAt).isAfter(finalGetUp)
+                    ) {
+                        // CONTRACT: final get-up is a factual upper bound; an
+                        // inferred 30-minute awakening never extends past it.
+                        event.copy(endAt = at)
+                    } else {
+                        event
+                    }
+                }
                 current.quickDraft(
                     at,
-                    events = current.events + SleepDiaryEvent(
+                    events = boundedEvents + SleepDiaryEvent(
                         sleepId("sle"),
                         SleepEventType.FINAL_GET_UP,
                         at,

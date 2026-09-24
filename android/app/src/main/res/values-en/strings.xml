@@ -544,7 +544,7 @@
     <string name="sleep_quick_wake">👁 WAKE</string>
     <string name="sleep_quick_get_up">☀ GET UP</string>
     <string name="sleep_bed_recorded">Bed time recorded.</string>
-    <string name="sleep_wake_recorded">Wake recorded.</string>
+    <string name="sleep_wake_recorded">30-minute awakening recorded.</string>
     <string name="sleep_get_up_recorded">Get-up recorded.</string>
     <string name="sleep_medication_recorded">%1$s recorded.</string>
     <string name="sleep_undo">UNDO</string>

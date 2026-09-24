@@ -142,8 +142,18 @@ class SleepQuickCaptureTest {
             assertEquals(bed.receipt.entryId, beforeGetUp.entryId)
             assertEquals(
                 2,
-                beforeGetUp.events.count { it.type == SleepEventType.NIGHT_GET_UP },
+                beforeGetUp.events.count { it.type == SleepEventType.LONG_AWAKE },
             )
+            assertEquals(
+                listOf(
+                    "2026-09-24T02:17:00+02:00" to "2026-09-24T02:47:00+02:00",
+                    "2026-09-24T04:42:00+02:00" to "2026-09-24T05:12:00+02:00",
+                ),
+                beforeGetUp.events
+                    .filter { it.type == SleepEventType.LONG_AWAKE }
+                    .map { it.startAt to it.endAt },
+            )
+            assertTrue(beforeGetUp.events.none { it.type == SleepEventType.NIGHT_GET_UP })
             assertEquals(2, beforeGetUp.intakes.size)
             assertEquals(2, beforeGetUp.intakes.first().quantity)
             assertEquals(5.0, checkNotNull(beforeGetUp.intakes.first().doseValue), 0.0)
@@ -217,8 +227,39 @@ class SleepQuickCaptureTest {
             assertEquals(
                 listOf("2026-09-24T02:00:00+02:00"),
                 night.events
-                    .filter { it.type == SleepEventType.NIGHT_GET_UP }
+                    .filter { it.type == SleepEventType.LONG_AWAKE }
                     .map { it.startAt },
+            )
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun repeatedWakeExtendsOneWindowAndFinalGetUpClampsIt() {
+        val name = "sleep-wake-window-" + UUID.randomUUID()
+        val repository = TrainlogRepository(context, name)
+        try {
+            repository.quickSleepBedTime("2026-09-23T22:05:00+02:00")
+            repository.quickSleepWake("2026-09-24T04:11:00+02:00")
+            repository.quickSleepWake("2026-09-24T04:14:00+02:00")
+
+            val extended = repository.listSleepDiary().single()
+            assertEquals(
+                listOf("2026-09-24T04:11:00+02:00" to "2026-09-24T04:44:00+02:00"),
+                extended.events
+                    .filter { it.type == SleepEventType.LONG_AWAKE }
+                    .map { it.startAt to it.endAt },
+            )
+
+            repository.quickSleepFinalGetUp("2026-09-24T04:14:30+02:00")
+            val completed = repository.listSleepDiary().single()
+            assertEquals(
+                listOf("2026-09-24T04:11:00+02:00" to "2026-09-24T04:14:30+02:00"),
+                completed.events
+                    .filter { it.type == SleepEventType.LONG_AWAKE }
+                    .map { it.startAt to it.endAt },
             )
         } finally {
             repository.close()
