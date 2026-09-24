@@ -170,6 +170,7 @@ parallel implementation of its rules.
 | 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=PASS`: native 111/111; Android unit-test task and APK build; Web 191/191 plus typecheck/build; JSON/import, C-format and diff checks pass. Private vc47 preserves real data through schema v32, renders pre-bed medication quantity controls, reconnects the CYCPLUS and presents the multi-night Web Sleep agenda. |
 | Tomorrow session readiness | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: the private vc46 is clean on schema v31 with fresh CYCPLUS BPM and the next Program session is unambiguous; one combined regression proves two ordered occurrences loaded from the synchronized Program, Program provenance, factual timeline/HR ownership, finalization, full generation, desktop import, replay and correlated ACK |
 | Current operational cursor | 0.1.6 Sleep graph overlays, shared agenda estimate and denser responsive agenda axis validated and privately served from Web code commit `a60e1aa`; immutable stable v0.1.5 remains unchanged. |
+| Sleep awake/selection/PDF refinement | `TRAINLOG_SLEEP_AWAKE_SELECTION_PDF_V1=PASS`: one temporal projection drives agenda, selected HR detail and selected-only PDF; estimated sleep duration is consistent and remains non-persistent; Web 208/208 plus real read-only Firefox/PDF smoke passed. |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
@@ -183,9 +184,12 @@ Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
 
 The active Sleep V2 delta keeps the Web agenda period-owned: every returned
-night has one row on the shared 18:00-to-18:00 geometry, selecting a row is
-presentation-only, and the selected stable Sleep entry drives the full-width
-heart-rate detail. Its rise/fall overlays are descriptive relative measured
+night has one row on the shared 18:00-to-18:00 geometry. Selecting a row is
+presentation-only and atomically drives the detail dates, editor content,
+full-width heart-rate detail, and the single-night PDF preview/download; it
+performs no database mutation. With no explicit click, the effective active
+night (or the first deterministically ordered row) is the PDF fallback. Its
+rise/fall overlays are descriptive relative measured
 variation only (five-minute trailing reference excluding the current 60-second
 window; threshold `max(10 BPM, 15%)`; gaps over three seconds excluded). They
 are not sleep events, sleep stages, causes, readiness, or medical inference.
@@ -195,11 +199,14 @@ full-hour ticks between exact visible bounds. Medication presentation retains
 unit dose and quantity as separate facts. A missing declared sleep interval
 uses only a labeled, non-medical Web estimate from Couché plus 45 minutes to
 Levé minus 10 minutes when both bounds exist; it never changes canonical Sleep
-data. The selected-night graph and the period agenda consume the same
-projection. The agenda renders an estimated interval with distinct hatching,
-never substitutes it for a factual interval, and retains the exact shared
-18:00-to-18:00 geometry. The overlays remain available without an HR capture
-and do not fabricate BPM.
+data. Agenda, selected-night graph, and PDF consume the same projection of
+sleep intervals, every structured long-awake interval, point events, medication
+intakes, and bounds. The agenda renders an estimated interval with distinct
+hatching, never substitutes it for a factual interval, and retains the exact
+shared 18:00-to-18:00 geometry. Displayed sleep duration is the sum of factual
+sleep intervals or, in their absence, the displayed estimate minus overlapping
+structured awakenings. The overlays remain available without an HR capture and
+do not fabricate BPM.
 
 Language is device-local presentation state. Android keeps it in dedicated
 SharedPreferences; desktop keeps it in the XDG configuration file

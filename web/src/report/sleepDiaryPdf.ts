@@ -4,6 +4,7 @@ import type {
   SleepSnapshot,
 } from "../api/sleepDiary";
 import { formatDose, formatDuration } from "../dashboard/dashboardFormat";
+import { projectSleepTimeline } from "../routes/sleepVisualProjection";
 
 type Language = "fr" | "en";
 
@@ -124,6 +125,7 @@ function row(
   y: number,
   language: Language,
 ) {
+  const projection = projectSleepTimeline(entry);
   const timelineX = 112;
   const width = 500;
   stream.push(`0.7 G 30 ${y - 40} 782 40 re S\n`);
@@ -140,38 +142,43 @@ function row(
     const x = timelineX + (hour / 24) * width;
     stream.push(`0.9 G ${x} ${y - 40} m ${x} ${y} l S\n`);
   }
-  entry.events.forEach((event) => {
+  [...projection.sleep, ...projection.awake, ...projection.otherIntervals]
+    .sort((left, right) => left.start - right.start || left.end - right.end)
+    .forEach((range) => {
+    const event = range.event;
     const x =
       timelineX +
-      (minute(event.start_at, entry.night_start_date) / 1440) * width;
-    if (event.end_at) {
-      // INVARIANT: every interval keeps its canonical absolute start/end on
-      // the shared 18:00-to-18:00 axis; long awakenings therefore interrupt
-      // rather than replace or merge the adjacent sleep ranges.
-      const eventWidth = Math.max(
-        2,
-        timelineX +
-          (minute(event.end_at, entry.night_start_date) / 1440) * width -
-          x,
-      );
-      const shade =
-        event.type === "sleep"
-          ? 0.75
-          : event.type === "long_awake"
-            ? 0.5
-            : event.type === "half_sleep"
-              ? 0.87
-              : 0.93;
-      stream.push(
-        `${shade} g ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0 G ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S\n`,
-      );
-      if (eventWidth > 24)
-        stream.push(text(x + 2, y - 23, 5, eventLabels[language][event.type]));
-    } else {
-      stream.push(text(x, y - 25, 8, pointMarker(event.type)));
+      (minute(new Date(range.start).toISOString(), entry.night_start_date) / 1440) * width;
+    // INVARIANT: every projected interval keeps its canonical absolute
+    // start/end. An awakening interrupts rather than moves adjacent sleep;
+    // an estimated band is presentation-only and stays visually distinct.
+    const eventWidth = Math.max(
+      2,
+      timelineX +
+        (minute(new Date(range.end).toISOString(), entry.night_start_date) / 1440) * width -
+        x,
+    );
+    const shade = range.kind === "sleep"
+      ? range.estimated ? 0.88 : 0.75
+      : range.kind === "awake"
+        ? 0.5
+        : event?.type === "half_sleep" ? 0.87 : 0.93;
+    stream.push(
+      `${shade} g ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0 G ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S\n`,
+    );
+    if (eventWidth > 24) {
+      const label = event
+        ? eventLabels[language][event.type]
+        : language === "fr" ? "SOMMEIL ESTIMÉ" : "ESTIMATED SLEEP";
+      stream.push(text(x + 2, y - 23, 5, label));
     }
+    });
+  projection.pointEvents.forEach((event) => {
+    const x = timelineX +
+      (minute(event.start_at, entry.night_start_date) / 1440) * width;
+    stream.push(text(x, y - 25, 8, pointMarker(event.type)));
   });
-  entry.intakes.forEach((intake) => {
+  projection.intakes.forEach((intake) => {
     const x =
       timelineX +
       (minute(intake.taken_at, entry.night_start_date) / 1440) * width;

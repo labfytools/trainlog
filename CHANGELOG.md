@@ -59,6 +59,14 @@ also refined.
   serves Web code commit `a60e1aa`; a non-mutating Firefox smoke on the real
   night confirms the identical 22:50–04:04 agenda/detail projection and the
   responsive 13/25/5-label axis densities.
+- Unified the Web Sleep agenda, selected-night HR detail, and vector PDF on one
+  temporal projection. Every structured long-awake interval remains a distinct
+  band, row selection updates the detail dates and content without persistence,
+  and preview/download export exactly the active night with observations
+  recomputed for that subset. Sleep duration now consistently sums factual
+  sleep intervals or, only when none exist, uses the displayed Couché +45 min
+  to Levé -10 min estimate minus structured awakenings; the estimate is never
+  written to SQLite.
 
 ## 0.1.5 — 2026-09-23
 

@@ -135,10 +135,16 @@ describe('HeartRateTimelinePanel', () => {
       events: [], guidance: null, calibration: null,
     }), { status: 200 }))
 
-    render(<HeartRateTimelinePanel contextId={sleepEntry().entry_id} sleepEntry={sleepEntry()} />)
+    const entryWithAwakenings = sleepEntry()
+    entryWithAwakenings.events.splice(2, 0,
+      { event_id: 'sle_awake_a', type: 'long_awake', start_at: '2026-09-21T00:30:00+02:00', end_at: '2026-09-21T00:45:00+02:00' },
+      { event_id: 'sle_awake_b', type: 'long_awake', start_at: '2026-09-21T02:30:00+02:00', end_at: '2026-09-21T02:50:00+02:00' },
+    )
+    render(<HeartRateTimelinePanel contextId={entryWithAwakenings.entry_id} sleepEntry={entryWithAwakenings} />)
 
     await screen.findByTestId('heart-rate-timeline')
     expect(screen.getByTestId('heart-rate-sleep-factual')).toBeInTheDocument()
+    expect(screen.getAllByTestId('heart-rate-awake-band')).toHaveLength(2)
     expect(screen.getAllByTestId('heart-rate-medication-marker')).toHaveLength(2)
     expect(screen.getAllByTestId('heart-rate-sleep-event-night_get_up')).toHaveLength(2)
     expect(screen.getByTestId('heart-rate-sleep-event-final_get_up')).toBeInTheDocument()

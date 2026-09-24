@@ -12,6 +12,7 @@ import type {
   SleepMedication,
   SleepSnapshot,
 } from "../api/sleepDiary";
+import * as pdfReport from "../report/sleepDiaryPdf";
 import { SleepDiaryWorkspace } from "./SleepDiaryWorkspace";
 
 const api = vi.hoisted(() => ({
@@ -228,6 +229,8 @@ describe("SleepDiaryWorkspace", () => {
     const secondRow = screen.getByTestId(`sleep-agenda-row-${second.entry_id}`);
     fireEvent.click(secondRow);
     expect(secondRow).toHaveClass("sleep-row-selected");
+    expect(screen.getByTestId("sleep-night-start")).toHaveValue("2026-09-18");
+    expect(screen.getByTestId("sleep-night-end")).toHaveValue("2026-09-19");
     await waitFor(() =>
       expect(heartRateApi.fetchHeartRateTimeline).toHaveBeenLastCalledWith(
         second.entry_id,
@@ -238,6 +241,37 @@ describe("SleepDiaryWorkspace", () => {
     expect(screen.getByLabelText("Traitement et remarques particulières")).toHaveValue(
       "Observation du jour A",
     );
+  });
+
+  it("uses the same single active-night subset for PDF preview and export", async () => {
+    const first = dayAEntry();
+    const second = {
+      ...dayAEntry(),
+      entry_id: "sl_selected",
+      revision_id: "slr_selected",
+      night_start_date: "2026-09-18",
+      night_end_date: "2026-09-19",
+      treatment_and_notes: "Selected observation",
+    };
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([first, second]));
+    const build = vi.spyOn(pdfReport, "buildSleepDiaryPdf").mockReturnValue(
+      new Blob(["selected"], { type: "application/pdf" }),
+    );
+    const present = vi.spyOn(pdfReport, "presentSleepDiaryPdf").mockImplementation(() => {});
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    fireEvent.click(await screen.findByTestId(`sleep-agenda-row-${second.entry_id}`));
+    fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exporter PDF" }));
+
+    expect(build).toHaveBeenCalledTimes(2);
+    for (const [selected] of build.mock.calls) {
+      expect(selected.entries.map((entry) => entry.entry_id)).toEqual([second.entry_id]);
+      expect(selected.summary.nights).toBe(1);
+      expect(selected.summary.sleep_duration_seconds).toBe(5 * 3600);
+    }
+    expect(present.mock.calls.map((call) => call[1])).toEqual([false, true]);
+    expect(api.saveSleepEntry).not.toHaveBeenCalled();
   });
 
   it.each([

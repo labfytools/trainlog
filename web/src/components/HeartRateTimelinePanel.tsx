@@ -11,7 +11,7 @@ import {
   timelineInterval,
   timelinePosition,
 } from '../routes/sleepTimelineGeometry'
-import { sleepDisplayRanges } from '../routes/sleepVisualProjection'
+import { projectSleepTimeline } from '../routes/sleepVisualProjection'
 import { heartRateVariations } from './heartRateVariation'
 
 const WIDTH = 1000
@@ -151,7 +151,8 @@ export function HeartRateTimelinePanel({
     return { minimum, maximum, average, rrCount, display: project(samples), variations: heartRateVariations(samples) }
   }, [timeline])
 
-  const sleep = sleepEntry ? sleepDisplayRanges(sleepEntry) : []
+  const sleepProjection = sleepEntry ? projectSleepTimeline(sleepEntry) : null
+  const sleep = sleepProjection?.sleep ?? []
 
   if (failed) {
     return <section className="heart-rate-panel" role="alert">
@@ -174,7 +175,7 @@ export function HeartRateTimelinePanel({
 
   const capture = timeline.capture
   const sleepEvents = sleepEntry?.events ?? []
-  const sleepIntakes = sleepEntry?.intakes ?? []
+  const sleepIntakes = sleepProjection?.intakes ?? []
   const bedTime = sleepEvents.find((event) => event.type === 'bed_time')
   const finalGetUp = sleepEvents.find((event) => event.type === 'final_get_up')
   const finalGetUpTime = finalGetUp ? Date.parse(finalGetUp.start_at) : null
@@ -254,8 +255,10 @@ export function HeartRateTimelinePanel({
             <title>{`${title} · ${clock(range.start)}–${clock(range.end)}`}</title>
           </rect>
         })}
-        {visibleSleepEvents.filter((event) => event.type === 'long_awake' && event.end_at).map((event) => {
-          const interval = timelineInterval(event.start_at, event.end_at as string, start, end)
+        {(sleepProjection?.awake ?? []).filter((range) =>
+          range.start >= start && range.start <= end && range.event).map((range) => {
+          const event = range.event as SleepEvent
+          const interval = timelineInterval(range.start, range.end, start, end)
           const title = markerTitle(event, french)
           return <rect key={event.event_id} className="heart-rate-awake-band"
             data-testid="heart-rate-awake-band"
@@ -290,9 +293,10 @@ export function HeartRateTimelinePanel({
           return <rect key={'interval-' + index} className="heart-rate-event-band"
             x={eventX} y={TOP} width={width} height={HEIGHT - TOP - BOTTOM} />
         })}
-        {visibleSleepEvents.filter((event) => event.end_at && event.type !== 'sleep' &&
-          event.type !== 'long_awake').map((event) => {
-          const interval = timelineInterval(event.start_at, event.end_at as string, start, end)
+        {(sleepProjection?.otherIntervals ?? []).filter((range) =>
+          range.start >= start && range.start <= end && range.event).map((range) => {
+          const event = range.event as SleepEvent
+          const interval = timelineInterval(range.start, range.end, start, end)
           const title = markerTitle(event, french)
           return <rect key={`sleep-interval-${event.event_id}`}
             className="heart-rate-event-band"
@@ -328,7 +332,9 @@ export function HeartRateTimelinePanel({
               y={TOP + 12 + (index % 3) * 13}>{eventLabel(event, french)}</text>
           </g>
         })}
-        {visibleSleepEvents.filter((event) => event.end_at === null && event.type !== 'sleep')
+        {(sleepProjection?.pointEvents ?? visibleSleepEvents)
+          .filter((event) => event.type !== 'sleep' && Date.parse(event.start_at) >= start &&
+            Date.parse(event.start_at) <= end)
           .map((event, index) => {
           const eventX = x(event.start_at)
           const title = markerTitle(event, french)

@@ -328,6 +328,11 @@ cover exact 18:00-to-18:00 timestamp geometry, active-night isolation, empty
 night state, return navigation and rejection of an earlier date response that
 finishes late. Localized dose/unit labels, same-name medications with different
 usual doses and editable intake-dose prefill remain covered.
+Selection regressions additionally prove that one agenda click updates both
+detail dates and HR identity without a write, and that preview and download
+receive the same one-night subset with recomputed observations. Projection
+unit tests cover exact factual duration, fallback duration, multiple structured
+awakenings, and subtraction of only their overlap from an estimated range.
 The heart-rate panel suite additionally covers a complete 22:05-to-04:14 night,
 declared and fallback-estimated sleep ranges, multiple close awakenings, final
 get-up, pre-bed and close medication intakes with exact dose/unit/quantity,
@@ -343,7 +348,9 @@ empty night and back, then reloads and compares the persisted Agenda.
 The PDF suite separately asserts complete French and English vocabularies,
 accent-preserving WinAnsi text, human-readable duration and plural forms,
 localized dates, medication dose snapshots, pagination and the exact ordered
-geometry of sleep / 45-minute long-awakening / sleep intervals. The same real
+geometry of sleep / 45-minute long-awakening / sleep intervals. PDF rows reuse
+the same projected sleep/awake/point/medication primitives as agenda and HR;
+subset summaries cannot inherit facts from unselected nights. The same real
 Firefox scenario exports a seven-night French PDF from the embedded production
 bundle, extracts its text with `pdftotext` and rasterizes its A4 landscape page
 with `pdftoppm` for retained visual inspection.

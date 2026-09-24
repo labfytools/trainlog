@@ -1,4 +1,5 @@
 import type { SleepEntry, SleepEvent } from "../api/sleepDiary";
+import { projectSleepTimeline } from "./sleepVisualProjection";
 
 export interface SleepEntryFacts {
   bedTime: string | null;
@@ -25,6 +26,7 @@ const clock = (timestamp: string | null): string | null =>
   timestamp === null ? null : timestamp.slice(11, 16);
 
 export function sleepEntryFacts(entry: SleepEntry): SleepEntryFacts {
+  const projection = projectSleepTimeline(entry);
   const bedtime = entry.events.find((event) => event.type === "bed_time");
   const finalGetUp = [...entry.events]
     .reverse()
@@ -35,16 +37,12 @@ export function sleepEntryFacts(entry: SleepEntry): SleepEntryFacts {
       : Number.NaN;
   const events = (type: SleepEvent["type"]) =>
     entry.events.filter((event) => event.type === type);
-  const sleep = events("sleep");
   const longAwake = events("long_awake");
   const naps = events("nap");
   return {
     bedTime: clock(bedtime?.start_at ?? null),
     finalGetUp: clock(finalGetUp?.start_at ?? null),
-    sleepSeconds: sleep.reduce(
-      (total, event) => total + durationSeconds(event),
-      0,
-    ),
+    sleepSeconds: projection.sleepSeconds,
     timeInBedSeconds:
       Number.isFinite(interval) && interval > 0
         ? Math.floor(interval / 1000)

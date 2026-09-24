@@ -63,16 +63,17 @@ synchronized factual measurements and never connect directly to the sensor.
 The heart-rate path remains independent from the frozen Bluetooth Trainlog
 synchronization transport.
 
-The 0.1.6 Web refinement now also layers factual Sleep intervals, awakenings,
-medication intakes and complete hourly ticks on the selected night's HR chart.
-Its explicitly labeled fallback estimate is presentation-only and is shared by
-the period agenda, whose responsive labels retain an exact hourly
-18:00-to-18:00 geometry. Android lifecycle/ACK regressions now explicitly guard
+The 0.1.6 Web refinement now also projects factual Sleep intervals, every
+structured awakening, point events, medication intakes, bounds, and duration
+through the agenda, selected-night HR detail, and selected-night PDF. Its
+explicitly labeled fallback estimate is presentation-only, subtracts overlapping
+structured awakenings for displayed duration, and is shared by all three views;
+the agenda retains an exact hourly 18:00-to-18:00 geometry. Android lifecycle/ACK regressions now explicitly guard
 pre-bed medication snapshots against restart, replay and stale ancestry.
 Release work remains the next separate operational step.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=0.1.6 Sleep graph/agenda projection and Android medication persistence proof validated and privately deployed; stable release work remains separate.
+CURRENT_OPERATIONAL_CURSOR=0.1.6 Sleep agenda/HR/PDF projection, active-night selection and Android medication persistence proof validated and privately deployed; stable release work remains separate.
 ```
 
 Sleep Diary V1 stays frozen/readable while active capable peers require

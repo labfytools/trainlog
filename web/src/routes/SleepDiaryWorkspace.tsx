@@ -29,7 +29,10 @@ import {
   sleepTimelineInterval,
   sleepTimelinePosition,
 } from "./sleepTimelineGeometry";
-import { sleepDisplayRanges } from "./sleepVisualProjection";
+import {
+  projectSleepTimeline,
+  sleepSnapshotSelection,
+} from "./sleepVisualProjection";
 
 type Language = "fr" | "en";
 const q: readonly SleepQuality[] = ["TB", "B", "Moy", "M", "TM"];
@@ -334,6 +337,7 @@ export function SleepDiaryWorkspace({
   const adoptEntry = (entry: SleepEntry) => {
     activeNightRef.current = entry.night_start_date;
     setActiveNight(entry.night_start_date);
+    setSelectedEntryId(entry.entry_id);
     identity.current = {
       entry_id: entry.entry_id,
       revision_id: entry.revision_id,
@@ -681,6 +685,12 @@ export function SleepDiaryWorkspace({
     agendaEntries.find((entry) => entry.entry_id === selectedEntryId) ??
     activeEntry ??
     agendaEntries[0];
+  // CONTRACT: preview and download share this exact selection object. With no
+  // explicit click, the effective active (or first deterministic) night is the
+  // documented fallback; unrelated loaded nights never leak into the PDF.
+  const selectedSnapshot = snapshot && selectedEntry
+    ? sleepSnapshotSelection(snapshot, [selectedEntry])
+    : null;
   return (
     <div className="sleep-workspace" data-testid="sleep-workspace">
       <article className="analysis-panel analysis-wide">
@@ -690,11 +700,11 @@ export function SleepDiaryWorkspace({
             <button
               className="quiet-action"
               type="button"
-              disabled={!snapshot}
+              disabled={!selectedSnapshot}
               onClick={() =>
-                snapshot &&
+                selectedSnapshot &&
                 presentSleepDiaryPdf(
-                  buildSleepDiaryPdf(snapshot, language),
+                  buildSleepDiaryPdf(selectedSnapshot, language),
                   false,
                 )
               }
@@ -704,11 +714,11 @@ export function SleepDiaryWorkspace({
             <button
               className="quiet-action"
               type="button"
-              disabled={!snapshot}
+              disabled={!selectedSnapshot}
               onClick={() =>
-                snapshot &&
+                selectedSnapshot &&
                 presentSleepDiaryPdf(
-                  buildSleepDiaryPdf(snapshot, language),
+                  buildSleepDiaryPdf(selectedSnapshot, language),
                   true,
                 )
               }
@@ -748,8 +758,16 @@ export function SleepDiaryWorkspace({
               </div>
               {agendaEntries.map((entry) => {
                 const facts = sleepEntryFacts(entry);
-                const estimatedSleep = sleepDisplayRanges(entry).filter(
+                const projection = projectSleepTimeline(entry);
+                const estimatedSleep = projection.sleep.filter(
                   (range) => range.estimated,
+                );
+                const intervalRanges = [
+                  ...projection.sleep.filter((range) => !range.estimated),
+                  ...projection.awake,
+                  ...projection.otherIntervals,
+                ].sort(
+                  (left, right) => left.start - right.start || left.end - right.end,
                 );
                 const groupedIntakes = Object.entries(
                   entry.intakes.reduce<Record<string, MedicationIntake[]>>(
@@ -766,7 +784,7 @@ export function SleepDiaryWorkspace({
                     className={`sleep-row${selectedEntry?.entry_id === entry.entry_id ? " sleep-row-selected" : ""}`}
                     data-testid={`sleep-agenda-row-${entry.entry_id}`}
                     key={entry.entry_id}
-                    onClick={() => setSelectedEntryId(entry.entry_id)}
+                    onClick={() => edit(entry)}
                     onDoubleClick={() => edit(entry)}
                   >
                     <strong>
@@ -801,47 +819,43 @@ export function SleepDiaryWorkspace({
                           />
                         );
                       })}
-                      {entry.events.map((event) => {
-                        const geometry = event.end_at
-                          ? sleepTimelineInterval(
-                              event.start_at,
-                              event.end_at,
-                              entry.night_start_date,
-                              entry.created_at,
-                            )
-                          : {
-                              left: sleepTimelinePosition(
-                                event.start_at,
-                                entry.night_start_date,
-                                entry.created_at,
-                              ),
-                              width: 0,
-                            };
+                      {intervalRanges.map((range) => {
+                        const event = range.event;
+                        if (!event) return null;
+                        const geometry = sleepTimelineInterval(
+                          event.start_at,
+                          event.end_at as string,
+                          entry.night_start_date,
+                          entry.created_at,
+                        );
                         return (
                           <i
                             key={event.event_id}
-                            className={`sleep-event sleep-${event.type}${event.end_at ? "" : " sleep-point"}`}
+                            className={`sleep-event sleep-${event.type}`}
                             data-testid={`sleep-agenda-event-${event.type}`}
                             style={{
                               left: `${geometry.left * 100}%`,
-                              width: event.end_at
-                                ? `${geometry.width * 100}%`
-                                : undefined,
+                              width: `${geometry.width * 100}%`,
                             }}
-                            title={`${t[event.type]} ${clock(event.start_at)}${event.end_at ? ` → ${clock(event.end_at)}` : ""}`}
-                          >
-                            {!event.end_at && (
-                              <span>
-                                {event.type === "bed_time"
-                                  ? "↓"
-                                  : event.type === "final_get_up" ||
-                                      event.type === "night_get_up"
-                                    ? "↑"
-                                    : event.type === "daytime_sleepiness"
-                                      ? "S"
-                                      : ""}
-                              </span>
-                            )}
+                            title={`${t[event.type]} ${clock(event.start_at)} → ${clock(event.end_at as string)}`}
+                          />
+                        );
+                      })}
+                      {projection.pointEvents.map((event) => {
+                        const left = sleepTimelinePosition(
+                          event.start_at,
+                          entry.night_start_date,
+                          entry.created_at,
+                        );
+                        return (
+                          <i key={event.event_id}
+                            className={`sleep-event sleep-${event.type} sleep-point`}
+                            data-testid={`sleep-agenda-event-${event.type}`}
+                            style={{ left: `${left * 100}%` }}
+                            title={`${t[event.type]} ${clock(event.start_at)}`}>
+                            <span>{event.type === "bed_time" ? "↓"
+                              : event.type === "final_get_up" || event.type === "night_get_up" ? "↑"
+                                : event.type === "daytime_sleepiness" ? "S" : ""}</span>
                           </i>
                         );
                       })}
