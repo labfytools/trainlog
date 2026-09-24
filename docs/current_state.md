@@ -315,12 +315,40 @@ exercise to individual detail. Exercise work time is derived exclusively from
 Measurements first expose unit-safe relative change cards before real-unit
 detail. Dashboard and Analyse reuse the same human-proportioned BODY ZONES SVG.
 
+The Dashboard layout keeps a 12-column canonical grid but permits every card
+to reach full width and several useful heights; per-card minima, overlap
+validation, exact save/cancel/reset semantics, and keyboard resizing remain
+authoritative. Settings and synchronization form the rightmost Header action
+cluster. Program progress uses the shared success color while retaining its
+factual completed/total text. Responsive charts preserve their viewBox aspect
+ratio, and Analyse explicitly distinguishes unavailable exercise timing from
+partial measured coverage instead of deriving time from sets or repetitions.
+The shared Sleep agenda owns one label/track/facts grid. Its five clock labels
+and every event, interval and medication marker use the same coordinates:
+18:00 at 0%, 00:00 at 25%, 06:00 at 50%, 12:00 at 75%, and 18:00 at 100%.
+
 The Equipment route projects supplied and custom definitions with exercise,
 history, preparation and Program reference counts. Its guarded merge accepts a
 custom duplicate only, transfers relational references in one SQLite IMMEDIATE
 transaction, preserves occurrence/MAX facts indirectly through occurrence
 identity, and writes the existing causal deletion boundary. An immutable
 execution-draft JSON reference rejects the operation rather than being edited.
+Browser mutation identities use the shared UUIDv4 helper backed by
+`crypto.getRandomValues()`; no Web mutation depends on `crypto.randomUUID()`,
+so `http://trainlog.perf` remains supported.
+
+An `execution_drafts` row marked active but containing no `exercises` or
+legacy `entries` is an orphaned projection, not a resumable workout. Web may
+delete that exact row through the existing revision-guarded causal transaction;
+the durable tombstone prevents synchronization replay from resurrecting it.
+An active draft with any occurrence remains protected from Web deletion.
+
+Generation admission archives only rows backed by an exact correlated consumed
+ACK and retains the newest two acknowledged lineage members. Legacy terminal
+Android rows that predate the durable ACK ledger are neither fabricated nor
+deleted, but no longer consume the active admission window. Captured,
+published, waiting-ACK, and current acknowledged rows continue to count until
+safe archival, so capacity recovery never prunes unacknowledged evidence.
 
 `TRAINLOG_WEB_V1` architecture, API independence, local-network boundary,
 browser shell, Dashboard, layout ownership, build/runtime separation, and

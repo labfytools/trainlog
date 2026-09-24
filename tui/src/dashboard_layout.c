@@ -21,13 +21,16 @@ typedef struct TileContract {
 } TileContract;
 
 static const TileContract contracts[TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT] = {
-    {"next-session", 4U, 8U, 3U, 7U},
-    {"activity", 5U, 12U, 3U, 7U},
-    {"progression", 6U, 12U, 4U, 9U},
-    {"last-session", 3U, 7U, 3U, 6U},
-    {"max-records", 3U, 8U, 3U, 7U},
-    {"muscle-distribution", 5U, 12U, 4U, 9U},
-    {"cardio-recovery", 5U, 12U, 4U, 8U}};
+    /* CONTRACT: every tile can reach full width and multiple useful vertical
+     * sizes. Per-tile minima preserve legibility; the shared 12-column grid
+     * and overlap validation remain the bounded layout authority. */
+    {"next-session", 4U, 12U, 3U, 10U},
+    {"activity", 5U, 12U, 3U, 12U},
+    {"progression", 6U, 12U, 4U, 12U},
+    {"last-session", 3U, 12U, 3U, 10U},
+    {"max-records", 3U, 12U, 3U, 10U},
+    {"muscle-distribution", 5U, 12U, 4U, 12U},
+    {"cardio-recovery", 5U, 12U, 4U, 12U}};
 
 static const TrainlogDashboardTileLayout defaults[TRAINLOG_DASHBOARD_LAYOUT_TILE_COUNT] = {
     {"next-session", 0U, 0U, 5U, 4U},

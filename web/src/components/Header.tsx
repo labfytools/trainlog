@@ -38,9 +38,11 @@ export function Header({ activeRoute, onNavigate, onSyncCommitted }: HeaderProps
           </a>
         ))}
       </nav>
-      <a href="/parametres" className={activeRoute.id === 'settings' ? 'nav-link settings-link is-active' : 'nav-link settings-link'}
-        onClick={(event) => follow(event, '/parametres')}>⚙ {language === 'en' ? 'Settings' : 'Paramètres'}</a>
-      <SyncControl onCommitted={onSyncCommitted} />
+      <div className="header-actions">
+        <a href="/parametres" className={activeRoute.id === 'settings' ? 'nav-link settings-link is-active' : 'nav-link settings-link'}
+          onClick={(event) => follow(event, '/parametres')}>⚙ {language === 'en' ? 'Settings' : 'Paramètres'}</a>
+        <SyncControl onCommitted={onSyncCommitted} />
+      </div>
     </header>
   )
 }

@@ -9,7 +9,7 @@ interface LanguageContextValue {
   setLanguage: (language: WebLanguage) => void
 }
 
-const LanguageContext = createContext<LanguageContextValue | null>(null)
+const LanguageContext = createContext<LanguageContextValue>({ language: 'fr', setLanguage: () => undefined })
 
 export function LanguagePreferencesProvider({ children }: { children: ReactNode }) {
   const [language, updateLanguage] = useState<WebLanguage>(() =>
@@ -29,7 +29,5 @@ export function LanguagePreferencesProvider({ children }: { children: ReactNode 
 }
 
 export function useLanguagePreferences(): LanguageContextValue {
-  const value = useContext(LanguageContext)
-  if (value === null) throw new Error('LanguagePreferencesProvider is missing')
-  return value
+  return useContext(LanguageContext)
 }

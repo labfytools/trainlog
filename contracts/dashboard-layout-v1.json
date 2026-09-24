@@ -4,12 +4,12 @@
   "columns": 12,
   "max_y": 200,
   "tiles": [
-    { "id": "next-session", "min_width": 4, "max_width": 8, "min_height": 3, "max_height": 7, "default": { "x": 0, "y": 0, "width": 5, "height": 4 } },
-    { "id": "activity", "min_width": 5, "max_width": 12, "min_height": 3, "max_height": 7, "default": { "x": 5, "y": 0, "width": 7, "height": 4 } },
-    { "id": "progression", "min_width": 6, "max_width": 12, "min_height": 4, "max_height": 9, "default": { "x": 0, "y": 4, "width": 8, "height": 5 } },
-    { "id": "last-session", "min_width": 3, "max_width": 7, "min_height": 3, "max_height": 6, "default": { "x": 8, "y": 4, "width": 4, "height": 3 } },
-    { "id": "max-records", "min_width": 3, "max_width": 8, "min_height": 3, "max_height": 7, "default": { "x": 8, "y": 7, "width": 4, "height": 3 } },
-    { "id": "muscle-distribution", "min_width": 5, "max_width": 12, "min_height": 4, "max_height": 9, "default": { "x": 0, "y": 9, "width": 6, "height": 5 } },
-    { "id": "cardio-recovery", "min_width": 5, "max_width": 12, "min_height": 4, "max_height": 8, "default": { "x": 6, "y": 10, "width": 6, "height": 4 } }
+    { "id": "next-session", "min_width": 4, "max_width": 12, "min_height": 3, "max_height": 10, "default": { "x": 0, "y": 0, "width": 5, "height": 4 } },
+    { "id": "activity", "min_width": 5, "max_width": 12, "min_height": 3, "max_height": 12, "default": { "x": 5, "y": 0, "width": 7, "height": 4 } },
+    { "id": "progression", "min_width": 6, "max_width": 12, "min_height": 4, "max_height": 12, "default": { "x": 0, "y": 4, "width": 8, "height": 5 } },
+    { "id": "last-session", "min_width": 3, "max_width": 12, "min_height": 3, "max_height": 10, "default": { "x": 8, "y": 4, "width": 4, "height": 3 } },
+    { "id": "max-records", "min_width": 3, "max_width": 12, "min_height": 3, "max_height": 10, "default": { "x": 8, "y": 7, "width": 4, "height": 3 } },
+    { "id": "muscle-distribution", "min_width": 5, "max_width": 12, "min_height": 4, "max_height": 12, "default": { "x": 0, "y": 9, "width": 6, "height": 5 } },
+    { "id": "cardio-recovery", "min_width": 5, "max_width": 12, "min_height": 4, "max_height": 12, "default": { "x": 6, "y": 10, "width": 6, "height": 4 } }
   ]
 }

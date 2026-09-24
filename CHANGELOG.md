@@ -10,6 +10,15 @@ BODY ZONES silhouette, and a compact Program header. A new Equipment workspace
 lists factual references and transactionally absorbs a custom duplicate into a
 canonical identity while retaining history/MAX context and recording a causal
 deletion marker; immutable embedded drafts cause an explicit conflict.
+The post-review correction keeps acknowledged-generation capacity recoverable
+for legacy Android rows without ACK-ledger evidence, proves two successive
+Sleep-only generation/ACK exchanges, and never evicts an unacknowledged
+generation. Web can now causally remove only an orphaned zero-occurrence active
+draft while retaining protection for real active drafts. Mutation UUIDs use
+`crypto.getRandomValues()` on loopback HTTP origins. Sleep timeline geometry,
+Dashboard sizing, Program progress contrast, chart proportions, duration
+coverage messaging, and the right-aligned Settings/Sync action cluster are
+also refined.
 
 ## 0.1.5 — 2026-09-23
 

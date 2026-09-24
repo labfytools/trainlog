@@ -717,12 +717,12 @@ export function SleepDiaryWorkspace({
               <div className="sleep-axis-row" aria-hidden="true">
                 <span />
                 <span className="sleep-hour-axis">
-                  {Array.from({ length: 25 }, (_, index) => (
+                  {[0, 6, 12, 18, 24].map((index) => (
                     <span
                       key={index}
                       style={{ left: `${(index / 24) * 100}%` }}
                     >
-                      {(18 + index) % 24}
+                      {String((18 + index) % 24).padStart(2, "0")}:00
                     </span>
                   ))}
                 </span>

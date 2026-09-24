@@ -639,9 +639,11 @@ describe("SleepDiaryWorkspace", () => {
       9,
     );
     expect(intake).toHaveStyle({ left: "18.75%" });
-    expect(document.querySelectorAll(".sleep-hour-axis > span")).toHaveLength(
-      25,
-    );
+    const ticks = Array.from(document.querySelectorAll<HTMLElement>(".sleep-hour-axis > span"));
+    expect(ticks.map((tick) => [tick.textContent, tick.style.left])).toEqual([
+      ["18:00", "0%"], ["00:00", "25%"], ["06:00", "50%"],
+      ["12:00", "75%"], ["18:00", "100%"],
+    ]);
   });
 
   it("isolates an empty editor night while retaining the period agenda", async () => {

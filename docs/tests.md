@@ -13,6 +13,23 @@ touching real user equipment. Strict C compilation, the full Meson inventory,
 Web typecheck/build/Vitest, JSON/import validation, changed-C formatting and
 diff checks remain the closeout gates.
 
+Post-review regressions cover a validated Sleep Diary revision plus nocturnal
+BPM/RR capture through the production full-generation transport, desktop
+import, correlated ACK, exact ACK replay, a second Sleep-only revision and a
+second generation. The 24-conversation deployed-capacity regression removes
+legacy ACK-ledger rows deliberately, recovers capacity without deleting
+generation evidence, and continues through archive/replay. Native Web tests
+prove that an active zero-occurrence execution draft is deleted causally and
+that repeating its request is byte-identical, while a populated active draft
+still conflicts. The equipment client test removes `crypto.randomUUID`, uses
+deterministic `getRandomValues` bytes, and completes the protected merge HTTP
+request; native merge tests retain their transaction/rollback coverage.
+
+UI regressions assert the Sleep labels at exactly 0/25/50/75/100%, persisted
+Dashboard sizing and reset behavior, English preference persistence across a
+remount, centralized Dashboard English labels, non-stretched chart aspect
+ratios, and distinct missing/partial exercise-timing messages.
+
 Sleep Diary coverage includes schema creation/migration, midnight and DST
 offsets, revision conflict, logical deletion/reopen, companion replay and
 rollback, Web periods/deep links, Android persistence, and vector PDF

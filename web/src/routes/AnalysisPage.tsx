@@ -283,7 +283,7 @@ export function AnalysisLineChart({
         viewBox="0 0 112 78"
         role="img"
         aria-label={`${label}: ${points.length} points`}
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
       >
         <line className="chart-axis" x1="10" y1="6" x2="10" y2="62" />
         <line className="chart-axis" x1="10" y1="62" x2="108" y2="62" />
@@ -680,6 +680,23 @@ export function AnalysisPage() {
                     />
                   )}
                 </dl>
+                {(() => {
+                  const occurrences = snapshot.exercise_groups.flatMap((group) => group.exercises)
+                    .reduce((sum, exercise) => sum + exercise.occurrences, 0);
+                  const measured = snapshot.exercise_groups.flatMap((group) => group.exercises)
+                    .reduce((sum, exercise) => sum + exercise.measured_occurrences, 0);
+                  if (occurrences === 0 || measured === occurrences) return null;
+                  const coverage = measured === 0
+                    ? (language === "fr"
+                      ? "Temps non mesuré · durée indisponible"
+                      : "Time not measured · duration unavailable")
+                    : (language === "fr"
+                      ? "Couverture temporelle partielle"
+                      : "Partial time coverage");
+                  return <p className="analysis-note" data-testid="duration-coverage">
+                    {coverage}
+                  </p>;
+                })()}
                 {snapshot.overview.sessions === 0 && (
                   <p className="analysis-empty">{t.noData}</p>
                 )}

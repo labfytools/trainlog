@@ -21,15 +21,17 @@ import {
 import { ActivityTile, LastSessionTile, MuscleDistributionTile, NextSessionTile, ProgressionTile, type DashboardTileComponent } from './DashboardTiles'
 import { MeasurementsTile, ProgramTile } from './DashboardTiles'
 import type { AnalysisSnapshot } from '../api/analysis'
+import { useLanguagePreferences } from '../presentation/LanguagePreferences'
+import { dashboardMessages } from './dashboardMessages'
 
-const dashboardTiles: Readonly<Record<TileId, { title: string, eyebrow: string, component: DashboardTileComponent }>> = {
-  'next-session': { title: 'Prochaine séance', eyebrow: 'Planification', component: NextSessionTile },
-  activity: { title: 'Activité', eyebrow: 'Régularité', component: ActivityTile },
-  progression: { title: 'Progression', eyebrow: 'Évolution', component: ProgressionTile },
-  'last-session': { title: 'Dernière séance', eyebrow: 'Historique', component: LastSessionTile },
-  'max-records': { title: 'Mensurations', eyebrow: 'Évolution', component: MeasurementsTile },
-  'muscle-distribution': { title: 'Répartition musculaire', eyebrow: 'Zones', component: MuscleDistributionTile },
-  'cardio-recovery': { title: 'Programme actif', eyebrow: 'Planification', component: ProgramTile },
+const dashboardComponents: Readonly<Record<TileId, DashboardTileComponent>> = {
+  'next-session': NextSessionTile,
+  activity: ActivityTile,
+  progression: ProgressionTile,
+  'last-session': LastSessionTile,
+  'max-records': MeasurementsTile,
+  'muscle-distribution': MuscleDistributionTile,
+  'cardio-recovery': ProgramTile,
 }
 
 function breakpoint(width: number): { columns: 12 | 6 | 1, rowHeight: number } {
@@ -57,6 +59,13 @@ export function DashboardGrid({
   preparedItemsFailed = false,
   analysis = null,
 }: DashboardGridProps) {
+  const { language } = useLanguagePreferences()
+  const messages = dashboardMessages[language]
+  const dashboardTiles = Object.fromEntries(TILE_IDS.map((id) => [id, {
+    title: messages.tiles[id][0],
+    eyebrow: messages.tiles[id][1],
+    component: dashboardComponents[id],
+  }])) as Readonly<Record<TileId, { title: string, eyebrow: string, component: DashboardTileComponent }>>
   const [layout, setLayout] = useState<TileLayout[]>(() => cloneLayout(DEFAULT_DASHBOARD_LAYOUT))
   const [editing, setEditing] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -151,27 +160,27 @@ export function DashboardGrid({
 
   const libraryLayout = toGridLayout(visibleLayout, editing && desktop, view.columns)
 
-  if (loading) return <p className="layout-loading" role="status">Chargement de l’agencement…</p>
+  if (loading) return <p className="layout-loading" role="status">{messages.loading}</p>
 
   return (
     <div className={`dashboard-layout${editing ? ' is-editing' : ''}`}>
-      <div className="layout-toolbar" aria-label="Agencement du Dashboard">
+      <div className="layout-toolbar" aria-label={messages.layout}>
         {!editing ? (
-          <button className="layout-action layout-action-primary" type="button" onClick={enterEditMode}>Modifier l’agencement</button>
+          <button className="layout-action layout-action-primary" type="button" onClick={enterEditMode}>{messages.edit}</button>
         ) : (
           <>
-            <p className="layout-help">Flèches : déplacer · Maj + flèches : redimensionner</p>
+            <p className="layout-help">{messages.help}</p>
             {!desktop && <p className="layout-breakpoint-note">Revenez sur un écran large pour modifier la grille canonique.</p>}
-            <button className="layout-action" type="button" onClick={cancelEditing}>Annuler</button>
-            <button className="layout-action" type="button" onClick={resetEditing}>Réinitialiser</button>
-            <button className="layout-action layout-action-primary" type="button" disabled={saving || snapshot === null || !desktop} onClick={() => void saveEditing()}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+            <button className="layout-action" type="button" onClick={cancelEditing}>{messages.cancel}</button>
+            <button className="layout-action" type="button" onClick={resetEditing}>{messages.reset}</button>
+            <button className="layout-action layout-action-primary" type="button" disabled={saving || snapshot === null || !desktop} onClick={() => void saveEditing()}>{saving ? messages.saving : messages.save}</button>
           </>
         )}
       </div>
       {preferenceError && <div className="layout-message is-error" role="alert">{preferenceError}{preferenceError.includes('autre onglet') && <button className="layout-action" type="button" onClick={() => void reloadLayout()}>Recharger l’agencement</button>}</div>}
-      {pending && <div className="dashboard-data-message" role="status">Chargement des données du Dashboard…</div>}
-      {failed && <div className="dashboard-data-message is-error" role="alert">Les données du Dashboard sont momentanément indisponibles.</div>}
-      {dashboard?.meta.invalid_data && <div className="dashboard-data-message is-warning" role="status">Certaines données invalides ont été écartées.</div>}
+      {pending && <div className="dashboard-data-message" role="status">{messages.dashboardLoading}</div>}
+      {failed && <div className="dashboard-data-message is-error" role="alert">{messages.dashboardFailed}</div>}
+      {dashboard?.meta.invalid_data && <div className="dashboard-data-message is-warning" role="status">{messages.invalidData}</div>}
       <p className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
       <div ref={containerRef} className="dashboard-grid-frame" data-columns={view.columns}>
         <GridLayout
@@ -204,7 +213,7 @@ export function DashboardGrid({
                   size={size}
                   editable={editing && desktop}
                   onKeyDown={(event) => onTileKeyDown(event, id)}
-                  stateLabel={tilePending ? 'CHARGEMENT' : available ? (partial ? 'RÉCENT' : 'DISPONIBLE') : 'INDISPONIBLE'}
+                  stateLabel={tilePending ? (language === 'fr' ? 'CHARGEMENT' : 'LOADING') : available ? (partial ? messages.recent : messages.available) : messages.unavailable}
                   stateTone={available ? (partial ? 'partial' : 'available') : 'unavailable'}
                 >
                   {id === 'next-session' ? (

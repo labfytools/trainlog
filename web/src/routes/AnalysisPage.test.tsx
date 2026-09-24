@@ -188,6 +188,8 @@ describe("AnalysisPage", () => {
     expect(delta.parentElement).toHaveClass("analysis-delta");
     expect(screen.getByText(/Poids · kg · 2 points réels/)).toBeInTheDocument();
     expect(document.querySelectorAll(".chart-x-label")).toHaveLength(2);
+    expect(document.querySelector(".analysis-chart svg"))
+      .toHaveAttribute("preserveAspectRatio", "xMidYMid meet");
   });
 
   it("uses a factual exercises-by-date histogram in the overview", async () => {
@@ -199,6 +201,38 @@ describe("AnalysisPage", () => {
     expect(document.querySelector(".activity-bar")).toHaveAttribute(
       "title",
       expect.stringContaining("1 exercice(s)"),
+    );
+  });
+
+  it("reports missing and partial exercise timing without inventing duration", async () => {
+    const missing: AnalysisSnapshot = {
+      ...analysisFixture,
+      exercise_groups: [{
+        zone_id: "legs", label: "Jambes", exercises: [{
+          exercise_id: "ex_timing", name: "Presse", occurrences: 2, sessions: 2,
+          sets: 5, measured_seconds: 0, measured_occurrences: 0,
+        }],
+      }],
+    };
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify(missing), { status: 200 }),
+    );
+    const { rerender } = render(<AnalysisPage />);
+    expect(await screen.findByTestId("duration-coverage")).toHaveTextContent(
+      "Temps non mesuré · durée indisponible",
+    );
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({
+        ...missing,
+        exercise_groups: [{
+          ...missing.exercise_groups[0],
+          exercises: [{ ...missing.exercise_groups[0].exercises[0], measured_seconds: 600, measured_occurrences: 1 }],
+        }],
+      }), { status: 200 }),
+    );
+    rerender(<AnalysisPage key="partial" />);
+    expect(await screen.findByTestId("duration-coverage")).toHaveTextContent(
+      "Couverture temporelle partielle",
     );
   });
 });
