@@ -1,6 +1,8 @@
 package com.labfytools.trainlog.data
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import androidx.test.core.app.ApplicationProvider
 import com.labfytools.trainlog.model.SleepDiaryDraft
 import com.labfytools.trainlog.model.SleepDiaryEvent
@@ -11,6 +13,7 @@ import com.labfytools.trainlog.model.MedicationIntake
 import com.labfytools.trainlog.model.SleepMedication
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -71,6 +74,141 @@ class SleepDiaryRepositoryTest {
                 "2026-10-26T12:00:00+01:00") is TrainlogRepository.SaveSleepDiaryResult.Saved)
             assertTrue(repository.listSleepDiary().isEmpty())
         } finally { repository.close(); context.deleteDatabase(name) }
+    }
+
+    @Test
+    fun persistedSleepRevisionPayloadIsAppendOnly() {
+        val name = "sleep-immutable-${UUID.randomUUID()}.db"
+        val repository = TrainlogRepository(context, name)
+        val saved = try {
+            repository.saveSleepDiary(
+                SleepDiaryDraft(
+                    nightStartDate = "2026-10-24",
+                    nightEndDate = "2026-10-25",
+                    createdAt = "2026-10-24T22:00:00+02:00",
+                    updatedAt = "2026-10-25T07:00:00+01:00",
+                    sleepQuality = SleepQuality.B,
+                    wakeQuality = null,
+                    dayForm = null,
+                    treatmentAndNotes = "",
+                    events = emptyList(),
+                ),
+            ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+        } finally {
+            repository.close()
+        }
+        val raw = SQLiteDatabase.openDatabase(
+            context.getDatabasePath(name).path,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        )
+        try {
+            assertEquals(33, raw.version)
+            assertThrows(SQLiteException::class.java) {
+                raw.execSQL(
+                    "UPDATE sleep_diary_revisions SET sleep_quality='TB' WHERE revision_id=?",
+                    arrayOf(saved.revisionId),
+                )
+            }
+            assertThrows(SQLiteException::class.java) {
+                raw.execSQL(
+                    "DELETE FROM sleep_diary_revisions WHERE revision_id=?",
+                    arrayOf(saved.revisionId),
+                )
+            }
+            assertEquals(
+                "B",
+                raw.rawQuery(
+                    "SELECT sleep_quality FROM sleep_diary_revisions WHERE revision_id=?",
+                    arrayOf(saved.revisionId),
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getString(0)
+                },
+            )
+        } finally {
+            raw.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun successiveSleepEditsKeepUniqueIdentitiesAndExactParentage() {
+        val name = "sleep-revision-chain-${UUID.randomUUID()}.db"
+        val repository = TrainlogRepository(context, name)
+        val identities = mutableListOf<String>()
+        val expectedParents = mutableMapOf<String, String?>()
+        val expectedNotes = mutableMapOf<String, String>()
+        try {
+            val created = repository.saveSleepDiary(
+                SleepDiaryDraft(
+                    nightStartDate = "2026-10-24",
+                    nightEndDate = "2026-10-25",
+                    createdAt = "2026-10-24T22:00:00+02:00",
+                    updatedAt = "2026-10-25T07:00:00+01:00",
+                    sleepQuality = null,
+                    wakeQuality = null,
+                    dayForm = null,
+                    treatmentAndNotes = "revision-root",
+                    events = emptyList(),
+                ),
+            ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            identities += created.revisionId
+            expectedParents[created.revisionId] = null
+            expectedNotes[created.revisionId] = "revision-root"
+
+            repeat(64) { index ->
+                val current = repository.listSleepDiary().single()
+                val note = "revision-$index"
+                val hour = 8 + index / 60
+                val minute = index % 60
+                val saved = repository.saveSleepDiary(
+                    SleepDiaryDraft(
+                        entryId = current.entryId,
+                        expectedRevision = current.revisionId,
+                        nightStartDate = current.nightStartDate,
+                        nightEndDate = current.nightEndDate,
+                        createdAt = current.createdAt,
+                        updatedAt = "2026-10-25T%02d:%02d:00+01:00".format(hour, minute),
+                        sleepQuality = current.sleepQuality,
+                        wakeQuality = current.wakeQuality,
+                        dayForm = current.dayForm,
+                        treatmentAndNotes = note,
+                        events = current.events,
+                        intakes = current.intakes,
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+                expectedParents[saved.revisionId] = current.revisionId
+                expectedNotes[saved.revisionId] = note
+                identities += saved.revisionId
+            }
+        } finally {
+            repository.close()
+        }
+
+        assertEquals(65, identities.toSet().size)
+        val raw = SQLiteDatabase.openDatabase(
+            context.getDatabasePath(name).path,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        )
+        try {
+            identities.forEach { revisionId ->
+                raw.rawQuery(
+                    "SELECT parent_revision_id,treatment_and_notes " +
+                        "FROM sleep_diary_revisions WHERE revision_id=?",
+                    arrayOf(revisionId),
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    val parent = if (cursor.isNull(0)) null else cursor.getString(0)
+                    assertEquals(expectedParents[revisionId], parent)
+                    assertEquals(expectedNotes[revisionId], cursor.getString(1))
+                }
+            }
+        } finally {
+            raw.close()
+            context.deleteDatabase(name)
+        }
     }
 
     @Test
@@ -188,6 +326,15 @@ class SleepDiaryRepositoryTest {
             assertEquals(SleepQuality.MOY, destination.listSleepDiary().single().wakeQuality)
             assertEquals(SleepQuality.TB, destination.listSleepDiary().single().dayForm)
             assertEquals("Medication revised", destination.listSleepMedications().single().name)
+
+            val reusedAncestor = org.json.JSONObject(firstSnapshot)
+            reusedAncestor.getJSONArray("entries").getJSONObject(0).put("sleep_quality", "M")
+            assertEquals(
+                TrainlogRepository.SleepDiaryImportResult.Rejected(
+                    "sleep diary revision identity reused with different content",
+                ),
+                destination.applySleepDiaryV1Json(reusedAncestor.toString()),
+            )
         } finally {
             source.close()
             destination.close()

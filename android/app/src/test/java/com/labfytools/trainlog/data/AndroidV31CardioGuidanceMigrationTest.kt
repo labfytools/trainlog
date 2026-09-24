@@ -42,7 +42,7 @@ class AndroidV31CardioGuidanceMigrationTest {
                 null,
                 SQLiteDatabase.OPEN_READONLY,
             ).use { db ->
-                assertEquals(32, db.version)
+                assertEquals(33, db.version)
                 db.rawQuery(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN(" +
                         "'cardio_guidance_runs','cardio_guidance_phases'," +

@@ -97,7 +97,7 @@ The rollout packager now keeps the legacy request daemon and one-shot helper in
 the same relocatable, hashed bundle as the Web generation coordinator, avoiding
 mixed-checkout user-service execution during the controlled rollout.
 
-Snapshot date: **2026-09-23**.
+Snapshot date: **2026-09-24**.
 
 `TRAINLOG_CODE_READABILITY_V1` normalizes the recent generation-MTP,
 generation/ACK, Android-backup, Web Dashboard serialization, tests, doubles and
@@ -128,8 +128,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v35; v35 additively gives every Sleep medication intake a structured `quantity` (1..99), defaulting historical rows to 1 |
-| Android SQLite | schema v32; v32 additively gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
+| Desktop SQLite | schema v36; v36 makes Sleep revision payload tables append-only; v35 gives every Sleep medication intake a structured `quantity` (1..99), defaulting historical rows to 1 |
+| Android SQLite | schema v33; v33 makes Sleep revision payload tables append-only; v32 gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.6` development, synchronized across Android and desktop; latest stable release: `v0.1.5` |
@@ -178,6 +178,7 @@ parallel implementation of its rules.
 | Current operational cursor | 0.1.6 Sleep graph overlays, shared agenda estimate and denser responsive agenda axis validated and privately served from Web code commit `a60e1aa`; immutable stable v0.1.5 remains unchanged. |
 | Sleep awake/selection/PDF refinement | `TRAINLOG_SLEEP_AWAKE_SELECTION_PDF_V1=PASS`: one temporal projection drives agenda and selected HR detail; a separate inclusive night-start date range drives preview/export from the loaded period. The agenda axis and rows share 24 exact hour columns; estimated sleep duration is consistent and remains non-persistent. |
 | Sleep Réveil interval policy | Android Réveil creates a revisioned 30-minute `long_awake` window; repeated taps extend it and Levé clamps it. The real 2026-09-23 night is causally repaired on Android/desktop and renders two orange intervals in agenda, HR and PDF; Android 307 passed plus five optional skips, and Web 208/208 passed. |
+| Sleep revision collision recovery | `TRAINLOG_SLEEP_REVISION_COLLISION_RECOVERY_V1=PASS`: one unpublished divergent desktop tip was re-identified without payload loss, the immutable Android identity was restored exactly, and a fresh successor retained the non-conflicting union. The original generation was consumed with a full SQLite ACK; the real 24/09 session, Sleep facts, cardio samples, timeline, feedback, and Program provenance are visible on Desktop/Web. Schema v36/v33 and importer payload checks prevent recurrence. |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |

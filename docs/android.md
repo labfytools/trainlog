@@ -25,6 +25,14 @@ revision. Quick publication makes a current fact eligible for generation; it
 does not validate a day and does not change the existing validation/ACK
 lifecycle.
 
+Android schema v33 enforces that same immutable identity boundary inside
+SQLite. Eight append-only triggers reject update or deletion of Sleep diary
+revisions, events, medication intakes, and medication revisions. Repository
+imports compare a known ancestor's complete canonical payload before the stale
+ancestor shortcut, so a reused ID with a different parent or content cannot be
+hidden below a later local tip. All user edits continue to create a fresh
+UUIDv4 revision and preserve the previous payload and causal parent.
+
 The quick Sleep capture derives one night identity from the existing
 18:00-to-18:00 date rule. A medication action can create that pending entry
 before `BED_TIME`, later medication actions reuse it, and Couché appends

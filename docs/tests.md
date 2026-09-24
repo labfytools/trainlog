@@ -1,5 +1,26 @@
 # Tests and validation
 
+## Sleep revision collision recovery
+
+Collision regressions distinguish exact replay from same-ID parent or payload
+reuse, validate known historical ancestors before stale-snapshot handling, and
+exercise safe re-identification of an unpublished branch. They preserve
+quantity one and two, distinct same-time medication occurrences, event and
+intake unions, rollback, immutable-generation references, exact ledger rearm,
+and idempotent replay. SQLite migration tests prove that Desktop v36 and
+Android v33 reject direct update/delete of all revision-owned Sleep payload
+tables. Android also creates a 65-revision edit chain and verifies unique UUIDs,
+exact parentage, and unchanged historical payloads.
+
+The retained real-data simulation replays the original immutable full
+generation against isolated copies and verifies one session ending at 11:16,
+7 exercises, 15 sets, 5 feedbacks, 7 exercise intervals, 4,919 BPM samples,
+4,919 RR intervals, Program provenance, `consumed` / `sqlite-commit-full`, a
+byte-identical ACK replay, and clean integrity/foreign-key checks. A later
+normal generation was consumed and acknowledged, proving continued pipeline
+use. Sensitive medication names and dose values remain outside repository
+evidence.
+
 ## Web UI refinement 0.1.6
 
 Web regressions cover calendar-week activity grouping, global rather than
@@ -50,9 +71,10 @@ Other UI regressions cover persisted
 Dashboard sizing and reset behavior, English preference persistence across a
 remount, centralized Dashboard English labels, non-stretched chart aspect
 ratios, and distinct missing/partial exercise-timing messages.
-The closeout run passes Web **32 files / 205 tests**, TypeScript typecheck and
-the production build; native Meson **111/111**; Android `testDebugUnitTest` and
-`assembleDebug`; JSON/import validators; changed-C formatting; and diff checks.
+The current closeout run passes Web **32 files / 209 tests**, TypeScript
+typecheck and the production build; native Meson **113/113**; Android **315
+tests** with five optional skips plus `assembleDebug`; JSON/import validators;
+changed-C formatting; and diff checks.
 The restarted private service serves the rebuilt executable byte-for-byte from
 the development checkout and reports healthy Trainlog `0.1.6`. A non-mutating
 Firefox smoke on the real 2026-09-23 night confirms the agenda and detail both

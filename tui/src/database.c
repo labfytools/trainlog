@@ -1549,6 +1549,35 @@ static TrainlogStatus ensure_v35_medication_quantity(TrainlogDatabase *database)
     return TRAINLOG_STATUS_OK;
 }
 
+/* WHY: revision identity is the causal content address used by synchronized
+ * peers; changing a persisted row in place can make two peers assign different
+ * facts to the same UUID. CONTRACT: v36 makes every Sleep revision payload
+ * append-only. Tips and publication markers remain mutable through their owning
+ * tables. INVARIANT: correction always appends a fresh revision identity. */
+static const char *const MIGRATE_V35_TO_V36_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_diary_revisions_immutable_update BEFORE UPDATE ON "
+    "sleep_diary_revisions BEGIN SELECT RAISE(ABORT,'sleep diary revision is immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_diary_revisions_immutable_delete BEFORE DELETE ON "
+    "sleep_diary_revisions BEGIN SELECT RAISE(ABORT,'sleep diary revision is immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_diary_events_immutable_update BEFORE UPDATE ON "
+    "sleep_diary_events "
+    "BEGIN SELECT RAISE(ABORT,'sleep diary event is immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_diary_events_immutable_delete BEFORE DELETE ON "
+    "sleep_diary_events "
+    "BEGIN SELECT RAISE(ABORT,'sleep diary event is immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_medication_intakes_immutable_update BEFORE UPDATE ON "
+    "sleep_medication_intakes BEGIN SELECT RAISE(ABORT,'sleep medication intake is immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_medication_intakes_immutable_delete BEFORE DELETE ON "
+    "sleep_medication_intakes BEGIN SELECT RAISE(ABORT,'sleep medication intake is immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_medication_revisions_immutable_update BEFORE UPDATE ON "
+    "sleep_medication_revisions BEGIN SELECT RAISE(ABORT,'sleep medication revision is "
+    "immutable');END;"
+    "CREATE TRIGGER IF NOT EXISTS sleep_medication_revisions_immutable_delete BEFORE DELETE ON "
+    "sleep_medication_revisions BEGIN SELECT RAISE(ABORT,'sleep medication revision is "
+    "immutable');END;"
+    "PRAGMA user_version=36;COMMIT;";
+
 /* WHY: schema v29 was already opened on the private 0.1.4 review installation
  * before medication capture joined the same unreleased migration. CONTRACT:
  * this additive repair is identical to the tail of v28 -> v29 and runs only
@@ -2383,7 +2412,8 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
                version == 16 || version == 17 || version == 18 || version == 19 || version == 20 ||
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
                version == 26 || version == 27 || version == 28 || version == 29 || version == 30 ||
-               version == 31 || version == 32 || version == 33 || version == 34 || version == 35) {
+               version == 31 || version == 32 || version == 33 || version == 34 || version == 35 ||
+               version == 36) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2552,6 +2582,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 35) {
         status = ensure_v35_medication_quantity(database);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 36) {
+        status = execute_sql(database, MIGRATE_V35_TO_V36_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2571,7 +2604,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v35" : "migrate database to schema v35",
+                            version == 0 ? "create schema v36" : "migrate database to schema v36",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

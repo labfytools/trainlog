@@ -27,7 +27,17 @@ static int scalar(sqlite3 *database, const char *sql) {
 }
 
 int main(void) {
-    char path[] = "/tmp/trainlog-schema-v31-XXXXXX";
+    static const char *const DROP_TRIGGERS =
+        "DROP TRIGGER sleep_diary_revisions_immutable_update;"
+        "DROP TRIGGER sleep_diary_revisions_immutable_delete;"
+        "DROP TRIGGER sleep_diary_events_immutable_update;"
+        "DROP TRIGGER sleep_diary_events_immutable_delete;"
+        "DROP TRIGGER sleep_medication_intakes_immutable_update;"
+        "DROP TRIGGER sleep_medication_intakes_immutable_delete;"
+        "DROP TRIGGER sleep_medication_revisions_immutable_update;"
+        "DROP TRIGGER sleep_medication_revisions_immutable_delete;"
+        "PRAGMA user_version=35;";
+    char path[] = "/tmp/trainlog-schema-v35-XXXXXX";
     TrainlogDatabase *production = NULL;
     sqlite3 *raw = NULL;
     int descriptor = mkstemp(path);
@@ -40,12 +50,7 @@ int main(void) {
     production = NULL;
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
-    CHECK(sqlite3_exec(raw,
-                       "DROP TABLE session_exercise_timeline;"
-                       "PRAGMA user_version=30;",
-                       NULL,
-                       NULL,
-                       NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(raw, DROP_TRIGGERS, NULL, NULL, NULL) == SQLITE_OK);
     CHECK(sqlite3_close(raw) == SQLITE_OK);
     raw = NULL;
 
@@ -57,11 +62,26 @@ int main(void) {
 
     CHECK(sqlite3_open(path, &raw) == SQLITE_OK);
     CHECK(scalar(raw,
-                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
-                 "AND name='session_exercise_timeline'") == 1);
-    CHECK(scalar(raw,
-                 "SELECT COUNT(*) FROM sqlite_master WHERE type='index' "
-                 "AND name='session_exercise_timeline_time'") == 1);
+                 "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE "
+                 "'sleep_%_immutable_%'") == 8);
+    CHECK(sqlite3_exec(
+              raw,
+              "INSERT INTO sleep_diary_entries VALUES('sl_10000000-0000-4000-8000-000000000001',"
+              "'2026-10-24','2026-10-25','2026-10-24T22:00:00Z',"
+              "'2026-10-25T07:00:00Z','slr_20000000-0000-4000-8000-000000000002',0);"
+              "INSERT INTO sleep_diary_revisions VALUES("
+              "'slr_20000000-0000-4000-8000-000000000002',"
+              "'sl_10000000-0000-4000-8000-000000000001',NULL,"
+              "'2026-10-25T07:00:00Z',NULL,NULL,NULL,'');",
+              NULL,
+              NULL,
+              NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(
+              raw, "UPDATE sleep_diary_revisions SET sleep_quality='TB';", NULL, NULL, NULL) ==
+          SQLITE_CONSTRAINT);
+    CHECK(sqlite3_exec(raw, "DELETE FROM sleep_diary_revisions;", NULL, NULL, NULL) ==
+          SQLITE_CONSTRAINT);
+    CHECK(scalar(raw, "SELECT COUNT(*) FROM sleep_diary_revisions") == 1);
     CHECK(scalar(raw, "SELECT COUNT(*) FROM pragma_foreign_key_check") == 0);
     result = EXIT_SUCCESS;
 
@@ -74,7 +94,7 @@ cleanup:
     }
     (void)unlink(path);
     if (result == EXIT_SUCCESS) {
-        puts("PASS schema v30 to v31 session timeline migration");
+        puts("PASS schema v35 to v36 Sleep revision immutability migration");
     }
     return result;
 }

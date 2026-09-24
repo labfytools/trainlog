@@ -1,5 +1,21 @@
 # Desktop database
 
+## Schema v36: append-only Sleep revision payloads
+
+Schema v36 adds database-level `BEFORE UPDATE` and `BEFORE DELETE` guards for
+Sleep diary revisions, their events and medication intakes, and medication
+catalog revisions. A stable revision identity therefore cannot be detached
+from its canonical parent or payload even through a direct SQLite write.
+Normal correction remains append-only: it inserts a fresh UUIDv4 revision and
+advances the entry or medication current pointer transactionally. The migration
+is additive and does not rewrite any existing Sleep identity, payload, causal
+edge, generation membership, publication state, or acknowledgement.
+
+Importers additionally compare the immutable payload of every already-known
+Sleep revision before treating an incoming ancestor as stale/idempotent. Thus
+an exact historical replay remains accepted, while reuse of the same identity
+with a different parent or content is an explicit collision.
+
 ## Schema v35: Sleep Diary quantity V2
 
 Schema v35 additively adds `sleep_medication_intakes.quantity`, a required

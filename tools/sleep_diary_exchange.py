@@ -260,6 +260,75 @@ def _persisted_entry(db: sqlite3.Connection, row: tuple) -> dict:
     }
 
 
+def persisted_revision_payload(db: sqlite3.Connection, entry_id: str,
+                               revision_id: str) -> dict | None:
+    """Return the immutable content owned by one revision identity.
+
+    WHY: a replay can name an older revision while the mutable entry tip has
+    advanced. Comparing only the current tip would let a reused historical
+    identity hide behind its descendant. CONTRACT: parent, scalar observations,
+    events, and medication occurrences are immutable for a revision_id.
+    """
+    revision = db.execute(
+        "SELECT parent_revision_id,created_at,sleep_quality,wake_quality,day_form,"
+        "COALESCE(treatment_and_notes,'') FROM sleep_diary_revisions "
+        "WHERE revision_id=? AND entry_id=?",
+        (revision_id, entry_id),
+    ).fetchone()
+    if revision is None:
+        return None
+    events = [
+        {"event_id": value[0], "type": value[1], "start_at": value[2], "end_at": value[3]}
+        for value in db.execute(
+            "SELECT event_id,event_type,start_at,end_at FROM sleep_diary_events "
+            "WHERE revision_id=? ORDER BY event_id", (revision_id,)
+        )
+    ]
+    intakes = [
+        {"intake_id": value[0], "medication_id": value[1], "medication_name": value[2],
+         "taken_at": value[3], "dose_value": value[4], "dose_unit": value[5],
+         "quantity": value[6], "note": value[7], "created_at": value[8]}
+        for value in db.execute(
+            "SELECT intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,"
+            "quantity,COALESCE(note,''),created_at FROM sleep_medication_intakes "
+            "WHERE revision_id=? ORDER BY intake_id", (revision_id,)
+        )
+    ]
+    return {
+        "entry_id": entry_id,
+        "revision_id": revision_id,
+        "parent_revision_id": revision[0],
+        "created_at": revision[1],
+        "sleep_quality": revision[2],
+        "wake_quality": revision[3],
+        "day_form": revision[4],
+        "treatment_and_notes": revision[5],
+        "events": events,
+        "intakes": intakes,
+    }
+
+
+def incoming_revision_payload(item: dict, wire_version: int) -> dict:
+    """Normalize V1 quantity before immutable-identity comparison."""
+    intakes = []
+    for intake in item["intakes"]:
+        normalized = dict(intake)
+        normalized.setdefault("quantity", 1 if wire_version == 1 else None)
+        intakes.append(normalized)
+    return {
+        "entry_id": item["entry_id"],
+        "revision_id": item["revision_id"],
+        "parent_revision_id": item["parent_revision_id"],
+        "created_at": item["updated_at"],
+        "sleep_quality": item["sleep_quality"],
+        "wake_quality": item["wake_quality"],
+        "day_form": item["day_form"],
+        "treatment_and_notes": item["treatment_and_notes"],
+        "events": sorted(item["events"], key=lambda value: value["event_id"]),
+        "intakes": sorted(intakes, key=lambda value: value["intake_id"]),
+    }
+
+
 def build(db: sqlite3.Connection) -> dict:
     # CONTRACT: local durability does not publish a draft. A generation may
     # capture only the current tip explicitly validated by the user.
@@ -358,6 +427,17 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             "SELECT current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
             (item["entry_id"],),
         ).fetchone()
+        known_owner = db.execute(
+            "SELECT entry_id FROM sleep_diary_revisions WHERE revision_id=?",
+            (item["revision_id"],),
+        ).fetchone()
+        if known_owner is not None:
+            persisted_revision = persisted_revision_payload(
+                db, known_owner[0], item["revision_id"]
+            )
+            incoming_revision = incoming_revision_payload(item, wire_version)
+            if known_owner[0] != item["entry_id"] or persisted_revision != incoming_revision:
+                fail("sleep diary revision identity reused with different content")
         if local is not None and local[0] == item["revision_id"]:
             # INVARIANT: an identical durable revision may still be a local
             # draft because publication state is intentionally separate. The
@@ -462,8 +542,8 @@ def main() -> None:
     import_command.add_argument("--database", required=True, type=Path)
     args = parser.parse_args()
     with connect_database(args.database) as db:
-        if db.execute("PRAGMA user_version").fetchone()[0] not in (30, 31, 32, 33, 34, 35):
-            fail("desktop schema v30-v35 required")
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (30, 31, 32, 33, 34, 35, 36):
+            fail("desktop schema v30-v36 required")
         if args.command == "export":
             args.output.write_text(json.dumps(build(db), ensure_ascii=False, sort_keys=True,
                                                    separators=(",", ":")), encoding="utf-8")

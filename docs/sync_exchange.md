@@ -1264,3 +1264,22 @@ packaged user-session deployment. Before every invocation the bounded combined
 stdout/stderr result is truncated. Resolution, launch, argparse, exception,
 signal, and non-zero-exit diagnostics therefore describe only the current run
 and are retained in the synchronization error/history when the run fails.
+
+## Sleep revision identity collision recovery
+
+A Sleep `revision_id` names one immutable parent plus canonical payload. The
+generation consumer accepts the same identity only when both are equal; it
+rejects a different parent or payload even if the incoming revision is an
+ancestor of the local current tip. Ordinary Sleep edits always use a new
+revision identity.
+
+The bounded recovery tool is intentionally narrower than general conflict
+resolution. It may re-identify a divergent local tip only after proving that
+the tip has no descendant, validation/ACK state, or immutable generation
+reference. It retains that branch unchanged, restores the manifest-owned peer
+revision under its published identity, and creates a fresh single-parent
+successor containing only non-conflicting scalar additions and exact-ID unions
+of events and medication occurrences. Conflicting non-null scalars, notes, or
+same occurrence IDs with different payloads require a human decision. The
+generation manifest and artifacts are never rewritten; only an exact rejected
+consumer/producer ledger may be rearmed for normal replay.

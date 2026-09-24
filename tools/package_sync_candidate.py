@@ -119,7 +119,7 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.6",
-        "desktop_schema": 35,
+        "desktop_schema": 36,
         "android_schema": 32,
         "protocols": [
             "mobile-export-v3",

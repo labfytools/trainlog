@@ -1457,6 +1457,18 @@ class TrainlogRepository(
                     "SELECT current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
                     arrayOf(entryId),
                 ).use { if (it.moveToFirst()) it.getString(0) to it.getInt(1) else null }
+                val knownOwner = db.rawQuery(
+                    "SELECT entry_id FROM sleep_diary_revisions WHERE revision_id=?",
+                    arrayOf(revisionId),
+                ).use { if (it.moveToFirst()) it.getString(0) else null }
+                if (knownOwner != null &&
+                    (knownOwner != entryId ||
+                        !sleepDiaryRevisionMatches(db, item, wireVersion, entryId, revisionId, parent))
+                ) {
+                    return SleepDiaryImportResult.Rejected(
+                        "sleep diary revision identity reused with different content",
+                    )
+                }
                 if (local?.first == revisionId) {
                     val same = db.rawQuery(
                         "SELECT e.night_start_date,e.night_end_date,e.created_at,e.updated_at,e.deleted," +
@@ -1609,6 +1621,78 @@ class TrainlogRepository(
         } catch (error: RuntimeException) {
             SleepDiaryImportResult.Rejected(error.message ?: "invalid sleep diary")
         }
+    }
+
+    private fun sleepDiaryRevisionMatches(
+        db: SQLiteDatabase,
+        item: JSONObject,
+        wireVersion: Int,
+        entryId: String,
+        revisionId: String,
+        parentRevisionId: String?,
+    ): Boolean {
+        /* WHY: an incoming snapshot can name an ancestor rather than the
+         * current tip. CONTRACT: stale replay is idempotent only after its
+         * immutable revision-owned payload has been compared byte-semantically.
+         * INVARIANT: descendants never hide identity reuse in history. */
+        var same = db.rawQuery(
+            "SELECT entry_id,parent_revision_id,created_at,sleep_quality,wake_quality,day_form," +
+                "COALESCE(treatment_and_notes,'')," +
+                "(SELECT COUNT(*) FROM sleep_diary_events e WHERE e.revision_id=r.revision_id)," +
+                "(SELECT COUNT(*) FROM sleep_medication_intakes i WHERE i.revision_id=r.revision_id) " +
+                "FROM sleep_diary_revisions r WHERE revision_id=?",
+            arrayOf(revisionId),
+        ).use { current ->
+            current.moveToFirst() && current.getString(0) == entryId &&
+                (if (current.isNull(1)) null else current.getString(1)) == parentRevisionId &&
+                current.getString(2) == item.getString("updated_at") &&
+                (if (current.isNull(3)) null else current.getString(3)) ==
+                    (if (item.isNull("sleep_quality")) null else item.getString("sleep_quality")) &&
+                (if (current.isNull(4)) null else current.getString(4)) ==
+                    (if (item.isNull("wake_quality")) null else item.getString("wake_quality")) &&
+                (if (current.isNull(5)) null else current.getString(5)) ==
+                    (if (item.isNull("day_form")) null else item.getString("day_form")) &&
+                current.getString(6) == item.getString("treatment_and_notes") &&
+                current.getInt(7) == item.getJSONArray("events").length() &&
+                current.getInt(8) == item.getJSONArray("intakes").length()
+        }
+        val events = item.getJSONArray("events")
+        for (index in 0 until events.length()) {
+            val event = events.getJSONObject(index)
+            same = same && db.rawQuery(
+                "SELECT event_type,start_at,end_at FROM sleep_diary_events " +
+                    "WHERE revision_id=? AND event_id=?",
+                arrayOf(revisionId, event.getString("event_id")),
+            ).use { current ->
+                current.moveToFirst() && current.getString(0) == event.getString("type") &&
+                    current.getString(1) == event.getString("start_at") &&
+                    (if (current.isNull(2)) null else current.getString(2)) ==
+                    (if (event.isNull("end_at")) null else event.getString("end_at"))
+            }
+        }
+        val intakes = item.getJSONArray("intakes")
+        for (index in 0 until intakes.length()) {
+            val intake = intakes.getJSONObject(index)
+            same = same && db.rawQuery(
+                "SELECT medication_id,medication_name,taken_at,dose_value,dose_unit,quantity," +
+                    "COALESCE(note,''),created_at FROM sleep_medication_intakes " +
+                    "WHERE revision_id=? AND intake_id=?",
+                arrayOf(revisionId, intake.getString("intake_id")),
+            ).use { current ->
+                current.moveToFirst() &&
+                    current.getString(0) == intake.getString("medication_id") &&
+                    current.getString(1) == intake.getString("medication_name") &&
+                    current.getString(2) == intake.getString("taken_at") &&
+                    (if (current.isNull(3)) null else current.getDouble(3)) ==
+                    (if (intake.isNull("dose_value")) null else intake.getDouble("dose_value")) &&
+                    (if (current.isNull(4)) null else current.getString(4)) ==
+                    (if (intake.isNull("dose_unit")) null else intake.getString("dose_unit")) &&
+                    current.getInt(5) == (if (wireVersion == 1) 1 else intake.getInt("quantity")) &&
+                    current.getString(6) == intake.getString("note") &&
+                    current.getString(7) == intake.getString("created_at")
+            }
+        }
+        return same
     }
 
     private fun markSleepDiaryImported(
@@ -12203,7 +12287,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    32,
+    33,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -12549,6 +12633,14 @@ private class TrainlogDatabaseHelper(
             createSleepQuickPublicationTable(db)
             version = 32
         }
+        if (version < 33 && newVersion >= 33) {
+            /* WHY: a revision UUID is shared causal identity, so changing any
+             * owned payload row in place can make peers disagree permanently.
+             * CONTRACT: v33 makes Sleep revision payloads append-only; edits
+             * continue to append through repository APIs with a fresh UUID. */
+            createSleepImmutabilityTriggers(db)
+            version = 33
+        }
 
         if (version != newVersion) {
             error(
@@ -12688,6 +12780,28 @@ private class TrainlogDatabaseHelper(
             entry_id TEXT NOT NULL REFERENCES sleep_diary_entries(entry_id) ON DELETE RESTRICT,
             revision_id TEXT NOT NULL REFERENCES sleep_diary_revisions(revision_id) ON DELETE RESTRICT,
             PRIMARY KEY(generation_id,entry_id))""".trimIndent())
+        createSleepImmutabilityTriggers(db)
+    }
+
+    private fun createSleepImmutabilityTriggers(db: SQLiteDatabase) {
+        /* INVARIANT: only owner tips/publication state may advance in place.
+         * Revision rows and their event/intake children are append-only. */
+        listOf(
+            Triple("sleep_diary_revisions", "update", "sleep diary revision is immutable"),
+            Triple("sleep_diary_revisions", "delete", "sleep diary revision is immutable"),
+            Triple("sleep_diary_events", "update", "sleep diary event is immutable"),
+            Triple("sleep_diary_events", "delete", "sleep diary event is immutable"),
+            Triple("sleep_medication_intakes", "update", "sleep medication intake is immutable"),
+            Triple("sleep_medication_intakes", "delete", "sleep medication intake is immutable"),
+            Triple("sleep_medication_revisions", "update", "sleep medication revision is immutable"),
+            Triple("sleep_medication_revisions", "delete", "sleep medication revision is immutable"),
+        ).forEach { (table, operation, message) ->
+            db.execSQL(
+                "CREATE TRIGGER IF NOT EXISTS ${table}_immutable_$operation " +
+                    "BEFORE ${operation.uppercase()} ON $table BEGIN " +
+                    "SELECT RAISE(ABORT,'$message'); END",
+            )
+        }
     }
 
     private fun createSleepQuickPublicationTable(db: SQLiteDatabase) {

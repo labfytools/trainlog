@@ -2,6 +2,21 @@
 
 ## Unreleased — 0.1.6
 
+- Recovered a real divergent Sleep revision identity without choosing an
+  arbitrary winner. The unpublished desktop branch was re-identified with its
+  exact content, the immutable Android revision retained its published ID and
+  parent, and a fresh successor preserved the non-conflicting qualities,
+  events and medication occurrences. The original immutable generation now
+  has a `consumed` / `sqlite-commit-full` ACK and the repaired 24 September
+  session is available through Desktop and Web with its timeline, feedback,
+  cardio and Program provenance.
+- Added Desktop schema v36 and Android schema v33 append-only guards for Sleep
+  revision payloads. Both importers now reject a known historical revision ID
+  whose parent or canonical content differs, even when that revision is below
+  the current tip. A dedicated transactional recovery utility and regressions
+  cover exact replay, parent/content collisions, medication quantities,
+  rollback, immutable generation retry, and long UUID/parent chains.
+
 - Fixed Android finalization of Program-derived sessions containing a completed
   target-only continuous occurrence. The repository now materializes the
   performed duration from the persisted exercise timeline, including preserved

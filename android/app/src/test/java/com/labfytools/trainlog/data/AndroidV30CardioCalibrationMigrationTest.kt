@@ -41,7 +41,7 @@ class AndroidV30CardioCalibrationMigrationTest {
                 null,
                 SQLiteDatabase.OPEN_READONLY,
             ).use { db ->
-                assertEquals(32, db.version)
+                assertEquals(33, db.version)
                 db.rawQuery(
                     "SELECT COUNT(*) FROM exercises WHERE " +
                         "exercise_id='ex_ca1b4a7e-1c2d-4f00-8a11-000000000001' " +

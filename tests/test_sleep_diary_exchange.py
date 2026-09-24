@@ -58,6 +58,15 @@ class SleepExchangeTest(unittest.TestCase):
         exported = exchange.build(self.db)
         self.assertTrue(exported["entries"][0]["deleted"])
 
+    def test_known_revision_with_different_parent_is_an_identity_collision(self):
+        revision = "slr_20000000-0000-4000-8000-000000000002"
+        self.assertEqual((1, 0), exchange.apply(self.db, self.document(entry(revision))))
+        conflicting = self.document(
+            entry(revision, "slr_30000000-0000-4000-8000-000000000003")
+        )
+        with self.assertRaisesRegex(ValueError, "identity reused"):
+            exchange.apply(self.db, conflicting)
+
     def test_v1_hydrates_quantity_one_and_v2_preserves_quantity(self):
         first = "slr_20000000-0000-4000-8000-000000000002"
         legacy = self.document(entry(first))
