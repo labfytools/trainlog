@@ -65,11 +65,14 @@ synchronization transport.
 
 The 0.1.6 Web refinement now also layers factual Sleep intervals, awakenings,
 medication intakes and complete hourly ticks on the selected night's HR chart.
-Its explicitly labeled fallback estimate is presentation-only; release work
-remains the next separate operational step.
+Its explicitly labeled fallback estimate is presentation-only and is shared by
+the period agenda, whose responsive labels retain an exact hourly
+18:00-to-18:00 geometry. Android lifecycle/ACK regressions now explicitly guard
+pre-bed medication snapshots against restart, replay and stale ancestry.
+Release work remains the next separate operational step.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=0.1.6 Sleep graph overlays and post-review Web corrections validated and privately deployed; stable release work remains separate.
+CURRENT_OPERATIONAL_CURSOR=0.1.6 Sleep graph/agenda projection and Android medication persistence proof validated and privately deployed; stable release work remains separate.
 ```
 
 Sleep Diary V1 stays frozen/readable while active capable peers require

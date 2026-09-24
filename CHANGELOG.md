@@ -45,6 +45,20 @@ also refined.
   `trainlog.perf` deployment and read-only Firefox smoke validate the latest
   real HR night and the latest real night containing medications from code
   commit `2ce458d`.
+- Reused that same read-only fallback projection in the multi-night Sleep
+  agenda, with a visibly estimated hatched interval and no Sleep write. The
+  agenda now derives an exact 18:00-to-18:00 hourly grid, presents at least
+  two-hour labels on ordinary desktop widths, expands to every hour when wide,
+  and reduces to six-hour anchors on narrow screens. A read-only real-device
+  investigation of the 2026-09-23 night found no medication intake in any
+  retained local revision and established that later synchronization only
+  published the already-empty current revision. Android regression coverage
+  now proves two pre-bed intakes, including quantity two, through repeated
+  repository reopen, bedtime, wake, final get-up, generation, desktop ACK,
+  replay, stale-ancestor input and a subsequent revision. The private service
+  serves Web code commit `a60e1aa`; a non-mutating Firefox smoke on the real
+  night confirms the identical 22:50–04:04 agenda/detail projection and the
+  responsive 13/25/5-label axis densities.
 
 ## 0.1.5 — 2026-09-23
 

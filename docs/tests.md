@@ -25,27 +25,39 @@ still conflicts. The equipment client test removes `crypto.randomUUID`, uses
 deterministic `getRandomValues` bytes, and completes the protected merge HTTP
 request; native merge tests retain their transaction/rollback coverage.
 
-The real Sleep Bluetooth recovery regression starts with no Android session,
-records a pre-bed medication with `quantity=2`, Couché, two BPM/RR samples
+The real Sleep Bluetooth recovery regression starts with no Android session
+and an empty pending Sleep revision, records two pre-bed medication intakes
+(including `quantity=2`), reopens the repository after each meaningful
+lifecycle transition, then records Couché, two BPM/RR samples
 separated by Réveil, and Levé. It captures and publishes the production V2
 Sleep and V1 heart-rate artifacts, imports them with the desktop consumer,
 accepts and replays the ACK without duplication, then admits a second
-Sleep-only revision. Separate tests prove connection-arrival auto-request
+Sleep-only revision. It also applies the original intake-free ancestor after
+ACK and proves that causal reconciliation cannot erase the current intakes.
+Separate tests prove connection-arrival auto-request
 policy with its cooldown, cross-run reuse of an unacknowledged immutable
 generation and recognition of its original-run exact generation/digest ACK,
 ledger-backed superseded-branch capacity, fresh-peer non-root Sleep ancestry,
 service-installer upgrade behavior, and ACK-recovery progress frames over the
 Bluetooth-selected orchestrator path.
 
-UI regressions assert the Sleep labels at exactly 0/25/50/75/100%, persisted
+UI regressions assert the Sleep agenda's 25 exact hourly positions, 13 visible
+two-hour desktop labels and five narrow six-hour anchors, including the exact
+0/25/50/75/100% coordinates. They also prove that both Sleep views reuse the
+same presentation-only Couché +45 minutes to Levé -10 minutes estimate, that a
+factual sleep interval wins, and that a missing bound produces no estimate.
+Other UI regressions cover persisted
 Dashboard sizing and reset behavior, English preference persistence across a
 remount, centralized Dashboard English labels, non-stretched chart aspect
 ratios, and distinct missing/partial exercise-timing messages.
-The closeout run passes Web **31 files / 196 tests**, TypeScript typecheck and
+The closeout run passes Web **32 files / 205 tests**, TypeScript typecheck and
 the production build; native Meson **111/111**; Android `testDebugUnitTest` and
 `assembleDebug`; JSON/import validators; changed-C formatting; and diff checks.
 The restarted private service serves the rebuilt executable byte-for-byte from
-the development checkout and reports healthy Trainlog `0.1.6`.
+the development checkout and reports healthy Trainlog `0.1.6`. A non-mutating
+Firefox smoke on the real 2026-09-23 night confirms the agenda and detail both
+show 22:50–04:04 as estimated, with 13 ordinary-desktop labels, 25 wide labels
+and five narrow anchors.
 
 Sleep Diary coverage includes schema creation/migration, midnight and DST
 offsets, revision conflict, logical deletion/reopen, companion replay and

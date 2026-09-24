@@ -169,7 +169,7 @@ parallel implementation of its rules.
 | Sleep tonight readiness delta | `TRAINLOG_SLEEP_TONIGHT_CLOSEOUT_V1=PASS`: Meson 111/111, import checks 6/6, Android `testDebugUnitTest` plus `assembleDebug`, Web 191/191 plus typecheck/build, exact V2 quantity replay, private vc47 schema-v32 migration, fresh CYCPLUS BPM and non-mutating Android/Web visual review. |
 | 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=PASS`: native 111/111; Android unit-test task and APK build; Web 191/191 plus typecheck/build; JSON/import, C-format and diff checks pass. Private vc47 preserves real data through schema v32, renders pre-bed medication quantity controls, reconnects the CYCPLUS and presents the multi-night Web Sleep agenda. |
 | Tomorrow session readiness | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: the private vc46 is clean on schema v31 with fresh CYCPLUS BPM and the next Program session is unambiguous; one combined regression proves two ordered occurrences loaded from the synchronized Program, Program provenance, factual timeline/HR ownership, finalization, full generation, desktop import, replay and correlated ACK |
-| Current operational cursor | 0.1.6 Sleep graph overlays and post-review Web corrections implemented, fully validated, and served by the private `trainlog.perf` service from development code commit `2ce458d`; immutable stable v0.1.5 remains unchanged. |
+| Current operational cursor | 0.1.6 Sleep graph overlays, shared agenda estimate and denser responsive agenda axis validated and privately served from Web code commit `a60e1aa`; immutable stable v0.1.5 remains unchanged. |
 | Complete synchronization gap contract | Frozen dependency contract; operational USB/Drive slices required by v0.1.2 are delivered |
 | Isolated synchronization test environment | `TRAINLOG_SYNC_TEST_ENV_V1=PASS/FROZEN` |
 | Synchronization characterization | `TRAINLOG_SYNC_CHARACTERIZATION_V1=PASS/FROZEN` |
@@ -195,8 +195,11 @@ full-hour ticks between exact visible bounds. Medication presentation retains
 unit dose and quantity as separate facts. A missing declared sleep interval
 uses only a labeled, non-medical Web estimate from Couché plus 45 minutes to
 Levé minus 10 minutes when both bounds exist; it never changes canonical Sleep
-data. The overlays remain available without an HR capture and do not fabricate
-BPM.
+data. The selected-night graph and the period agenda consume the same
+projection. The agenda renders an estimated interval with distinct hatching,
+never substitutes it for a factual interval, and retains the exact shared
+18:00-to-18:00 geometry. The overlays remain available without an HR capture
+and do not fabricate BPM.
 
 Language is device-local presentation state. Android keeps it in dedicated
 SharedPreferences; desktop keeps it in the XDG configuration file
@@ -341,9 +344,12 @@ cluster. Program progress uses the shared success color while retaining its
 factual completed/total text. Responsive charts preserve their viewBox aspect
 ratio, and Analyse explicitly distinguishes unavailable exercise timing from
 partial measured coverage instead of deriving time from sets or repetitions.
-The shared Sleep agenda owns one label/track/facts grid. Its five clock labels
-and every event, interval and medication marker use the same coordinates:
-18:00 at 0%, 00:00 at 25%, 06:00 at 50%, 12:00 at 75%, and 18:00 at 100%.
+The shared Sleep agenda owns one label/track/facts grid. Its 25 exact hourly
+positions and every event, interval and medication marker use the same
+coordinates: 18:00 at 0%, 00:00 at 25%, 06:00 at 50%, 12:00 at 75%, and 18:00
+at 100%. Ordinary desktop widths show the 13 two-hour labels, wide layouts show
+all hours, and narrow layouts retain the five six-hour anchors without changing
+the underlying geometry.
 
 The Equipment route projects supplied and custom definitions with exercise,
 history, preparation and Program reference counts. Its guarded merge accepts a
