@@ -721,26 +721,21 @@ describe("SleepDiaryWorkspace", () => {
     );
     expect(intake).toHaveStyle({ left: "18.75%" });
     const ticks = Array.from(document.querySelectorAll<HTMLElement>(".sleep-hour-axis > span"));
-    expect(ticks).toHaveLength(25);
+    expect(ticks).toHaveLength(24);
     expect(
       ticks
-        .map((tick) => [tick.textContent, tick.style.left])
-        .filter((_, index) => index % 2 === 0),
+        .filter((_, index) => index % 2 === 0)
+        .map((tick) => tick.textContent),
     ).toEqual([
-      ["18", "0%"],
-      ["20", `${(2 / 24) * 100}%`],
-      ["22", `${(4 / 24) * 100}%`],
-      ["00", "25%"],
-      ["02", `${(8 / 24) * 100}%`],
-      ["04", `${(10 / 24) * 100}%`],
-      ["06", "50%"],
-      ["08", `${(14 / 24) * 100}%`],
-      ["10", `${(16 / 24) * 100}%`],
-      ["12", "75%"],
-      ["14", `${(20 / 24) * 100}%`],
-      ["16", `${(22 / 24) * 100}%`],
-      ["18", "100%"],
+      "18", "20", "22", "00", "02", "04",
+      "06", "08", "10", "12", "14", "16",
     ]);
+    ticks.forEach((tick, index) => {
+      expect(Number.parseFloat(tick.style.left)).toBeCloseTo(
+        ((index + 0.5) / 24) * 100,
+        9,
+      );
+    });
     expect(ticks[1]).toHaveClass("sleep-hour-tick-odd");
     expect(ticks[2]).toHaveClass("sleep-hour-tick-even");
     expect(ticks[6]).toHaveClass("sleep-hour-tick-major");

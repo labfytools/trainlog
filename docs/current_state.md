@@ -205,7 +205,8 @@ sleep intervals, every structured long-awake interval, point events, medication
 intakes, and bounds. The agenda renders an estimated interval with distinct
 hatching, never substitutes it for a factual interval, and retains the exact
 shared 18:00-to-18:00 geometry, reinforced by 24 equal hour columns shared by
-the labels and every row. Displayed sleep duration is the sum of factual
+every row, with each hour label centered inside the cell it names. Displayed
+sleep duration is the sum of factual
 sleep intervals or, in their absence, the displayed estimate minus overlapping
 structured awakenings. The overlays remain available without an HR capture and
 do not fabricate BPM.

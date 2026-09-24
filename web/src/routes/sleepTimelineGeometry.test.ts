@@ -74,10 +74,10 @@ describe("sleep timeline geometry", () => {
 
   it("derives exact one-hour and two-hour 18:00-to-18:00 ticks", () => {
     const hourly = sleepAgendaTicks();
-    expect(hourly).toHaveLength(25);
-    expect(hourly[0]).toEqual({ hourOffset: 0, position: 0, label: "18" });
-    expect(hourly[6]).toEqual({ hourOffset: 6, position: 0.25, label: "00" });
-    expect(hourly[24]).toEqual({ hourOffset: 24, position: 1, label: "18" });
+    expect(hourly).toHaveLength(24);
+    expect(hourly[0]).toEqual({ hourOffset: 0, position: 1 / 48, label: "18" });
+    expect(hourly[6]).toEqual({ hourOffset: 6, position: 13 / 48, label: "00" });
+    expect(hourly[23]).toEqual({ hourOffset: 23, position: 47 / 48, label: "17" });
     expect(sleepAgendaTicks(2).map((tick) => tick.label)).toEqual([
       "18",
       "20",
@@ -91,7 +91,6 @@ describe("sleep timeline geometry", () => {
       "12",
       "14",
       "16",
-      "18",
     ]);
   });
 });

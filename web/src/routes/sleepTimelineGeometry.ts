@@ -15,11 +15,13 @@ export function sleepAgendaTicks(stepHours = 1): SleepAgendaTick[] {
   if (!Number.isInteger(stepHours) || stepHours < 1 || 24 % stepHours !== 0) {
     return [];
   }
-  return Array.from({ length: 24 / stepHours + 1 }, (_, index) => {
+  return Array.from({ length: 24 / stepHours }, (_, index) => {
     const hourOffset = index * stepHours;
     return {
       hourOffset,
-      position: hourOffset / 24,
+      // CONTRACT: labels name hour cells, so they sit at each cell's center;
+      // event positions and vertical grid boundaries remain exact instants.
+      position: (hourOffset + stepHours / 2) / 24,
       label: String((18 + hourOffset) % 24).padStart(2, "0"),
     };
   });

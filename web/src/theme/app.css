@@ -632,8 +632,32 @@ h2 {
   color: var(--subtext-0);
   font-size: 0.72rem;
 }
+.sleep-pdf-controls {
+  padding: 0.55rem;
+  border: 1px solid var(--surface-1);
+  border-radius: 0.75rem;
+  background: var(--mantle);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
+}
 .sleep-pdf-controls input {
-  min-height: 2.25rem;
+  min-width: 10.5rem;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  color-scheme: dark;
+  background: var(--base);
+  border: 1px solid var(--surface-2);
+  border-radius: 0.5rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.sleep-pdf-controls input:hover {
+  border-color: var(--overlay-0);
+}
+.sleep-pdf-controls input:focus-visible {
+  outline: 3px solid var(--lavender);
+  outline-offset: 1px;
+  border-color: var(--lavender);
 }
 .sleep-pdf-range-error {
   margin: 0.25rem 0 0.6rem;
@@ -730,12 +754,6 @@ h2 {
 }
 .sleep-hour-tick-odd {
   display: none;
-}
-.sleep-hour-axis > span:first-child {
-  transform: none;
-}
-.sleep-hour-axis > span:last-child {
-  transform: translateX(-100%);
 }
 .sleep-row {
   display: grid;

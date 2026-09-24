@@ -15,8 +15,9 @@ editor snapshot, and HR context in memory without issuing a write. PDF preview
 and download receive the same explicit inclusive range over each entry's
 `night_start_date`, and all observations are recomputed from that subset. The
 range initially spans the loaded agenda period; later detail/HR selection does
-not alter it. The floating hour axis is reinforced by the same 24 equal visual
-columns used beneath every 18:00-to-18:00 agenda row.
+not alter it. Each of the 24 hour labels is centered in the equal visual cell
+it names, using the same grid beneath every 18:00-to-18:00 agenda row; there is
+no ambiguous duplicate `18` at the right edge.
 
 ## Automated validation
 
