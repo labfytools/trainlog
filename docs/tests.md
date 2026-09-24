@@ -29,6 +29,11 @@ UI regressions assert the Sleep labels at exactly 0/25/50/75/100%, persisted
 Dashboard sizing and reset behavior, English preference persistence across a
 remount, centralized Dashboard English labels, non-stretched chart aspect
 ratios, and distinct missing/partial exercise-timing messages.
+The closeout run passes Web **31 files / 196 tests**, TypeScript typecheck and
+the production build; native Meson **111/111**; Android `testDebugUnitTest` and
+`assembleDebug`; JSON/import validators; changed-C formatting; and diff checks.
+The restarted private service serves the rebuilt executable byte-for-byte from
+the development checkout and reports healthy Trainlog `0.1.6`.
 
 Sleep Diary coverage includes schema creation/migration, midnight and DST
 offsets, revision conflict, logical deletion/reopen, companion replay and
