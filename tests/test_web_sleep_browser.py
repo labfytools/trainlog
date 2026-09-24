@@ -426,6 +426,7 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     };
                     const sleep=box('sleep-agenda-event-sleep');
                     const ticks=[...document.querySelectorAll('.sleep-hour-axis > span')]
+                      .filter(value => getComputedStyle(value).display !== 'none')
                       .map(value => {
                         const tick=value.getBoundingClientRect();
                         return {
@@ -460,9 +461,9 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     self.assertAlmostEqual(
                         expected_x, geometry[key], delta=1.0, msg=key
                     )
-                agenda_tick_hours = (0, 6, 12, 18, 24)
+                agenda_tick_hours = tuple(range(0, 25, 2))
                 self.assertEqual(
-                    ["18:00", "00:00", "06:00", "12:00", "18:00"],
+                    [f"{(18 + hour) % 24:02d}" for hour in agenda_tick_hours],
                     [tick["label"] for tick in geometry["ticks"]],
                 )
                 self.assertEqual(
@@ -528,6 +529,14 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                 response = json.loads(bidi.recv())
                 self.assertEqual("success", response["type"])
                 wait.until(lambda current: current.execute_script("return innerWidth") == 390)
+                narrow_ticks = driver.execute_script(
+                    """
+                    return [...document.querySelectorAll('.sleep-hour-axis > span')]
+                      .filter(value => getComputedStyle(value).display !== 'none')
+                      .map(value => value.textContent);
+                    """
+                )
+                self.assertEqual(["18", "00", "06", "12", "18"], narrow_ticks)
                 self.assertLessEqual(
                     driver.execute_script("return document.documentElement.scrollWidth"),
                     driver.execute_script("return document.documentElement.clientWidth"),

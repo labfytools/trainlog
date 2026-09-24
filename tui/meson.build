@@ -88,6 +88,8 @@ if web_assets_enabled
     '../web/src/routes/SleepDiaryWorkspace.tsx',
     '../web/src/routes/sleepTimelineGeometry.ts',
     '../web/src/routes/sleepTimelineGeometry.test.ts',
+    '../web/src/routes/sleepVisualProjection.ts',
+    '../web/src/routes/sleepVisualProjection.test.ts',
     '../web/src/report/sleepDiaryPdf.ts',
     '../web/src/report/sleepDiaryPdf.test.ts',
     '../web/src/routes/AnalysisPage.test.tsx',

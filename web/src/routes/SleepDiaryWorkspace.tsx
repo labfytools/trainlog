@@ -25,9 +25,11 @@ import {
 import { formatDose, formatDuration } from "../dashboard/dashboardFormat";
 import { sleepEntryFacts } from "./sleepDiaryFacts";
 import {
+  sleepAgendaTicks,
   sleepTimelineInterval,
   sleepTimelinePosition,
 } from "./sleepTimelineGeometry";
+import { sleepDisplayRanges } from "./sleepVisualProjection";
 
 type Language = "fr" | "en";
 const q: readonly SleepQuality[] = ["TB", "B", "Moy", "M", "TM"];
@@ -161,6 +163,12 @@ const copy = {
 } as const;
 
 const clock = (iso: string) => (iso ? iso.slice(11, 16) : "");
+const projectedClock = (timestamp: number) =>
+  new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
 const medicationLabel = (medication: SleepMedication) =>
   medication.default_dose_value === null
     ? medication.name
@@ -717,12 +725,22 @@ export function SleepDiaryWorkspace({
               <div className="sleep-axis-row" aria-hidden="true">
                 <span />
                 <span className="sleep-hour-axis">
-                  {[0, 6, 12, 18, 24].map((index) => (
+                  {sleepAgendaTicks().map((tick) => (
                     <span
-                      key={index}
-                      style={{ left: `${(index / 24) * 100}%` }}
+                      key={tick.hourOffset}
+                      className={[
+                        "sleep-hour-tick",
+                        tick.hourOffset % 2 === 0
+                          ? "sleep-hour-tick-even"
+                          : "sleep-hour-tick-odd",
+                        tick.hourOffset % 6 === 0
+                          ? "sleep-hour-tick-major"
+                          : "",
+                      ].join(" ")}
+                      data-hour-offset={tick.hourOffset}
+                      style={{ left: `${tick.position * 100}%` }}
                     >
-                      {String((18 + index) % 24).padStart(2, "0")}:00
+                      {tick.label}
                     </span>
                   ))}
                 </span>
@@ -730,6 +748,9 @@ export function SleepDiaryWorkspace({
               </div>
               {agendaEntries.map((entry) => {
                 const facts = sleepEntryFacts(entry);
+                const estimatedSleep = sleepDisplayRanges(entry).filter(
+                  (range) => range.estimated,
+                );
                 const groupedIntakes = Object.entries(
                   entry.intakes.reduce<Record<string, MedicationIntake[]>>(
                     (groups, intake) => {
@@ -755,6 +776,31 @@ export function SleepDiaryWorkspace({
                       </small>
                     </strong>
                     <span className="sleep-track">
+                      {estimatedSleep.map((range) => {
+                        const geometry = sleepTimelineInterval(
+                          new Date(range.start).toISOString(),
+                          new Date(range.end).toISOString(),
+                          entry.night_start_date,
+                          entry.created_at,
+                        );
+                        const label = `${
+                          language === "fr" ? "Sommeil estimé" : "Estimated sleep"
+                        } ${projectedClock(range.start)} → ${projectedClock(range.end)}`;
+                        return (
+                          <i
+                            key={`estimated-${range.start}-${range.end}`}
+                            className="sleep-event sleep-sleep sleep-estimated"
+                            data-testid="sleep-agenda-sleep-estimated"
+                            role="img"
+                            aria-label={label}
+                            style={{
+                              left: `${geometry.left * 100}%`,
+                              width: `${geometry.width * 100}%`,
+                            }}
+                            title={label}
+                          />
+                        );
+                      })}
                       {entry.events.map((event) => {
                         const geometry = event.end_at
                           ? sleepTimelineInterval(

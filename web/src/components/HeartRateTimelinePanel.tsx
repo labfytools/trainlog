@@ -11,6 +11,7 @@ import {
   timelineInterval,
   timelinePosition,
 } from '../routes/sleepTimelineGeometry'
+import { sleepDisplayRanges } from '../routes/sleepVisualProjection'
 import { heartRateVariations } from './heartRateVariation'
 
 const WIDTH = 1000
@@ -96,36 +97,6 @@ function doseLabel(intake: MedicationIntake): string {
   return `${intake.medication_name} · ${intake.dose_value} ${intake.dose_unit ?? ''}${quantity}`.trim()
 }
 
-interface SleepRange {
-  start: number
-  end: number
-  estimated: boolean
-}
-
-function sleepRanges(entry: SleepEntry): SleepRange[] {
-  // CONTRACT: recorded Sleep intervals always outrank visualization-only
-  // estimates. The fallback never mutates the entry or claims a medical
-  // inference; incomplete bounds deliberately produce no range.
-  const factual = entry.events
-    .filter((event) => event.type === 'sleep' && event.end_at !== null)
-    .map((event) => ({
-      start: Date.parse(event.start_at),
-      end: Date.parse(event.end_at as string),
-      estimated: false,
-    }))
-    .filter((range) => Number.isFinite(range.start) && range.end > range.start)
-  if (factual.length > 0) return factual
-
-  const bedTime = entry.events.find((event) => event.type === 'bed_time')
-  const finalGetUp = entry.events.find((event) => event.type === 'final_get_up')
-  if (!bedTime || !finalGetUp) return []
-  const start = Date.parse(bedTime.start_at) + 45 * 60 * 1000
-  const end = Date.parse(finalGetUp.start_at) - 10 * 60 * 1000
-  return Number.isFinite(start) && Number.isFinite(end) && end > start
-    ? [{ start, end, estimated: true }]
-    : []
-}
-
 function markerTitle(event: SleepEvent, french: boolean): string {
   const timelineEvent: HeartRateTimelineEvent = {
     type: event.type,
@@ -180,7 +151,7 @@ export function HeartRateTimelinePanel({
     return { minimum, maximum, average, rrCount, display: project(samples), variations: heartRateVariations(samples) }
   }, [timeline])
 
-  const sleep = sleepEntry ? sleepRanges(sleepEntry) : []
+  const sleep = sleepEntry ? sleepDisplayRanges(sleepEntry) : []
 
   if (failed) {
     return <section className="heart-rate-panel" role="alert">

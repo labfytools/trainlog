@@ -92,8 +92,8 @@ stream
 0 g BT /F1 7 Tf 620.0 522.0 Td (-) Tj ET
 0 g BT /F1 7 Tf 658.0 522.0 Td (-) Tj ET
 0 g BT /F1 7 Tf 696.0 522.0 Td (-) Tj ET
-0 g BT /F1 4 Tf 730.0 531.0 Td (22:00 \227 venlafaxine \227 75 mg ; 22:00 \227 ve) Tj ET
-0 g BT /F1 4 Tf 730.0 522.0 Td (nlafaxine \227 37,5 mg) Tj ET
+0 g BT /F1 4 Tf 730.0 531.0 Td (22:00 \227 venlafaxine \227 37,5 mg ; 22:00 \227 ) Tj ET
+0 g BT /F1 4 Tf 730.0 522.0 Td (venlafaxine \227 75 mg) Tj ET
 0 g BT /F1 4 Tf 730.0 513.0 Td () Tj ET
 0 g BT /F1 4 Tf 730.0 504.0 Td () Tj ET
 0.7 G 30 458 782 40 re S
@@ -124,9 +124,9 @@ stream
 0.9 G 570.3333333333333 458 m 570.3333333333333 498 l S
 0.9 G 591.1666666666667 458 m 591.1666666666667 498 l S
 0.9 G 612 458 m 612 498 l S
-0 g BT /F1 8 Tf 205.8 473.0 Td (v) Tj ET
 0.75 g 205.75 469.00 104.17 18.00 re f 0 G 205.75 469.00 104.17 18.00 re S
 0 g BT /F1 5 Tf 207.8 475.0 Td (SOMMEIL) Tj ET
+0 g BT /F1 8 Tf 205.8 473.0 Td (v) Tj ET
 0 g BT /F1 8 Tf 336.0 473.0 Td (^) Tj ET
 0 g BT /F1 8 Tf 559.9 473.0 Td (S) Tj ET
 0 g BT /F1 6 Tf 205.8 462.0 Td (M) Tj ET

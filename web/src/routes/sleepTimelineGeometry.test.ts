@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hourlyTimelineTicks,
+  sleepAgendaTicks,
   sleepTimelineInterval,
   sleepTimelinePosition,
   timelineInterval,
@@ -69,5 +70,28 @@ describe("sleep timeline geometry", () => {
     expect(ticks.every((tick) => tick.position > 0 && tick.position < 1)).toBe(
       true,
     );
+  });
+
+  it("derives exact one-hour and two-hour 18:00-to-18:00 ticks", () => {
+    const hourly = sleepAgendaTicks();
+    expect(hourly).toHaveLength(25);
+    expect(hourly[0]).toEqual({ hourOffset: 0, position: 0, label: "18" });
+    expect(hourly[6]).toEqual({ hourOffset: 6, position: 0.25, label: "00" });
+    expect(hourly[24]).toEqual({ hourOffset: 24, position: 1, label: "18" });
+    expect(sleepAgendaTicks(2).map((tick) => tick.label)).toEqual([
+      "18",
+      "20",
+      "22",
+      "00",
+      "02",
+      "04",
+      "06",
+      "08",
+      "10",
+      "12",
+      "14",
+      "16",
+      "18",
+    ]);
   });
 });

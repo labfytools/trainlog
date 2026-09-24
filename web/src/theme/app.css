@@ -714,6 +714,9 @@ h2 {
   transform: translateX(-50%);
   font-variant-numeric: tabular-nums;
 }
+.sleep-hour-tick-odd {
+  display: none;
+}
 .sleep-hour-axis > span:first-child {
   transform: none;
 }
@@ -823,6 +826,11 @@ h2 {
     transparent 3px 6px
   );
 }
+.sleep-estimated {
+  opacity: 0.72;
+  outline: 1px dashed var(--teal);
+  outline-offset: -1px;
+}
 .sleep-long_awake {
   border: 2px solid var(--peach);
   background: transparent;
@@ -844,6 +852,16 @@ h2 {
   background: var(--green);
   color: var(--crust);
   font-weight: 800;
+}
+@media (min-width: 1600px) {
+  .sleep-hour-tick-odd {
+    display: block;
+  }
+}
+@media (max-width: 760px) {
+  .sleep-hour-tick-even:not(.sleep-hour-tick-major) {
+    display: none;
+  }
 }
 .sleep-editor-columns {
   display: grid;

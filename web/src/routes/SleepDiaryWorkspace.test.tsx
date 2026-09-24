@@ -640,10 +640,66 @@ describe("SleepDiaryWorkspace", () => {
     );
     expect(intake).toHaveStyle({ left: "18.75%" });
     const ticks = Array.from(document.querySelectorAll<HTMLElement>(".sleep-hour-axis > span"));
-    expect(ticks.map((tick) => [tick.textContent, tick.style.left])).toEqual([
-      ["18:00", "0%"], ["00:00", "25%"], ["06:00", "50%"],
-      ["12:00", "75%"], ["18:00", "100%"],
+    expect(ticks).toHaveLength(25);
+    expect(
+      ticks
+        .map((tick) => [tick.textContent, tick.style.left])
+        .filter((_, index) => index % 2 === 0),
+    ).toEqual([
+      ["18", "0%"],
+      ["20", `${(2 / 24) * 100}%`],
+      ["22", `${(4 / 24) * 100}%`],
+      ["00", "25%"],
+      ["02", `${(8 / 24) * 100}%`],
+      ["04", `${(10 / 24) * 100}%`],
+      ["06", "50%"],
+      ["08", `${(14 / 24) * 100}%`],
+      ["10", `${(16 / 24) * 100}%`],
+      ["12", "75%"],
+      ["14", `${(20 / 24) * 100}%`],
+      ["16", `${(22 / 24) * 100}%`],
+      ["18", "100%"],
     ]);
+    expect(ticks[1]).toHaveClass("sleep-hour-tick-odd");
+    expect(ticks[2]).toHaveClass("sleep-hour-tick-even");
+    expect(ticks[6]).toHaveClass("sleep-hour-tick-major");
+  });
+
+  it("shows the shared estimated sleep range only when factual sleep is absent", async () => {
+    const estimated = {
+      ...dayAEntry(),
+      entry_id: "sl_estimated",
+      revision_id: "slr_estimated",
+      night_start_date: "2026-09-23",
+      night_end_date: "2026-09-24",
+      events: [
+        {
+          event_id: "bed",
+          type: "bed_time" as const,
+          start_at: "2026-09-23T22:05:00+02:00",
+          end_at: null,
+        },
+        {
+          event_id: "up",
+          type: "final_get_up" as const,
+          start_at: "2026-09-24T04:14:00+02:00",
+          end_at: null,
+        },
+      ],
+      intakes: [],
+    };
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([estimated]));
+    api.fetchSleepMedications.mockResolvedValue([medication]);
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    const range = await screen.findByTestId("sleep-agenda-sleep-estimated");
+    expect(range).toHaveAttribute(
+      "aria-label",
+      "Sommeil estimé 22:50 → 04:04",
+    );
+    expect(Number.parseFloat(range.style.left)).toBeCloseTo((4.833333333 / 24) * 100, 7);
+    expect(Number.parseFloat(range.style.width)).toBeCloseTo((5.233333333 / 24) * 100, 7);
+    expect(screen.queryByTestId("sleep-agenda-event-sleep")).not.toBeInTheDocument();
   });
 
   it("isolates an empty editor night while retaining the period agenda", async () => {

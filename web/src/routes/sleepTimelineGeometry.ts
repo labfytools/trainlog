@@ -5,6 +5,26 @@ export interface TimelineTick {
   position: number;
 }
 
+export interface SleepAgendaTick {
+  hourOffset: number;
+  position: number;
+  label: string;
+}
+
+export function sleepAgendaTicks(stepHours = 1): SleepAgendaTick[] {
+  if (!Number.isInteger(stepHours) || stepHours < 1 || 24 % stepHours !== 0) {
+    return [];
+  }
+  return Array.from({ length: 24 / stepHours + 1 }, (_, index) => {
+    const hourOffset = index * stepHours;
+    return {
+      hourOffset,
+      position: hourOffset / 24,
+      label: String((18 + hourOffset) % 24).padStart(2, "0"),
+    };
+  });
+}
+
 export function timelinePosition(
   timestamp: string | number,
   start: string | number,
