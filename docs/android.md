@@ -34,6 +34,14 @@ successful intake; the per-unit dose and unit remain independent structured
 facts. Pending entries persist through restart and can synchronize without
 inventing bedtime.
 
+The persistence regression begins from an empty pending revision, records two
+pre-bed intakes (one with quantity two), and reopens the repository after
+intake, Couché, Réveil and Levé. It then proves the same stable entry and intake
+snapshots through generation, desktop import/ACK, exact replay, rejection of a
+stale intake-free ancestor and a later current revision. This is the executable
+contract for lifecycle and synchronization retention; it does not infer facts
+that are absent from a device database.
+
 Sleep-owned HR capture remains sample-driven. A pending medication alone opens
 no capture. After Couché, the first fresh real measurement creates or resumes
 one `context_kind=sleep` capture for that entry, with `started_at` equal to the

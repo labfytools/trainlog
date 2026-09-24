@@ -92,16 +92,55 @@ class SyncGenerationServiceTest {
                         active = true,
                     )
                 ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            val pendingRoot =
+                source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        nightStartDate = "2026-09-23",
+                        nightEndDate = "2026-09-24",
+                        createdAt = "2026-09-23T22:00:00+02:00",
+                        updatedAt = "2026-09-23T22:00:00+02:00",
+                        sleepQuality = null,
+                        wakeQuality = null,
+                        dayForm = null,
+                        treatmentAndNotes = "",
+                        events = emptyList(),
+                        intakes = emptyList(),
+                    )
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
             val preBed =
                 source.quickSleepMedication(
                     medicationCreated.entryId,
                     "2026-09-23T22:20:00+02:00",
                     quantity = 2,
                 ) as TrainlogRepository.SleepQuickActionResult.Applied
+            assertEquals(pendingRoot.entryId, preBed.receipt.entryId)
+            source.quickSleepMedication(
+                medicationCreated.entryId,
+                "2026-09-23T22:21:00+02:00",
+            ) as TrainlogRepository.SleepQuickActionResult.Applied
+            source.inSyncGenerationTransaction { db ->
+                assertEquals(
+                    2,
+                    db.rawQuery(
+                        "SELECT COUNT(*) FROM sleep_medication_intakes WHERE revision_id=" +
+                            "(SELECT current_revision_id FROM sleep_diary_entries WHERE entry_id=?)",
+                        arrayOf(preBed.receipt.entryId),
+                    ).use { cursor ->
+                        cursor.moveToFirst()
+                        cursor.getInt(0)
+                    },
+                )
+            }
+            source.close()
+            source = TrainlogRepository(context, sourceName)
+            assertEquals(listOf(2, 1), source.listSleepDiary().single().intakes.map { it.quantity })
             val bed =
                 source.quickSleepBedTime("2026-09-23T22:30:00+02:00")
                     as TrainlogRepository.SleepQuickActionResult.Applied
             assertEquals(preBed.receipt.entryId, bed.receipt.entryId)
+            assertEquals(2, source.listSleepDiary().single().intakes.size)
+            source.close()
+            source = TrainlogRepository(context, sourceName)
             val firstMeasurement =
                 ParsedHeartRateMeasurement(
                     bpm = 61,
@@ -120,6 +159,9 @@ class SyncGenerationServiceTest {
                 source.quickSleepWake("2026-09-24T02:17:00+02:00")
                     is TrainlogRepository.SleepQuickActionResult.Applied
             )
+            assertEquals(2, source.listSleepDiary().single().intakes.size)
+            source.close()
+            source = TrainlogRepository(context, sourceName)
             assertTrue(
                 source.recordLiveHeartRateForActiveSleep(
                     "Synthetic HR",
@@ -131,6 +173,8 @@ class SyncGenerationServiceTest {
                 source.quickSleepFinalGetUp("2026-09-24T06:31:00+02:00")
                     is TrainlogRepository.SleepQuickActionResult.Applied
             )
+            source.close()
+            source = TrainlogRepository(context, sourceName)
             assertTrue(source.listSessions().isEmpty())
 
             val night = source.listSleepDiary().single()
@@ -140,7 +184,7 @@ class SyncGenerationServiceTest {
                     .getJSONObject(0)
             assertEquals(night.entryId, capture.getString("context_id"))
             assertEquals(2, capture.getJSONArray("samples").length())
-            assertEquals(2, night.intakes.single().quantity)
+            assertEquals(listOf(2, 1), night.intakes.map { it.quantity })
 
             val service = SyncGenerationService(source)
             val captured = service.capture(root, desktopPeer)
@@ -154,9 +198,12 @@ class SyncGenerationServiceTest {
             val publishedNight = diaryArtifact.getJSONArray("entries").getJSONObject(0)
             val publishedCapture = heartArtifact.getJSONArray("captures").getJSONObject(0)
             assertEquals(night.entryId, publishedNight.getString("entry_id"))
+            assertEquals(2, publishedNight.getJSONArray("intakes").length())
             assertEquals(
-                2,
-                publishedNight.getJSONArray("intakes").getJSONObject(0).getInt("quantity"),
+                listOf(1, 2),
+                (0 until publishedNight.getJSONArray("intakes").length()).map { index ->
+                    publishedNight.getJSONArray("intakes").getJSONObject(index).getInt("quantity")
+                }.sorted(),
             )
             assertEquals(capture.getString("capture_id"), publishedCapture.getString("capture_id"))
 
@@ -193,19 +240,32 @@ class SyncGenerationServiceTest {
             assertEquals(
                 // The desktop fixture owns one reserved calibration session;
                 // the empty Android history must not add a workout.
-                "1|1|2|2|2|1",
+                "1|2|2,1|2|2|1",
                 run(
                         "sqlite3",
                         desktopDb.absolutePath,
                         "SELECT (SELECT count(*) FROM sleep_diary_entries WHERE entry_id='${night.entryId}') || '|' || " +
                             "(SELECT count(*) FROM sleep_medication_intakes WHERE revision_id='${night.revisionId}') || '|' || " +
-                            "(SELECT quantity FROM sleep_medication_intakes WHERE revision_id='${night.revisionId}') || '|' || " +
+                            "(SELECT group_concat(quantity,',') FROM (SELECT quantity FROM sleep_medication_intakes WHERE revision_id='${night.revisionId}' ORDER BY taken_at,intake_id)) || '|' || " +
                             "(SELECT count(*) FROM heart_rate_samples WHERE capture_id='${capture.getString("capture_id")}') || '|' || " +
                             "(SELECT count(*) FROM heart_rate_rr_intervals WHERE capture_id='${capture.getString("capture_id")}') || '|' || " +
                             "(SELECT count(*) FROM sessions);",
                     )
                     .trim(),
             )
+
+            val staleWithoutIntakes = JSONObject(source.buildSleepDiaryV1Json())
+            val staleEntry = staleWithoutIntakes.getJSONArray("entries").getJSONObject(0)
+            staleEntry.put("revision_id", pendingRoot.revisionId)
+            staleEntry.put("parent_revision_id", JSONObject.NULL)
+            staleEntry.put("ancestry", org.json.JSONArray().put(pendingRoot.revisionId))
+            staleEntry.put("updated_at", "2026-09-23T22:00:00+02:00")
+            staleEntry.put("events", org.json.JSONArray())
+            staleEntry.put("intakes", org.json.JSONArray())
+            val staleResult = source.applySleepDiaryV1Json(staleWithoutIntakes.toString())
+            assertTrue(staleResult is TrainlogRepository.SleepDiaryImportResult.Applied)
+            assertEquals(1, (staleResult as TrainlogRepository.SleepDiaryImportResult.Applied).unchanged)
+            assertEquals(listOf(2, 1), source.listSleepDiary().single().intakes.map { it.quantity })
 
             val revised =
                 source.saveSleepDiary(
@@ -255,6 +315,7 @@ class SyncGenerationServiceTest {
                     )
                     .trim(),
             )
+            assertEquals(2, source.listSleepDiary().single().intakes.size)
             assertTrue(source.listSessions().isEmpty())
         } finally {
             source.close()
