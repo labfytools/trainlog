@@ -206,7 +206,8 @@ intakes, and bounds. The agenda renders an estimated interval with distinct
 hatching, never substitutes it for a factual interval, and retains the exact
 shared 18:00-to-18:00 geometry, reinforced by 24 equal hour columns shared by
 every row, with each hour label centered inside the cell it names. Displayed
-sleep duration is the sum of factual
+events use one factual night offset even when revision metadata is UTC, and
+French agenda headings use `DD/MM/YYYY`. Displayed sleep duration is the sum of factual
 sleep intervals or, in their absence, the displayed estimate minus overlapping
 structured awakenings. The overlays remain available without an HR capture and
 do not fabricate BPM.

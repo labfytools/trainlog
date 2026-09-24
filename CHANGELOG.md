@@ -77,6 +77,10 @@ also refined.
   The duplicate terminal `18` is removed; detail/HR night selection remains
   independent from the report range, whose date fields now use a grouped
   Trainlog form treatment.
+- Fixed a real Sleep agenda offset bug when revision metadata used UTC `Z` but
+  factual events used the user's local offset: the row now anchors its complete
+  18:00 axis to one factual night offset. Agenda night headings use French
+  `DD/MM/YYYY` rather than persistence-oriented ISO dates in the French UI.
 
 ## 0.1.5 — 2026-09-23
 

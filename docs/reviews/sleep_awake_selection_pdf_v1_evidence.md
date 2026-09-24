@@ -19,6 +19,12 @@ not alter it. Each of the 24 hour labels is centered in the equal visual cell
 it names, using the same grid beneath every 18:00-to-18:00 agenda row; there is
 no ambiguous duplicate `18` at the right edge.
 
+A real-data follow-up found that using UTC revision `created_at` as the visual
+offset source moved `+02:00` events two hours left. The agenda now derives one
+row-wide offset from factual bedtime/event data. Regression coverage mixes UTC
+metadata with `+02:00` events and keeps the 04:45 final get-up at its local
+04:45 position. French night headings render `DD/MM/YYYY`.
+
 ## Automated validation
 
 - Web targeted suites: 34/34 passed.

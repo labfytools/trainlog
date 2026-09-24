@@ -172,6 +172,13 @@ const copy = {
 } as const;
 
 const clock = (iso: string) => (iso ? iso.slice(11, 16) : "");
+const displayDate = (isoDate: string, language: Language) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) return isoDate;
+  return language === "fr"
+    ? `${match[3]}/${match[2]}/${match[1]}`
+    : `${match[1]}-${match[2]}-${match[3]}`;
+};
 const projectedClock = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString([], {
     hour: "2-digit",
@@ -805,6 +812,14 @@ export function SleepDiaryWorkspace({
               {agendaEntries.map((entry) => {
                 const facts = sleepEntryFacts(entry);
                 const projection = projectSleepTimeline(entry);
+                // WHY: persistence metadata may be UTC while factual night
+                // events carry the user's local offset. The 18:00 axis must
+                // use one factual local offset for the whole row or every
+                // marker is shifted by the UTC/local difference.
+                const timelineOffsetSource = entry.events.find(
+                  (event) => event.type === "bed_time",
+                )?.start_at ?? entry.events[0]?.start_at ??
+                  entry.intakes[0]?.taken_at ?? entry.created_at;
                 const estimatedSleep = projection.sleep.filter(
                   (range) => range.estimated,
                 );
@@ -834,7 +849,7 @@ export function SleepDiaryWorkspace({
                     onDoubleClick={() => edit(entry)}
                   >
                     <strong>
-                      {t.night} {entry.night_start_date}
+                      {t.night} {displayDate(entry.night_start_date, language)}
                       <small>
                         {t.statuses[entry.publication_status]} · {t.continue}
                       </small>
@@ -845,7 +860,7 @@ export function SleepDiaryWorkspace({
                           new Date(range.start).toISOString(),
                           new Date(range.end).toISOString(),
                           entry.night_start_date,
-                          entry.created_at,
+                          timelineOffsetSource,
                         );
                         const label = `${
                           language === "fr" ? "Sommeil estimé" : "Estimated sleep"
@@ -872,7 +887,7 @@ export function SleepDiaryWorkspace({
                           event.start_at,
                           event.end_at as string,
                           entry.night_start_date,
-                          entry.created_at,
+                          timelineOffsetSource,
                         );
                         return (
                           <i
@@ -891,7 +906,7 @@ export function SleepDiaryWorkspace({
                         const left = sleepTimelinePosition(
                           event.start_at,
                           entry.night_start_date,
-                          entry.created_at,
+                          timelineOffsetSource,
                         );
                         return (
                           <i key={event.event_id}
@@ -911,7 +926,7 @@ export function SleepDiaryWorkspace({
                           className="sleep-event sleep-medication"
                           data-testid="sleep-agenda-medication"
                           style={{
-                            left: `${sleepTimelinePosition(takenAt, entry.night_start_date, entry.created_at) * 100}%`,
+                            left: `${sleepTimelinePosition(takenAt, entry.night_start_date, timelineOffsetSource) * 100}%`,
                           }}
                           title={`${clock(takenAt)}\n${intakes.map(intakeLabel).join("\n")}`}
                         >

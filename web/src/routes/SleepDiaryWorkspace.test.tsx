@@ -697,11 +697,18 @@ describe("SleepDiaryWorkspace", () => {
   });
 
   it("aligns ticks, events, intervals, and medication markers on one 18:00 axis", async () => {
-    api.fetchSleepDiary.mockResolvedValue(snapshotWith([dayAEntry()]));
+    const mixedOffsetEntry = {
+      ...dayAEntry(),
+      // Regression fixture: metadata is UTC while factual night events carry
+      // the user's +02:00 local offset.
+      created_at: "2026-09-20T16:00:00Z",
+    };
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([mixedOffsetEntry]));
     api.fetchSleepMedications.mockResolvedValue([medication]);
     render(<SleepDiaryWorkspace period="30d" language="fr" />);
 
     const bedtime = await screen.findByTestId("sleep-agenda-event-bed_time");
+    expect(screen.getByText("Nuit du 20/09/2026")).toBeInTheDocument();
     const sleep = screen.getByTestId("sleep-agenda-event-sleep");
     const getUp = screen.getByTestId("sleep-agenda-event-final_get_up");
     const sleepiness = screen.getByTestId(
