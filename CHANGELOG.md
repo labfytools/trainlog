@@ -41,7 +41,10 @@ also refined.
   presentation alone shows the conservative bedtime +45 minutes to final
   get-up -10 minutes estimate, labels it as estimated/non-medical, and never
   writes it to Sleep data. Nights without synchronized HR retain these factual
-  and estimated timeline overlays without inventing BPM samples.
+  and estimated timeline overlays without inventing BPM samples. The private
+  `trainlog.perf` deployment and read-only Firefox smoke validate the latest
+  real HR night and the latest real night containing medications from code
+  commit `2ce458d`.
 
 ## 0.1.5 — 2026-09-23
 

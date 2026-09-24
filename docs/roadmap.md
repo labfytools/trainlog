@@ -69,7 +69,7 @@ Its explicitly labeled fallback estimate is presentation-only; release work
 remains the next separate operational step.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=0.1.6 post-review Web corrections validated and privately deployed; stable release work remains separate.
+CURRENT_OPERATIONAL_CURSOR=0.1.6 Sleep graph overlays and post-review Web corrections validated and privately deployed; stable release work remains separate.
 ```
 
 Sleep Diary V1 stays frozen/readable while active capable peers require
