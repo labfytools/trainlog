@@ -368,6 +368,7 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                             "taken_at": "2026-09-19T22:30:00+02:00",
                             "dose_value": 75,
                             "dose_unit": "mg",
+                            "quantity": 2,
                             "note": "",
                             "created_at": "2026-09-19T22:30:00+02:00",
                         }
@@ -380,6 +381,36 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     lambda current: current.find_elements(
                         By.CSS_SELECTOR, "[data-testid='sleep-agenda-event-bed_time']"
                     )
+                )
+                wait.until(
+                    lambda current: current.find_elements(
+                        By.CSS_SELECTOR, "[data-testid='heart-rate-sleep-factual']"
+                    )
+                )
+                self.assertEqual(
+                    1,
+                    len(driver.find_elements(
+                        By.CSS_SELECTOR, "[data-testid='heart-rate-medication-marker']"
+                    )),
+                )
+                self.assertEqual(
+                    1,
+                    len(driver.find_elements(
+                        By.CSS_SELECTOR, "[data-testid='heart-rate-sleep-event-final_get_up']"
+                    )),
+                )
+                self.assertGreaterEqual(
+                    len(driver.find_elements(
+                        By.CSS_SELECTOR, "[data-testid='heart-rate-hour-tick']"
+                    )),
+                    6,
+                )
+                self.assertIn(
+                    "venlafaxine · 75 mg ×2",
+                    driver.find_element(By.CSS_SELECTOR, ".heart-rate-overlay-list").text,
+                )
+                self.assertFalse(
+                    driver.find_elements(By.CSS_SELECTOR, ".heart-rate-line")
                 )
                 geometry = driver.execute_script(
                     """
@@ -400,6 +431,7 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                         return {
                           label:value.textContent,
                           center:tick.left + tick.width / 2,
+                          left:value.style.left,
                         };
                       });
                     return {
@@ -428,23 +460,27 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                     self.assertAlmostEqual(
                         expected_x, geometry[key], delta=1.0, msg=key
                     )
-                for tick_index in (4, 9, 10, 11, 21, 22):
-                    expected_x = geometry["left"] + geometry["width"] * tick_index / 24
-                    self.assertAlmostEqual(
-                        expected_x,
-                        geometry["ticks"][tick_index]["center"],
-                        delta=1.0,
-                    )
+                agenda_tick_hours = (0, 6, 12, 18, 24)
+                self.assertEqual(
+                    ["18:00", "00:00", "06:00", "12:00", "18:00"],
+                    [tick["label"] for tick in geometry["ticks"]],
+                )
+                self.assertEqual(
+                    [f"{tick_hour / 24 * 100:g}%" for tick_hour in agenda_tick_hours],
+                    [tick["left"] for tick in geometry["ticks"]],
+                )
                 self.assertTrue(
                     driver.save_screenshot(
                         str(EVIDENCE / "sleep-diary-alignment-firefox.png")
                     )
                 )
 
-                set_value("sleep-night-start", "2026-09-21")
+                set_value("sleep-night-start", "2025-01-01")
                 wait.until(
-                    lambda current: "Aucune donnée pour cette nuit."
-                    in current.page_source
+                    lambda current: current.find_element(
+                        By.CSS_SELECTOR, "[data-testid='sleep-night-start']"
+                    ).get_attribute("value")
+                    == "2025-01-01"
                 )
                 self.assertFalse(
                     driver.find_elements(
@@ -599,7 +635,7 @@ class BrowserSleepDiaryTest(unittest.TestCase):
                             By.CSS_SELECTOR, "[data-testid^='sleep-agenda-row-']"
                         )
                     )
-                    == 1
+                    == 7
                 )
                 EVIDENCE.mkdir(parents=True, exist_ok=True)
                 download_path = EVIDENCE / "trainlog-sleep-diary.pdf"

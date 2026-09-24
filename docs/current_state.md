@@ -189,6 +189,14 @@ heart-rate detail. Its rise/fall overlays are descriptive relative measured
 variation only (five-minute trailing reference excluding the current 60-second
 window; threshold `max(10 BPM, 15%)`; gaps over three seconds excluded). They
 are not sleep events, sleep stages, causes, readiness, or medical inference.
+The detail shares one normalized time projection with declared sleep and
+awakening intervals, exact Couché/Réveil/Levé markers, medication markers, and
+full-hour ticks between exact visible bounds. Medication presentation retains
+unit dose and quantity as separate facts. A missing declared sleep interval
+uses only a labeled, non-medical Web estimate from Couché plus 45 minutes to
+Levé minus 10 minutes when both bounds exist; it never changes canonical Sleep
+data. The overlays remain available without an HR capture and do not fabricate
+BPM.
 
 Language is device-local presentation state. Android keeps it in dedicated
 SharedPreferences; desktop keeps it in the XDG configuration file

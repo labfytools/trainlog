@@ -34,6 +34,14 @@ also refined.
   coverage carries medication quantity, Couché/Réveil/Levé and Sleep BPM/RR
   through import, ACK, replay and a second Sleep-only generation with no
   Android workout session.
+- Enriched the selected Sleep night's heart-rate chart with declared sleep
+  ranges, explicit awakening ranges and point events, medication markers that
+  preserve unit dose and quantity, exact start/end bounds, and every
+  intervening hourly tick. When no declared sleep interval exists, the Web
+  presentation alone shows the conservative bedtime +45 minutes to final
+  get-up -10 minutes estimate, labels it as estimated/non-medical, and never
+  writes it to Sleep data. Nights without synchronized HR retain these factual
+  and estimated timeline overlays without inventing BPM samples.
 
 ## 0.1.5 — 2026-09-23
 

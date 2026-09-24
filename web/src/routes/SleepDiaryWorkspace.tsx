@@ -908,7 +908,10 @@ export function SleepDiaryWorkspace({
 
       {selectedEntry && (
         <div className="analysis-wide">
-          <HeartRateTimelinePanel contextId={selectedEntry.entry_id} />
+          <HeartRateTimelinePanel
+            contextId={selectedEntry.entry_id}
+            sleepEntry={selectedEntry}
+          />
         </div>
       )}
 

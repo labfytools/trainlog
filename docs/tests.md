@@ -316,6 +316,13 @@ cover exact 18:00-to-18:00 timestamp geometry, active-night isolation, empty
 night state, return navigation and rejection of an earlier date response that
 finishes late. Localized dose/unit labels, same-name medications with different
 usual doses and editable intake-dose prefill remain covered.
+The heart-rate panel suite additionally covers a complete 22:05-to-04:14 night,
+declared and fallback-estimated sleep ranges, multiple close awakenings, final
+get-up, pre-bed and close medication intakes with exact dose/unit/quantity,
+every intervening hour tick, and a no-HR rendering that creates no measured
+curve. Geometry tests prove exact factual bounds and the common normalized
+projection used by chart samples, overlays, events, intakes, and ticks; narrow
+viewports preserve that geometry in a horizontally scrollable chart.
 `test_web_sleep_browser.py` exercises the embedded production bundle in real
 Firefox against an isolated synthetic database, observes every mutation
 without reload, verifies HTTP success and browser error collectors, measures

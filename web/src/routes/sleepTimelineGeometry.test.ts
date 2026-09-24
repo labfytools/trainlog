@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  hourlyTimelineTicks,
   sleepTimelineInterval,
   sleepTimelinePosition,
+  timelineInterval,
+  timelinePosition,
 } from "./sleepTimelineGeometry";
 
 describe("sleep timeline geometry", () => {
@@ -39,5 +42,32 @@ describe("sleep timeline geometry", () => {
         "2026-10-24T18:00:00+02:00",
       ),
     ).toBeCloseTo(0.5, 12);
+  });
+
+  it("projects arbitrary chart windows with the same bounded formula", () => {
+    const start = Date.parse("2026-09-20T22:05:00+02:00");
+    const end = Date.parse("2026-09-21T04:14:00+02:00");
+    expect(timelinePosition(start, start, end)).toBe(0);
+    expect(timelinePosition(end, start, end)).toBe(1);
+    const interval = timelineInterval(
+      "2026-09-20T22:50:00+02:00",
+      "2026-09-21T04:04:00+02:00",
+      start,
+      end,
+    );
+    expect(interval.left).toBeCloseTo(45 / 369, 12);
+    expect(interval.width).toBeCloseTo(314 / 369, 12);
+  });
+
+  it("keeps real bounds and emits every intervening full hour", () => {
+    const start = Date.parse("2026-09-20T22:05:00+02:00");
+    const end = Date.parse("2026-09-21T04:14:00+02:00");
+    const ticks = hourlyTimelineTicks(start, end);
+    expect(ticks.map((tick) => new Date(tick.timestamp).getHours())).toEqual([
+      23, 0, 1, 2, 3, 4,
+    ]);
+    expect(ticks.every((tick) => tick.position > 0 && tick.position < 1)).toBe(
+      true,
+    );
   });
 });

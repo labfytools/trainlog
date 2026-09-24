@@ -3103,6 +3103,28 @@ h2 {
 .heart-rate-event-band {
   fill: rgb(180 190 254 / 6%);
 }
+.heart-rate-sleep-band {
+  fill: rgb(166 227 161 / 13%);
+  stroke: rgb(166 227 161 / 42%);
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-sleep-estimated {
+  fill: rgb(148 226 213 / 8%);
+  stroke: rgb(148 226 213 / 55%);
+  stroke-dasharray: 5 3;
+}
+.heart-rate-awake-band {
+  fill: rgb(249 226 175 / 14%);
+  stroke: rgb(249 226 175 / 55%);
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-hour-grid {
+  stroke: rgb(127 132 156 / 28%);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
 .heart-rate-variation {
   opacity: 0.2;
   pointer-events: auto;
@@ -3123,6 +3145,31 @@ h2 {
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
+.heart-rate-sleep-marker {
+  stroke: var(--yellow);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 2;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-sleep-marker-bed_time {
+  stroke: var(--mauve);
+}
+.heart-rate-sleep-marker-final_get_up {
+  stroke: var(--peach);
+  stroke-width: 1.8;
+}
+.heart-rate-medication-marker {
+  fill: var(--blue);
+  stroke: var(--base);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.heart-rate-medication-label {
+  fill: var(--base);
+  font-size: 8px;
+  font-weight: 800;
+  pointer-events: none;
+}
 .heart-rate-marker-label,
 .chart-axis-label {
   fill: var(--subtext-0);
@@ -3132,6 +3179,27 @@ h2 {
   margin-top: 0.45rem;
   color: var(--subtext-0);
   font-size: var(--font-size-xs);
+}
+.heart-rate-estimation-note,
+.heart-rate-overlay-list {
+  color: var(--subtext-0);
+  font-size: var(--font-size-xs);
+}
+.heart-rate-estimation-note {
+  padding-left: 0.6rem;
+  border-left: 2px dashed var(--teal);
+}
+.heart-rate-overlay-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.heart-rate-overlay-list time {
+  color: var(--blue);
+  font-family: var(--font-mono);
 }
 .heart-rate-phases,
 .heart-rate-calibration,
@@ -3175,5 +3243,11 @@ h2 {
   .heart-rate-phases li {
     grid-template-columns: 1fr;
     gap: 0.2rem;
+  }
+  .heart-rate-chart {
+    overflow-x: auto;
+  }
+  .heart-rate-chart svg {
+    min-width: 44rem;
   }
 }

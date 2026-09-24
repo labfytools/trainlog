@@ -63,6 +63,11 @@ synchronized factual measurements and never connect directly to the sensor.
 The heart-rate path remains independent from the frozen Bluetooth Trainlog
 synchronization transport.
 
+The 0.1.6 Web refinement now also layers factual Sleep intervals, awakenings,
+medication intakes and complete hourly ticks on the selected night's HR chart.
+Its explicitly labeled fallback estimate is presentation-only; release work
+remains the next separate operational step.
+
 ```text
 CURRENT_OPERATIONAL_CURSOR=0.1.6 post-review Web corrections validated and privately deployed; stable release work remains separate.
 ```

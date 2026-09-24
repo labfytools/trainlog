@@ -13,7 +13,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
 endobj
 5 0 obj
-<< /Length 17659 >>
+<< /Length 17665 >>
 stream
 0 G 0 g
 0 g BT /F1 14 Tf 30.0 565.0 Td (AGENDA TRAINLOG DE VIGILANCE ET DE SOMMEIL) Tj ET
@@ -53,8 +53,8 @@ stream
 0 g BT /F1 4 Tf 728.0 552.0 Td (TRAITEMENT ET) Tj ET
 0 g BT /F1 4 Tf 728.0 545.0 Td (REMARQUES) Tj ET
 0.7 G 30 498 782 40 re S
-0 g BT /F1 5 Tf 33.0 525.0 Td (20/09/2026) Tj ET
-0 g BT /F1 5 Tf 33.0 515.0 Td (au 21/09/2026) Tj ET
+0 g BT /F1 5 Tf 33.0 525.0 Td (23/09/2026) Tj ET
+0 g BT /F1 5 Tf 33.0 515.0 Td (au 24/09/2026) Tj ET
 0.9 G 112 498 m 112 538 l S
 0.9 G 132.83333333333334 498 m 132.83333333333334 538 l S
 0.9 G 153.66666666666666 498 m 153.66666666666666 538 l S
@@ -92,8 +92,8 @@ stream
 0 g BT /F1 7 Tf 620.0 522.0 Td (-) Tj ET
 0 g BT /F1 7 Tf 658.0 522.0 Td (-) Tj ET
 0 g BT /F1 7 Tf 696.0 522.0 Td (-) Tj ET
-0 g BT /F1 4 Tf 730.0 531.0 Td (22:00 \227 venlafaxine \227 37,5 mg ; 22:00 \227 ) Tj ET
-0 g BT /F1 4 Tf 730.0 522.0 Td (venlafaxine \227 75 mg) Tj ET
+0 g BT /F1 4 Tf 730.0 531.0 Td (22:00 \227 venlafaxine \227 75 mg ; 22:00 \227 ve) Tj ET
+0 g BT /F1 4 Tf 730.0 522.0 Td (nlafaxine \227 37,5 mg) Tj ET
 0 g BT /F1 4 Tf 730.0 513.0 Td () Tj ET
 0 g BT /F1 4 Tf 730.0 504.0 Td () Tj ET
 0.7 G 30 458 782 40 re S
@@ -124,17 +124,17 @@ stream
 0.9 G 570.3333333333333 458 m 570.3333333333333 498 l S
 0.9 G 591.1666666666667 458 m 591.1666666666667 498 l S
 0.9 G 612 458 m 612 498 l S
+0 g BT /F1 8 Tf 205.8 473.0 Td (v) Tj ET
 0.75 g 205.75 469.00 104.17 18.00 re f 0 G 205.75 469.00 104.17 18.00 re S
 0 g BT /F1 5 Tf 207.8 475.0 Td (SOMMEIL) Tj ET
-0 g BT /F1 8 Tf 205.8 473.0 Td (v) Tj ET
 0 g BT /F1 8 Tf 336.0 473.0 Td (^) Tj ET
 0 g BT /F1 8 Tf 559.9 473.0 Td (S) Tj ET
 0 g BT /F1 6 Tf 205.8 462.0 Td (M) Tj ET
 0 g BT /F1 7 Tf 620.0 482.0 Td (B) Tj ET
 0 g BT /F1 7 Tf 658.0 482.0 Td (TB) Tj ET
 0 g BT /F1 7 Tf 696.0 482.0 Td (Moy) Tj ET
-0 g BT /F1 4 Tf 730.0 491.0 Td (22:30 \227 venlafaxine \227 75 mg | Nuit de co) Tj ET
-0 g BT /F1 4 Tf 730.0 482.0 Td (ntr\364le g\351om\351trique.) Tj ET
+0 g BT /F1 4 Tf 730.0 491.0 Td (22:30 \227 venlafaxine \227 75 mg \3272 | Nuit de) Tj ET
+0 g BT /F1 4 Tf 730.0 482.0 Td ( contr\364le g\351om\351trique.) Tj ET
 0 g BT /F1 4 Tf 730.0 473.0 Td () Tj ET
 0 g BT /F1 4 Tf 730.0 464.0 Td () Tj ET
 0.7 G 30 418 782 40 re S
@@ -383,5 +383,5 @@ xref
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-18059
+18065
 %%EOF
