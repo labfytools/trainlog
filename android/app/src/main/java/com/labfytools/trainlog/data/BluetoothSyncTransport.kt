@@ -101,6 +101,19 @@ internal fun hasBluetoothConnectPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
         PackageManager.PERMISSION_GRANTED
 
+/**
+ * Decide whether a newly connected RFCOMM peer may publish an automatic request.
+ *
+ * WHY: Sleep-only changes have no workout event to wake the desktop path, so
+ * Bluetooth arrival itself must remain the trigger. CONTRACT: user opt-in and
+ * the existing cooldown are both mandatory. INVARIANT: reconnection never
+ * bypasses the bounded request cadence or requires an explicit UI action.
+ */
+internal fun shouldPublishBluetoothArrivalRequest(
+    autoSyncEnabled: Boolean,
+    cooldownReady: Boolean,
+): Boolean = autoSyncEnabled && cooldownReady
+
 @SuppressLint("MissingPermission")
 internal fun bondedBluetoothDesktops(context: Context): List<BondedBluetoothDesktop> {
     if (!hasBluetoothConnectPermission(context)) return emptyList()
@@ -526,9 +539,15 @@ internal class BluetoothSyncClient(
     }
 
     private fun publishArrivalRequest() {
-        if (!BackgroundSyncSettings(context).enabled) return
         val now = System.currentTimeMillis()
-        if (!settings.shouldPublishAutomaticRequest(now)) return
+        if (
+            !shouldPublishBluetoothArrivalRequest(
+                BackgroundSyncSettings(context).enabled,
+                settings.shouldPublishAutomaticRequest(now),
+            )
+        ) {
+            return
+        }
         val directory = canonicalExchangeDirectory()
         if (!directory.isDirectory) return
         val coordinator =

@@ -156,7 +156,10 @@ class OrchestratorTest(unittest.TestCase):
                 "assert sys.argv[sys.argv.index('--mode')+1]=='bt'\n"
                 "assert '--bt-adapter' in sys.argv\n"
                 "v=" + repr(report) +
-                "\nv['run_id']=sys.argv[sys.argv.index('--run-id')+1]\nprint(json.dumps(v))\n"
+                "\nv['run_id']=sys.argv[sys.argv.index('--run-id')+1]\n"
+                "p={'format':'trainlog-sync-progress','version':1,'run_id':v['run_id'],"
+                "'phase':'android_archive_ack_observed','recovered_acknowledgements':1}\n"
+                "print(json.dumps(p))\nprint(json.dumps(v))\n"
             )
             bt_marker = root / "bt-probe"
             bt_adapter = sandbox / "trainlog_generation_bt_adapter.py"
@@ -175,7 +178,7 @@ class OrchestratorTest(unittest.TestCase):
                 bluetooth_device_address="AA:BB:CC:DD:EE:FF",
             )
             result = self.invoke(sandbox / "sync_orchestrator.py", values)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr or values[1].read_text())
             self.assertTrue(bt_marker.is_file())
             self.assertFalse(mtp_marker.exists())
             final = json.loads(values[1].read_text())

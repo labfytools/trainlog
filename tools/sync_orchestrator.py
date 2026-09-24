@@ -30,6 +30,7 @@ MAX_DIAGNOSTIC = 1024
 PHASES = {
     "requested",
     "waiting_android_publication",
+    "android_archive_ack_observed",
     "running",
     "local_import_committed",
     "published",
@@ -297,6 +298,7 @@ def read_worker(
     deadline = time.monotonic() + timeout
     allowed = [
         "waiting_android_publication",
+        "android_archive_ack_observed",
         "running",
         "local_import_committed",
         "published",
@@ -338,6 +340,7 @@ def read_worker(
                                 "inbound_generation_id",
                                 "outbound_generation_id",
                                 "manifest_sha256",
+                                "recovered_acknowledgements",
                             }
                             or value.get("version") != 1
                             or value.get("run_id") != run_id

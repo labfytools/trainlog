@@ -11,6 +11,7 @@ import com.labfytools.trainlog.model.SessionDraft
 import com.labfytools.trainlog.model.SessionExerciseDraft
 import com.labfytools.trainlog.model.SessionSetDraft
 import com.labfytools.trainlog.model.SleepDiaryDraft
+import com.labfytools.trainlog.model.SleepMedication
 import com.labfytools.trainlog.model.TrackingMode
 import java.io.File
 import java.nio.file.Files
@@ -29,6 +30,238 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class SyncGenerationServiceTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Test
+    fun sleepOnlyNightCrossesDesktopAckReplayAndSecondRevisionWithoutSession() {
+        val sourceName = "sleep-only-generation-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-sleep-only-generation-").toFile()
+        val desktopDb = java.io.File(root, "desktop.sqlite")
+        val repositoryRoot =
+            generateSequence(java.io.File(checkNotNull(System.getProperty("user.dir")))) {
+                    it.parentFile
+                }
+                .first { java.io.File(it, "tools/sync_generation_exchange.py").isFile }
+        val generationTool =
+            java.io.File(repositoryRoot, "tools/sync_generation_exchange.py").absolutePath
+        var source = TrainlogRepository(context, sourceName)
+
+        fun run(vararg command: String): String {
+            val process =
+                ProcessBuilder(*command)
+                    .directory(repositoryRoot)
+                    .redirectErrorStream(true)
+                    .start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(
+                "command failed: ${command.joinToString(" ")}\n$output",
+                0,
+                process.waitFor(),
+            )
+            return output
+        }
+
+        try {
+            run(
+                java.io.File(repositoryRoot, "build/tui/sync-generation-fixture").absolutePath,
+                desktopDb.absolutePath,
+            )
+            val desktopPeer =
+                Regex("PEER_ID=(peer_[^\\s]+)")
+                    .find(
+                        run(
+                            "python3",
+                            generationTool,
+                            "peer-id",
+                            "--database",
+                            desktopDb.absolutePath,
+                        )
+                    )!!
+                    .groupValues[1]
+            val medicationCreated =
+                source.saveSleepMedication(
+                    SleepMedication(
+                        medicationId = "",
+                        revisionId = "",
+                        createdAt = "2026-09-23T20:00:00+02:00",
+                        updatedAt = "2026-09-23T20:00:00+02:00",
+                        name = "Synthetic sleep-only medication",
+                        defaultDoseValue = 5.0,
+                        defaultDoseUnit = "mg",
+                        form = "tablet",
+                        note = "",
+                        active = true,
+                    )
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            val preBed =
+                source.quickSleepMedication(
+                    medicationCreated.entryId,
+                    "2026-09-23T22:20:00+02:00",
+                    quantity = 2,
+                ) as TrainlogRepository.SleepQuickActionResult.Applied
+            val bed =
+                source.quickSleepBedTime("2026-09-23T22:30:00+02:00")
+                    as TrainlogRepository.SleepQuickActionResult.Applied
+            assertEquals(preBed.receipt.entryId, bed.receipt.entryId)
+            val firstMeasurement =
+                ParsedHeartRateMeasurement(
+                    bpm = 61,
+                    sensorContactDetected = true,
+                    energyExpended = 7,
+                    rrIntervals1024 = listOf(1000),
+                )
+            assertTrue(
+                source.recordLiveHeartRateForActiveSleep(
+                    "Synthetic HR",
+                    "2026-09-23T22:30:01+02:00",
+                    firstMeasurement,
+                ) is TrainlogRepository.HeartRateMutationResult.Applied
+            )
+            assertTrue(
+                source.quickSleepWake("2026-09-24T02:17:00+02:00")
+                    is TrainlogRepository.SleepQuickActionResult.Applied
+            )
+            assertTrue(
+                source.recordLiveHeartRateForActiveSleep(
+                    "Synthetic HR",
+                    "2026-09-24T02:17:01+02:00",
+                    firstMeasurement.copy(bpm = 65, rrIntervals1024 = listOf(980)),
+                ) is TrainlogRepository.HeartRateMutationResult.Applied
+            )
+            assertTrue(
+                source.quickSleepFinalGetUp("2026-09-24T06:31:00+02:00")
+                    is TrainlogRepository.SleepQuickActionResult.Applied
+            )
+            assertTrue(source.listSessions().isEmpty())
+
+            val night = source.listSleepDiary().single()
+            val capture =
+                JSONObject(source.buildHeartRateV1Json())
+                    .getJSONArray("captures")
+                    .getJSONObject(0)
+            assertEquals(night.entryId, capture.getString("context_id"))
+            assertEquals(2, capture.getJSONArray("samples").length())
+            assertEquals(2, night.intakes.single().quantity)
+
+            val service = SyncGenerationService(source)
+            val captured = service.capture(root, desktopPeer)
+            val diaryArtifact =
+                JSONObject(java.io.File(captured.stagingDirectory, "sleep-diary-v2.json").readText())
+            val heartArtifact =
+                JSONObject(java.io.File(captured.stagingDirectory, "heart-rate-v1.json").readText())
+            val historyArtifact =
+                JSONObject(java.io.File(captured.stagingDirectory, "history-v4.json").readText())
+            assertEquals(0, historyArtifact.getJSONArray("sessions").length())
+            val publishedNight = diaryArtifact.getJSONArray("entries").getJSONObject(0)
+            val publishedCapture = heartArtifact.getJSONArray("captures").getJSONObject(0)
+            assertEquals(night.entryId, publishedNight.getString("entry_id"))
+            assertEquals(
+                2,
+                publishedNight.getJSONArray("intakes").getJSONObject(0).getInt("quantity"),
+            )
+            assertEquals(capture.getString("capture_id"), publishedCapture.getString("capture_id"))
+
+            val published = service.publish(captured, java.io.File(root, "android-objects"))
+            val ack = java.io.File(root, "sleep-only-ack.json")
+            run(
+                "python3",
+                generationTool,
+                "consume-desktop",
+                published.absolutePath,
+                "--database",
+                desktopDb.absolutePath,
+                "--ack-output",
+                ack.absolutePath,
+            )
+            val ackDocument = JSONObject(ack.readText())
+            assertEquals(
+                "desktop ACK diagnostic: ${ackDocument.getString("diagnostic")}",
+                "consumed",
+                ackDocument.getString("result"),
+            )
+            assertEquals("acknowledged", service.acceptAcknowledgement(ack.readBytes()))
+            assertEquals("unchanged", service.acceptAcknowledgement(ack.readBytes()))
+            run(
+                "python3",
+                generationTool,
+                "consume-desktop",
+                published.absolutePath,
+                "--database",
+                desktopDb.absolutePath,
+                "--ack-output",
+                java.io.File(root, "sleep-only-replay-ack.json").absolutePath,
+            )
+            assertEquals(
+                // The desktop fixture owns one reserved calibration session;
+                // the empty Android history must not add a workout.
+                "1|1|2|2|2|1",
+                run(
+                        "sqlite3",
+                        desktopDb.absolutePath,
+                        "SELECT (SELECT count(*) FROM sleep_diary_entries WHERE entry_id='${night.entryId}') || '|' || " +
+                            "(SELECT count(*) FROM sleep_medication_intakes WHERE revision_id='${night.revisionId}') || '|' || " +
+                            "(SELECT quantity FROM sleep_medication_intakes WHERE revision_id='${night.revisionId}') || '|' || " +
+                            "(SELECT count(*) FROM heart_rate_samples WHERE capture_id='${capture.getString("capture_id")}') || '|' || " +
+                            "(SELECT count(*) FROM heart_rate_rr_intervals WHERE capture_id='${capture.getString("capture_id")}') || '|' || " +
+                            "(SELECT count(*) FROM sessions);",
+                    )
+                    .trim(),
+            )
+
+            val revised =
+                source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        entryId = night.entryId,
+                        expectedRevision = night.revisionId,
+                        nightStartDate = night.nightStartDate,
+                        nightEndDate = night.nightEndDate,
+                        createdAt = night.createdAt,
+                        updatedAt = "2026-09-24T07:00:00+02:00",
+                        sleepQuality = night.sleepQuality,
+                        wakeQuality = night.wakeQuality,
+                        dayForm = night.dayForm,
+                        treatmentAndNotes = "Sleep-only revision two",
+                        events = night.events,
+                        intakes = night.intakes,
+                    )
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+            assertTrue(
+                source.validateSleepDiary(
+                    revised.entryId,
+                    revised.revisionId,
+                    "2026-09-24T07:01:00+02:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved
+            )
+            val second = service.capture(root, desktopPeer)
+            val secondPublished =
+                service.publish(second, java.io.File(root, "android-objects-second"))
+            val secondAck = java.io.File(root, "sleep-only-second-ack.json")
+            run(
+                "python3",
+                generationTool,
+                "consume-desktop",
+                secondPublished.absolutePath,
+                "--database",
+                desktopDb.absolutePath,
+                "--ack-output",
+                secondAck.absolutePath,
+            )
+            assertEquals("acknowledged", service.acceptAcknowledgement(secondAck.readBytes()))
+            assertEquals(
+                revised.revisionId,
+                run(
+                        "sqlite3",
+                        desktopDb.absolutePath,
+                        "SELECT current_revision_id FROM sleep_diary_entries WHERE entry_id='${night.entryId}';",
+                    )
+                    .trim(),
+            )
+            assertTrue(source.listSessions().isEmpty())
+        } finally {
+            source.close()
+            context.deleteDatabase(sourceName)
+            root.deleteRecursively()
+        }
+    }
 
     @Test
     fun desktopProgramDeletionGenerationIsAckedAndCannotResurrect() {
@@ -322,6 +555,13 @@ class SyncGenerationServiceTest {
                     destinationService.peerId(),
                     runId,
                 )
+            val retryRun = "sy_${UUID.randomUUID()}"
+            val crossRunResume =
+                SyncGenerationCoordinator(source)
+                    .resumableGeneration(retryRun, destinationService.peerId())
+            assertEquals(outbound.generationId, crossRunResume?.generationId)
+            assertEquals(retryRun, crossRunResume?.runId)
+            assertEquals(outbound.manifestSha256, crossRunResume?.manifestSha256)
             val outboundDirectory =
                 sourceService.publish(outbound, java.io.File(root, "source-objects"))
             sourceService.acceptAcknowledgement(
@@ -349,6 +589,74 @@ class SyncGenerationServiceTest {
             destination.close()
             context.deleteDatabase(sourceName)
             context.deleteDatabase(destinationName)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun crossRunResumeAcceptsExactImmutableAcknowledgementFromOriginalRun() {
+        val generationId = "gen_${UUID.randomUUID()}"
+        val originalRunId = "sy_${UUID.randomUUID()}"
+        val retryRunId = "sy_${UUID.randomUUID()}"
+        val digest = "a".repeat(64)
+        val captured =
+            CapturedSyncGeneration(generationId, retryRunId, digest, java.io.File("unused"))
+        val acknowledgement =
+            JSONObject()
+                .put("run_id", originalRunId)
+                .put("generation_id", generationId)
+                .put("manifest_sha256", digest)
+
+        assertTrue(acknowledgementMatchesCapturedGeneration(acknowledgement, captured))
+        acknowledgement.put("manifest_sha256", "b".repeat(64))
+        assertTrue(!acknowledgementMatchesCapturedGeneration(acknowledgement, captured))
+    }
+
+    @Test
+    fun ledgerBackedSiblingMakesRetainedWaitingBranchesCapacityTerminal() {
+        val name = "generation-superseded-capacity-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-generation-superseded-").toFile()
+        val repository = TrainlogRepository(context, name)
+        try {
+            val service = SyncGenerationService(repository)
+            val peer = "peer_11111111-1111-4111-8111-111111111111"
+            val branches = (0 until 4).map { service.capture(root, peer) }
+            val acknowledged = branches.last()
+            repository.inSyncGenerationTransaction { db ->
+                db.execSQL(
+                    "UPDATE sync_generations SET parent_generation_id=? WHERE consumer_peer_id=?",
+                    arrayOf("gen_22222222-2222-4222-8222-222222222222", peer),
+                )
+                db.execSQL(
+                    "UPDATE sync_generations SET status='acknowledged',acknowledged_at=? " +
+                        "WHERE generation_id=?",
+                    arrayOf("2026-09-24T07:00:00+02:00", acknowledged.generationId),
+                )
+                db.execSQL(
+                    "INSERT INTO sync_acknowledgements VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    arrayOf(
+                        "ack_${UUID.randomUUID()}",
+                        acknowledged.generationId,
+                        acknowledged.runId,
+                        service.peerId(),
+                        peer,
+                        acknowledged.manifestSha256,
+                        "consumed",
+                        "sqlite-commit-full",
+                        "2026-09-24T07:00:00+02:00",
+                        "",
+                        "a".repeat(64),
+                    ),
+                )
+            }
+
+            // The three sibling branches remain durable, but the ledger-backed
+            // acknowledged sibling proves that none can be the causal tip.
+            assertEquals(3, branches.dropLast(1).size)
+            assertTrue(service.capture(root, peer).generationId.startsWith("gen_"))
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
             root.deleteRecursively()
         }
     }

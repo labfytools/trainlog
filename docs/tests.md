@@ -25,6 +25,18 @@ still conflicts. The equipment client test removes `crypto.randomUUID`, uses
 deterministic `getRandomValues` bytes, and completes the protected merge HTTP
 request; native merge tests retain their transaction/rollback coverage.
 
+The real Sleep Bluetooth recovery regression starts with no Android session,
+records a pre-bed medication with `quantity=2`, Couché, two BPM/RR samples
+separated by Réveil, and Levé. It captures and publishes the production V2
+Sleep and V1 heart-rate artifacts, imports them with the desktop consumer,
+accepts and replays the ACK without duplication, then admits a second
+Sleep-only revision. Separate tests prove connection-arrival auto-request
+policy with its cooldown, cross-run reuse of an unacknowledged immutable
+generation and recognition of its original-run exact generation/digest ACK,
+ledger-backed superseded-branch capacity, fresh-peer non-root Sleep ancestry,
+service-installer upgrade behavior, and ACK-recovery progress frames over the
+Bluetooth-selected orchestrator path.
+
 UI regressions assert the Sleep labels at exactly 0/25/50/75/100%, persisted
 Dashboard sizing and reset behavior, English preference persistence across a
 remount, centralized Dashboard English labels, non-stretched chart aspect

@@ -20,6 +20,21 @@ Dashboard sizing, Program progress contrast, chart proportions, duration
 coverage messaging, and the right-aligned Settings/Sync action cluster are
 also refined.
 
+- Restored automatic Sleep-only Bluetooth synchronization after a real-night
+  trace exposed several restart and first-import gaps. The user-service
+  installer now removes only its obsolete `syncd` ExecStart override and
+  installs the RFCOMM agent;
+  Android resumes the same unsuperseded immutable generation across a new
+  conversation run and accepts its exact generation/digest ACK even though
+  the immutable ACK retains the original run identity. Ledger-proven
+  superseded branches remain retained without exhausting admission. Desktop
+  progress validation accepts the existing ACK-recovery phase, and a fresh
+  desktop can seed a non-root Sleep V2 current snapshot when its validated
+  ancestry is present. Regression
+  coverage carries medication quantity, Couché/Réveil/Levé and Sleep BPM/RR
+  through import, ACK, replay and a second Sleep-only generation with no
+  Android workout session.
+
 ## 0.1.5 — 2026-09-23
 
 - Completed the Sleep Tonight readiness delta and its non-destructive private

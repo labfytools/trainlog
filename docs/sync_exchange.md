@@ -953,6 +953,20 @@ active. Archive directories are outside bounded MTP polling and are never
 uploaded recursively. Failure or interruption leaves admission closed rather
 than fabricating an ACK or discarding evidence.
 
+An unacknowledged generation whose parent also has a distinct, ledger-backed
+acknowledged child is a retained superseded branch: it stays available for
+audit and is never deleted or assigned a fabricated ACK, but it no longer
+consumes active admission because it cannot become the causal tip. After a
+transport reset, the next run republishes the newest unsuperseded immutable
+generation for that peer before attempting a new capture. The mutable
+generation reference uses the new conversation run; generation ID, manifest,
+artifact bytes and eventual ACK correlation remain unchanged. Because the
+immutable manifest and its durable ACK retain the original run identity, a
+cross-run retry recognizes that ACK by the exact generation ID and manifest
+digest; the producer's SQLite acknowledgement validator still verifies the
+complete peer, result, durability and original-run contract before advancing
+state.
+
 Before Android captures for a negotiated `generation-archive-v1` conversation,
 the desktop consumer publishes
 `desktop-archive-acknowledgements-v1.json`. Its strictly correlated envelope
@@ -999,11 +1013,14 @@ idempotently. Causal V1 operation bytes remain unchanged across first emission
 and retransmission because generation membership lives only in
 `sync_causal_publications`.
 
-The foreground Android coordinator correlates both durable desktop ACKs and
-desktop generation references by the active run (and the Android generation
-for its ACK). Objects retained from an interrupted conversation are ignored
-until atomically replaced by matching objects. After both peer ACKs, Android
-reports completion directly; it does not enter the legacy receipt wait state.
+The foreground Android coordinator correlates desktop generation references
+by the active run. It correlates a durable desktop ACK for an ordinary attempt
+by the generation and manifest of that run; for a cross-run resume, those same
+two immutable identities deliberately recognize the exact ACK whose embedded
+run remains the original capture run. Objects retained from an interrupted
+conversation are ignored until atomically replaced by matching objects. After
+both peer ACKs, Android reports completion directly; it does not enter the
+legacy receipt wait state.
 
 The peer publication precedes one fresh
 `trainlog-sync-full-generation-request-v1` signal on

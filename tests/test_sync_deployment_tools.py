@@ -13,6 +13,17 @@ import sync_generation_exchange as generation
 
 
 class DeploymentToolsTest(unittest.TestCase):
+    def test_user_service_installer_retires_only_known_legacy_exec_override(self):
+        installer = (ROOT / "tools/install_syncd_user.sh").read_text()
+        self.assertIn(
+            "grep -Fxq 'ExecStart=%h/.local/bin/trainlog-syncd --interval 3'",
+            installer,
+        )
+        self.assertIn('rm -f -- "$LEGACY_ROLLOUT"', installer)
+        self.assertIn('--sync-once "$SYNC_ONCE"', installer)
+        self.assertIn('--bt-adapter "$BT_ADAPTER"', installer)
+        self.assertIn('--mtp-adapter "$MTP_ADAPTER"', installer)
+
     def test_sqlite_backup_captures_committed_wal_and_restores_invariants(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

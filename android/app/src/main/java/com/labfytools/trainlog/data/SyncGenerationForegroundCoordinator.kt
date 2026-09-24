@@ -45,6 +45,13 @@ internal object AndroidSyncGenerationTrace : SyncGenerationTrace {
     }
 }
 
+internal fun acknowledgementMatchesCapturedGeneration(
+    acknowledgement: JSONObject,
+    captured: CapturedSyncGeneration,
+): Boolean =
+    acknowledgement.optString("generation_id") == captured.generationId &&
+        acknowledgement.optString("manifest_sha256") == captured.manifestSha256
+
 /** Owns the bounded, user-initiated Android side of a generation conversation. */
 internal class SyncGenerationCoordinator(
     private val repository: TrainlogRepository,
@@ -69,15 +76,9 @@ internal class SyncGenerationCoordinator(
 
     internal fun resumableGeneration(runId: String, consumerPeerId: String? = null): CapturedSyncGeneration? =
         repository.inSyncGenerationTransaction { db ->
-            db.rawQuery(
-                "SELECT generation_id,manifest_sha256,staging_path FROM sync_generations " +
-                    "WHERE run_id=? AND (status IN('captured','published','waiting_acknowledgement') " +
-                    "OR (status='acknowledged' AND NOT EXISTS(" +
-                    "SELECT 1 FROM sync_consumed_generations c WHERE c.run_id=sync_generations.run_id " +
-                    "AND c.result IN('consumed','rejected')))) " +
-                    (if (consumerPeerId == null) "" else "AND consumer_peer_id=? ") +
-                    "LIMIT 2",
-                if (consumerPeerId == null) arrayOf(runId) else arrayOf(runId, consumerPeerId),
+            fun query(sql: String, arguments: Array<String>): CapturedSyncGeneration? = db.rawQuery(
+                sql,
+                arguments,
             ).use { cursor ->
                 if (!cursor.moveToFirst()) null
                 else {
@@ -93,6 +94,29 @@ internal class SyncGenerationCoordinator(
                     captured
                 }
             }
+            query(
+                "SELECT generation_id,manifest_sha256,staging_path FROM sync_generations " +
+                    "WHERE run_id=? AND (status IN('captured','published','waiting_acknowledgement') " +
+                    "OR (status='acknowledged' AND NOT EXISTS(" +
+                    "SELECT 1 FROM sync_consumed_generations c WHERE c.run_id=sync_generations.run_id " +
+                    "AND c.result IN('consumed','rejected')))) " +
+                    (if (consumerPeerId == null) "" else "AND consumer_peer_id=? ") +
+                    "LIMIT 2",
+                if (consumerPeerId == null) arrayOf(runId) else arrayOf(runId, consumerPeerId),
+            ) ?: if (consumerPeerId == null) null else query(
+                /* WHY: an RFCOMM reset creates a new conversation run while
+                 * the immutable generation still awaits its correlated ACK.
+                 * CONTRACT: resume only the unsuperseded generation for the
+                 * same peer; the reference adopts the new run while manifest
+                 * and generation identity remain unchanged. */
+                "SELECT g.generation_id,g.manifest_sha256,g.staging_path FROM sync_generations g " +
+                    "WHERE g.consumer_peer_id=? AND g.status IN('captured','published','waiting_acknowledgement') " +
+                    "AND NOT EXISTS(SELECT 1 FROM sync_generations sibling JOIN sync_acknowledgements a " +
+                    "ON a.generation_id=sibling.generation_id WHERE sibling.parent_generation_id=g.parent_generation_id " +
+                    "AND sibling.generation_id<>g.generation_id AND sibling.status='acknowledged') " +
+                    "ORDER BY g.generated_at DESC LIMIT 2",
+                arrayOf(consumerPeerId),
+            )
         }
 
     private fun request(directory: File): JSONObject? {
@@ -570,12 +594,15 @@ internal class SyncGenerationCoordinator(
             afterPublication?.invoke()
             lease.throwIfYieldRequested()
             // CONTRACT: durable objects from earlier conversations remain in
-            // the exchange directory. Only this run's exact generation ACK
-            // can advance its lineage; stale bytes are retained and ignored.
+            // the exchange directory. A cross-run retry preserves the
+            // immutable manifest's original run_id, so correlate its ACK by
+            // generation identity and manifest digest. acceptAcknowledgement
+            // then revalidates the complete durable ACK against SQLite.
+            // INVARIANT: unrelated or same-ID/different-bytes ACKs remain
+            // ignored; an exact replay is deliberately accepted.
             val desktopAck =
                 awaitCorrelated(File(directory, "desktop-consumption-ack-v1.json"), deadline, {
-                    it.optString("run_id") == captured.runId &&
-                        it.optString("generation_id") == captured.generationId
+                    acknowledgementMatchesCapturedGeneration(it, captured)
                 }, pollTransport, lease)
             service.acceptAcknowledgement(desktopAck)
             phase(runId, "desktop_ack_observed", "desktop-consumption-ack-v1.json", captured.generationId)

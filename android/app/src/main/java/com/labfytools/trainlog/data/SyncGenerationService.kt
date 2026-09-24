@@ -299,12 +299,18 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                      * ledger row. Such terminal rows cannot be archived
                      * safely because Trainlog must not fabricate evidence,
                      * but they must not exhaust the active admission window
-                     * forever. Current acknowledgements always have durable
-                     * ledger evidence and remain counted until archived.
-                     * INVARIANT: captured, published and unacknowledged rows
-                     * are always retained and never pruned for capacity. */
+                     * forever. A failed conversation can also leave an
+                     * unacknowledged branch whose sibling later receives a
+                     * durable ACK; that superseded branch remains retained
+                     * for audit but can never be the causal tip. INVARIANT:
+                     * only a ledger-backed acknowledged sibling proves that
+                     * an unacknowledged branch no longer consumes admission. */
                     "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? AND " +
-                        "(status IN('captured','published','waiting_acknowledgement') OR " +
+                        "((status IN('captured','published','waiting_acknowledgement') AND NOT EXISTS(" +
+                        "SELECT 1 FROM sync_generations sibling JOIN sync_acknowledgements sibling_ack " +
+                        "ON sibling_ack.generation_id=sibling.generation_id WHERE " +
+                        "sibling.parent_generation_id=g.parent_generation_id AND " +
+                        "sibling.generation_id<>g.generation_id AND sibling.status='acknowledged')) OR " +
                         "(status='acknowledged' AND EXISTS(SELECT 1 FROM sync_acknowledgements k " +
                         "WHERE k.generation_id=g.generation_id))) AND NOT EXISTS(" +
                         "SELECT 1 FROM sync_generation_archives a WHERE a.generation_id=g.generation_id)",

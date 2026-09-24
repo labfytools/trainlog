@@ -10,6 +10,16 @@ the wired recovery path. The separately configured private Drive transport
 remains available to its legacy mirror/fallback workflow. No transport copies
 SQLite.
 
+Automatic Bluetooth restart recovery preserves the immutable generation
+identity across conversation-run changes and recognizes the exact original-run
+ACK by immutable generation ID and manifest digest before full SQLite
+validation. An unacknowledged branch is excluded
+from the bounded admission count only when a different sibling has a durable,
+ledger-backed consumed acknowledgement; the superseded bytes and row remain
+retained. The desktop service installer retires the exact obsolete private
+ExecStart override that omitted required runtime paths and installs both
+`trainlog-syncd` and the BlueZ RFCOMM agent.
+
 Android synchronization paths share the same concurrency-guarded generation
 coordinator as SyncScreen. That coordinator has one process-wide ownership
 arbiter: explicit foreground intent has priority over automatic background

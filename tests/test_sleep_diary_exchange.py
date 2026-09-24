@@ -186,6 +186,47 @@ class SleepExchangeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "concurrent"):
             exchange.apply(self.db, sibling)
 
+    def test_current_snapshot_seeds_fresh_peer_from_non_root_revisions(self):
+        parent = "slr_20000000-0000-4000-8000-000000000002"
+        tip = "slr_40000000-0000-4000-8000-000000000004"
+        document = self.document(entry(tip, parent))
+        document["version"] = 2
+        document["entries"][0]["intakes"][0]["quantity"] = 2
+        document["entries"][0]["ancestry"] = [tip, parent]
+
+        medication = document["medications"][0]
+        medication_parent = medication["revision_id"]
+        medication_tip = "medr_a0000000-0000-4000-8000-00000000000a"
+        medication["revision_id"] = medication_tip
+        medication["parent_revision_id"] = medication_parent
+        medication["ancestry"] = [medication_tip, medication_parent]
+        medication["updated_at"] = "2026-10-25T18:05:00+01:00"
+
+        rejected = self.document(entry(
+            "slr_50000000-0000-4000-8000-000000000005",
+            "slr_60000000-0000-4000-8000-000000000006",
+        ))
+        rejected["version"] = 2
+        rejected["entries"][0]["intakes"][0]["quantity"] = 2
+        with self.assertRaisesRegex(ValueError, "unknown parent"):
+            exchange.apply(self.db, rejected)
+        self.db.rollback()
+
+        self.assertEqual((1, 0), exchange.apply(self.db, document))
+        self.assertEqual(
+            (tip, parent),
+            self.db.execute(
+                "SELECT revision_id,parent_revision_id FROM sleep_diary_revisions"
+            ).fetchone(),
+        )
+        self.assertEqual(
+            (medication_tip, medication_parent),
+            self.db.execute(
+                "SELECT revision_id,parent_revision_id FROM sleep_medication_revisions"
+            ).fetchone(),
+        )
+
+
     def test_rejects_concurrent_sibling_and_negative_absolute_interval(self):
         first = "slr_20000000-0000-4000-8000-000000000002"
         self.assertEqual((1, 0), exchange.apply(self.db, self.document(entry(first))))

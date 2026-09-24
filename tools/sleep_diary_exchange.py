@@ -328,7 +328,13 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
         )
         if local is not None and not remote_descends_from_local and medication["parent_revision_id"] != local[0]:
             fail("concurrent medication revision")
-        if local is None and medication["parent_revision_id"] is not None: fail("unknown medication parent")
+        # CONTRACT: this artifact is a current-state companion, not a revision
+        # log. A fresh peer may seed a non-root tip only when the validated
+        # complete ancestry accompanies it; legacy payloads without ancestry
+        # retain the strict unknown-parent rejection.
+        if (local is None and medication["parent_revision_id"] is not None and
+                "ancestry" not in medication):
+            fail("unknown medication parent")
         if local is not None and local[1] and not medication["deleted"]: fail("medication resurrection")
         if local is None:
             db.execute("INSERT INTO sleep_medications VALUES(?,?,?,?,?)", (medication["medication_id"], medication["created_at"], medication["updated_at"], medication["revision_id"], int(medication["deleted"])))
@@ -379,7 +385,13 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
         remote_descends_from_local = local is not None and local[0] in item.get("ancestry", [])[1:]
         if local is not None and not remote_descends_from_local and item["parent_revision_id"] != local[0]:
             fail("concurrent sleep diary revision")
-        if local is None and item["parent_revision_id"] is not None:
+        # WHY: one-tap Sleep creates several local revisions before its first
+        # synchronization. The current snapshot carries their bounded lineage
+        # by identity, so a new desktop must be able to seed the tip without
+        # inventing historical payloads. INVARIANT: missing ancestry still
+        # rejects a non-root first snapshot.
+        if (local is None and item["parent_revision_id"] is not None and
+                "ancestry" not in item):
             fail("sleep diary revision has an unknown parent")
         if local is not None and local[1] and not item["deleted"]:
             fail("sleep diary deletion cannot be resurrected")

@@ -24,6 +24,18 @@ done
 
 mkdir -p   "$HOME/.local/bin"   "$HOME/.config/systemd/user"
 
+# WHY: private pre-orchestrator rollouts installed this exact drop-in to call
+# syncd without its now-required bounded runtime paths. Leaving it in place
+# silently overrides the canonical unit below and creates an endless restart
+# loop. CONTRACT: remove only the known obsolete Trainlog-owned override;
+# preserve every unrecognized administrator customization. INVARIANT: the
+# effective ExecStart always owns sync-once plus both transport adapters.
+LEGACY_ROLLOUT="$HOME/.config/systemd/user/trainlog-syncd.service.d/rollout.conf"
+if [[ -f "$LEGACY_ROLLOUT" ]] &&
+   grep -Fxq 'ExecStart=%h/.local/bin/trainlog-syncd --interval 3' "$LEGACY_ROLLOUT"; then
+  rm -f -- "$LEGACY_ROLLOUT"
+fi
+
 ln -sfn "$SYNC_ONCE" "$HOME/.local/bin/trainlog-sync-once"
 ln -sfn "$DAEMON" "$HOME/.local/bin/trainlog-syncd"
 ln -sfn "$BT_AGENT" "$HOME/.local/bin/trainlog-btd"
