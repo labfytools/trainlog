@@ -70,6 +70,9 @@ const copy = {
     agendaEmpty: "Aucune donnée pour cette nuit.",
     preview: "Prévisualiser",
     export: "Exporter PDF",
+    pdfFrom: "PDF du",
+    pdfTo: "au",
+    pdfEmpty: "Aucune nuit dans cette plage.",
     medications: "Médicaments",
     addMedication: "Ajouter un médicament",
     medication: "Médicament",
@@ -130,6 +133,9 @@ const copy = {
     agendaEmpty: "No data for this night.",
     preview: "Preview",
     export: "Export PDF",
+    pdfFrom: "PDF from",
+    pdfTo: "to",
+    pdfEmpty: "No night in this range.",
     medications: "Medications",
     addMedication: "Add a medication",
     medication: "Medication",
@@ -685,18 +691,55 @@ export function SleepDiaryWorkspace({
     agendaEntries.find((entry) => entry.entry_id === selectedEntryId) ??
     activeEntry ??
     agendaEntries[0];
-  // CONTRACT: preview and download share this exact selection object. With no
-  // explicit click, the effective active (or first deterministic) night is the
-  // documented fallback; unrelated loaded nights never leak into the PDF.
-  const selectedSnapshot = snapshot && selectedEntry
-    ? sleepSnapshotSelection(snapshot, [selectedEntry])
+  const [pdfStartDate, setPdfStartDate] = useState("");
+  const [pdfEndDate, setPdfEndDate] = useState("");
+  const pdfRangeInitialized = useRef(false);
+  useEffect(() => {
+    if (pdfRangeInitialized.current || agendaEntries.length === 0) return;
+    // WHY: opening the report controls should immediately cover the visible
+    // loaded period while leaving all subsequent range choices user-owned.
+    setPdfStartDate(agendaEntries[0].night_start_date);
+    setPdfEndDate(agendaEntries[agendaEntries.length - 1].night_start_date);
+    pdfRangeInitialized.current = true;
+  }, [agendaEntries]);
+  const pdfRangeValid = pdfStartDate !== "" && pdfEndDate !== "" &&
+    pdfStartDate <= pdfEndDate;
+  const pdfEntries = pdfRangeValid
+    ? agendaEntries.filter(
+      (entry) => entry.night_start_date >= pdfStartDate &&
+        entry.night_start_date <= pdfEndDate,
+    )
+    : [];
+  // CONTRACT: preview and download share the same inclusive date-range
+  // selection. The range concerns the date on which each night begins; detail
+  // selection remains independent and continues to drive the HR/editor view.
+  const selectedSnapshot = snapshot && pdfEntries.length > 0
+    ? sleepSnapshotSelection(snapshot, pdfEntries)
     : null;
   return (
     <div className="sleep-workspace" data-testid="sleep-workspace">
       <article className="analysis-panel analysis-wide">
         <div className="sleep-heading">
           <h2>{t.agenda}</h2>
-          <div>
+          <div className="sleep-pdf-controls">
+            <label>
+              <span>{t.pdfFrom}</span>
+              <input
+                aria-label={t.pdfFrom}
+                type="date"
+                value={pdfStartDate}
+                onChange={(event) => setPdfStartDate(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>{t.pdfTo}</span>
+              <input
+                aria-label={t.pdfTo}
+                type="date"
+                value={pdfEndDate}
+                onChange={(event) => setPdfEndDate(event.target.value)}
+              />
+            </label>
             <button
               className="quiet-action"
               type="button"
@@ -727,6 +770,9 @@ export function SleepDiaryWorkspace({
             </button>
           </div>
         </div>
+        {!selectedSnapshot && agendaEntries.length > 0 && (
+          <p className="sleep-pdf-range-error" role="status">{t.pdfEmpty}</p>
+        )}
         {agendaEntries.length === 0 ? (
           <p className="analysis-empty">{t.agendaEmpty}</p>
         ) : (

@@ -1846,6 +1846,11 @@ The 30-minute awakening-policy follow-up passes the current complete inventory:
 agenda/HR bands and two orange vector-PDF intervals for the repaired
 2026-09-23 night.
 
+The subsequent agenda/report-range regression covers exact 18:00-to-18:00
+hour geometry, a visible 24-column row grid, inclusive start/end filtering,
+identical preview/export snapshots, range summary recomputation, and the
+independence of the selected HR/editor night from the PDF range.
+
 The private Android installation was advanced non-destructively to Trainlog
 0.1.5 versionCode 41 with the same debug signing identity and no uninstall or
 data clear. The device locked before the final visual Sleep-screen inspection,

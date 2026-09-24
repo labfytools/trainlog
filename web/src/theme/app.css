@@ -626,6 +626,20 @@ h2 {
   align-items: center;
   flex-wrap: wrap;
 }
+.sleep-pdf-controls label {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--subtext-0);
+  font-size: 0.72rem;
+}
+.sleep-pdf-controls input {
+  min-height: 2.25rem;
+}
+.sleep-pdf-range-error {
+  margin: 0.25rem 0 0.6rem;
+  color: var(--peach);
+  font-size: var(--font-size-sm);
+}
 .sleep-entry-card {
   display: grid;
   gap: 1rem;
@@ -789,7 +803,16 @@ h2 {
 .sleep-track {
   position: relative;
   height: 1.75rem;
-  background: var(--surface-0);
+  /* CONTRACT: the 24 equal columns share the exact 18:00-to-18:00 geometry
+   * used by the positioned events and by the hour labels above them. */
+  background-color: var(--surface-0);
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc((100% / 24) - 1px),
+    color-mix(in srgb, var(--surface-2) 55%, transparent) calc((100% / 24) - 1px),
+    color-mix(in srgb, var(--surface-2) 55%, transparent) calc(100% / 24)
+  );
   box-shadow: inset 0 0 0 1px var(--surface-2);
   border-radius: 0.35rem;
 }

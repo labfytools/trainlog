@@ -12,14 +12,16 @@ of overlapping structured awakenings; no estimate is persisted.
 
 One agenda row is the effective selection. A click updates the detail dates,
 editor snapshot, and HR context in memory without issuing a write. PDF preview
-and download receive the same one-entry snapshot, and all observations are
-recomputed from that subset. Before an explicit click, the active night or the
-first deterministically ordered row is the documented fallback.
+and download receive the same explicit inclusive range over each entry's
+`night_start_date`, and all observations are recomputed from that subset. The
+range initially spans the loaded agenda period; later detail/HR selection does
+not alter it. The floating hour axis is reinforced by the same 24 equal visual
+columns used beneath every 18:00-to-18:00 agenda row.
 
 ## Automated validation
 
 - Web targeted suites: 34/34 passed.
-- Complete Web suite: 208/208 passed.
+- Complete Web suite after the range/axis follow-up: 209/209 passed.
 - `npm run typecheck`: passed.
 - `npm run build`: passed.
 - Embedded production bundle `meson compile -C build`: passed.

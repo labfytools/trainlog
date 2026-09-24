@@ -243,7 +243,7 @@ describe("SleepDiaryWorkspace", () => {
     );
   });
 
-  it("uses the same single active-night subset for PDF preview and export", async () => {
+  it("uses the same inclusive date-range subset for PDF preview and export", async () => {
     const first = dayAEntry();
     const second = {
       ...dayAEntry(),
@@ -261,6 +261,12 @@ describe("SleepDiaryWorkspace", () => {
     render(<SleepDiaryWorkspace period="30d" language="fr" />);
 
     fireEvent.click(await screen.findByTestId(`sleep-agenda-row-${second.entry_id}`));
+    fireEvent.change(screen.getByLabelText("PDF du"), {
+      target: { value: "2026-09-18" },
+    });
+    fireEvent.change(screen.getByLabelText("au"), {
+      target: { value: "2026-09-18" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
     fireEvent.click(screen.getByRole("button", { name: "Exporter PDF" }));
 
@@ -272,6 +278,47 @@ describe("SleepDiaryWorkspace", () => {
     }
     expect(present.mock.calls.map((call) => call[1])).toEqual([false, true]);
     expect(api.saveSleepEntry).not.toHaveBeenCalled();
+  });
+
+  it("exports every night whose start date is inside the chosen range", async () => {
+    const first = dayAEntry();
+    const second = {
+      ...dayAEntry(),
+      entry_id: "sl_range_second",
+      revision_id: "slr_range_second",
+      night_start_date: "2026-09-19",
+      night_end_date: "2026-09-20",
+    };
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([first, second]));
+    const build = vi.spyOn(pdfReport, "buildSleepDiaryPdf").mockReturnValue(
+      new Blob(["range"], { type: "application/pdf" }),
+    );
+    vi.spyOn(pdfReport, "presentSleepDiaryPdf").mockImplementation(() => {});
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+
+    await screen.findByTestId(`sleep-agenda-row-${second.entry_id}`);
+    await waitFor(() => {
+      expect(screen.getByLabelText("PDF du")).toHaveValue("2026-09-19");
+      expect(screen.getByLabelText("au")).toHaveValue(first.night_start_date);
+    });
+    fireEvent.change(screen.getByLabelText("PDF du"), {
+      target: { value: "2026-09-21" },
+    });
+    expect(screen.getByRole("button", { name: "Prévisualiser" })).toBeDisabled();
+    expect(screen.getByText("Aucune nuit dans cette plage.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("PDF du"), {
+      target: { value: "2026-09-19" },
+    });
+    fireEvent.change(screen.getByLabelText("au"), {
+      target: { value: first.night_start_date },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
+
+    const [selection] = build.mock.calls[0];
+    expect(selection.entries.map((entry) => entry.entry_id).sort()).toEqual(
+      [first.entry_id, second.entry_id].sort(),
+    );
+    expect(selection.summary.nights).toBe(2);
   });
 
   it.each([

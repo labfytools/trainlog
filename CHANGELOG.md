@@ -72,6 +72,9 @@ also refined.
   default. A repeated tap inside the window extends its end to 30 minutes after
   the latest tap, while Levé clamps it to the factual final-get-up timestamp.
   The policy is revisioned, undoable, and independent of BPM/RR inference.
+- Aligned the Sleep agenda's hour labels with a shared 24-column visual grid
+  and added an inclusive night-start date range for PDF preview and export.
+  Detail/HR night selection remains independent from the report range.
 
 ## 0.1.5 — 2026-09-23
 
