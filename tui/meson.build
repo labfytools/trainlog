@@ -987,6 +987,11 @@ test(
   args: [meson.project_source_root() / 'tests/test_heart_rate_exchange.py'],
 )
 test(
+  'heart_rate_tail_recovery',
+  find_program('python3'),
+  args: [meson.project_source_root() / 'tests/test_heart_rate_tail_recovery.py'],
+)
+test(
   'session_timeline_exchange',
   find_program('python3'),
   args: [meson.project_source_root() / 'tests/test_session_timeline_exchange.py'],

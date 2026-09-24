@@ -1771,6 +1771,45 @@ generation tool, accepts the correlated ACK, verifies one desktop
 capture/sample/RR row, and proves the acknowledged Android capture is no longer
 emitted.
 
+`test_heart_rate_tail_recovery` covers the delayed-session correction boundary:
+a sample exactly at the factual end remains, the first representable sample
+after it and its RR child are removed, statistics use only retained facts, an
+already bounded capture is an idempotent no-op, wrong session/capture and
+invalid temporal bounds are refused, and an injected post-effect failure rolls
+back every row. It then replays the old Heart Rate V1 snapshot and the same
+causal operation twice to prove non-resurrection and second-sync idempotence.
+It also proves that `heart_rate_tail` appears only in the separately versioned
+heart-rate-correction artifact and remains absent from frozen
+causal-deletions V1.
+`TrainlogRepositoryDraftTest.delayedFactualFinalizationTruncatesHeartRateSamplesAndRrInclusively`
+exercises the production Android delayed-finalization transaction.
+
+The 2026-09-24 paired-device closeout applies operation
+`hrx_a2222757-9a85-492f-823b-ad590208ce6b` to capture
+`hrc_fe0627e0-dff6-4629-82d9-03da78c49634`. Android and desktop both report
+3,429 BPM samples, 3,429 RR values, no sample after 11:16, last sample
+11:15:59.759323, and 89 / 119.30300379119277 / 138 BPM. Full MTP runs
+`sy_d1a29dd9-7b51-41db-83e1-5712758b3700` and
+`sy_4b8b3c28-17b1-4300-bfbf-9332385f69ab` both completed through
+`peer_consumed`. A production import of the retained pre-correction 4,919-point
+artifact left the same counts and statistics. The live Web history detail in
+Firefox rendered the 10:18--11:16 curve, seven exercises, 15 sets, 3,429 RR,
+and the same min/average/max values.
+
+Generation regressions additionally cover an archived acknowledged fork, a
+legacy acknowledged row without durable ACK evidence, and consumer acceptance
+of a producer-selected current fork tip while rejecting stale/null ancestry.
+Android generation tests exercise the matching rules. Sleep quick-capture and
+generation tests cover the schema-v33 medication-intake column order with
+quantity 2, preventing note/creation-time values from being bound to the
+`quantity` constraint.
+
+The final post-device closeout passes the complete native Meson inventory
+**114/114**, the complete clang ASan/UBSan Meson inventory **114/114**, and
+Android `testDebugUnitTest` with **317 tests: 312 passed, five skipped, zero
+failures/errors**. Android `assembleDebug`, both JSON/import validators,
+changed-file C formatting, and `git diff --check` also pass.
+
 The 2026-09-23 closeout passes the complete native Meson inventory:
 **102/102 passed, 0 failed**. The complete Android JVM inventory reports
 **258 tests: 253 passed, five skipped, zero failures/errors**. The five skips

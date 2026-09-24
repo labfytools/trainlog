@@ -72,6 +72,9 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     Kind("trainlog-program-executions", 1, "program-executions-v1.json", false),
                 "sleep-diary" to Kind("trainlog-sleep-diary", 2, "sleep-diary-v2.json", false),
                 "heart-rate" to Kind("trainlog-heart-rate", 1, "heart-rate-v1.json", false),
+                "heart-rate-corrections" to
+                    Kind("trainlog-heart-rate-corrections", 1,
+                        "heart-rate-corrections-v1.json", false),
                 "cardio-calibrations" to
                     Kind("trainlog-cardio-calibrations", 1, "cardio-calibrations-v1.json", false),
                 "cardio-guidance" to
@@ -359,10 +362,35 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 )
             }
             val generatedAt = OffsetDateTime.now().toString()
+            /* WHY: a fully acknowledged fork can remain in the immutable
+             * ledger after its payload has been durably archived.
+             * CONTRACT: archived evidence stays queryable but no longer
+             * participates in the active producer-lineage tip selection.
+             * INVARIANT: only unarchived rows backed by a full durable ACK can
+             * become the parent; two such active tips still reject capture. */
             val parent =
                 repository.inSyncGenerationTransaction { db ->
                     db.rawQuery(
-                            "SELECT g.generation_id FROM sync_generations g WHERE g.producer_peer_id=? AND g.consumer_peer_id=? AND g.status='acknowledged' AND NOT EXISTS(SELECT 1 FROM sync_generations c WHERE c.parent_generation_id=g.generation_id AND c.status='acknowledged') LIMIT 2",
+                            "SELECT g.generation_id FROM sync_generations g WHERE " +
+                                "g.producer_peer_id=? AND g.consumer_peer_id=? AND " +
+                                "g.status='acknowledged' AND EXISTS(SELECT 1 FROM " +
+                                "sync_acknowledgements k WHERE " +
+                                "k.generation_id=g.generation_id AND " +
+                                "k.result='consumed' AND " +
+                                "k.durability='sqlite-commit-full') AND " +
+                                "NOT EXISTS(SELECT 1 FROM " +
+                                "sync_generation_archives a WHERE " +
+                                "a.generation_id=g.generation_id) AND NOT EXISTS(" +
+                                "SELECT 1 FROM sync_generations c WHERE " +
+                                "c.parent_generation_id=g.generation_id AND " +
+                                "c.status='acknowledged' AND EXISTS(SELECT 1 FROM " +
+                                "sync_acknowledgements ck WHERE " +
+                                "ck.generation_id=c.generation_id AND " +
+                                "ck.result='consumed' AND " +
+                                "ck.durability='sqlite-commit-full') AND " +
+                                "NOT EXISTS(SELECT 1 FROM " +
+                                "sync_generation_archives ca WHERE " +
+                                "ca.generation_id=c.generation_id)) LIMIT 2",
                             arrayOf(producer, consumerPeerId),
                         )
                         .use {
@@ -432,6 +460,24 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                     val existed =
                         db.rawQuery(
                                 "SELECT 1 FROM sync_causal_publications WHERE operation_id=? LIMIT 1",
+                                arrayOf(operationId),
+                            )
+                            .use { it.moveToFirst() }
+                    db.execSQL(
+                        "INSERT INTO sync_causal_publications VALUES(?,?,?)",
+                        arrayOf(operationId, generationId, if (existed) 0 else 1),
+                    )
+                }
+                val heartRateCorrections =
+                    JSONObject(checkNotNull(artifacts["heart-rate-corrections"]))
+                        .getJSONArray("corrections")
+                for (index in 0 until heartRateCorrections.length()) {
+                    val operationId =
+                        heartRateCorrections.getJSONObject(index).getString("operation_id")
+                    val existed =
+                        db.rawQuery(
+                                "SELECT 1 FROM sync_causal_publications " +
+                                    "WHERE operation_id=? LIMIT 1",
                                 arrayOf(operationId),
                             )
                             .use { it.moveToFirst() }
@@ -853,26 +899,38 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                         }
                     }
                 val producerPeer = manifest.getJSONObject("producer").getString("peer_id")
-                val expectedParent =
+                /* WHY: the producer can archive one transient fork while this
+                 * consumer retains both immutable consumed audit rows.
+                 * CONTRACT: a new generation extends any current consumed tip;
+                 * a null, old, or unrelated parent remains invalid.
+                 * INVARIANT: fork history is never rewritten to select a tip. */
+                val tipPredicate =
+                    "g.producer_peer_id=? AND g.result='consumed' AND " +
+                        "NOT EXISTS(SELECT 1 FROM sync_consumed_generations c " +
+                        "WHERE c.parent_generation_id=g.generation_id AND " +
+                        "c.result='consumed')"
+                val hasCurrentTip =
                     db.rawQuery(
-                            "SELECT g.generation_id FROM sync_consumed_generations g WHERE g.producer_peer_id=? AND g.result='consumed' AND NOT EXISTS(SELECT 1 FROM sync_consumed_generations c WHERE c.parent_generation_id=g.generation_id AND c.result='consumed') LIMIT 2",
+                            "SELECT 1 FROM sync_consumed_generations g WHERE " +
+                                tipPredicate + " LIMIT 1",
                             arrayOf(producerPeer),
                         )
-                        .use {
-                            if (!it.moveToFirst()) null
-                            else {
-                                val value = it.getString(0)
-                                if (it.moveToNext())
-                                    throw SyncGenerationException(
-                                        "consumed generation lineage has multiple tips"
-                                    )
-                                value
-                            }
-                        }
+                        .use { it.moveToFirst() }
                 val suppliedParent =
                     if (manifest.isNull("parent_generation_id")) null
                     else manifest.getString("parent_generation_id")
-                if (suppliedParent != expectedParent)
+                val suppliedParentIsTip =
+                    suppliedParent != null &&
+                        db.rawQuery(
+                                "SELECT 1 FROM sync_consumed_generations g WHERE " +
+                                    "g.generation_id=? AND " + tipPredicate + " LIMIT 1",
+                                arrayOf(suppliedParent, producerPeer),
+                            )
+                            .use { it.moveToFirst() }
+                if (
+                    (!hasCurrentTip && suppliedParent != null) ||
+                        (hasCurrentTip && !suppliedParentIsTip)
+                )
                     throw SyncGenerationException("generation lineage is stale or unrelated")
                 val a = frozen.artifacts
                 fun apply(name: String, result: () -> Any) {

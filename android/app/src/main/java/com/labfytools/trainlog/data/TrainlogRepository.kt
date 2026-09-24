@@ -715,7 +715,10 @@ class TrainlogRepository(
                 arrayOf(revisionId,event.eventId.ifEmpty { sleepId("sle") },event.type.wireValue,event.startAt,event.endAt),
             ) }
             draft.intakes.forEach { intake -> db.execSQL(
-                "INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO sleep_medication_intakes(" +
+                    "revision_id,intake_id,medication_id,medication_name,taken_at," +
+                    "dose_value,dose_unit,quantity,note,created_at" +
+                    ") VALUES(?,?,?,?,?,?,?,?,?,?)",
                 arrayOf<Any?>(revisionId, intake.intakeId.ifEmpty { sleepId("mdi") }, intake.medicationId,
                     intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
                     intake.quantity,
@@ -1608,7 +1611,10 @@ class TrainlogRepository(
                 draft.events.forEach { event -> db.execSQL("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
                     arrayOf(revisionId,event.eventId,event.type.wireValue,event.startAt,event.endAt)) }
                 draft.intakes.forEach { intake -> db.execSQL(
-                    "INSERT INTO sleep_medication_intakes VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO sleep_medication_intakes(" +
+                        "revision_id,intake_id,medication_id,medication_name,taken_at," +
+                        "dose_value,dose_unit,quantity,note,created_at" +
+                        ") VALUES(?,?,?,?,?,?,?,?,?,?)",
                     arrayOf<Any?>(revisionId, intake.intakeId, intake.medicationId,
                         intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
                         intake.quantity,
@@ -3628,6 +3634,7 @@ class TrainlogRepository(
         artifacts["body-zones"] = buildExerciseBodyZonesJson(true)
         artifacts["feedback"] = buildTrainingFeedbackJson(true)
         artifacts["causal-deletions"] = buildCausalDeletionExportV1Json()
+        artifacts["heart-rate-corrections"] = buildHeartRateCorrectionsV1Json()
         artifacts["program-executions"] = buildProgramExecutionsV1Json()
         artifacts["sleep-diary"] = buildSleepDiaryV1Json()
         artifacts["heart-rate"] = buildHeartRateV1Json()
@@ -5847,37 +5854,44 @@ class TrainlogRepository(
                     arrayOf(sessionId),
                 ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
             if (activeCapture != null) {
-                var captureEndedAt = finalizedAt
-                var captureEndKey = parsedFinalizedAt
+                val removedSequences = mutableListOf<Long>()
                 db.rawQuery(
-                    "SELECT observed_at FROM heart_rate_samples WHERE capture_id=?",
+                    "SELECT sequence,observed_at FROM heart_rate_samples " +
+                        "WHERE capture_id=? ORDER BY sequence",
                     arrayOf(activeCapture),
                 ).use { cursor ->
                     while (cursor.moveToNext()) {
-                        val observedAt = cursor.getString(0)
+                        val observedAt = cursor.getString(1)
                         val observedKey = TrainlogTimestamp.parse(observedAt)
                             ?: error("Heart-rate sample has an invalid timestamp.")
-                        if (observedKey > captureEndKey) {
-                            captureEndKey = observedKey
-                            captureEndedAt = observedAt
+                        if (observedKey > parsedFinalizedAt) {
+                            removedSequences += cursor.getLong(0)
                         }
                     }
                 }
                 /*
                  * WHY: delayed recovery can establish a factual session end
                  * earlier than samples recorded while the failed draft stayed
-                 * open. Dropping or retiming those immutable measurements
-                 * would be data loss.
+                 * open; those later measurements are not part of the session.
                  * CONTRACT: the session/timeline use the requested factual
-                 * end; the sensor capture expands only to its latest observed
-                 * sample so Heart Rate V1 remains internally valid.
-                 * INVARIANT: every retained sample lies within its stopped
-                 * capture and no sample/RR identity or payload is rewritten.
+                 * end inclusively. Samples strictly after it are deleted, and
+                 * their RR children follow through the declared cascade.
+                 * INVARIANT: every retained sample is at or before the stopped
+                 * capture end; retained sample identities are never rewritten.
                  */
+                removedSequences.forEach { sequence ->
+                    check(
+                        db.delete(
+                            "heart_rate_samples",
+                            "capture_id=? AND sequence=?",
+                            arrayOf(activeCapture, sequence.toString()),
+                        ) == 1,
+                    )
+                }
                 db.execSQL(
                     "UPDATE heart_rate_captures SET ended_at=?,active_slot=NULL," +
                         "active_exercise_entry_id=NULL WHERE capture_id=? AND active_slot=1",
-                    arrayOf(captureEndedAt, activeCapture),
+                    arrayOf(finalizedAt, activeCapture),
                 )
             }
             closeCardioGuidanceRunForSession(db, sessionId, finalizedAt)
@@ -7362,7 +7376,10 @@ class TrainlogRepository(
 
     private fun buildCausalDeletionExportV1Json(db: SQLiteDatabase): String {
         val operations = JSONArray()
-        db.rawQuery("SELECT operation_id,target_kind,target_id,creator_id,predecessor_revision_id,created_at,payload_sha256 FROM sync_causal_operations ORDER BY operation_id", null).use { cursor ->
+        db.rawQuery("SELECT operation_id,target_kind,target_id,creator_id," +
+            "predecessor_revision_id,created_at,payload_sha256 FROM sync_causal_operations " +
+            "WHERE target_kind IN('session','execution_draft','exercise','body_observation'," +
+            "'custom_equipment','feedback','body_zone_relation') ORDER BY operation_id", null).use { cursor ->
             while (cursor.moveToNext()) {
                 check(operations.length() < MAX_CAUSAL_OPERATIONS) { "Causal protection set exceeds artifact bound." }
                 operations.put(JSONObject().put("operation_id", cursor.getString(0)).put("target_kind", cursor.getString(1))
@@ -7373,6 +7390,50 @@ class TrainlogRepository(
         }
         return JSONObject().put("format", "trainlog-causal-deletions").put("version", 1)
             .put("generated_at", OffsetDateTime.now().toString()).put("operations", operations).toString()
+    }
+
+    /**
+     * WHY: Heart Rate V1 bytes and causal-deletions V1 semantics are frozen.
+     * CONTRACT: acknowledged capture cutoffs therefore travel in their own
+     * strict V1 companion while reusing the durable causal operation ledger.
+     * INVARIANT: this exporter never emits a heart-rate operation through the
+     * frozen general-deletion artifact.
+     */
+    internal fun buildHeartRateCorrectionsV1Json(): String {
+        val corrections = JSONArray()
+        database.readableDatabase.rawQuery(
+            "SELECT operation_id,target_id,creator_id,predecessor_revision_id," +
+                "created_at,payload_sha256 FROM sync_causal_operations " +
+                "WHERE target_kind='heart_rate_tail' ORDER BY operation_id",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                check(corrections.length() < MAX_HEART_RATE_CORRECTIONS)
+                val target = cursor.getString(1).split('|', limit = 2)
+                check(target.size == 2 && sleepIdentity(target[0], "hrc") &&
+                    TrainlogTimestamp.parse(target[1]) != null)
+                corrections.put(
+                    JSONObject()
+                        .put("operation_id", cursor.getString(0))
+                        .put("capture_id", target[0])
+                        .put("cutoff", target[1])
+                        .put("creator_id", cursor.getString(2))
+                        .put("predecessor_revision_id", cursor.getString(3))
+                        .put("created_at", cursor.getString(4))
+                        .put("payload_sha256", cursor.getString(5)),
+                )
+            }
+        }
+        return JSONObject()
+            .put("format", "trainlog-heart-rate-corrections")
+            .put("version", 1)
+            .put("generated_at", OffsetDateTime.now().toString())
+            .put("corrections", corrections)
+            .toString()
+            .also {
+                check(it.toByteArray(StandardCharsets.UTF_8).size <=
+                    MAX_HEART_RATE_CORRECTION_ARTIFACT_BYTES)
+            }
     }
 
     fun applyCausalDeletionExportV1Json(json: String): CausalDeleteResult {
@@ -12229,6 +12290,8 @@ private const val MAX_SYNC_NOTE_UTF8_BYTES = 4096
 private const val MAX_PENDING_EXECUTION_DRAFTS = 15
 private const val MAX_CAUSAL_OPERATIONS = 4096
 private const val MAX_CAUSAL_ARTIFACT_BYTES = 4 * 1024 * 1024
+private const val MAX_HEART_RATE_CORRECTIONS = 256
+private const val MAX_HEART_RATE_CORRECTION_ARTIFACT_BYTES = 4 * 1024 * 1024
 private const val MAX_PLAN_SETS = 64
 private const val MAX_PLAN_REPS = 10000
 private const val MAX_PLAN_DURATION_SECONDS = 86400

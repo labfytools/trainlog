@@ -1109,6 +1109,30 @@ advance cardio acknowledgement. Acknowledged captures remain in Android
 history but are omitted from normal later publication, preventing a full
 night's samples from being retransmitted on every sync.
 
+An acknowledged session capture may later receive one causal
+`heart_rate_tail` deletion when recovery establishes an earlier factual
+`session.ended_at`. Its target is the exact `capture_id|cutoff`; the predecessor
+digest covers the original capture metadata, ordered BPM samples and ordered RR
+children. The cutoff is inclusive: only measurements strictly later than it are
+deleted, while `capture.ended_at` becomes the cutoff. Because the general
+causal-deletions V1 contract is frozen to its seven existing target kinds, the
+operation travels in the separate optional
+`trainlog-heart-rate-corrections` V1 / `heart-rate-corrections-v1.json`
+companion while reusing the durable causal operation/state ledger. No published
+or acknowledged generation is rewritten and no ACK is fabricated. The
+correction companion is consumed before Heart Rate V1; that importer also
+consults durable correction state before comparing or inserting an old
+snapshot, so replay cannot resurrect a corrected tail.
+
+Producer lineage selection treats only unarchived acknowledged generations
+backed by an exact `consumed` / `sqlite-commit-full` ACK as active tips. This
+keeps legacy terminal rows that predate the durable ACK ledger as immutable
+audit evidence without letting them block every later publication. A consumer
+can retain several historical consumed tips because it cannot observe which
+fork the producer archived; the next manifest is valid only when its declared
+parent is one of those current tips. A null, old, or unrelated parent remains a
+hard rejection, and neither side rewrites fork evidence.
+
 The companion changes neither the frozen Bluetooth Classic RFCOMM transport,
 MTP recovery, manifest/ACK framing, Sleep Diary V1 nor mobile-export semantics.
 Heart-rate BLE/GATT acquisition remains Android-only and is a separate

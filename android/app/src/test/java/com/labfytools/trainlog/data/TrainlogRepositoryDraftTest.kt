@@ -13,6 +13,8 @@ import com.labfytools.trainlog.model.BodyObservationDraft
 import com.labfytools.trainlog.model.ExerciseDataFields
 import com.labfytools.trainlog.model.ExerciseEditInput
 import com.labfytools.trainlog.model.ExerciseProfile
+import com.labfytools.trainlog.model.HeartRateContextKind
+import com.labfytools.trainlog.model.HeartRateRrInterval
 import com.labfytools.trainlog.model.NewExerciseProfile
 import com.labfytools.trainlog.model.RecordingMode
 import com.labfytools.trainlog.model.SessionDraft
@@ -54,6 +56,126 @@ class TrainlogRepositoryDraftTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         databaseName = "draft-test-${UUID.randomUUID()}.db"
+    }
+
+    @Test
+    fun delayedFactualFinalizationTruncatesHeartRateSamplesAndRrInclusively() {
+        val repo = openRepository()
+        val exercise = createExercise(repo, "Récupération cardio", RecordingMode.SETS, TrackingMode.REPS)
+        val sessionId = "se_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val entryId = "sxe_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        val startedAt = "2026-09-24T10:00:00+02:00"
+        val cutoff = "2026-09-24T11:16:00+02:00"
+        assertEquals(
+            ActiveDraftMutationResult.Saved,
+            repo.saveActiveSessionDraft(
+                ActiveSessionDraft(
+                    sessionId = sessionId,
+                    startedAt = startedAt,
+                    exercises = listOf(
+                        SessionExerciseDraft(
+                            entryId = entryId,
+                            exercise = exercise,
+                            sets = listOf(SessionSetDraft(reps = 8, weightKg = 20.0)),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val capture = repo.startHeartRateCapture(
+            HeartRateContextKind.SESSION,
+            sessionId,
+            startedAt,
+            "Synthetic",
+        ) as TrainlogRepository.StartHeartRateCaptureResult.Started
+        assertTrue(repo.startActiveSessionExercise(
+            entryId, "2026-09-24T10:30:00+02:00",
+        ) is TrainlogRepository.SessionExerciseTimingResult.Started)
+        assertTrue(repo.finishActiveSessionExercise(
+            entryId, "2026-09-24T11:15:00+02:00",
+        ) is TrainlogRepository.SessionExerciseTimingResult.Finished)
+        listOf(
+            "2026-09-24T11:15:59.999999+02:00" to 100,
+            cutoff to 101,
+            "2026-09-24T11:16:00.000001+02:00" to 40,
+        ).forEachIndexed { index, (observedAt, bpm) ->
+            assertTrue(
+                repo.appendHeartRateSample(
+                    capture.captureId,
+                    observedAt,
+                    bpm,
+                    rrIntervals = listOf(HeartRateRrInterval(0, 900 + index)),
+                ) is TrainlogRepository.HeartRateMutationResult.Applied,
+            )
+        }
+
+        assertEquals(
+            FinalizeActiveDraftResult.Saved(sessionId),
+            repo.finalizeActiveSessionDraft(cutoff),
+        )
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(databaseName).path,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            assertEquals(cutoff, db.rawQuery(
+                "SELECT ended_at FROM heart_rate_captures WHERE capture_id=?",
+                arrayOf(capture.captureId),
+            ).use { it.moveToFirst(); it.getString(0) })
+            assertEquals(
+                listOf("2026-09-24T11:15:59.999999+02:00", cutoff),
+                db.rawQuery(
+                    "SELECT observed_at FROM heart_rate_samples WHERE capture_id=? " +
+                        "ORDER BY sequence",
+                    arrayOf(capture.captureId),
+                ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } },
+            )
+            assertEquals(2, db.rawQuery(
+                "SELECT COUNT(*) FROM heart_rate_rr_intervals WHERE capture_id=?",
+                arrayOf(capture.captureId),
+            ).use { it.moveToFirst(); it.getInt(0) })
+            db.rawQuery("PRAGMA foreign_key_check", null).use { assertFalse(it.moveToFirst()) }
+        }
+    }
+
+    @Test
+    fun heartRateCorrectionsRemainOutsideFrozenCausalDeletionV1() {
+        val repo = openRepository()
+        repo.buildCausalDeletionExportV1Json()
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(databaseName).path,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL(
+                "INSERT INTO sync_causal_operations(" +
+                    "operation_id,target_kind,target_id,creator_id,predecessor_revision_id," +
+                    "created_at,payload_sha256,publication_context) VALUES(?,?,?,?,?,?,?,NULL)",
+                arrayOf(
+                    "hrx_11111111-1111-4111-8111-111111111111",
+                    "heart_rate_tail",
+                    "hrc_22222222-2222-4222-8222-222222222222|" +
+                        "2026-09-24T11:16:00+02:00",
+                    "peer_test",
+                    "lv_test",
+                    "2026-09-24T12:00:00+02:00",
+                    "0".repeat(64),
+                ),
+            )
+        }
+
+        assertEquals(
+            0,
+            JSONObject(repo.buildCausalDeletionExportV1Json())
+                .getJSONArray("operations")
+                .length(),
+        )
+        val correction = JSONObject(repo.buildHeartRateCorrectionsV1Json())
+        assertEquals("trainlog-heart-rate-corrections", correction.getString("format"))
+        assertEquals(
+            "hrx_11111111-1111-4111-8111-111111111111",
+            correction.getJSONArray("corrections").getJSONObject(0).getString("operation_id"),
+        )
     }
 
     @After

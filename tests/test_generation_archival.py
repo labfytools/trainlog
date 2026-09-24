@@ -126,7 +126,9 @@ class GenerationArchiveTest(unittest.TestCase):
 
         stage, manifest, _ = generation.capture_desktop(self.database, self.owned, PEER)
         self.assertTrue(stage.is_dir())
-        self.assertEqual(parent, manifest["parent_generation_id"])
+        # Historical status alone is terminal evidence, not a durable
+        # consumed ACK and therefore not an active lineage parent.
+        self.assertIsNone(manifest["parent_generation_id"])
         with sqlite3.connect(self.database) as database:
             self.assertEqual(
                 0,

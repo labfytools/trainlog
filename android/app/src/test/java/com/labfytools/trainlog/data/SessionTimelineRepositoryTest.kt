@@ -445,9 +445,9 @@ class SessionTimelineRepositoryTest {
 
             val heart = JSONObject(repository.buildHeartRateV1Json())
             val capture = heart.getJSONArray("captures").getJSONObject(0)
-            assertEquals(lateSampleAt.toString(), capture.getString("ended_at"))
-            assertEquals(2, capture.getJSONArray("samples").length())
-            assertEquals(1, capture.getJSONArray("samples").getJSONObject(1)
+            assertEquals(finalizationAt.toString(), capture.getString("ended_at"))
+            assertEquals(1, capture.getJSONArray("samples").length())
+            assertEquals(1, capture.getJSONArray("samples").getJSONObject(0)
                 .getJSONArray("rr_intervals_1024").length())
             assertNull(repository.activeHeartRateCapture())
         } finally {

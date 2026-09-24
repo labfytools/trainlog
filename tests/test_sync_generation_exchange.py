@@ -71,6 +71,105 @@ class GenerationTest(unittest.TestCase):
         with closing(sqlite3.connect(destination)) as reopened:
             self.assertEqual(ack,generation.record_consumed(reopened,manifest,checksum));self.assertEqual(1,reopened.execute("SELECT count(*) FROM facts WHERE id='imported'").fetchone()[0])
 
+    def test_archived_acknowledged_fork_is_not_an_active_parent_tip(self):
+        active = "gen_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        archived = "gen_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute(
+                "INSERT OR REPLACE INTO sync_peer_identity VALUES(1,?,'desktop')",
+                (PEER_A,),
+            )
+            for identity, generated in (
+                (active, "2026-09-17T09:00:00+02:00"),
+                (archived, "2026-09-17T09:01:00+02:00"),
+            ):
+                db.execute(
+                    "INSERT INTO sync_generations VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        identity, RUN, PEER_A, PEER_B, "desktop", generated, None,
+                        "a" * 64, "acknowledged", "{}", str(self.root / identity),
+                        generated,
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO sync_acknowledgements VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        "ack_" + identity[4:], identity, RUN, PEER_A, PEER_B,
+                        "a" * 64, "consumed", "sqlite-commit-full", generated,
+                        "", "b" * 64,
+                    ),
+                )
+            db.execute(
+                "INSERT INTO sync_generation_archives VALUES(?,?,?,?,?,?)",
+                (archived, str(self.root / "archive"), "a" * 64, "b" * 64,
+                 "2026-09-17T09:02:00+02:00", "{}"),
+            )
+            db.commit()
+        _, manifest, _ = self.capture()
+        self.assertEqual(active, manifest["parent_generation_id"])
+
+    def test_acknowledged_row_without_durable_ack_is_not_an_active_tip(self):
+        legacy = "gen_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        current = "gen_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute(
+                "INSERT OR REPLACE INTO sync_peer_identity VALUES(1,?,'desktop')",
+                (PEER_A,),
+            )
+            for identity, generated in (
+                (legacy, "2026-09-17T09:00:00+02:00"),
+                (current, "2026-09-17T09:01:00+02:00"),
+            ):
+                db.execute(
+                    "INSERT INTO sync_generations VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        identity, RUN, PEER_A, PEER_B, "desktop", generated,
+                        None, "a" * 64, "acknowledged", "{}",
+                        str(self.root / identity), generated,
+                    ),
+                )
+            db.execute(
+                "INSERT INTO sync_acknowledgements VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "ack_" + current[4:], current, RUN, PEER_A, PEER_B,
+                    "a" * 64, "consumed", "sqlite-commit-full",
+                    "2026-09-17T09:01:00+02:00", "", "b" * 64,
+                ),
+            )
+            db.commit()
+        _, manifest, _ = self.capture()
+        self.assertEqual(current, manifest["parent_generation_id"])
+
+    def test_consumer_accepts_producer_selected_current_fork_tip(self):
+        first = "gen_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        second = "gen_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        stale = "gen_cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        with closing(sqlite3.connect(self.database)) as db:
+            for identity, parent in (
+                (stale, None),
+                (first, stale),
+                (second, stale),
+            ):
+                db.execute(
+                    "INSERT INTO sync_consumed_generations VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        identity, RUN, PEER_B, PEER_A, parent, "a" * 64,
+                        "2026-09-17T09:00:00+02:00", "consumed",
+                        "sqlite-commit-full", "", "{}",
+                    ),
+                )
+            generation.require_current_consumed_parent(db, PEER_B, first)
+            generation.require_current_consumed_parent(db, PEER_B, second)
+            with self.assertRaisesRegex(
+                generation.GenerationError, "stale or unrelated"
+            ):
+                generation.require_current_consumed_parent(db, PEER_B, stale)
+            with self.assertRaisesRegex(
+                generation.GenerationError, "stale or unrelated"
+            ):
+                generation.require_current_consumed_parent(db, PEER_B, None)
+            generation.require_current_consumed_parent(db, PEER_A, None)
+
     def test_sleep_revision_becomes_acknowledged_only_after_correlated_ack(self):
         stage, manifest, checksum = self.capture()
         self.publish()

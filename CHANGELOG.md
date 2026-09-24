@@ -2,6 +2,28 @@
 
 ## Unreleased — 0.1.6
 
+- Corrected delayed session finalization so a heart-rate capture cannot extend
+  beyond the explicit factual session end. Android now transactionally removes
+  strict post-end BPM/RR tails while retaining an exact-cutoff sample. For an
+  already acknowledged capture, the separately versioned
+  `trainlog-heart-rate-corrections` V1 companion carries an immutable
+  `capture_id|cutoff` correction through the existing causal ledger without
+  widening frozen causal-deletions V1. Old Heart Rate V1 generation replay
+  applies that cutoff before identity comparison and cannot resurrect removed
+  measurements. A guarded dry-run recovery tool reports before/after counts and
+  statistics without rewriting published manifests or ACKs.
+- Completed the paired-device recovery for session
+  `se_fa845379-794d-4bb6-8cd3-48187ebbd134`: Android and desktop now retain
+  3,429 BPM samples and 3,429 RR values through the inclusive 11:16 cutoff,
+  and two successive full MTP generation exchanges completed with durable
+  consumed ACKs. Replaying the original 4,919-sample artifact cannot restore
+  the removed tail. Generation parent selection now excludes archived or
+  legacy acknowledgement rows lacking durable ACK evidence, while consumers
+  accept the producer's declared parent when it is one of multiple retained
+  current tips. Android Sleep V2 persistence also names medication-intake
+  columns explicitly, preserving `quantity`, note, and creation time across
+  the additive v33 layout.
+
 - Recovered a real divergent Sleep revision identity without choosing an
   arbitrary winner. The unpublished desktop branch was re-identified with its
   exact content, the immutable Android revision retained its published ID and
@@ -22,8 +44,8 @@
   performed duration from the persisted exercise timeline, including preserved
   drafts closed by an older build, while keeping planned set counts independent
   from valid actual sets, repetitions and loads. A strictly identity-bound
-  private recovery build may supply the factual session end; immutable late
-  heart-rate samples remain retained inside their capture bounds.
+  private recovery build may supply the factual session end; strict late
+  heart-rate BPM/RR tails are now removed transactionally at that boundary.
 - Hardened desktop Sleep generation consumption when an identical durable
   revision has no local publication row. Content comparison now reads the
   durable revision directly, acknowledges an exact match, and reports a real

@@ -25,6 +25,7 @@ import cardio_calibration_exchange
 import cardio_guidance_exchange
 import execution_draft_exchange
 import heart_rate_exchange
+import heart_rate_correction_exchange
 import session_timeline_exchange
 import import_equipment_associations
 import import_equipment_definitions
@@ -90,6 +91,7 @@ SUPPORTED = {(row[1], row[2]) for row in ARTIFACTS} | {
     ("trainlog-cardio-calibrations", 1),
     ("trainlog-cardio-guidance", 1),
     ("trainlog-heart-rate", 1),
+    ("trainlog-heart-rate-corrections", 1),
     ("trainlog-session-timeline", 1),
 }
 
@@ -417,7 +419,29 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                 "size": size, "sha256": checksum, "required": required})
         parent = None
         with closing(connect_database(database)) as db:
-            parent_rows = db.execute("SELECT g.generation_id FROM sync_generations g WHERE g.producer_peer_id=? AND g.consumer_peer_id=? AND g.status='acknowledged' AND NOT EXISTS(SELECT 1 FROM sync_generations c WHERE c.parent_generation_id=g.generation_id AND c.status='acknowledged') LIMIT 2", (producer, consumer)).fetchall()
+            # WHY: archived generations retain immutable audit rows, including
+            # forks, but have left the bounded active publication window.
+            # CONTRACT: only unarchived acknowledged rows with an exact durable
+            # consumed ACK participate in active parent selection; multiple
+            # active tips remain a hard failure.
+            # INVARIANT: archival evidence is never rewritten or deleted.
+            parent_rows = db.execute(
+                "SELECT g.generation_id FROM sync_generations g WHERE "
+                "g.producer_peer_id=? AND g.consumer_peer_id=? AND "
+                "g.status='acknowledged' AND EXISTS(SELECT 1 FROM "
+                "sync_acknowledgements k WHERE k.generation_id=g.generation_id "
+                "AND k.result='consumed' AND k.durability='sqlite-commit-full') "
+                "AND NOT EXISTS(SELECT 1 FROM "
+                "sync_generation_archives a WHERE a.generation_id=g.generation_id) "
+                "AND NOT EXISTS(SELECT 1 FROM sync_generations c WHERE "
+                "c.parent_generation_id=g.generation_id AND c.status='acknowledged' "
+                "AND EXISTS(SELECT 1 FROM sync_acknowledgements ck WHERE "
+                "ck.generation_id=c.generation_id AND ck.result='consumed' AND "
+                "ck.durability='sqlite-commit-full') "
+                "AND NOT EXISTS(SELECT 1 FROM sync_generation_archives ca WHERE "
+                "ca.generation_id=c.generation_id)) LIMIT 2",
+                (producer, consumer),
+            ).fetchall()
             if len(parent_rows) > 1: raise GenerationError("outgoing generation lineage has multiple tips")
             parent = parent_rows[0][0] if parent_rows else None
         manifest = {"format": MANIFEST, "version": 1, "generation_id": generation,
@@ -630,6 +654,36 @@ def record_consumed(db: sqlite3.Connection, manifest: dict, manifest_digest: str
     return ack
 
 
+def require_current_consumed_parent(
+    db: sqlite3.Connection, producer_peer_id: str, declared_parent: str | None
+) -> None:
+    """Require the producer to extend one locally observed consumed tip."""
+    # WHY: a producer can archive one branch after a transient fork, while the
+    # consumer retains both immutable consumed rows and cannot observe that
+    # producer-local archive decision.
+    # CONTRACT: a non-empty lineage must extend one of its current consumed
+    # tips; an empty lineage requires a null parent. An old or unrelated parent
+    # remains a hard failure.
+    # INVARIANT: this check never rewrites or discards either fork's audit row.
+    tip_predicate = (
+        "g.producer_peer_id=? AND g.result='consumed' AND NOT EXISTS(SELECT 1 "
+        "FROM sync_consumed_generations c WHERE c.parent_generation_id="
+        "g.generation_id AND c.result='consumed')"
+    )
+    has_tip = db.execute(
+        "SELECT 1 FROM sync_consumed_generations g WHERE " + tip_predicate + " LIMIT 1",
+        (producer_peer_id,),
+    ).fetchone() is not None
+    parent_is_tip = declared_parent is not None and db.execute(
+        "SELECT 1 FROM sync_consumed_generations g WHERE g.generation_id=? AND "
+        + tip_predicate
+        + " LIMIT 1",
+        (declared_parent, producer_peer_id),
+    ).fetchone() is not None
+    if (not has_tip and declared_parent is not None) or (has_tip and not parent_is_tip):
+        raise GenerationError("generation lineage is stale or unrelated")
+
+
 def record_rejected(database: Path, manifest: dict, manifest_digest: str, diagnostic: str) -> dict:
     # Android's platform JSON quoter escapes solidus characters while the
     # desktop canonical encoder does not. Rejection diagnostics are bounded
@@ -685,6 +739,10 @@ def consume_desktop(database: Path, directory: Path) -> dict:
                    if "sleep-diary" in listed else None)
     heart_rate = (heart_rate_exchange.load(listed["heart-rate"])
                   if "heart-rate" in listed else None)
+    heart_rate_corrections = (
+        heart_rate_correction_exchange.load(listed["heart-rate-corrections"])
+        if "heart-rate-corrections" in listed else None
+    )
     cardio_calibrations = (
         cardio_calibration_exchange.load(listed["cardio-calibrations"])
         if "cardio-calibrations" in listed else None
@@ -712,15 +770,17 @@ def consume_desktop(database: Path, directory: Path) -> dict:
                     raise GenerationError("generation identity reused with different manifest")
                 db.rollback()
                 return json.loads(known[1])
-            predecessors = db.execute("SELECT g.generation_id FROM sync_consumed_generations g WHERE g.producer_peer_id=? AND g.result='consumed' AND NOT EXISTS(SELECT 1 FROM sync_consumed_generations c WHERE c.parent_generation_id=g.generation_id AND c.result='consumed') LIMIT 2", (manifest["producer"]["peer_id"],)).fetchall()
-            if len(predecessors) > 1: raise GenerationError("consumed generation lineage has multiple tips")
-            expected_parent = predecessors[0][0] if predecessors else None
-            if manifest["parent_generation_id"] != expected_parent:
-                raise GenerationError("generation lineage is stale or unrelated")
+            require_current_consumed_parent(
+                db,
+                manifest["producer"]["peer_id"],
+                manifest["parent_generation_id"],
+            )
             # Causal state is applied first. Complete-envelope helpers retain
             # item-level conflict rules while avoiding the legacy global guard.
             for operation in causal["operations"]:
                 causal_delete_exchange.apply_operation(db, operation)
+            if heart_rate_corrections is not None:
+                heart_rate_correction_exchange.apply_document(db, heart_rate_corrections)
             import_exercise_profile_state.apply_profile_state(db, profile, allow_pending=True)
             import_equipment_definitions.apply_definitions(db, definitions, complete_causal_envelope=True)
             import_mobile_export.apply_payload(db, history, complete_causal_envelope=True)

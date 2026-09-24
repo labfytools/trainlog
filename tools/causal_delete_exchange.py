@@ -243,7 +243,12 @@ def load(path: Path) -> dict:
 
 def export_document(db: sqlite3.Connection) -> dict:
     keys = ("operation_id", "target_kind", "target_id", "creator_id", "predecessor_revision_id", "created_at", "payload_sha256", "publication_context")
-    rows = db.execute("SELECT " + ",".join(keys) + " FROM sync_causal_operations ORDER BY operation_id LIMIT ?", (MAX_OPERATIONS + 1,)).fetchall()
+    rows = db.execute(
+        "SELECT " + ",".join(keys) + " FROM sync_causal_operations "
+        "WHERE target_kind IN('session','execution_draft','exercise','body_observation',"
+        "'custom_equipment','feedback','body_zone_relation') "
+        "ORDER BY operation_id LIMIT ?", (MAX_OPERATIONS + 1,),
+    ).fetchall()
     if len(rows) > MAX_OPERATIONS: raise CausalError("protection set exceeds artifact bound")
     document = {"format": FORMAT, "version": VERSION,
             "generated_at": dt.datetime.now().astimezone().isoformat(),

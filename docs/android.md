@@ -32,6 +32,9 @@ imports compare a known ancestor's complete canonical payload before the stale
 ancestor shortcut, so a reused ID with a different parent or content cannot be
 hidden below a later local tip. All user edits continue to create a fresh
 UUIDv4 revision and preserve the previous payload and causal parent.
+Medication-intake writes name all columns explicitly, so the additive
+`quantity` column cannot reorder note or creation-time values in upgraded
+schema-v33 databases.
 
 The quick Sleep capture derives one night identity from the existing
 18:00-to-18:00 date rule. A medication action can create that pending entry
@@ -698,10 +701,12 @@ speed or distance still require those measured values explicitly.
 Ordinary completion uses the save-time timestamp. A private recovery build may
 embed one exact session identity and one explicit offset-aware factual end time;
 only that matching draft uses the supplied time. The repository rejects an end
-before the session start or latest exercise marker. When immutable heart-rate
-samples arrived after a failed factual session end, the session retains the
-factual end while the stopped capture remains bounded by its latest retained
-sample; no BPM or RR measurement is deleted or retimed.
+before the session start or latest exercise marker. When heart-rate samples
+arrived after a failed factual session end, delayed finalization keeps samples
+at or before that inclusive end and transactionally deletes the strict tail.
+RR children follow their BPM sample through the declared foreign-key cascade,
+and the stopped capture uses the exact factual end. Retained sample identities
+and values are never retimed or renumbered.
 
 PC catalog reconciliation preserves draft references through catalog row
 ownership. If an editing selection no longer resolves, only the selection is

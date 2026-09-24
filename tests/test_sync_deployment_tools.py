@@ -87,6 +87,7 @@ class DeploymentToolsTest(unittest.TestCase):
             self.assertIn("cardio-calibrations-v1", inventory["protocols"])
             self.assertIn("cardio-guidance-v1", inventory["protocols"])
             self.assertIn("heart-rate-v1", inventory["protocols"])
+            self.assertIn("heart-rate-corrections-v1", inventory["protocols"])
             self.assertIn("session-timeline-v1", inventory["protocols"])
             self.assertIn("bluetooth-files-v1", inventory["protocols"])
             self.assertIn("generation-ack-recovery-v1", inventory["protocols"])

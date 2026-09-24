@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from trainlog_sqlite import connect_database
+from validate_json import parse_timestamp as exact_timestamp
 
 
 FORMAT = "trainlog-heart-rate"
@@ -134,6 +135,45 @@ def load(path: Path) -> dict:
         fail("heart-rate artifact exceeds 64 MiB")
     return validate(json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object))
 
+
+def _table_exists(db: sqlite3.Connection, table: str) -> bool:
+    return db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,),
+    ).fetchone() is not None
+
+
+def _corrected_capture(db: sqlite3.Connection, capture: dict) -> dict:
+    if not _table_exists(db, "sync_causal_state"):
+        return capture
+    prefix = capture["capture_id"] + "|"
+    cutoffs = []
+    for target_id, in db.execute(
+        "SELECT target_id FROM sync_causal_state "
+        "WHERE target_kind='heart_rate_tail' AND deleted=1 AND target_id LIKE ?",
+        (prefix + "%",),
+    ):
+        if not target_id.startswith(prefix):
+            continue
+        raw = target_id[len(prefix):]
+        timestamp(raw)
+        value, parsed = raw, exact_timestamp(raw, "heart_rate_cutoff")
+        cutoffs.append((parsed, value))
+    if not cutoffs:
+        return capture
+    cutoff_key, cutoff = min(cutoffs)
+    started = exact_timestamp(capture["started_at"], "started_at")
+    ended = exact_timestamp(capture["ended_at"], "ended_at")
+    if cutoff_key < started or cutoff_key > ended:
+        fail("causal heart-rate cutoff is outside capture")
+    samples = [sample for sample in capture["samples"]
+               if exact_timestamp(sample["observed_at"], "observed_at") <= cutoff_key]
+    if any(sample["sequence"] != expected for expected, sample in enumerate(samples)):
+        fail("causal heart-rate truncation would break sample sequence")
+    corrected = dict(capture)
+    corrected["ended_at"] = cutoff
+    corrected["samples"] = samples
+    return corrected
+
 def _same_capture(db: sqlite3.Connection, capture: dict) -> bool:
     row = db.execute(
         "SELECT context_kind,context_id,started_at,ended_at,sensor_name "
@@ -183,7 +223,13 @@ def _same_capture(db: sqlite3.Connection, capture: dict) -> bool:
 def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
     applied = 0
     unchanged = 0
-    for capture in root["captures"]:
+    for raw_capture in root["captures"]:
+        # WHY: acknowledged Heart Rate V1 generations are immutable, while a
+        # later causal correction may remove a sensor tail from history.
+        # CONTRACT: replay compares/inserts the old snapshot only after every
+        # durable inclusive cutoff for this capture has been applied.
+        # INVARIANT: a corrected tail cannot be resurrected by old bytes.
+        capture = _corrected_capture(db, raw_capture)
         if _same_capture(db, capture):
             unchanged += 1
             continue

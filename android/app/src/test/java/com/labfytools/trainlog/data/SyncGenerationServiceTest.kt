@@ -1282,6 +1282,18 @@ class SyncGenerationServiceTest {
                     .getJSONArray("captures")
                     .length(),
             )
+            val heartRateCorrections =
+                JSONObject(
+                    java.io.File(
+                        androidToDesktop.stagingDirectory,
+                        "heart-rate-corrections-v1.json",
+                    ).readText(),
+                )
+            assertEquals(
+                "trainlog-heart-rate-corrections",
+                heartRateCorrections.getString("format"),
+            )
+            assertEquals(0, heartRateCorrections.getJSONArray("corrections").length())
             val androidPublished =
                 sourceService.publish(
                     androidToDesktop,

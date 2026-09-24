@@ -691,6 +691,30 @@ enumerate at most 4096 operations plus one sentinel row, and a local deletion
 is refused before its effect if the complete protection artifact would exceed
 either bound.
 
+The V1 `target_kind` set remains the frozen seven-kind set: `session`,
+`execution_draft`, `exercise`, `body_observation`, `custom_equipment`,
+`feedback`, and `body_zone_relation`. Heart-rate correction does not widen this
+published contract.
+
+## Heart-rate corrections V1
+
+`trainlog-heart-rate-corrections` V1 is a separate optional Android→desktop
+full-generation companion named `heart-rate-corrections`, stored as
+`heart-rate-corrections-v1.json`. Its root contains `format`, integer `version`,
+`generated_at`, and at most 256 `corrections`; the complete UTF-8 artifact is
+limited to 4 MiB. Each correction contains a stable UUIDv4-based `operation_id`,
+stable `capture_id`, inclusive offset-aware `cutoff`, `creator_id`, exact
+`predecessor_revision_id`, `created_at`, and canonical `payload_sha256`.
+
+The predecessor hashes the complete original capture metadata, ordered raw BPM
+samples, and ordered RR children. The consumer requires the cutoff to equal the
+canonical session end and not precede the session start or latest exercise end.
+It deletes only samples strictly after the cutoff in one transaction, relies on
+the declared RR cascade, records durable causal state, and applies that state
+before any Heart Rate V1 snapshot in the same generation. Unknown fields,
+duplicate keys/identities, digest mismatch, ancestry mismatch, and incompatible
+capture/session ownership reject the containing generation atomically.
+
 ## Staged generation manifest and acknowledgement V1
 
 `trainlog-sync-manifest` V1 is a strict independent envelope. It contains

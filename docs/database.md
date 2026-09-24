@@ -1,5 +1,23 @@
 # Desktop database
 
+## Causal heart-rate tail correction (schema v36, no migration)
+
+The separate `trainlog-heart-rate-corrections` V1 companion reuses the existing
+`sync_causal_operations` and `sync_causal_state` tables for the additive local
+`heart_rate_tail` state. The frozen `trainlog-causal-deletions` V1 artifact
+continues to emit and accept exactly its original seven target kinds. A heart-
+rate correction's composite target contains the stable capture identity and an
+inclusive offset-aware cutoff. Applying it deletes only BPM samples strictly
+after the cutoff; declared RR foreign keys cascade those exact children, and
+the capture end becomes the cutoff in the same transaction. The predecessor
+revision hashes the original ordered raw capture, including RR values, so a
+correction cannot be silently applied to a different measurement history.
+
+The immutable Heart Rate V1 generation remains audit evidence. Import applies
+known causal cutoffs before stable-identity comparison or insertion, which
+makes old-generation replay idempotent without rewriting its manifest or ACK.
+No schema or frozen `TRAINLOG_FORMAT_V1` change is involved.
+
 ## Schema v36: append-only Sleep revision payloads
 
 Schema v36 adds database-level `BEFORE UPDATE` and `BEFORE DELETE` guards for
