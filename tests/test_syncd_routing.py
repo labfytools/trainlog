@@ -126,6 +126,73 @@ class SyncdRoutingTest(unittest.TestCase):
             self.assertEqual(1, len(commands))
             self.assertEqual("sy_old", json.loads(state.read_text())["run_id"])
 
+    def test_transient_terminal_request_remains_eligible_after_reconnect(self):
+        terminal_states = (
+            ("failed", "device_unavailable"),
+            ("failed", "sync_in_progress"),
+            ("failed", "transport_timeout"),
+            ("interrupted", "interrupted"),
+        )
+        for phase, error_code in terminal_states:
+            with (
+                self.subTest(phase=phase, error_code=error_code),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                request = "sr_22222222-2222-4222-8222-222222222222"
+                state = root / "trainlog.db.sync-run.json"
+                state.write_text(
+                    json.dumps(
+                        {
+                            "phase": phase,
+                            "result": phase,
+                            "error_code": error_code,
+                            "request_id": request,
+                            "seen_request_ids": [request],
+                        }
+                    )
+                )
+                self._write_request(
+                    root / syncd.FULL_GENERATION_REQUEST_NAME,
+                    request,
+                    "2026-09-25T07:49:01Z",
+                )
+
+                _, seen = syncd.load_request_state(state)
+
+                self.assertNotIn(request, seen)
+                self.assertEqual(
+                    (request, "full_generation", []),
+                    syncd.select_request(root, seen),
+                )
+
+    def test_non_transient_terminal_request_remains_consumed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = "sr_22222222-2222-4222-8222-222222222222"
+            state = root / "trainlog.db.sync-run.json"
+            state.write_text(
+                json.dumps(
+                    {
+                        "phase": "failed",
+                        "result": "failed",
+                        "error_code": "data_conflict",
+                        "request_id": request,
+                        "seen_request_ids": [request],
+                    }
+                )
+            )
+            self._write_request(
+                root / syncd.FULL_GENERATION_REQUEST_NAME,
+                request,
+                "2026-09-25T07:49:01Z",
+            )
+
+            _, seen = syncd.load_request_state(state)
+
+            self.assertIn(request, seen)
+            self.assertIsNone(syncd.select_request(root, seen))
+
     def test_daemon_skips_mtp_probe_while_transport_lock_is_busy(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -23,6 +23,11 @@ REQUEST_NAME = "trainlog-sync-request-v1.json"
 FULL_GENERATION_REQUEST_NAME = "trainlog-sync-full-generation-request-v1.json"
 SEEN_REQUEST_LIMIT = 64
 REQUEST_ID = re.compile(r"sr_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+RETRYABLE_REQUEST_ERROR_CODES = {
+    "device_unavailable",
+    "sync_in_progress",
+    "transport_timeout",
+}
 
 
 def request_stop(
@@ -132,8 +137,26 @@ def load_request_state(path: Path) -> tuple[dict, list[str]]:
     seen = [item for item in state.get("seen_request_ids", [])
             if isinstance(item, str) and REQUEST_ID.fullmatch(item)]
     historical = state.get("request_id")
-    if isinstance(historical, str) and REQUEST_ID.fullmatch(historical) and historical not in seen:
-        seen.append(historical)
+    retryable = (
+        state.get("phase") == "interrupted"
+        or (
+            state.get("phase") == "failed"
+            and state.get("error_code") in RETRYABLE_REQUEST_ERROR_CODES
+        )
+    )
+    if isinstance(historical, str) and REQUEST_ID.fullmatch(historical):
+        # WHY: the daemon records admission before starting the bounded
+        # generation conversation. A transient disconnect can therefore leave
+        # the only Android arrival request in the seen ledger even though no
+        # terminal exchange was possible. CONTRACT: retry only explicit
+        # transient terminal states; completed and business-rejected requests
+        # remain exactly-once admissions. INVARIANT: retry keeps the stable
+        # request_id while the generation engine creates a fresh, idempotent
+        # run_id and revalidates all durable generation/ACK evidence.
+        if retryable:
+            seen = [item for item in seen if item != historical]
+        elif historical not in seen:
+            seen.append(historical)
     return state, seen[-SEEN_REQUEST_LIMIT:]
 
 

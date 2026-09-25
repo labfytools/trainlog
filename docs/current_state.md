@@ -20,6 +20,14 @@ retained. The desktop service installer retires the exact obsolete private
 ExecStart override that omitted required runtime paths and installs both
 `trainlog-syncd` and the BlueZ RFCOMM agent.
 
+The daemon's durable arrival ledger distinguishes admission from terminal
+consumption. If RFCOMM disappears after an Android request is admitted but
+before the generation conversation can complete, an explicitly transient
+terminal result leaves that same stable request eligible on reconnect. Success
+and non-transient business failures remain consumed, while every retry receives
+a fresh run identity and revalidates the existing idempotent generation/ACK
+evidence.
+
 Android synchronization paths share the same concurrency-guarded generation
 coordinator as SyncScreen. That coordinator has one process-wide ownership
 arbiter: explicit foreground intent has priority over automatic background

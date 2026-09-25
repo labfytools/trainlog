@@ -7,6 +7,14 @@ observed bug fixes, regression fixes, directly related small UI corrections,
 documentation corrections, robustness, and associated tests. It does not admit
 new features, modules, protocols, or speculative refactors.
 
+- Fixed automatic Bluetooth synchronization recovery when RFCOMM disconnects
+  after `trainlog-syncd` admits Android's arrival request but before the
+  generation conversation can start. Requests whose durable terminal result
+  is explicitly transient (`device_unavailable`, `transport_timeout`,
+  `sync_in_progress`, or interruption) remain eligible after reconnect;
+  completed requests and business failures remain consumed. Generation, ACK,
+  causal, schema, MTP, Drive, and manual-sync contracts are unchanged.
+
 ## 0.1.6 — 2026-09-25
 
 - Corrected delayed session finalization so a heart-rate capture cannot extend
