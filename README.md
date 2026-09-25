@@ -1,383 +1,124 @@
-# Trainlog
+<p align="center">
+  <img src="docs/assets/trainlog-banner.svg" alt="Trainlog — local-first training data system" width="100%">
+</p>
 
-Synchronization uses one generation/ACK business engine across versioned
-local transports. The paired 0.1.4 deployment prefers Bluetooth Classic RFCOMM
-and falls back to direct USB/MTP; the separately configured private Drive path
-remains available to the legacy mirror/fallback workflow. No transport copies
-SQLite databases between devices.
+<p align="center">
+  <img src="docs/assets/trainlog-badges.svg" alt="Trainlog badges: local-first, C17, Android, local Web, GPLv3" width="720">
+</p>
 
-Trainlog is a local-first workout and body-data system. Trainlog Core owns
-business truth and canonical desktop persistence. Its native Android app is the
-field companion, its C17/Notcurses desktop TUI is the administration and
-technical surface, and its local browser Web sibling provides the implemented
-Dashboard, Sessions, Programmes, Exercises, and factual Analyse/Sleep Diary
-surfaces.
+Trainlog is a **local-first system for recording, synchronizing, and examining
+training and body data**. Its Android companion handles capture in the field;
+the C17 desktop core keeps the canonical long-term history; a keyboard-first
+Notcurses TUI and a loopback-only Web application provide complementary ways
+to inspect and manage it.
 
-Android and desktop each own a local SQLite database. The desktop database is
-the canonical long-term history. Trainlog synchronizes versioned JSON artifacts
-over its authenticated local transports and optional configured Drive workflow;
-it never copies SQLite database files between devices.
+The system is built around explicit facts, stable identities, versioned JSON
+exchanges, and user-controlled storage. Plans never become performed work until
+they are actually recorded, continuous activities are not disguised as sets,
+and estimates are kept distinct from measurements.
 
-## Product split
+> **Release line:** Trainlog `0.1.6` is in development. The latest stable
+> release is [`v0.1.5`](https://github.com/labfytools/trainlog/releases/tag/v0.1.5).
 
-| Surface | Primary responsibility |
-|---|---|
-| Android | Capture and quickly correct sets, repetitions, loads, durations, and continuous activities; reorder active and completed-session occurrences; capture feedback, J+1 follow-ups, body measurements, and AI proposals; trigger sync; show quick summaries. |
-| Desktop TUI | Administer, inspect, maintain, import/export, correct canonical history, and provide technical tools. |
-| Local Web (0.1.6 development) | Display Dashboard, Programmes, Sessions, Exercises and factual Analyse workspaces. Analyse includes the Sleep Diary editor, multi-night 18:00-to-18:00 agenda, factual heart-rate timelines and local vector PDF export. |
+## ✦ Showcase
 
-No interface reconstructs business truth from SQLite tables. The local Web is
-a sibling adapter, not an extension of the TUI. On `main`, its loopback-only
-CLI/HTTP adapter, embedded frontend, read-only Dashboard API, factual tiles,
-visualizations, and private layout persistence are implemented. This does not
-make the remaining placeholder routes functional.
-The top-level `/programmes` route is an operational daily calendar for active
-Programs. Sessions → Programmes remains the technical administration/import,
-list, detail, archive, and delete surface.
-Web Exercises administration, the factual Dashboard/Analyse read model, and the
-synchronized Sleep Diary workspace are the stable v0.1.4 baseline. Stable
-0.1.5 adds persistent CYCPLUS acquisition, the global `♥ BPM` indicator,
-training exercise timestamps, structured Android Sleep capture, dedicated
-synchronized `cardio` sessions, versioned measured Cardio calibration,
-fresh-signal BPM-guided phases and factual Web heart-rate timelines in
-History/Sleep.
-Version 0.1.6 development is open without selecting a new feature tranche or
-reopening the frozen 0.1.5 release contracts.
+<p align="center">
+  <img src="docs/reviews/evidence/sleep-diary-alignment-firefox.png" alt="Trainlog Web Analyse workspace showing the Sleep Diary agenda and factual heart-rate timeline" width="100%">
+</p>
 
-## Releases
+<p align="center"><sub>Web Analyse in the 0.1.6 development line — synchronized Sleep facts and measured heart-rate data on one timeline.</sub></p>
 
-When a Trainlog release is published, its prebuilt assets are available from
-both official mirrors:
+The repository currently tracks real-browser evidence for the Web interface.
+Its Android overview asset is a clearly labelled static design study with
+fictional data, not a runtime screenshot; no current TUI screenshot is tracked.
+Those assets are therefore not presented here as product captures.
 
-- [GitHub Releases](https://github.com/labfytools/trainlog/releases)
-- [Forgejo Releases](https://git.labfytools.com/fy59/trainlog/releases)
+## ✦ Features
 
-Each published stable release provides:
+| Area                 | Available in the current development tree                                                                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Training capture** | Metadata-driven sets, repetitions, durations and continuous activities; heterogeneous actual sets; durable active draft; exercise timelines; explicit measured MAX results.                   |
+| **Planning**         | Manual preparations, imported Programs, Android delivery, execution provenance and strict separation between targets and facts.                                                               |
+| **Context**          | Exercise and equipment catalogues, BODY ZONES, body measurements, immediate feedback, wording revisions and J+1 follow-ups.                                                                   |
+| **Cardio**           | Android BLE heart-rate acquisition, factual BPM/RR history, cardio sessions, measured calibration and fresh-signal phase guidance.                                                            |
+| **Sleep**            | One-tap Android capture, causal Sleep Diary revisions, medication occurrences, synchronized factual timelines and local vector PDF export.                                                    |
+| **Desktop**          | C17 Core, canonical SQLite history, keyboard-first Notcurses administration, correction, statistics, graphs and synchronization diagnostics.                                                  |
+| **Local Web**        | Loopback-only Dashboard, Analyse, Programmes, Sessions, Exercises, Equipment, Settings and synchronization surfaces backed by typed Core services.                                            |
+| **Synchronization**  | One generation/ACK business engine over authenticated Bluetooth Classic RFCOMM, direct USB/MTP recovery and a separately configured private Drive workflow; SQLite files are never exchanged. |
 
-- a signed Android APK;
-- a Linux x86-64 desktop runtime bundle;
-- SHA-256 checksums.
+### Boundaries and work in progress
 
-Both mirrors publish the same Trainlog product version and release assets. The
-latest stable version is **0.1.5** on Android and desktop; this is one shared
-Trainlog version, not separate interface versions. Version 0.1.4 is the
-previous stable release.
+- `TRAINLOG_FORMAT_V1` remains frozen. The active mobile snapshot is V3; V1
+  and V2 remain readable, while V4 codecs are staged but not selected by the
+  active transport.
+- Full-generation synchronization is deployed only behind a trusted local
+  opt-in; the default automatic exchange remains V3.
+- AI history export is active. AI session proposals still have a pending real
+  Drive plus Android-triggered bidirectional smoke test.
+- Session Generator V1 is implemented but hidden while the V2 planning model
+  is developed.
+- Web Analyse is implemented; its recorded visual-review gate remains open.
 
-Trainlog presents French by default, with English selectable
-from **Settings → Language** on Android and the desktop TUI. The selection is
-local to that installation and updates the visible interface immediately; it
-does not translate user exercise/catalogue names or change training data,
-stable IDs, databases, schemas, exchange artifacts, synchronization protocols,
-AI, MAX, or feedback. Synchronization status is rendered locally from typed
-status and counters; raw protocol and operational summaries are not translated
-or injected into the other surface.
+The canonical status and limitations live in
+[`docs/current_state.md`](docs/current_state.md); future work belongs in the
+[`roadmap`](docs/roadmap.md).
 
-See the [documentation](docs/README.md) and [changelog](CHANGELOG.md) for more
-details.
-
-## Installation
-
-### Download a prebuilt release
-
-For a published release, download Trainlog from either official mirror:
-
-- [GitHub](https://github.com/labfytools/trainlog/releases)
-- [Forgejo](https://git.labfytools.com/fy59/trainlog/releases)
-
-Both mirrors contain the same Android APK, Linux x86-64 runtime bundle, and SHA-256
-checksums for each stable Trainlog release. Verify the downloaded binaries
-against `SHA256SUMS` before installing them.
-
-The Linux artifact is an architecture-specific tar archive whose published
-filename intentionally remains `trainlog-tui-linux-x86_64-v<version>`. It
-contains the TUI/Web executable, synchronization daemon and helpers, catalogs,
-and a hashed inventory from the same release commit. Its native executables are
-dynamically linked, so the host must provide compatible runtime libraries
-listed under [Dependencies](#dependencies).
-
-```bash
-mkdir trainlog-v<version>
-tar -xf trainlog-tui-linux-x86_64-v<version> -C trainlog-v<version>
-./trainlog-v<version>/bin/trainlog
-```
-
-The extracted bundle can remain in a user-managed installation directory.
-Linking its launchers from `bin/` into `~/.local/bin` is optional.
-
-For Android, download the release APK, allow installation from the browser or
-file manager when Android requests it, and install the package. Android 8.0
-(API 26) or later is required. Grant Trainlog all-files access only when direct
-`Documents/Trainlog` synchronization is needed. Desktop synchronization also
-requires the Linux side and its MTP dependencies to be installed and configured.
-
-Android and the TUI in each stable release share the same Trainlog product
-version on both mirrors. Database schemas and JSON protocol versions are
-independent.
-
-### Daily synchronization on an opted-in installation
-
-After explicitly enabling the paired local synchronization path, keep Bluetooth
-enabled on Android and the desktop and select **Synchronize** in Trainlog when
-an explicit run is wanted. The current paired deployment prefers authenticated
-Bluetooth Classic RFCOMM and uses direct USB/MTP as the wired recovery path.
-The existing private Drive workflow remains separately configured. Wait until
-the correlated generation and acknowledgements complete; a failure remains
-durable and should be diagnosed before retrying rather than deleting protocol,
-database, or backup files.
-
-### Build from source
-
-Desktop:
-
-```bash
-meson setup build
-meson compile -C build
-meson test -C build --print-errorlogs
-```
-
-Android:
-
-```bash
-cd android
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
-```
-
-`assembleRelease` produces a distributable stable APK only when release signing
-is configured by the release operator. The repository does not contain signing
-credentials and does not silently generate them.
-
-Release hosts provide `TRAINLOG_RELEASE_STORE_FILE`,
-`TRAINLOG_RELEASE_STORE_PASSWORD`, `TRAINLOG_RELEASE_KEY_ALIAS`, and
-`TRAINLOG_RELEASE_KEY_PASSWORD`, or a private
-`~/.config/trainlog/release-signing.properties` file containing the equivalent
-`storeFile`, `storePassword`, `keyAlias`, and `keyPassword` keys. Environment
-variables take precedence. Keystores and local credential files are ignored by
-Git; neither belongs in source control, build logs, or release notes.
-
-The Android release key is the permanent update identity for the application.
-The release operator must preserve an encrypted external backup of both the
-keystore and its credentials. Losing either prevents future compatible Android
-updates; generating a replacement key is not a normal release procedure.
-
-## Dependencies
-
-### Linux runtime dependencies
-
-The published v0.1.5 x86-64 desktop runtime is dynamically linked. Its tagged
-source directly requires compatible versions of:
-
-- glibc and the GCC support runtime;
-- SQLite 3;
-- libuuid;
-- utf8proc;
-- libudev;
-- libmtp;
-- Notcurses Core;
-- the standard math library.
-
-Version 0.1.4 additionally links GNU libmicrohttpd and yyjson for the local Web
-adapter and Dashboard layout configuration. Those are not retroactive
-requirements of the pre-Web v0.1.1 tagged source.
-
-Distribution packages may pull additional transitive libraries, including
-libusb, ncursesw, unistring, gpm, libgcrypt, libgpg-error, and libdeflate.
-Package names and ABI versions vary by distribution; inspect the release's
-`ldd` evidence and install packages from the target distribution rather than
-assuming one universal package command.
-
-### Optional runtime and integration dependencies
-
-- Android is optional when using the desktop TUI alone. USB/MTP synchronization
-  requires the Android companion, libudev, libmtp, and an unlocked connected
-  device.
-- Bluetooth synchronization requires BlueZ on Linux plus Python 3.11 or newer
-  with D-Bus and GObject bindings. It is a Trainlog synchronization transport,
-  not a heart-rate sensor implementation.
-- `trainlog-syncd` installation expects a systemd user session. Manual TUI
-  synchronization does not require the user service.
-- `rclone` is required for desktop Google Drive synchronization and automatic
-  AI Drive workflows. Core capture, local history, analytics, and direct MTP
-  synchronization continue to work without `rclone`.
-
-### Build dependencies
-
-Desktop builds require:
-
-- Meson and Ninja;
-- a C17 compiler toolchain;
-- `pkg-config`;
-- Notcurses Core development headers;
-- SQLite, libuuid, utf8proc, libudev, libmtp, GNU libmicrohttpd, and yyjson
-  development headers for the current development source;
-- Python 3 for generated sources, validators, import/export helpers, and tests.
-
-The embedded Web frontend additionally uses Node and npm at build time only.
-Prepare its exact locked dependencies explicitly, then enable the release
-frontend build:
-
-```bash
-cd web
-npm ci
-npm run typecheck
-npm test
-cd ..
-meson setup build -Dweb=enabled
-meson compile -C build
-```
-
-Meson never runs `npm install` or downloads packages. Run `npm ci` explicitly
-for the exact lockfile before configuring a Web-enabled build. The default `web=auto`
-embeds the frontend when Node, npm, and the prepared `web/node_modules` are
-available; otherwise it preserves a desktop-only build and `trainlog -w`
-reports that frontend support is absent. Release builds must use
-`-Dweb=enabled`. `-Dweb=disabled` is the explicit desktop-only choice. Node,
-npm, `node_modules`, and `web/dist` are not runtime dependencies.
-
-For an existing build directory, change the option with `meson configure
-build -Dweb=enabled` (or the required value) instead of running `meson setup`
-as though the directory were new.
-
-### Optional systemd user service for local Web development
-
-The versioned `systemd/trainlog-web.service` unit can keep `trainlog -w`
-available on `127.0.0.1:8080` during an interactive user session. Without
-systemd user lingering, enabling it does not guarantee startup before login.
-This is a development convenience, not a requirement of the final Trainlog
-distribution.
-It intentionally runs the canonical user entry point
-`~/.local/bin/trainlog`; in a source checkout that entry point may be a symlink
-to the current `build/tui/trainlog` binary, but the symlink must resolve to an
-executable before the service is started.
-
-The unit prevents privilege acquisition, gives the process a private temporary
-directory, makes system paths read-only, and applies kernel/control-group and
-setuid restrictions that are compatible with the local HTTP server. It does
-not protect or hide the home directory because SQLite and Trainlog
-configuration must remain writable under `~/.local/share/trainlog` and
-`~/.config/trainlog`. Failed starts use a ten-second restart delay and are
-limited to three attempts per minute, preventing a persistent port-8080
-conflict from producing an uncontrolled loop.
-
-Install the development unit as a symlink so repository updates are picked up
-after `daemon-reload`:
-
-```bash
-mkdir -p ~/.config/systemd/user
-ln -s "$(pwd)/systemd/trainlog-web.service" ~/.config/systemd/user/trainlog-web.service
-systemctl --user daemon-reload
-systemctl --user enable --now trainlog-web.service
-```
-
-Useful lifecycle and diagnostic commands are:
-
-```bash
-systemctl --user status trainlog-web
-systemctl --user restart trainlog-web
-systemctl --user stop trainlog-web
-systemctl --user start trainlog-web
-journalctl --user -u trainlog-web
-```
-
-An operator may separately configure a local nginx proxy such as
-`http://trainlog.perf`. That hostname and proxy are machine-local conveniences,
-not a public Trainlog domain or a runtime dependency, and Trainlog does not
-configure them automatically.
-
-Uninstalling the integration disables the unit before removing only its user
-configuration symlink:
-
-```bash
-systemctl --user disable --now trainlog-web.service
-rm ~/.config/systemd/user/trainlog-web.service
-systemctl --user daemon-reload
-```
-
-Android builds require JDK 17, an Android SDK supporting the configured API
-levels, and the Gradle wrapper committed in this repository. People installing
-the APK do not need Java, Gradle, or the Android SDK.
-
-## Documentation
-
-| Topic | Document | Purpose |
-|---|---|---|
-| Documentation map | [docs/README.md](docs/README.md) | Canonical index and ownership map. |
-| Current state | [docs/current_state.md](docs/current_state.md) | Current implemented schemas, capabilities, validation, and limitations. |
-| Architecture | [docs/architecture.md](docs/architecture.md) | Component, storage, process, and ownership boundaries. |
-| Android | [docs/android.md](docs/android.md) | Field-companion behavior and local persistence. |
-| Desktop TUI | [docs/tui.md](docs/tui.md) | Notcurses workflows, correction, and analytics. |
-| Database | [docs/database.md](docs/database.md) | Desktop persistence schema and migration contracts. |
-| Exercise model | [docs/exercise_data_model.md](docs/exercise_data_model.md) | Exercise, occurrence, load, and MAX semantics. |
-| Synchronization | [docs/sync_exchange.md](docs/sync_exchange.md) | Active MTP flow and companion artifacts. |
-| Exchange formats | [docs/exchange_format.md](docs/exchange_format.md) | Frozen and separately versioned JSON contracts. |
-| Training feedback | [docs/training_feedback.md](docs/training_feedback.md) | Immediate feedback, revisions, and J+1 follow-ups. |
-| Tests | [docs/tests.md](docs/tests.md) | Durable validation commands and coverage strategy. |
-| Roadmap | [docs/roadmap.md](docs/roadmap.md) | Current cursor and future work only. |
-| Development contract | [AGENTS.md](AGENTS.md) | Repository invariants and contribution rules. |
-| Change history | [CHANGELOG.md](CHANGELOG.md) | Chronological implementation history. |
-
-## Architecture overview
+## ✦ Architecture
 
 ```text
-Android local SQLite
-        |
-        | versioned JSON snapshots and requests
-        v
-Documents/Trainlog on Android storage
-        |
-        | direct MTP / libmtp
-        v
-trainlog_sync_run() <---- trainlog-syncd or desktop TUI
-        |
-        +---- import Android snapshot into desktop SQLite
-        +---- publish desktop catalog companions to Android
-        +---- write a synchronization receipt
-
-desktop SQLite = canonical long-term history
+┌──────────────────────────────┐
+│ Android field companion      │
+│ private SQLite capture store │
+└──────────────┬───────────────┘
+               │ versioned JSON generations + acknowledgements
+               │ Bluetooth RFCOMM primary · direct USB/MTP recovery
+               ▼
+┌──────────────────────────────┐       optional, separately configured
+│ Synchronization orchestration│◄───── private Drive workflow
+└──────────────┬───────────────┘
+               │ typed imports, commands and read models
+               ▼
+┌──────────────────────────────┐
+│ Trainlog Core · C17          │
+│ desktop SQLite = canonical   │
+│ long-term history            │
+└──────────────┬───────────────┘
+               │
+        ┌──────┴──────────┐
+        ▼                 ▼
+┌──────────────┐   ┌──────────────────────┐
+│ Notcurses TUI│   │ 127.0.0.1 Web adapter│──► browser
+└──────────────┘   └──────────────────────┘
 ```
 
-The optional desktop AI flow exports read-only history and exchanges session
-proposals through Google Drive via the external `rclone` process. Android does
-not contain cloud credentials and does not run `rclone`.
+The TUI, Web application, and Android client are sibling adapters with
+different responsibilities. Business rules, calculations, persistence, and
+typed read models belong to Core; presentation code does not reconstruct them
+from raw database tables. See the full
+[`architecture contract`](docs/architecture.md).
 
-## Current status
+## ✦ Your data, your system
 
-As of 2026-09-18:
+- Trainlog runs on the user's own Android and Linux systems; no hosted Trainlog
+  account or proprietary cloud service is required for core capture, history,
+  analytics, or direct synchronization.
+- Android and desktop each keep a local SQLite database; the desktop database
+  is the canonical long-term history.
+- Devices exchange bounded, versioned JSON artifacts—not database files.
+- The local Web server binds to `127.0.0.1` by default and never silently falls
+  back to a LAN address or another port.
+- Direct Android storage uses `Documents/Trainlog`; desktop USB access uses
+  `libudev` and `libmtp` without requiring a GVFS/FUSE mount.
+- The optional Drive path is operator-configured through external `rclone`.
+  Android holds no cloud credentials.
 
-- `TRAINLOG_FORMAT_V1=PASS/FROZEN`;
-- desktop SQLite schema v29 and Android SQLite schema v26;
-- Notcurses is the only active desktop terminal backend;
-- direct storage is `/storage/emulated/0/Documents/Trainlog` under Android's
-  all-files access setting;
-- mobile export V3 is active; V1/V2 remain readable legacy inputs; explicit V4
-  history and execution-draft codecs are staged but not selected by transport;
-- `STATS_V1=IMPLEMENTED`, `TRAINING_KNOWLEDGE_V1=PASS`, and
-  `SESSION_GENERATOR_V1=PASS` (the generator is hidden pending V2);
-- `APP_SHELL_V1=IMPLEMENTED_AWAITING_VISUAL_REVIEW_2`;
-- `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` pending a real Drive plus
-  Android-triggered bidirectional smoke test.
-- `WEB_FRONTEND_SHELL_V1=PASS/FROZEN` and
-  `WEB_DASHBOARD_V1=PASS/FROZEN` and `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN`;
-  `/programmes` is an operational active-Program calendar, while
-  Sessions → Programmes remains the administration surface;
-  `TRAINLOG_WEB_EXERCISES_V1=PASS`; `/analyse` now provides the 0.1.4 factual
-  Dashboard/Analyse read-model foundation pending visual review;
-- `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS`: the coordinated
-  private desktop/Android deployment, real Firefox presentation, correlated
-  `programs-v1` deletion ACK, restart/replay, and non-resurrection checks pass;
-- `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`;
-- `TRAINLOG_SYNC_GENERATION_ACK_V1=PASS/FROZEN` through explicit staged
-  services; automatic synchronization still selects V3. The trusted local
-  opt-in path is deployed on the paired private installation and has completed
-  real direct-MTP restart/replay validation; it is not a public rollout.
+## ✦ Build and run
 
-The latest executable result belongs in
-[current state](docs/current_state.md), not in multiple README narratives.
+### Desktop and TUI
 
-## Desktop development quick start
-
-Requirements include Meson, Ninja, SQLite3, utf8proc, libuuid, libudev,
-libmtp, and Notcurses.
+The desktop build requires Meson, Ninja, a C17 toolchain, `pkg-config`, Python
+3, and development files for SQLite, libuuid, utf8proc, libudev, libmtp,
+Notcurses Core, GNU libmicrohttpd, and yyjson.
 
 ```bash
 meson setup build
@@ -386,13 +127,36 @@ meson test -C build --print-errorlogs
 ./build/tui/trainlog
 ```
 
-The database path is `$XDG_DATA_HOME/trainlog/trainlog.db`, or
+The desktop database is stored at
+`$XDG_DATA_HOME/trainlog/trainlog.db`, or
 `~/.local/share/trainlog/trainlog.db` when `XDG_DATA_HOME` is unset.
 
-## Android development quick start
+### Embedded local Web application
 
-Use Java 17 and provide the Android SDK through `ANDROID_HOME` or the untracked
-`android/local.properties` file.
+Node and npm are build-time dependencies only. Meson does not download npm
+packages.
+
+```bash
+cd web
+npm ci
+npm run typecheck
+npm test
+cd ..
+
+meson setup build-web -Dweb=enabled
+meson compile -C build-web
+./build-web/tui/trainlog --web
+```
+
+The Web application listens on `127.0.0.1:8080` by default. Use
+`--port <port>` for an explicit alternative. For an existing build directory,
+use `meson configure build -Dweb=enabled` instead of running `meson setup`
+again.
+
+### Android
+
+Android builds use the committed Gradle wrapper, JDK 17, and an Android SDK for
+the configured API levels (`minSdk 26`, `targetSdk 36`, `compileSdk 37`).
 
 ```bash
 cd android
@@ -400,38 +164,81 @@ JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew test
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug
 ```
 
-Instrumented tests belong on an emulator. Do not run
-`connectedDebugAndroidTest` on the primary personal phone.
+Instrumented tests belong on an emulator; the primary personal phone is
+reserved for manual, non-destructive installation and synchronization checks.
+Release APK signing is intentionally operator-local and is not configured with
+credentials from this repository.
 
-## Synchronization quick start
+<details>
+<summary>Optional user-session services</summary>
+
+After a desktop build, the repository provides an installer for the private
+automatic synchronization services:
 
 ```bash
-meson compile -C build
 bash tools/install_syncd_user.sh
 systemctl --user is-active trainlog-syncd.service
 ```
 
-On Android, grant all-files access for the fixed `Documents/Trainlog`
-directory, then use **Synchronisation → Synchroniser maintenant**. Hardware MTP
-validation requires an unlocked connected device and remains an explicit manual
-check.
+This modifies the current user's `~/.local/bin` and systemd user configuration.
+Bluetooth generation transport starts only when its separate Trainlog
+configuration explicitly enables it. The loopback Web development unit in
+`systemd/trainlog-web.service` is another optional integration; neither service
+is required for manual TUI use.
 
-## Development principles
+</details>
 
-- Preserve frozen, versioned compatibility boundaries.
-- Use stable IDs; display names are not identities.
-- Keep performed work separate from plans and continuous activity separate
-  from fake sets.
-- Keep Android capture, desktop analytics, persistence, transport, and
-  rendering responsibilities distinct.
-- Prefer explicit failure to silent data loss or corruption.
-- Treat migrations, idempotence, tests, and documentation as part of feature
-  completion.
-- Keep scientific catalogs separate from runtime user data and preserve stated
-  uncertainty.
+Prebuilt stable APKs and Linux x86-64 runtime bundles are published on both
+official mirrors: [Forgejo Releases](https://git.labfytools.com/fy59/trainlog/releases)
+and [GitHub Releases](https://github.com/labfytools/trainlog/releases). Verify
+downloaded artifacts against the accompanying `SHA256SUMS`.
 
-## License and project notes
+## ✦ Repository layout
 
-See [LICENSE](LICENSE). Forgejo is the primary repository; GitHub is a mirror.
-Repository layout, detailed contracts, and historical review records are linked
-from [docs/README.md](docs/README.md).
+```text
+trainlog/
+├── android/          Kotlin + Jetpack Compose field companion
+├── tui/              C17 Core, Notcurses TUI, Web adapter and native tests
+├── web/              React + TypeScript + Vite frontend
+├── catalog/          versioned scientific and product knowledge
+├── format/           JSON schemas and frozen format material
+├── contracts/        machine-readable presentation contracts
+├── tools/            validators, import/export and sync utilities
+├── tests/            cross-surface and protocol regression tests
+├── systemd/          optional user-session integration
+└── docs/             canonical documentation and review evidence
+```
+
+## ✦ Documentation
+
+| Start here                                                   | Scope                                                                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| [`docs/current_state.md`](docs/current_state.md)             | Implemented capabilities, versions, validation evidence and active limitations. |
+| [`docs/architecture.md`](docs/architecture.md)               | Component, storage, process, transport and ownership boundaries.                |
+| [`docs/roadmap.md`](docs/roadmap.md)                         | Current cursor and future work.                                                 |
+| [`docs/android.md`](docs/android.md)                         | Android capture, persistence and synchronization behavior.                      |
+| [`docs/tui.md`](docs/tui.md)                                 | Notcurses workflows, correction, analytics and technical tools.                 |
+| [`docs/sync_exchange.md`](docs/sync_exchange.md)             | Active synchronization flow, replay and acknowledgement semantics.              |
+| [`docs/exchange_format.md`](docs/exchange_format.md)         | Frozen and separately versioned JSON contracts.                                 |
+| [`docs/exercise_data_model.md`](docs/exercise_data_model.md) | Exercise, occurrence, planning, load and MAX semantics.                         |
+| [`docs/database.md`](docs/database.md)                       | Desktop SQLite schema and migration contracts.                                  |
+| [`docs/tests.md`](docs/tests.md)                             | Canonical validation commands and coverage strategy.                            |
+
+The complete ownership map is in [`docs/README.md`](docs/README.md), with
+chronological detail in the [`CHANGELOG`](CHANGELOG.md).
+
+## ✦ Project status
+
+| Boundary            | Current state                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------- |
+| Product             | `0.1.6` development; latest stable release `v0.1.5`                                                       |
+| Desktop persistence | SQLite schema v36                                                                                         |
+| Android persistence | SQLite schema v33                                                                                         |
+| Mobile exchange     | V3 active; V1/V2 readable; V4 staged only                                                                 |
+| Desktop terminal    | C17 + Notcurses, active backend                                                                           |
+| Local Web           | Dashboard and operational Analyse, Programmes, Sessions, Exercises, Equipment, Settings and sync surfaces |
+| Interface language  | French by default; English selectable on Android and desktop                                              |
+| Compatibility       | `TRAINLOG_FORMAT_V1=PASS/FROZEN`                                                                          |
+
+Forgejo is the primary repository; GitHub is its release mirror. Trainlog is
+licensed under the [GNU General Public License v3](LICENSE).

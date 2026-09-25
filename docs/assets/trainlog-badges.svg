@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="52" viewBox="0 0 960 52" role="img" aria-labelledby="title desc">
+  <title id="title">Trainlog technology badges</title>
+  <desc id="desc">Local-first, C17, Android, local Web, GPLv3, and development version 0.1.6.</desc>
+  <style>
+    .label { font: 600 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #cdd6f4; dominant-baseline: middle; text-anchor: middle; }
+  </style>
+  <g>
+    <rect x="0" y="4" width="172" height="44" rx="12" fill="#1e1e2e" stroke="#b4befe" stroke-width="2"/>
+    <circle cx="24" cy="26" r="6" fill="#b4befe"/>
+    <text class="label" x="100" y="27">LOCAL-FIRST</text>
+  </g>
+  <g>
+    <rect x="184" y="4" width="116" height="44" rx="12" fill="#1e1e2e" stroke="#89b4fa" stroke-width="2"/>
+    <circle cx="208" cy="26" r="6" fill="#89b4fa"/>
+    <text class="label" x="258" y="27">C17</text>
+  </g>
+  <g>
+    <rect x="312" y="4" width="160" height="44" rx="12" fill="#1e1e2e" stroke="#a6e3a1" stroke-width="2"/>
+    <circle cx="336" cy="26" r="6" fill="#a6e3a1"/>
+    <text class="label" x="405" y="27">ANDROID</text>
+  </g>
+  <g>
+    <rect x="484" y="4" width="176" height="44" rx="12" fill="#1e1e2e" stroke="#74c7ec" stroke-width="2"/>
+    <circle cx="508" cy="26" r="6" fill="#74c7ec"/>
+    <text class="label" x="584" y="27">LOCAL WEB</text>
+  </g>
+  <g>
+    <rect x="672" y="4" width="132" height="44" rx="12" fill="#1e1e2e" stroke="#cba6f7" stroke-width="2"/>
+    <circle cx="696" cy="26" r="6" fill="#cba6f7"/>
+    <text class="label" x="753" y="27">GPLv3</text>
+  </g>
+  <g>
+    <rect x="816" y="4" width="144" height="44" rx="12" fill="#1e1e2e" stroke="#fab387" stroke-width="2"/>
+    <circle cx="840" cy="26" r="6" fill="#fab387"/>
+    <text class="label" x="896" y="27">v0.1.6</text>
+  </g>
+</svg>

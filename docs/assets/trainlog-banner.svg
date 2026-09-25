@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="480" viewBox="0 0 1440 480" role="img" aria-labelledby="title desc">
+  <title id="title">Trainlog</title>
+  <desc id="desc">A Catppuccin Mocha banner for a local-first training data system.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#11111b"/>
+      <stop offset="0.58" stop-color="#181825"/>
+      <stop offset="1" stop-color="#1e1e2e"/>
+    </linearGradient>
+    <linearGradient id="lavender" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b4befe"/>
+      <stop offset="1" stop-color="#cba6f7"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#45475a" stroke-width="1" opacity="0.22"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1440" height="480" rx="28" fill="url(#bg)"/>
+  <rect width="1440" height="480" rx="28" fill="url(#grid)"/>
+  <path d="M0 25Q0 0 25 0H1415Q1440 0 1440 25" fill="none" stroke="#b4befe" stroke-width="4"/>
+
+  <g transform="translate(72 64)">
+    <circle cx="12" cy="12" r="7" fill="#f38ba8"/>
+    <circle cx="36" cy="12" r="7" fill="#f9e2af"/>
+    <circle cx="60" cy="12" r="7" fill="#a6e3a1"/>
+    <text x="90" y="19" fill="#6c7086" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="21">~/trainlog</text>
+
+    <text x="0" y="164" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="92" font-weight="700" letter-spacing="10">TRAINLOG</text>
+    <rect x="2" y="190" width="610" height="5" rx="2.5" fill="url(#lavender)"/>
+    <text x="0" y="243" fill="#b4befe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="27" letter-spacing="1">capture · synchronize · inspect · understand</text>
+    <text x="0" y="293" fill="#a6adc8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="21">Android / C17 + Notcurses / Local Web / SQLite</text>
+  </g>
+
+  <g transform="translate(890 72)">
+    <rect width="470" height="336" rx="22" fill="#11111b" stroke="#45475a" stroke-width="2"/>
+    <path d="M0 58H470" stroke="#45475a" stroke-width="2"/>
+    <circle cx="28" cy="29" r="6" fill="#f38ba8"/>
+    <circle cx="50" cy="29" r="6" fill="#f9e2af"/>
+    <circle cx="72" cy="29" r="6" fill="#a6e3a1"/>
+    <text x="96" y="36" fill="#6c7086" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">facts.timeline</text>
+
+    <path d="M34 222H436" stroke="#313244" stroke-width="2"/>
+    <path d="M34 118H436M34 170H436M34 274H436" stroke="#313244" stroke-width="1" stroke-dasharray="5 8"/>
+    <path d="M34 221H78L94 219L111 145L128 263L147 212H188L207 194L226 205L245 114L264 248L286 218H327L345 176L364 203L384 202L402 155L420 221H436" fill="none" stroke="#b4befe" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <circle cx="111" cy="145" r="6" fill="#f38ba8"/>
+    <circle cx="245" cy="114" r="6" fill="#f38ba8"/>
+    <circle cx="402" cy="155" r="6" fill="#a6e3a1"/>
+
+    <rect x="34" y="292" width="112" height="24" rx="12" fill="#313244"/>
+    <circle cx="50" cy="304" r="5" fill="#a6e3a1"/>
+    <text x="63" y="310" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">local</text>
+    <rect x="158" y="292" width="136" height="24" rx="12" fill="#313244"/>
+    <circle cx="174" cy="304" r="5" fill="#89b4fa"/>
+    <text x="187" y="310" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">versioned</text>
+    <rect x="306" y="292" width="130" height="24" rx="12" fill="#313244"/>
+    <circle cx="322" cy="304" r="5" fill="#b4befe"/>
+    <text x="335" y="310" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">factual</text>
+  </g>
+
+  <rect x="1" y="1" width="1438" height="478" rx="27" fill="none" stroke="#313244" stroke-width="2"/>
+</svg>
