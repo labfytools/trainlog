@@ -166,7 +166,8 @@ def select_request(root: Path, seen: list[str]) -> tuple[str, str, list[str]] | 
     WHY: modern Android may publish the same intent on full-generation and
     legacy channels, while stale legacy files remain durable on MTP. CONTRACT:
     full-generation wins and an older alternate intent is retired. INVARIANT:
-    one request_id starts at most one daemon conversation.
+    one request_id owns at most one active daemon conversation; only an
+    explicitly transient terminal result permits its later readmission.
     """
     full = request(root / FULL_GENERATION_REQUEST_NAME)
     legacy = request(root / REQUEST_NAME)
