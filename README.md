@@ -231,7 +231,7 @@ chronological detail in the [`CHANGELOG`](CHANGELOG.md).
 
 | Boundary            | Current state                                                                                             |
 | ------------------- | --------------------------------------------------------------------------------------------------------- |
-| Product             | `0.1.6` stable                                                                                            |
+| Product             | `0.1.7` bugfix-only development; latest stable release `v0.1.6`                                           |
 | Desktop persistence | SQLite schema v36                                                                                         |
 | Android persistence | SQLite schema v33                                                                                         |
 | Mobile exchange     | V3 active; V1/V2 readable; V4 staged only                                                                 |

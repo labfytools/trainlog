@@ -30,7 +30,7 @@ estimates.
 
 ## Current baseline
 
-Stable v0.1.6 is the release baseline for the next stabilization cycle.
+Stable v0.1.6 is the release baseline for the v0.1.7 stabilization cycle.
 Desktop schema v36, Android schema v33, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
@@ -76,8 +76,19 @@ release closes this implementation cycle without reopening its frozen
 contracts.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=Stable v0.1.6 published; open 0.1.7 stabilization after the immutable release tag.
+CURRENT_OPERATIONAL_CURSOR=0.1.7 bugfix-only stabilization open after immutable stable v0.1.6.
 ```
+
+### 0.1.7 stabilization scope
+
+The 0.1.7 line is restricted to observed bug fixes, regression fixes, small UI
+inconsistencies directly caused by a bug, documentation corrections, robustness,
+and tests associated with those corrections.
+
+New features, new modules, architectural refactors not required to fix a bug,
+protocol evolution, new Android/Web/TUI capabilities, and speculative
+optimization are out of scope. Work outside this boundary waits for a later
+feature cycle rather than widening 0.1.7.
 
 Sleep Diary V1 stays frozen/readable while active capable peers require
 `sleep-diary-v2`. The Web’s relative HR rise/fall overlays remain descriptive

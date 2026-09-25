@@ -308,7 +308,7 @@ static bool test_http_contract(TrainlogDatabase *database) {
     CHECK(strstr(response, "Access-Control-Allow-Origin") == NULL);
     CHECK(strstr(response,
                  "{\"api_version\":1,\"status\":\"ok\",\"product\":\"trainlog\","
-                 "\"version\":\"0.1.6\"}") != NULL);
+                 "\"version\":\"0.1.7\"}") != NULL);
     {
         char token[80];
         CHECK(exchange(port,

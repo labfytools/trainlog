@@ -132,7 +132,7 @@ parallel implementation of its rules.
 | Android SQLite | schema v33; v33 makes Sleep revision payload tables append-only; v32 gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
-| Trainlog product version | `0.1.6` stable, synchronized across Android and desktop; latest stable release: `v0.1.6` |
+| Trainlog product version | `0.1.7` bugfix-only development, synchronized across Android and desktop; latest stable release: `v0.1.6` |
 | Interface language | `TRAINLOG_I18N_V0_1_1=PASS`: French default; English selectable in Settings → Language on both surfaces |
 | AI history export | `TRAINLOG_AI_EXPORT_V1` active |
 | AI session proposals | `TRAINLOG_AI_SESSION_DRAFT_V1=VALIDATION_PENDING` |
@@ -177,7 +177,7 @@ parallel implementation of its rules.
 | 0.1.5 validation | `TRAINLOG_0_1_5_VALIDATION_V1=PASS`: native 111/111; Android unit-test task and APK build; Web 191/191 plus typecheck/build; JSON/import, C-format and diff checks pass. Private vc47 preserves real data through schema v32, renders pre-bed medication quantity controls, reconnects the CYCPLUS and presents the multi-night Web Sleep agenda. |
 | Tomorrow session readiness | `TRAINLOG_TOMORROW_SESSION_CARDIO_READINESS_V1=PASS`: the private vc46 is clean on schema v31 with fresh CYCPLUS BPM and the next Program session is unambiguous; one combined regression proves two ordered occurrences loaded from the synchronized Program, Program provenance, factual timeline/HR ownership, finalization, full generation, desktop import, replay and correlated ACK |
 | 0.1.6 validation | `TRAINLOG_0_1_6_VALIDATION_V1=PASS`: native Meson 114/114 and Clang ASan/UBSan 114/114; Android 317 tests (312 passed, five documented optional skips), debug APK and signed release APK; Web 32 files / 209 tests plus typecheck/build; JSON/import, changed-C formatting and diff checks pass. |
-| Current operational cursor | Stable v0.1.6 closes the Web refinement, Sleep timeline, synchronization recovery and factual session-finalization cycle; subsequent stabilization opens as 0.1.7 after the immutable release tag. |
+| Current operational cursor | 0.1.7 stabilization is open after immutable stable v0.1.6. Only observed bug fixes, regression fixes, directly related small UI corrections, documentation corrections, robustness, and associated tests are in scope. |
 | Sleep awake/selection/PDF refinement | `TRAINLOG_SLEEP_AWAKE_SELECTION_PDF_V1=PASS`: one temporal projection drives agenda and selected HR detail; a separate inclusive night-start date range drives preview/export from the loaded period. The agenda axis and rows share 24 exact hour columns; estimated sleep duration is consistent and remains non-persistent. |
 | Sleep Réveil interval policy | Android Réveil creates a revisioned 30-minute `long_awake` window; repeated taps extend it and Levé clamps it. The real 2026-09-23 night is causally repaired on Android/desktop and renders two orange intervals in agenda, HR and PDF; Android 307 passed plus five optional skips, and Web 208/208 passed. |
 | Sleep revision collision recovery | `TRAINLOG_SLEEP_REVISION_COLLISION_RECOVERY_V1=PASS`: one unpublished divergent desktop tip was re-identified without payload loss, the immutable Android identity was restored exactly, and a fresh successor retained the non-conflicting union. The original generation was consumed with a full SQLite ACK; the real 24/09 session, Sleep facts, cardio samples, timeline, feedback, and Program provenance are visible on Desktop/Web. Schema v36/v33 and importer payload checks prevent recurrence. |
@@ -514,6 +514,7 @@ unchanged at ten pre-existing errors: one `NewApi`, one
 `LocalContextConfigurationRead`, and eight bilingual `StringFormatMatches`
 diagnostics. This UI tranche adds no lint error and changes no lint policy.
 The stable Android v0.1.6 tag uses `versionName=0.1.6` and public versionCode 7.
+The v0.1.7 stabilization source starts at `versionName=0.1.7` and versionCode 8.
 Private validation builds may still supply only a strictly increasing
 `versionCode` as a build-time override; that does not create a public release
 or change schemas and protocols.

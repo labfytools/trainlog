@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="52" viewBox="0 0 960 52" role="img" aria-labelledby="title desc">
   <title id="title">Trainlog technology badges</title>
-  <desc id="desc">Local-first, C17, Android, local Web, GPLv3, and development version 0.1.6.</desc>
+  <desc id="desc">Local-first, C17, Android, local Web, GPLv3, and development version 0.1.7.</desc>
   <style>
     .label { font: 600 16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #cdd6f4; dominant-baseline: middle; text-anchor: middle; }
   </style>
@@ -32,6 +32,6 @@
   <g>
     <rect x="816" y="4" width="144" height="44" rx="12" fill="#1e1e2e" stroke="#fab387" stroke-width="2"/>
     <circle cx="840" cy="26" r="6" fill="#fab387"/>
-    <text class="label" x="896" y="27">v0.1.6</text>
+    <text class="label" x="896" y="27">0.1.7 DEV</text>
   </g>
 </svg>

@@ -44,7 +44,7 @@ val trainlogVersionCode =
     providers.environmentVariable("TRAINLOG_ANDROID_VERSION_CODE").orNull?.let { raw ->
         raw.toIntOrNull()?.takeIf { it in 1..Int.MAX_VALUE }
             ?: throw GradleException("TRAINLOG_ANDROID_VERSION_CODE must be a positive integer")
-    } ?: 7
+    } ?: 8
 
 /*
  * WHY: a user may need to finish one preserved draft after a completion bug
@@ -87,7 +87,7 @@ android {
         targetSdk = 36
 
         versionCode = trainlogVersionCode
-        versionName = "0.1.6"
+        versionName = "0.1.7"
         buildConfigField("String", "ACTIVE_SESSION_RECOVERY_ID", "\"$recoverySessionId\"")
         buildConfigField("String", "ACTIVE_SESSION_RECOVERY_ENDED_AT", "\"$recoveryEndedAt\"")
         testInstrumentationRunner =

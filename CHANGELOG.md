@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 0.1.7
+
+Development opened after the stable v0.1.6 release. This line is restricted to
+observed bug fixes, regression fixes, directly related small UI corrections,
+documentation corrections, robustness, and associated tests. It does not admit
+new features, modules, protocols, or speculative refactors.
+
 ## 0.1.6 — 2026-09-25
 
 - Corrected delayed session finalization so a heart-rate capture cannot extend
