@@ -30,14 +30,14 @@ estimates.
 
 ## Current baseline
 
-Stable v0.1.5 is the release baseline for the v0.1.6 development cycle.
+Stable v0.1.6 is the release baseline for the next stabilization cycle.
 Desktop schema v36, Android schema v33, Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
 Generator V1 is hidden pending V2. AI session-draft exchange retains its
 explicit manual validation gate. APP_SHELL_V1 remains useful historical design
 evidence, but its September 2026 observations must be revalidated against the
-v0.1.5 baseline rather than treated as a current implementation plan.
+v0.1.6 baseline rather than treated as a current implementation plan.
 `TRAINLOG_WEB_V1=CONTRACT_FROZEN / IMPLEMENTATION_STARTED`; its local-only
 CLI/HTTP infrastructure, embedded frontend shell and the frozen Dashboard data
 contract, frozen interactive grid, versioned layout persistence and factual
@@ -48,7 +48,8 @@ Sessions → Programmes remains the technical administration/import, list,
 detail, archive, and delete surface. Web Exercises V1, the factual
 Dashboard/Analyse read-model foundation, Sleep Diary V1/V2, synchronized
 factual heart-rate timelines, and the complete Cardio V1
-capture/calibration/guidance chain are included in stable v0.1.5.
+capture/calibration/guidance chain and the 0.1.6 refinement/recovery work are
+included in stable v0.1.6.
 The corrective prepared-item projection, bounded phase-owned MTP outbox,
 Sessions presentation correction, local date preference and durable preparation
 withdrawal are implemented. The withdrawal uses the separate versioned
@@ -57,23 +58,25 @@ mobile snapshot or `TRAINLOG_FORMAT_V1` contracts.
 
 ## Current cursor
 
-Stable v0.1.5 closes Cardio V1 and the Sleep Tonight readiness cycle. Android
+Stable v0.1.6 closes the Web refinement, Sleep timeline, synchronization
+recovery, and factual session-finalization cycle. Android
 alone discovers and reads the heart-rate sensor; desktop/Web consume only
 synchronized factual measurements and never connect directly to the sensor.
 The heart-rate path remains independent from the frozen Bluetooth Trainlog
 synchronization transport.
 
-The 0.1.6 Web refinement now also projects factual Sleep intervals, every
+The stable 0.1.6 Web refinement projects factual Sleep intervals, every
 structured awakening, point events, medication intakes, bounds, and duration
 through the agenda, selected-night HR detail, and selected-night PDF. Its
 explicitly labeled fallback estimate is presentation-only, subtracts overlapping
 structured awakenings for displayed duration, and is shared by all three views;
 the agenda retains an exact hourly 18:00-to-18:00 geometry. Android lifecycle/ACK regressions now explicitly guard
-pre-bed medication snapshots against restart, replay and stale ancestry.
-Release work remains the next separate operational step.
+pre-bed medication snapshots against restart, replay and stale ancestry. The
+release closes this implementation cycle without reopening its frozen
+contracts.
 
 ```text
-CURRENT_OPERATIONAL_CURSOR=0.1.6 Sleep agenda/HR/PDF projection, active-night selection and Android medication persistence proof validated and privately deployed; stable release work remains separate.
+CURRENT_OPERATIONAL_CURSOR=Stable v0.1.6 published; open 0.1.7 stabilization after the immutable release tag.
 ```
 
 Sleep Diary V1 stays frozen/readable while active capable peers require

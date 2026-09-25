@@ -6,6 +6,7 @@ than later development. GitHub and Forgejo publication must preserve the
 existing release, tag, status, and assets while keeping their note bodies equal
 to the corresponding source file.
 
+- [Trainlog v0.1.6](v0.1.6.md)
 - [Trainlog v0.1.5](v0.1.5.md)
 - [Trainlog v0.1.4](v0.1.4.md)
 - [Trainlog v0.1.3](v0.1.3.md)

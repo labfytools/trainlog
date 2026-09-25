@@ -17,8 +17,8 @@ exchanges, and user-controlled storage. Plans never become performed work until
 they are actually recorded, continuous activities are not disguised as sets,
 and estimates are kept distinct from measurements.
 
-> **Release line:** Trainlog `0.1.6` is in development. The latest stable
-> release is [`v0.1.5`](https://github.com/labfytools/trainlog/releases/tag/v0.1.5).
+> **Release line:** The latest stable release is
+> [`v0.1.6`](https://github.com/labfytools/trainlog/releases/tag/v0.1.6).
 
 ## ✦ Showcase
 
@@ -26,7 +26,7 @@ and estimates are kept distinct from measurements.
   <img src="docs/reviews/evidence/sleep-diary-alignment-firefox.png" alt="Trainlog Web Analyse workspace showing the Sleep Diary agenda and factual heart-rate timeline" width="100%">
 </p>
 
-<p align="center"><sub>Web Analyse in the 0.1.6 development line — synchronized Sleep facts and measured heart-rate data on one timeline.</sub></p>
+<p align="center"><sub>Web Analyse in Trainlog 0.1.6 — synchronized Sleep facts and measured heart-rate data on one timeline.</sub></p>
 
 The repository currently tracks real-browser evidence for the Web interface.
 Its Android overview asset is a clearly labelled static design study with
@@ -231,7 +231,7 @@ chronological detail in the [`CHANGELOG`](CHANGELOG.md).
 
 | Boundary            | Current state                                                                                             |
 | ------------------- | --------------------------------------------------------------------------------------------------------- |
-| Product             | `0.1.6` development; latest stable release `v0.1.5`                                                       |
+| Product             | `0.1.6` stable                                                                                            |
 | Desktop persistence | SQLite schema v36                                                                                         |
 | Android persistence | SQLite schema v33                                                                                         |
 | Mobile exchange     | V3 active; V1/V2 readable; V4 staged only                                                                 |

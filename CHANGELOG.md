@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 0.1.6
+## 0.1.6 — 2026-09-25
 
 - Corrected delayed session finalization so a heart-rate capture cannot extend
   beyond the explicit factual session end. Android now transactionally removes
