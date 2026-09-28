@@ -288,6 +288,89 @@ class SleepExchangeTest(unittest.TestCase):
             "AND event_type='final_get_up'", (desktop_tip,)
         ).fetchone()[0])
 
+    def test_v2_newer_local_edit_converges_without_using_event_time(self):
+        base = "slr_20000000-0000-4000-8000-000000000002"
+        local_id = "slr_40000000-0000-4000-8000-000000000004"
+        remote_id = "slr_50000000-0000-4000-8000-000000000005"
+
+        def v2(item):
+            document = self.document(item)
+            document["version"] = 2
+            document["entries"][0]["intakes"][0]["quantity"] = 1
+            return document
+
+        self.assertEqual((1, 0), exchange.apply(self.db, v2(entry(base))))
+        self.db.commit()
+        peer = sqlite3.connect(":memory:")
+        self.db.backup(peer)
+        try:
+            local = entry(local_id, base)
+            local["updated_at"] = "2026-10-25T20:00:00+01:00"
+            local["events"][0]["end_at"] = "2026-10-25T06:00:00+01:00"
+            remote = entry(remote_id, base)
+            remote["updated_at"] = "2026-10-25T19:00:00+01:00"
+            remote["events"][0]["end_at"] = "2026-10-25T07:00:00+01:00"
+            remote["events"].append({
+                "event_id": "sle_60000000-0000-4000-8000-000000000006",
+                "type": "final_get_up",
+                "start_at": "2026-10-25T07:00:00+01:00",
+                "end_at": None,
+            })
+            extra_intake = dict(remote["intakes"][0])
+            extra_intake["intake_id"] = "mdi_60000000-0000-4000-8000-000000000006"
+            extra_intake["quantity"] = 2
+            remote["intakes"].append(extra_intake)
+            self.assertEqual((1, 0), exchange.apply(self.db, v2(local)))
+            self.assertEqual((1, 0), exchange.apply(peer, v2(remote)))
+
+            self.assertEqual((1, 0), exchange.apply(self.db, exchange.build(peer)))
+            successor = exchange.build(self.db)["entries"][0]
+            self.assertEqual(remote_id, successor["parent_revision_id"])
+            self.assertEqual(local["events"], successor["events"])
+            self.assertEqual(1, len(successor["events"]))
+            self.assertEqual(local["updated_at"], successor["updated_at"])
+            self.assertEqual(1, len(successor["intakes"]))
+            self.assertEqual(1, successor["intakes"][0]["quantity"])
+            self.assertEqual((0, 1), exchange.apply(self.db, exchange.build(peer)))
+            self.assertEqual((1, 0), exchange.apply(peer, exchange.build(self.db)))
+            self.assertEqual((0, 1), exchange.apply(peer, exchange.build(self.db)))
+            self.assertEqual(
+                successor["revision_id"],
+                exchange.build(peer)["entries"][0]["revision_id"],
+            )
+            self.assertEqual(4, self.db.execute(
+                "SELECT COUNT(*) FROM sleep_diary_revisions"
+            ).fetchone()[0])
+            self.assertEqual("ok", self.db.execute("PRAGMA integrity_check").fetchone()[0])
+        finally:
+            peer.close()
+
+    def test_v2_newer_remote_edit_wins_and_equal_time_rejects(self):
+        base = "slr_20000000-0000-4000-8000-000000000002"
+        local = entry("slr_40000000-0000-4000-8000-000000000004", base)
+        remote = entry("slr_50000000-0000-4000-8000-000000000005", base)
+
+        def v2(item):
+            document = self.document(item)
+            document["version"] = 2
+            document["entries"][0]["intakes"][0]["quantity"] = 1
+            return document
+
+        exchange.apply(self.db, v2(entry(base)))
+        local["updated_at"] = "2026-10-25T19:00:00+01:00"
+        remote["updated_at"] = "2026-10-25T20:00:00+01:00"
+        local["events"][0]["end_at"] = "2026-10-25T07:00:00+01:00"
+        remote["events"][0]["end_at"] = "2026-10-25T06:00:00+01:00"
+        exchange.apply(self.db, v2(local))
+        tied = entry("slr_60000000-0000-4000-8000-000000000006", base)
+        tied["updated_at"] = local["updated_at"]
+        with self.assertRaisesRegex(ValueError, "indeterminate edit order"):
+            exchange.apply(self.db, v2(tied))
+        self.assertEqual((1, 0), exchange.apply(self.db, v2(remote)))
+        self.assertEqual(remote["revision_id"], exchange.build(self.db)["entries"][0]["revision_id"])
+        self.assertEqual(remote["events"], exchange.build(self.db)["entries"][0]["events"])
+        self.assertEqual((0, 1), exchange.apply(self.db, v2(local)))
+
     def test_draft_is_durable_but_not_exported_until_validated(self):
         revision = "slr_20000000-0000-4000-8000-000000000002"
         item = entry(revision)

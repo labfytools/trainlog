@@ -1,5 +1,15 @@
 # Tests and validation
 
+## Sleep V2 concurrent-edit selection in 0.1.7
+
+Synthetic Desktop and Android regressions cover both edit-time orderings,
+including a later user edit that records an earlier sleep event. They check
+the complete winning snapshot, retained sibling revisions, no event/intake
+union or duplication, causal successor import on the other peer, exact replay,
+and rejection when edit instants are equal. The real paired-device validation
+completed separate automatic, Web-with-automatic-service, and post-reconnection
+Bluetooth generation/ACK cycles without changing an old rejected ACK.
+
 ## Sleep revision collision recovery
 
 Collision regressions distinguish exact replay from same-ID parent or payload

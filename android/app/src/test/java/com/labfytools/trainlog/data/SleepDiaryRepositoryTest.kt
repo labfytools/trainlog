@@ -13,6 +13,7 @@ import com.labfytools.trainlog.model.MedicationIntake
 import com.labfytools.trainlog.model.SleepMedication
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -24,6 +25,147 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class SleepDiaryRepositoryTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Test
+    fun concurrentV2SleepEditsChooseLatestUserEditAndConverge() {
+        for (localNewer in listOf(true, false)) {
+            val sourceName = "sleep-lww-source-${UUID.randomUUID()}.db"
+            val destinationName = "sleep-lww-destination-${UUID.randomUUID()}.db"
+            val source = TrainlogRepository(context, sourceName)
+            val destination = TrainlogRepository(context, destinationName)
+            try {
+                val initial = source.saveSleepDiary(
+                    SleepDiaryDraft(
+                        nightStartDate = "2026-10-24",
+                        nightEndDate = "2026-10-25",
+                        createdAt = "2026-10-24T22:00:00+02:00",
+                        updatedAt = "2026-10-24T22:00:00+02:00",
+                        sleepQuality = null,
+                        wakeQuality = null,
+                        dayForm = null,
+                        treatmentAndNotes = "",
+                        events = listOf(
+                            SleepDiaryEvent(
+                                "", SleepEventType.SLEEP,
+                                "2026-10-24T23:00:00+02:00",
+                                "2026-10-25T07:00:00+01:00",
+                            ),
+                        ),
+                    ),
+                ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+                assertTrue(source.validateSleepDiary(
+                    initial.entryId,
+                    initial.revisionId,
+                    "2026-10-25T08:00:00+01:00",
+                ) is TrainlogRepository.SaveSleepDiaryResult.Saved)
+                assertEquals(
+                    TrainlogRepository.SleepDiaryImportResult.Applied(1, 0),
+                    destination.applySleepDiaryV1Json(source.buildSleepDiaryV1Json()),
+                )
+
+                fun edit(repository: TrainlogRepository, at: String, wakeAt: String): String {
+                    val current = repository.listSleepDiary().single()
+                    val saved = repository.saveSleepDiary(
+                        SleepDiaryDraft(
+                            entryId = current.entryId,
+                            expectedRevision = current.revisionId,
+                            nightStartDate = current.nightStartDate,
+                            nightEndDate = current.nightEndDate,
+                            createdAt = current.createdAt,
+                            updatedAt = at,
+                            sleepQuality = null,
+                            wakeQuality = null,
+                            dayForm = null,
+                            treatmentAndNotes = "",
+                            events = current.events.map { it.copy(endAt = wakeAt) },
+                        ),
+                    ) as TrainlogRepository.SaveSleepDiaryResult.Saved
+                    assertTrue(repository.validateSleepDiary(
+                        current.entryId, saved.revisionId, at,
+                    ) is TrainlogRepository.SaveSleepDiaryResult.Saved)
+                    return saved.revisionId
+                }
+
+                val localAt = if (localNewer) "2026-10-25T10:00:00+01:00"
+                    else "2026-10-25T09:00:00+01:00"
+                val remoteAt = if (localNewer) "2026-10-25T09:00:00+01:00"
+                    else "2026-10-25T10:00:00+01:00"
+                val localRevision = edit(destination, localAt, "2026-10-25T06:00:00+01:00")
+                val remoteRevision = edit(source, remoteAt, "2026-10-25T07:30:00+01:00")
+                val remoteSnapshot = source.buildSleepDiaryV1Json()
+                val tiedSnapshot = org.json.JSONObject(remoteSnapshot)
+                val tiedEntry = tiedSnapshot.getJSONArray("entries").getJSONObject(0)
+                val tiedRevision = "slr_${UUID.randomUUID()}"
+                tiedEntry.put("revision_id", tiedRevision)
+                tiedEntry.put("updated_at", localAt)
+                tiedEntry.put(
+                    "ancestry",
+                    org.json.JSONArray().put(tiedRevision).put(initial.revisionId),
+                )
+                assertEquals(
+                    TrainlogRepository.SleepDiaryImportResult.Rejected(
+                        "concurrent sleep diary revision has indeterminate edit order",
+                    ),
+                    destination.applySleepDiaryV1Json(tiedSnapshot.toString()),
+                )
+                assertEquals(localRevision, destination.listSleepDiary().single().revisionId)
+                assertEquals(
+                    TrainlogRepository.SleepDiaryImportResult.Applied(1, 0),
+                    destination.applySleepDiaryV1Json(remoteSnapshot),
+                )
+                val winner = destination.listSleepDiary().single()
+                assertEquals(
+                    if (localNewer) "2026-10-25T06:00:00+01:00"
+                    else "2026-10-25T07:30:00+01:00",
+                    winner.events.single().endAt,
+                )
+                assertEquals(
+                    TrainlogRepository.SleepDiaryImportResult.Applied(0, 1),
+                    destination.applySleepDiaryV1Json(remoteSnapshot),
+                )
+                val reconciled = destination.buildSleepDiaryV1Json()
+                if (localNewer) {
+                    assertNotEquals(localRevision, winner.revisionId)
+                    assertEquals(
+                        remoteRevision,
+                        org.json.JSONObject(reconciled).getJSONArray("entries")
+                            .getJSONObject(0).getString("parent_revision_id"),
+                    )
+                } else {
+                    assertEquals(remoteRevision, winner.revisionId)
+                }
+                assertEquals(
+                    TrainlogRepository.SleepDiaryImportResult.Applied(
+                        if (localNewer) 1 else 0, if (localNewer) 0 else 1,
+                    ),
+                    source.applySleepDiaryV1Json(reconciled),
+                )
+                assertEquals(winner.revisionId, source.listSleepDiary().single().revisionId)
+                val retained = SQLiteDatabase.openDatabase(
+                    context.getDatabasePath(destinationName).path,
+                    null,
+                    SQLiteDatabase.OPEN_READONLY,
+                )
+                try {
+                    assertEquals(2, retained.rawQuery(
+                        "SELECT COUNT(*) FROM sleep_diary_revisions " +
+                            "WHERE revision_id IN (?,?)",
+                        arrayOf(localRevision, remoteRevision),
+                    ).use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        cursor.getInt(0)
+                    })
+                } finally {
+                    retained.close()
+                }
+            } finally {
+                source.close()
+                destination.close()
+                context.deleteDatabase(sourceName)
+                context.deleteDatabase(destinationName)
+            }
+        }
+    }
 
     @Test fun createEditConflictDeleteAndReopen() {
         val name = "sleep-${UUID.randomUUID()}.db"

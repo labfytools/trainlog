@@ -5,6 +5,7 @@ import argparse
 import json
 import re
 import sqlite3
+import uuid
 from datetime import date, datetime
 from pathlib import Path
 
@@ -378,6 +379,42 @@ def revision_is_ancestor(db: sqlite3.Connection, parent_sql: str, owner_id: str,
     return False
 
 
+def concurrent_entry_winner(db: sqlite3.Connection, item: dict, local_revision: str,
+                            wire_version: int) -> dict | None:
+    """Choose a complete Sleep snapshot only when user-edit instants are ordered.
+
+    WHY: an import or ACK is not a new user edit. Revision creation times are
+    recorded by the editing clients, whereas generation times are transport
+    times. CONTRACT: only V2 sibling tips with the same entry envelope and no
+    deletion transition admit last-user-edit-wins. Equal or inconsistent
+    timestamps remain conflicts, never a peer-order tie break.
+    """
+    if wire_version != 2:
+        fail("concurrent sleep diary revision")
+    row = db.execute(
+        "SELECT e.night_start_date,e.night_end_date,e.created_at,e.updated_at,e.deleted,"
+        "r.created_at FROM sleep_diary_entries e JOIN sleep_diary_revisions r "
+        "ON r.revision_id=e.current_revision_id WHERE e.entry_id=? AND r.revision_id=?",
+        (item["entry_id"], local_revision),
+    ).fetchone()
+    if (row is None or tuple(row[:3]) !=
+            (item["night_start_date"], item["night_end_date"], item["created_at"]) or
+            bool(row[4]) != item["deleted"] or row[3] != row[5]):
+        fail("concurrent sleep diary revision")
+    local_at = datetime.fromisoformat(timestamp(row[5]).replace("Z", "+00:00"))
+    remote_at = datetime.fromisoformat(timestamp(item["updated_at"]).replace("Z", "+00:00"))
+    if local_at == remote_at:
+        fail("concurrent sleep diary revision has indeterminate edit order")
+    if local_at < remote_at:
+        return None
+    current = db.execute(
+        "SELECT entry_id,night_start_date,night_end_date,created_at,updated_at,"
+        "current_revision_id,deleted FROM sleep_diary_entries WHERE entry_id=?",
+        (item["entry_id"],),
+    ).fetchone()
+    return _persisted_entry(db, current)
+
+
 def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
     validate(root)
     wire_version = root["version"]
@@ -484,8 +521,14 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             unchanged += 1
             continue
         remote_descends_from_local = local is not None and local[0] in item.get("ancestry", [])[1:]
+        winning_local = None
         if local is not None and not remote_descends_from_local and item["parent_revision_id"] != local[0]:
-            fail("concurrent sleep diary revision")
+            winning_local = concurrent_entry_winner(db, item, local[0], wire_version)
+            if known_owner is not None and winning_local is not None:
+                # A previously retained losing branch cannot cause a fresh
+                # reconciliation revision on every immutable replay.
+                unchanged += 1
+                continue
         # WHY: one-tap Sleep creates several local revisions before its first
         # synchronization. The current snapshot carries their bounded lineage
         # by identity, so a new desktop must be able to seed the tip without
@@ -505,17 +548,30 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
                        "current_revision_id=?,deleted=? WHERE entry_id=? AND current_revision_id=?",
                        (item["night_start_date"], item["night_end_date"], item["updated_at"],
                         item["revision_id"], int(item["deleted"]), item["entry_id"], local[0]))
-        db.execute("INSERT INTO sleep_diary_revisions VALUES(?,?,?,?,?,?,?,?)",
-                   (item["revision_id"], item["entry_id"], item["parent_revision_id"], item["updated_at"],
-                    item["sleep_quality"], item["wake_quality"], item["day_form"], item["treatment_and_notes"]))
-        db.executemany("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
-                       [(item["revision_id"], event["event_id"], event["type"], event["start_at"], event["end_at"])
-                        for event in item["events"]])
-        db.executemany("INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                       [(item["revision_id"], intake["intake_id"], intake["medication_id"],
-                         intake["medication_name"], intake["taken_at"], intake["dose_value"],
-                         intake["dose_unit"], intake.get("quantity", 1), intake["note"], intake["created_at"])
-                        for intake in item["intakes"]])
+        if known_owner is None:
+            db.execute(
+                "INSERT INTO sleep_diary_revisions(revision_id,entry_id,parent_revision_id,"
+                "created_at,sleep_quality,wake_quality,day_form,treatment_and_notes) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (item["revision_id"], item["entry_id"], item["parent_revision_id"],
+                 item["updated_at"], item["sleep_quality"], item["wake_quality"],
+                 item["day_form"], item["treatment_and_notes"]),
+            )
+            db.executemany(
+                "INSERT INTO sleep_diary_events(revision_id,event_id,event_type,start_at,end_at) "
+                "VALUES(?,?,?,?,?)",
+                [(item["revision_id"], event["event_id"], event["type"],
+                  event["start_at"], event["end_at"]) for event in item["events"]],
+            )
+            db.executemany(
+                "INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,"
+                "medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                [(item["revision_id"], intake["intake_id"], intake["medication_id"],
+                  intake["medication_name"], intake["taken_at"], intake["dose_value"],
+                  intake["dose_unit"], intake.get("quantity", 1), intake["note"],
+                  intake["created_at"]) for intake in item["intakes"]],
+            )
         # An imported revision has already crossed the synchronization
         # boundary; recording both markers prevents it appearing as a draft.
         db.execute(
@@ -527,6 +583,45 @@ def apply(db: sqlite3.Connection, root: dict) -> tuple[int, int]:
             (item["entry_id"], item["revision_id"], root["generated_at"],
              item["revision_id"], root["generated_at"]),
         )
+        if winning_local is not None:
+            successor = "slr_" + str(uuid.uuid4())
+            # INVARIANT: the successor's edit timestamp remains the winning
+            # user edit, not the later technical reconciliation time. Its
+            # complete payload is copied exactly; the losing branch stays
+            # immutable and addressable by its original revision identity.
+            db.execute(
+                "INSERT INTO sleep_diary_revisions(revision_id,entry_id,parent_revision_id,"
+                "created_at,sleep_quality,wake_quality,day_form,treatment_and_notes) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (successor, item["entry_id"], item["revision_id"],
+                 winning_local["updated_at"], winning_local["sleep_quality"],
+                 winning_local["wake_quality"], winning_local["day_form"],
+                 winning_local["treatment_and_notes"]),
+            )
+            db.execute(
+                "INSERT INTO sleep_diary_events(revision_id,event_id,event_type,start_at,end_at) "
+                "SELECT ?,event_id,event_type,start_at,end_at "
+                "FROM sleep_diary_events WHERE revision_id=?",
+                (successor, winning_local["revision_id"]),
+            )
+            db.execute(
+                "INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id,"
+                "medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at) "
+                "SELECT ?,intake_id,medication_id,"
+                "medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at "
+                "FROM sleep_medication_intakes WHERE revision_id=?",
+                (successor, winning_local["revision_id"]),
+            )
+            db.execute(
+                "UPDATE sleep_diary_entries SET updated_at=?,current_revision_id=? "
+                "WHERE entry_id=? AND current_revision_id=?",
+                (winning_local["updated_at"], successor, item["entry_id"], item["revision_id"]),
+            )
+            db.execute(
+                "UPDATE sleep_diary_publication_state SET validated_revision_id=?,"
+                "validated_at=? WHERE entry_id=?",
+                (successor, root["generated_at"], item["entry_id"]),
+            )
         applied += 1
     return applied, unchanged
 

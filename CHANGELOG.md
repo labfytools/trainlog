@@ -26,6 +26,12 @@ new features, modules, protocols, or speculative refactors.
   Web run state. A synthetic divergent-final-wake regression keeps the true
   conflict rejected; this reporting fix does not reconcile real Sleep data or
   turn a rejected generation into a successful exchange.
+- Resolved safely comparable concurrent Sleep V2 edits by the last actual
+  user-edit instant, regardless of device or the event times being recorded.
+  Complete winning snapshots and both original immutable revisions are kept;
+  a local winner gains a fresh causal successor for peer convergence. Equal
+  timestamps, changed entry envelopes, and deletion transitions still reject
+  instead of guessing. Existing rejected generation ACKs are not rewritten.
 
 ## 0.1.6 — 2026-09-25
 

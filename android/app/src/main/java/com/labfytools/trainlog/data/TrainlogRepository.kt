@@ -676,8 +676,9 @@ class TrainlogRepository(
             }
     } catch (_: RuntimeException) { false }
 
-    /** CONTRACT: one transaction appends an immutable revision and advances
-     * the guarded tip. Wall time never resolves a concurrent edit. */
+    /** CONTRACT: one local edit transaction appends an immutable revision and
+     * advances the guarded tip. Cross-device conflict selection belongs only
+     * to the versioned import path after both edit instants are validated. */
     fun saveSleepDiary(draft: SleepDiaryDraft): SaveSleepDiaryResult =
         saveSleepDiary(draft, quickPublicationAt = null)
 
@@ -1555,8 +1556,21 @@ class TrainlogRepository(
                 }
                 val remoteDescendsFromLocal =
                     local != null && ancestry?.drop(1)?.contains(local.first) == true
-                if (local != null && !remoteDescendsFromLocal && parent != local.first)
-                    return SleepDiaryImportResult.Rejected("concurrent sleep diary revision")
+                var winningLocalRevision: String? = null
+                if (local != null && !remoteDescendsFromLocal && parent != local.first) {
+                    val localWins = sleepConcurrentLocalWins(
+                        db, item, entryId, local.first, wireVersion,
+                    )
+                    if (localWins) {
+                        if (knownOwner != null) {
+                            // A retained losing branch must not generate another
+                            // reconciliation revision when its artifact replays.
+                            unchanged++
+                            continue
+                        }
+                        winningLocalRevision = local.first
+                    }
+                }
                 /* The snapshot may start at a non-root current revision on a
                  * fresh peer. Preserve its causal parent identity even though
                  * the historical parent payload is intentionally absent. */
@@ -1606,27 +1620,117 @@ class TrainlogRepository(
                     arrayOf(entryId,draft.nightStartDate,draft.nightEndDate,draft.createdAt,draft.updatedAt,revisionId,if (deleted) 1 else 0))
                 else db.execSQL("UPDATE sleep_diary_entries SET night_start_date=?,night_end_date=?,updated_at=?,current_revision_id=?,deleted=? WHERE entry_id=? AND current_revision_id=?",
                     arrayOf(draft.nightStartDate,draft.nightEndDate,draft.updatedAt,revisionId,if (deleted) 1 else 0,entryId,local.first))
-                db.execSQL("INSERT INTO sleep_diary_revisions VALUES(?,?,?,?,?,?,?,?)",
-                    arrayOf(revisionId,entryId,parent,draft.updatedAt,draft.sleepQuality?.wireValue,draft.wakeQuality?.wireValue,draft.dayForm?.wireValue,draft.treatmentAndNotes))
-                draft.events.forEach { event -> db.execSQL("INSERT INTO sleep_diary_events VALUES(?,?,?,?,?)",
-                    arrayOf(revisionId,event.eventId,event.type.wireValue,event.startAt,event.endAt)) }
-                draft.intakes.forEach { intake -> db.execSQL(
-                    "INSERT INTO sleep_medication_intakes(" +
-                        "revision_id,intake_id,medication_id,medication_name,taken_at," +
-                        "dose_value,dose_unit,quantity,note,created_at" +
-                        ") VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    arrayOf<Any?>(revisionId, intake.intakeId, intake.medicationId,
-                        intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
-                        intake.quantity,
-                        intake.note, intake.createdAt),
-                ) }
+                if (knownOwner == null) {
+                    db.execSQL(
+                        "INSERT INTO sleep_diary_revisions(revision_id,entry_id," +
+                            "parent_revision_id,created_at,sleep_quality,wake_quality,day_form," +
+                            "treatment_and_notes) VALUES(?,?,?,?,?,?,?,?)",
+                        arrayOf(
+                            revisionId, entryId, parent, draft.updatedAt,
+                            draft.sleepQuality?.wireValue, draft.wakeQuality?.wireValue,
+                            draft.dayForm?.wireValue, draft.treatmentAndNotes,
+                        ),
+                    )
+                    draft.events.forEach { event ->
+                        db.execSQL(
+                            "INSERT INTO sleep_diary_events(revision_id,event_id,event_type," +
+                                "start_at,end_at) VALUES(?,?,?,?,?)",
+                            arrayOf(revisionId, event.eventId, event.type.wireValue,
+                                event.startAt, event.endAt),
+                        )
+                    }
+                    draft.intakes.forEach { intake -> db.execSQL(
+                        "INSERT INTO sleep_medication_intakes(" +
+                            "revision_id,intake_id,medication_id,medication_name,taken_at," +
+                            "dose_value,dose_unit,quantity,note,created_at" +
+                            ") VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        arrayOf<Any?>(revisionId, intake.intakeId, intake.medicationId,
+                            intake.medicationName, intake.takenAt, intake.doseValue, intake.doseUnit,
+                            intake.quantity, intake.note, intake.createdAt),
+                    ) }
+                }
                 markSleepDiaryImported(db, entryId, revisionId, root.getString("generated_at"))
+                if (winningLocalRevision != null) {
+                    val successor = sleepId("slr")
+                    // INVARIANT: this technical successor inherits the latest
+                    // user's edit timestamp and exact snapshot, not the import
+                    // time. Its remote parent makes the peer converge, while
+                    // both original sibling revisions stay immutable.
+                    db.execSQL(
+                        "INSERT INTO sleep_diary_revisions(revision_id,entry_id," +
+                            "parent_revision_id,created_at,sleep_quality,wake_quality,day_form," +
+                            "treatment_and_notes) " +
+                            "SELECT ?,entry_id,?,created_at,sleep_quality,wake_quality,day_form," +
+                            "treatment_and_notes FROM sleep_diary_revisions WHERE revision_id=?",
+                        arrayOf(successor, revisionId, winningLocalRevision),
+                    )
+                    db.execSQL(
+                        "INSERT INTO sleep_diary_events(revision_id,event_id,event_type," +
+                            "start_at,end_at) " +
+                            "SELECT ?,event_id,event_type,start_at,end_at FROM sleep_diary_events " +
+                            "WHERE revision_id=?",
+                        arrayOf(successor, winningLocalRevision),
+                    )
+                    db.execSQL(
+                        "INSERT INTO sleep_medication_intakes(revision_id,intake_id,medication_id," +
+                            "medication_name,taken_at,dose_value,dose_unit,quantity,note,created_at) " +
+                            "SELECT ?,intake_id,medication_id,medication_name,taken_at,dose_value," +
+                            "dose_unit,quantity,note,created_at FROM sleep_medication_intakes " +
+                            "WHERE revision_id=?",
+                        arrayOf(successor, winningLocalRevision),
+                    )
+                    db.execSQL(
+                        "UPDATE sleep_diary_entries SET updated_at=(SELECT created_at FROM " +
+                            "sleep_diary_revisions WHERE revision_id=?),current_revision_id=? " +
+                            "WHERE entry_id=? AND current_revision_id=?",
+                        arrayOf(winningLocalRevision, successor, entryId, revisionId),
+                    )
+                    db.execSQL(
+                        "UPDATE sleep_diary_publication_state SET validated_revision_id=?," +
+                            "validated_at=? WHERE entry_id=?",
+                        arrayOf(successor, root.getString("generated_at"), entryId),
+                    )
+                }
                 advanced++
             }
             SleepDiaryImportResult.Applied(advanced, unchanged)
         } catch (error: RuntimeException) {
             SleepDiaryImportResult.Rejected(error.message ?: "invalid sleep diary")
         }
+    }
+
+    private fun sleepConcurrentLocalWins(
+        db: SQLiteDatabase,
+        item: JSONObject,
+        entryId: String,
+        localRevision: String,
+        wireVersion: Int,
+    ): Boolean {
+        // WHY: generation/ACK timestamps are transport events. Only revision
+        // creation times reflect editing actions on the two clients.
+        // CONTRACT: V2 sibling tips with an unchanged entry envelope and
+        // deletion state may use last-user-edit-wins. An equal edit instant
+        // or inconsistent provenance remains an explicit conflict.
+        if (wireVersion != 2) throw IllegalArgumentException("concurrent sleep diary revision")
+        val local = db.rawQuery(
+            "SELECT e.night_start_date,e.night_end_date,e.created_at,e.updated_at,e.deleted," +
+                "r.created_at FROM sleep_diary_entries e JOIN sleep_diary_revisions r " +
+                "ON r.revision_id=e.current_revision_id WHERE e.entry_id=? AND r.revision_id=?",
+            arrayOf(entryId, localRevision),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else List(6) { index -> cursor.getString(index) }
+        } ?: throw IllegalArgumentException("concurrent sleep diary revision")
+        if (local[0] != item.getString("night_start_date") ||
+            local[1] != item.getString("night_end_date") ||
+            local[2] != item.getString("created_at") ||
+            (local[4] == "1") != item.getBoolean("deleted") || local[3] != local[5]
+        ) throw IllegalArgumentException("concurrent sleep diary revision")
+        val localAt = OffsetDateTime.parse(local[5]).toInstant()
+        val remoteAt = OffsetDateTime.parse(item.getString("updated_at")).toInstant()
+        if (localAt == remoteAt) throw IllegalArgumentException(
+            "concurrent sleep diary revision has indeterminate edit order",
+        )
+        return localAt > remoteAt
     }
 
     private fun sleepDiaryRevisionMatches(

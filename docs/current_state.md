@@ -163,7 +163,7 @@ parallel implementation of its rules.
 | Web Dashboard tiles | `WEB_DASHBOARD_TILES_V1=PASS/FROZEN` |
 | Web Dashboard visualizations | `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` |
 | Web Dashboard V1 | `WEB_DASHBOARD_V1=PASS/FROZEN` |
-| Sleep Diary V1/V2 | `SLEEP_DIARY_V1=PASS` remains frozen and readable. The active Sleep exchange requires `sleep-diary-v2` / `sleep-diary-v2.json`: structured per-intake quantity and quick-publishable current revisions supplement the existing causal diary model without changing V1. |
+| Sleep Diary V1/V2 | `SLEEP_DIARY_V1=PASS` remains frozen and readable. The active Sleep exchange requires `sleep-diary-v2` / `sleep-diary-v2.json`: structured per-intake quantity and quick-publishable current revisions supplement the existing causal diary model without changing V1. Distinct concurrent V2 edits with comparable user-edit instants retain the complete latest snapshot and both immutable histories; ambiguous ordering and unsafe deletion/envelope changes still reject. |
 | Web Sessions V1 | `TRAINLOG_WEB_SESSIONS_V1=PASS/FROZEN` (controlled desktop/Android deployment validated) |
 | Web Sessions deletion and Programs V1 | `TRAINLOG_WEB_SESSIONS_DELETE_AND_PROGRAMS_V1=PASS` (private grouped rollout validated) |
 | Programs presentation, Android projection, and deletion | `TRAINLOG_PROGRAMS_PRESENTATION_ANDROID_DELETE_V1=PASS` (private coordinated deployment and restart/replay validated) |

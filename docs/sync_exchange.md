@@ -32,14 +32,25 @@ offset-bearing timestamps, appreciations, notes, logical deletion, and an
 integer `quantity` in `1..99` on every medication intake. `dose_value` and
 `dose_unit` remain the per-unit snapshot; quantity is never encoded in notes.
 V1 input omits `quantity` and is normalized to one unit. Exact revision replay
-is unchanged; sibling revisions and resurrection after deletion are rejected
-in the generation consumption transaction.
+is unchanged; resurrection after deletion is rejected in the generation
+consumption transaction. For distinct V2 sibling tips of the same entry with
+an unchanged night envelope and deletion state, the last actual user edit
+wins, independent of device. Revision edit timestamps are compared as instants;
+event times, generation publication, import, and ACK times never establish
+priority. An equal edit instant or inconsistent provenance remains an explicit
+conflict. This selection uses the complete winning snapshot, not a field or
+event union, so an intentional removal is not resurrected. The losing revision
+remains immutable in local history. When the local snapshot wins, a fresh
+technical successor descends from the received revision and retains the
+winning user-edit timestamp and exact payload, allowing the other peer to
+advance causally without rewriting either original revision or generation.
 
 A durable Sleep rejection keeps its exact ACK and does not advance either
 causal tip. The full-generation worker carries the consumer's bounded Sleep
-diagnostic through to the Web run state, where a known concurrent revision is
-reported as `data_conflict` rather than an opaque `internal_error`. This
-classification does not retry, merge, or acknowledge the rejected generation.
+diagnostic through to the Web run state, where an unresolved concurrent
+revision is reported as `data_conflict` rather than an opaque `internal_error`.
+An old rejected generation remains rejected after a later, newly captured
+generation resolves its distinct conflict.
 
 This does not change `TRAINLOG_FORMAT_V1`, manifests, ACKs or causal
 ownership.
