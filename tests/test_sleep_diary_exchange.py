@@ -246,6 +246,48 @@ class SleepExchangeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "positive"):
             exchange.validate(self.document(invalid))
 
+    def test_contradictory_final_get_up_siblings_remain_unresolved(self):
+        base = "slr_20000000-0000-4000-8000-000000000002"
+        desktop_tip = "slr_40000000-0000-4000-8000-000000000004"
+        android_parent = "slr_50000000-0000-4000-8000-000000000005"
+        android_tip = "slr_60000000-0000-4000-8000-000000000006"
+        self.assertEqual((1, 0), exchange.apply(self.db, self.document(entry(base))))
+
+        desktop = entry(desktop_tip, base)
+        desktop["events"].append({
+            "event_id": "sle_70000000-0000-4000-8000-000000000007",
+            "type": "final_get_up", "start_at": "2026-10-25T06:30:00+01:00",
+            "end_at": None,
+        })
+        self.assertEqual((1, 0), exchange.apply(self.db, self.document(desktop)))
+        before = self.db.execute(
+            "SELECT revision_id,parent_revision_id FROM sleep_diary_revisions "
+            "ORDER BY revision_id"
+        ).fetchall()
+
+        android = entry(android_tip, android_parent)
+        android["ancestry"] = [android_tip, android_parent, base]
+        android["events"][0]["end_at"] = "2026-10-25T06:50:00+01:00"
+        android["events"].append({
+            "event_id": "sle_80000000-0000-4000-8000-000000000008",
+            "type": "final_get_up", "start_at": "2026-10-25T06:50:00+01:00",
+            "end_at": None,
+        })
+        with self.assertRaisesRegex(ValueError, "concurrent sleep diary revision"):
+            exchange.apply(self.db, self.document(android))
+
+        self.assertEqual(before, self.db.execute(
+            "SELECT revision_id,parent_revision_id FROM sleep_diary_revisions "
+            "ORDER BY revision_id"
+        ).fetchall())
+        self.assertEqual(desktop_tip, self.db.execute(
+            "SELECT current_revision_id FROM sleep_diary_entries"
+        ).fetchone()[0])
+        self.assertEqual(1, self.db.execute(
+            "SELECT COUNT(*) FROM sleep_diary_events WHERE revision_id=? "
+            "AND event_type='final_get_up'", (desktop_tip,)
+        ).fetchone()[0])
+
     def test_draft_is_durable_but_not_exported_until_validated(self):
         revision = "slr_20000000-0000-4000-8000-000000000002"
         item = entry(revision)

@@ -159,6 +159,12 @@ class SyncErrorClassificationTest(unittest.TestCase):
             sync_orchestrator.failure_code(RuntimeError("revision conflict")),
             "data_conflict",
         )
+        self.assertEqual(
+            sync_orchestrator.failure_code(RuntimeError(
+                "desktop rejected Android generation: concurrent sleep diary revision"
+            )),
+            "data_conflict",
+        )
 
     def test_mtp_outbox_excludes_retained_staging_and_unrelated_files(self):
         with tempfile.TemporaryDirectory() as directory:

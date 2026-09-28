@@ -26,6 +26,19 @@ class SyncPeerWorkerTest(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def test_rejected_android_generation_retains_consumer_diagnostic(self):
+        error = worker.rejected_android_generation_error(
+            {"diagnostic": "concurrent sleep diary revision"}
+        )
+        self.assertEqual(
+            str(error),
+            "desktop rejected Android generation: concurrent sleep diary revision",
+        )
+        self.assertEqual(
+            str(worker.rejected_android_generation_error({"diagnostic": ""})),
+            "desktop rejected Android generation",
+        )
+
     def test_drive_adapter_uses_remaining_conversation_deadline(self):
         completed = subprocess.CompletedProcess([], 0, b"", b"")
         with mock.patch.object(worker.subprocess, "run", return_value=completed) as run:

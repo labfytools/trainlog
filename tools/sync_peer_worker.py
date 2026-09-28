@@ -72,6 +72,15 @@ def emit(run_id: str, phase: str, **values: object) -> None:
     print(json.dumps(value, sort_keys=True, separators=(",", ":")), flush=True)
 
 
+def rejected_android_generation_error(ack: dict) -> RuntimeError:
+    """Keep the durable peer rejection visible without changing its ACK."""
+    # WHY: the browser cannot classify a known causal conflict when the worker
+    # drops the consumer's bounded diagnostic at this process boundary.
+    diagnostic = ack.get("diagnostic", "")
+    detail = f": {diagnostic}" if diagnostic else ""
+    return RuntimeError(f"desktop rejected Android generation{detail}")
+
+
 def bounded(path: Path, limit: int = 65536) -> bytes:
     with path.open("rb") as stream:
         raw = stream.read(limit + 1)
@@ -805,7 +814,7 @@ def main() -> int:
             deadline,
         )
     if ack["result"] != "consumed":
-        raise RuntimeError("desktop rejected Android generation")
+        raise rejected_android_generation_error(ack)
     emit(
         args.run_id,
         "local_import_committed",

@@ -131,7 +131,8 @@ def failure_code(error: BaseException) -> str:
         return "device_unavailable"
     if "capacity exhausted" in diagnostic or "retained generation capacity" in diagnostic:
         return "capacity_exhausted"
-    if "conflict" in diagnostic or "wrong consumer" in diagnostic:
+    if ("conflict" in diagnostic or "wrong consumer" in diagnostic or
+            "concurrent sleep diary revision" in diagnostic):
         return "data_conflict"
     return "internal_error"
 

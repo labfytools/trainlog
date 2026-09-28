@@ -21,6 +21,11 @@ new features, modules, protocols, or speculative refactors.
   This prevents a rejected stale revision from starving a subsequent Web or
   automatic Bluetooth request; rejection, generation, ACK, causal, schema,
   and transport contracts are unchanged.
+- Preserved the desktop consumer's known Sleep revision rejection diagnostic
+  through the full-generation worker and classified it as `data_conflict` in
+  Web run state. A synthetic divergent-final-wake regression keeps the true
+  conflict rejected; this reporting fix does not reconcile real Sleep data or
+  turn a rejected generation into a successful exchange.
 
 ## 0.1.6 — 2026-09-25
 

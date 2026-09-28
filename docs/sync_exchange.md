@@ -35,6 +35,12 @@ V1 input omits `quantity` and is normalized to one unit. Exact revision replay
 is unchanged; sibling revisions and resurrection after deletion are rejected
 in the generation consumption transaction.
 
+A durable Sleep rejection keeps its exact ACK and does not advance either
+causal tip. The full-generation worker carries the consumer's bounded Sleep
+diagnostic through to the Web run state, where a known concurrent revision is
+reported as `data_conflict` rather than an opaque `internal_error`. This
+classification does not retry, merge, or acknowledge the rejected generation.
+
 This does not change `TRAINLOG_FORMAT_V1`, manifests, ACKs or causal
 ownership.
 
