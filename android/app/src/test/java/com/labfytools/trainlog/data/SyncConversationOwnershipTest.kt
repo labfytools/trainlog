@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -52,6 +53,109 @@ class SyncConversationOwnershipTest {
                 .put("acknowledgements", JSONArray())
                 .toString()
         )
+    }
+
+    private fun canonical(value: Any?): String =
+        when (value) {
+            null,
+            JSONObject.NULL -> "null"
+            is JSONObject ->
+                value.keys().asSequence().toList().sorted().joinToString(",", "{", "}") {
+                    JSONObject.quote(it) + ":" + canonical(value.get(it))
+                }
+            is JSONArray ->
+                (0 until value.length()).joinToString(",", "[", "]") { canonical(value.get(it)) }
+            is String -> JSONObject.quote(value)
+            is Boolean,
+            is Int,
+            is Long -> value.toString()
+            else -> error("unsupported test ACK value")
+        }
+
+    private fun rejectedDesktopAcknowledgement(
+        runId: String,
+        generationId: String,
+        producerPeerId: String,
+        consumerPeerId: String,
+        manifestSha256: String,
+    ): String {
+        /* This fixture signs the exact wire ACK because the production
+         * validator must persist it before the coordinator may release its
+         * lease; an unsigned rejection would only test malformed-input logic. */
+        val acknowledgement =
+            JSONObject()
+                .put("format", "trainlog-sync-ack")
+                .put("version", 1)
+                .put("ack_id", "ack_${generationId.removePrefix("gen_")}")
+                .put("run_id", runId)
+                .put("generation_id", generationId)
+                .put("producer_peer_id", producerPeerId)
+                .put("consumer_peer_id", consumerPeerId)
+                .put("manifest_sha256", manifestSha256)
+                .put("result", "rejected")
+                .put("durability", "sqlite-commit-rejection")
+                .put("consumed_at", "2026-09-28T12:00:00+02:00")
+                .put("diagnostic", "concurrent sleep diary revision")
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(canonical(acknowledgement).toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return acknowledgement.put("payload_sha256", digest).toString()
+    }
+
+    @Test
+    fun rejectedDesktopAcknowledgementEndsConversationAndReleasesBackgroundLease() {
+        val databaseName = "generation-rejection-${UUID.randomUUID()}.db"
+        val root = Files.createTempDirectory("trainlog-generation-rejection-").toFile()
+        val repository = TrainlogRepository(context, databaseName)
+        val arbiter = SyncConversationArbiter()
+        val referencePublished = CountDownLatch(1)
+        val desktopPeer = "peer_${UUID.randomUUID()}"
+        val runId = "sy_${UUID.randomUUID()}"
+        try {
+            val service = SyncGenerationService(repository)
+            request(root, runId, service.peerId(), desktopPeer)
+            archiveAcknowledgements(root, runId, service.peerId(), desktopPeer)
+            val coordinator =
+                SyncGenerationCoordinator(
+                    repository,
+                    arbiter = arbiter,
+                    trace = SyncGenerationTrace { _, phase, _, _, _ ->
+                        if (phase == "generation_reference_published") referencePublished.countDown()
+                    },
+                )
+            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+            try {
+                val active = executor.submit<ForegroundGenerationResult> {
+                    coordinator.run(root, Duration.ofSeconds(5))
+                }
+                assertTrue(referencePublished.await(3, TimeUnit.SECONDS))
+                val reference = JSONObject(File(root, "android-generation-v1.json").readText())
+                File(root, "desktop-consumption-ack-v1.json").writeText(
+                    rejectedDesktopAcknowledgement(
+                        runId,
+                        reference.getString("generation_id"),
+                        service.peerId(),
+                        desktopPeer,
+                        reference.getString("manifest_sha256"),
+                    )
+                )
+                val result = active.get(2, TimeUnit.SECONDS)
+                assertEquals(
+                    ForegroundGenerationResult.Failed("concurrent sleep diary revision", runId),
+                    result,
+                )
+                assertTrue(
+                    "The rejected run must release the lease for its next request.",
+                    coordinator.run(root, Duration.ofMillis(100)) !is ForegroundGenerationResult.Busy,
+                )
+            } finally {
+                executor.shutdownNow()
+            }
+        } finally {
+            repository.close()
+            context.deleteDatabase(databaseName)
+            root.deleteRecursively()
+        }
     }
 
     @Test

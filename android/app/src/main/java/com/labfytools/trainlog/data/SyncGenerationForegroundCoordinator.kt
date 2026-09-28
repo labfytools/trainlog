@@ -606,6 +606,18 @@ internal class SyncGenerationCoordinator(
                 }, pollTransport, lease)
             service.acceptAcknowledgement(desktopAck)
             phase(runId, "desktop_ack_observed", "desktop-consumption-ack-v1.json", captured.generationId)
+            /* WHY: a durable desktop rejection closes this Android-produced
+             * generation, so the desktop worker deliberately cannot publish a
+             * reciprocal generation for this conversation. CONTRACT: retain
+             * and validate the rejection ACK, then end this run immediately.
+             * INVARIANT: a rejected generation never holds the process-wide
+             * conversation lease while waiting for an impossible reference. */
+            val desktopAcknowledgement = JSONObject(desktopAck.toString(Charsets.UTF_8))
+            if (desktopAcknowledgement.getString("result") == "rejected") {
+                val diagnostic = desktopAcknowledgement.getString("diagnostic")
+                phase(runId, "desktop_rejected", "desktop-consumption-ack-v1.json", captured.generationId)
+                return ForegroundGenerationResult.Failed(diagnostic, captured.runId)
+            }
             val referenceRaw =
                 awaitCorrelated(File(directory, "desktop-generation-v1.json"), deadline, {
                     it.optString("run_id") == captured.runId

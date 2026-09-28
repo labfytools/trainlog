@@ -14,6 +14,13 @@ new features, modules, protocols, or speculative refactors.
   `sync_in_progress`, or interruption) remain eligible after reconnect;
   completed requests and business failures remain consumed. Generation, ACK,
   causal, schema, MTP, Drive, and manual-sync contracts are unchanged.
+- Fixed Android generation coordination after a durable desktop rejection.
+  The Android producer now retains and reports the correlated `rejected` ACK
+  but immediately releases its conversation lease instead of waiting for a
+  reciprocal desktop generation that the rejecting worker cannot publish.
+  This prevents a rejected stale revision from starving a subsequent Web or
+  automatic Bluetooth request; rejection, generation, ACK, causal, schema,
+  and transport contracts are unchanged.
 
 ## 0.1.6 — 2026-09-25
 

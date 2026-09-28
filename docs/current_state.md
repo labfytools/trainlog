@@ -34,6 +34,11 @@ arbiter: explicit foreground intent has priority over automatic background
 resumption, while a foreground service may remain alive without owning the
 conversation. An automatic run yields cooperatively at safe boundaries; its
 durable generation is retained for a correlated handoff rather than deleted.
+A correlated desktop `rejected` ACK is also terminal for the Android producer:
+it is retained as durable rejection evidence, then releases the conversation
+lease immediately because no reciprocal desktop generation can follow that
+rejection. This keeps an explicit Web request or a later automatic Bluetooth
+request from being starved by an impossible post-rejection wait.
 
 Direct-MTP publication now has an explicit Android visibility boundary.
 Durable immutable generation files are submitted to MediaProvider and all scan
