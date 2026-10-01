@@ -1,21 +1,30 @@
 # Current implementation state
 
-## Private installation and Sleep PDF treatments layout
+## Private installation and Android body figure parity
 
 The private daily installation runs the ordered Program rescheduling rollout
 from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema v37,
 Android schema v34, and the capability-selected `trainlog-programs` V2
-projection. The PC/Web bundle from `trainlog-sleep-pdf-treatments-space-v1`
-at `3758875` is served, while synchronization agents retain the compatible
-Program rollout bundle. This PDF change builds on the deployed blue completed
-sport overlay from `e2c07f1`; no Android, schema, domain, or synchronization
-change accompanied it.
+projection. The PC/Web bundle from `trainlog-body-figure-android-parity-v1`
+at `c2935b8` is served; synchronization agents retain the compatible Program
+rollout bundle. The previous PC/Web bundle from
+`trainlog-sleep-pdf-treatments-space-v1` at `3758875` remains available for
+rollback. The served Web uses Android Compose Canvas head, neck, and 22 body
+paths on Dashboard muscle distribution, Analysis overview, and Analysis body
+distribution. Firefox captures of all three served views show complete figures
+at the intended aspect ratio, with the existing color scale, legend, and focus
+interaction. The candidate geometry was compared with reconstructed Android
+source paths; no Android runtime screenshot was available because no device or
+emulator was connected. No Android, schema, domain, or synchronization change
+accompanied this Web rollout.
 
-Firefox downloaded a four-page PDF from the served Web. All pages were rendered
-and inspected. The PDF's 65 individual medication lines match its summary,
-its remarks remain visible, and no extracted word exceeds the page margins.
-The actual sport markers remain blue in Web, their recorded start time matches
-the PDF, and the PDF retains black-outlined blue sport bands. A separate
+Firefox downloaded a four-page PDF from the served Web. The earlier PDF layout
+validation rendered and inspected every page: its 65 individual medication
+lines match its summary, its remarks remain visible, and no extracted word
+exceeds the page margins. After the body figure rollout, a fresh PDF export
+again contained the treatments and remarks sections; actual sport markers
+remained blue in Web, and a recorded start time matched the PDF. The earlier
+PDF inspection also confirmed black-outlined blue sport bands. A separate
 synthetic set of 7, 14, 21, and 30 nights in French and English, plus long
 continuations, was rendered page by page and checked in grayscale. Rollout
 packaging requires a Meson `-Dweb=enabled` build with embedded frontend tests.
