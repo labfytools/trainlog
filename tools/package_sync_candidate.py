@@ -82,6 +82,12 @@ def main() -> int:
         raise RuntimeError("compiled generation MTP adapter is missing")
     if not sync_once.is_file():
         raise RuntimeError("compiled legacy synchronization helper is missing")
+    build_options = json.loads(subprocess.check_output(
+        ["meson", "introspect", "--buildoptions", str(args.build)], text=True
+    ))
+    web = next((option["value"] for option in build_options if option["name"] == "web"), None)
+    if web != "enabled":
+        raise RuntimeError("candidate requires an explicitly embedded Web frontend")
     (args.output / "bin").mkdir(parents=True)
     (args.output / "libexec").mkdir(parents=True)
     (args.output / "tools").mkdir(parents=True)
@@ -122,7 +128,7 @@ def main() -> int:
         ).strip(),
         "product_version": "0.1.7",
         "desktop_schema": 37,
-        "android_schema": 32,
+        "android_schema": 34,
         "protocols": [
             "mobile-export-v3",
             "mobile-history-v4",
@@ -136,6 +142,7 @@ def main() -> int:
             "session-preparations-v2",
             "ai-session-drafts-v2",
             "programs-v1",
+            "programs-v2",
             "program-executions-v1",
             "sleep-diary-v2",
             "cardio-sessions-v1",
