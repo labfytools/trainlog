@@ -236,7 +236,12 @@ Sleep, medication, and sport in both Web and vector PDF. Valid sport intervals
 intersect `[start,end)` and are clipped only for display; missing or invalid
 ends are point markers without invented duration. The Web keeps a separate
 blue lane and accessible session list. Preview and download wait for the
-complete sport read and use the same selected sessions. The PDF prints blue
+complete sport read and use the same selected sessions. The PDF uses a 180 pt treatment/remarks column with 7.2 pt text,
+width-aware wrapping, content-driven row heights, and dated continuation pages
+for exceptional notes. Each selected intake and remark is printed once without
+a fixed character limit. The shorter 430 pt timeline shares one coordinate
+mapping across hour ticks, grid, sleep markers, medication markers, and blue
+sport bands. The PDF prints blue
 outlined bands and paginated names, factual times, and durations, marking
 sessions without a corresponding Sleep row as `sleep not recorded`. Sport
 creates no Sleep event and changes no sleep total, session, schema, or sync

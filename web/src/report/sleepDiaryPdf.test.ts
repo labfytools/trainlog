@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SleepEntry, SleepSnapshot } from "../api/sleepDiary";
 import { buildSleepDiaryPdf } from "./sleepDiaryPdf";
 
-const day = (value: number) => `2026-09-${String(value).padStart(2, "0")}`;
+const day = (value: number) => new Date(Date.UTC(2026, 8, value)).toISOString().slice(0, 10);
 const timestamp = (date: string, time: string) => `${date}T${time}:00+02:00`;
 
 const completeEntry = (index: number): SleepEntry => {
@@ -97,6 +97,8 @@ const completeEntry = (index: number): SleepEntry => {
   };
 };
 
+const compactDateForTest = (date: string) => date.split("-").reverse().join("/");
+
 const snapshot = (count: number): SleepSnapshot => ({
   api_version: 1,
   entries: Array.from({ length: count }, (_, index) => completeEntry(index)),
@@ -183,11 +185,11 @@ describe("sleep diary PDF", () => {
 
   it("draws a proportional 45-minute long-awakening interval between sleep ranges", async () => {
     const source = await buildSleepDiaryPdf(snapshot(1), "fr").text();
-    const firstSleep = source.indexOf("0.75 g 216.17 509.00 83.33 18.00 re f");
+    const firstSleep = source.indexOf("0.75 g 183.58 509.00 71.67 18.00 re f");
     const longAwakening = source.indexOf(
-      "0.98 0.70 0.53 rg 299.50 509.00 15.63 18.00 re f",
+      "0.98 0.70 0.53 rg 255.25 509.00 13.44 18.00 re f",
     );
-    const secondSleep = source.indexOf("0.75 g 315.13 509.00 67.71 18.00 re f");
+    const secondSleep = source.indexOf("0.75 g 268.69 509.00 58.23 18.00 re f");
     expect(firstSleep).toBeGreaterThan(-1);
     expect(longAwakening).toBeGreaterThan(firstSleep);
     expect(secondSleep).toBeGreaterThan(longAwakening);
@@ -225,10 +227,72 @@ describe("sleep diary PDF", () => {
   it("paginates fourteen, twenty-one and thirty days", async () => {
     for (const count of [14, 21, 30]) {
       const source = await buildSleepDiaryPdf(snapshot(count), "en").text();
-      expect((source.match(/\/Type \/Page /g) ?? []).length).toBe(
-        Math.ceil(count / 9),
-      );
+      const pageCount = (source.match(/\/Type \/Page /g) ?? []).length;
+      expect(pageCount).toBeGreaterThan(Math.ceil(count / 9));
+      expect(pageCount).toBeLessThan(count);
       expect(source).toContain("OBSERVATIONS");
+    }
+  });
+
+  it("preserves every selected treatment and all remarks beyond former limits", async () => {
+    const data = snapshot(7);
+    data.entries.forEach((entry, index) => {
+      entry.treatment_and_notes = `Paragraph ${index}: ${"unbrokenword".repeat(20)}\n\n` +
+        `Second paragraph with accents: éèê œ, dose 2,5 mg ×3. END-${index}`;
+    });
+    const source = await buildSleepDiaryPdf(data, "fr").text();
+    const content = await textualContent(buildSleepDiaryPdf(data, "fr"));
+    for (let index = 0; index < 7; index++) {
+      expect(content).toContain(`END-${index}`);
+      expect(content).toContain(`Paragraph ${index}:`);
+    }
+    expect(content).toContain("œ, dose 2,5");
+    expect(content).toContain("mg ×3. END-0");
+    expect(content).toContain("TRAITEMENTS");
+    expect(content).toContain("REMARQUES");
+    expect(content).toContain("mg ×2");
+    expect(source).not.toContain("slice(0, 160)");
+  });
+
+  it("creates dated continuations for a single oversized entry", async () => {
+    const data = snapshot(1);
+    data.entries[0].treatment_and_notes = Array.from({ length: 150 }, (_, index) =>
+      `Unique paragraph ${index} with meaningful complete text.`).join("\n");
+    const source = await buildSleepDiaryPdf(data, "en").text();
+    const content = await textualContent(buildSleepDiaryPdf(data, "en"));
+    expect((source.match(/\/Type \/Page /g) ?? []).length).toBeGreaterThan(1);
+    expect(content).toContain("continued");
+    expect(content).toContain("Unique paragraph 0");
+    expect(content).toContain("Unique paragraph 149");
+    expect((content.match(/Unique paragraph /g) ?? []).length).toBe(150);
+  });
+
+  it("keeps empty and short notes compact in both languages", async () => {
+    const data = snapshot(7);
+    data.entries.forEach((entry) => { entry.intakes = []; entry.treatment_and_notes = ""; });
+    for (const language of ["fr", "en"] as const) {
+      const source = await buildSleepDiaryPdf(data, language).text();
+      expect((source.match(/\/Type \/Page /g) ?? []).length).toBe(1);
+      expect(source).not.toContain("continued");
+    }
+    data.entries[0].treatment_and_notes = "Short note.";
+    const content = await textualContent(buildSleepDiaryPdf(data, "en"));
+    expect(content).toContain("Short note.");
+  });
+
+  it("paginates 7, 14, 21 and 30 selected nights in FR and EN without empty pages", async () => {
+    for (const count of [7, 14, 21, 30]) {
+      for (const language of ["fr", "en"] as const) {
+        const data = snapshot(count);
+        const source = await buildSleepDiaryPdf(data, language).text();
+        const content = await textualContent(buildSleepDiaryPdf(data, language));
+        const pages = (source.match(/\/Type \/Page /g) ?? []).length;
+        expect(pages).toBeGreaterThan(0);
+        expect((content.match(/OBSERVATIONS/g) ?? []).length).toBe(pages);
+        for (const entry of data.entries)
+          expect(content).toContain(compactDateForTest(entry.night_start_date));
+        expect(content).not.toContain("OUTSIDE-SELECTION");
+      }
     }
   });
 

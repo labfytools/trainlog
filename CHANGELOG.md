@@ -2,6 +2,14 @@
 
 ## Unreleased — 0.1.7
 
+- Widened the Sleep diary PDF treatment/remarks column from 84 to 180 pt
+  and raised its text from 4 to 7.2 pt. Width-aware wrapping keeps paragraphs,
+  separate medication intakes, accents, doses, units, and quantities visible.
+  Row heights and page count now follow content; exceptional entries continue
+  on clearly dated pages. The former truncated observations duplicate is gone.
+  The 18:00 timeline and factual blue sport overlay use one shared PDF geometry;
+  Sleep, sport, database, and synchronization data are unchanged.
+
 - Added a read-only completed-session overlay to the Web Sleep agenda and its
   local vector PDF preview/export. Factual session start and end times share
   the Sleep row's 18:00 axis in both renderers; blue outlined bands and a

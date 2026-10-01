@@ -87,6 +87,136 @@ const pdfString = (value: string) =>
 const text = (x: number, y: number, size: number, value: string) =>
   `0 g BT /F1 ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${pdfString(value)}) Tj ET\n`;
 
+// CONTRACT: all timeline marks, grid ticks, headers, and sport bands use these
+// same coordinates. The notes column gets over twice its former 84 pt width.
+const layout = {
+  left: 30,
+  right: 812,
+  dateX: 33,
+  timelineX: 94,
+  timelineWidth: 430,
+  qualityX: [528, 562, 596],
+  notesX: 632,
+  notesRight: 812,
+  rowTop: 538,
+  rowBottom: 137,
+  minRowHeight: 40,
+  noteFont: 7.2,
+  noteLeading: 9.5,
+  notePadding: 5,
+} as const;
+
+type NoteLine = { value: string; separator?: boolean };
+type RowFragment = { entry: SleepEntry; lines: NoteLine[]; first: boolean; height: number };
+
+// WHY: PDF Helvetica is not monospaced. Wrapping by character count loses
+// content or puts it outside the cell. These are the built-in Helvetica widths
+// in thousandths of an em; unsupported Unicode uses the same '?' fallback as
+// pdfString. An extra margin absorbs viewer/font rounding differences.
+const helveticaAscii = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+const glyphWidth = (character: string) => {
+  const code = character.codePointAt(0) ?? 63;
+  if (code >= 32 && code <= 126) return helveticaAscii[code - 32];
+  const base = character.normalize("NFD").charAt(0);
+  const baseCode = base.codePointAt(0) ?? 63;
+  if (baseCode >= 32 && baseCode <= 126) return helveticaAscii[baseCode - 32];
+  return character === "œ" ? 833 : character === "Œ" ? 1000 : 600;
+};
+const lineWidth = (value: string) =>
+  Array.from(value).reduce((sum, character) => sum + glyphWidth(character), 0) * layout.noteFont / 1000;
+const maxNoteWidth = layout.notesRight - layout.notesX - layout.notePadding * 2 - 4;
+
+function wrapParagraph(paragraph: string): string[] {
+  if (paragraph === "") return [""];
+  const words = paragraph.match(/\S+|\s+/gu) ?? [];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (/^\s+$/u.test(word) && current === "") continue;
+    if (lineWidth(current + word) <= maxNoteWidth) {
+      current += word;
+      continue;
+    }
+    if (current.trim()) lines.push(current.trimEnd());
+    current = "";
+    if (/^\s+$/u.test(word)) continue;
+    if (lineWidth(word) <= maxNoteWidth) {
+      current = word;
+      continue;
+    }
+    for (const character of Array.from(word)) {
+      if (current && lineWidth(current + character) > maxNoteWidth) {
+        lines.push(current);
+        current = "";
+      }
+      current += character;
+    }
+  }
+  if (current) lines.push(current.trimEnd());
+  return lines;
+}
+
+function noteLines(entry: SleepEntry, language: Language): NoteLine[] {
+  const lines: NoteLine[] = [];
+  if (entry.intakes.length) {
+    lines.push({ value: language === "fr" ? "TRAITEMENTS" : "TREATMENTS" });
+    for (const intake of entry.intakes) {
+      const dose = intake.dose_value === null ? "" :
+        ` — ${formatDose(intake.dose_value)}${intake.dose_unit ? ` ${intake.dose_unit}` : ""}`;
+      const quantity = intake.quantity > 1 ? ` ×${intake.quantity}` : "";
+      for (const value of wrapParagraph(`${intake.taken_at.slice(11, 16)} — ${intake.medication_name}${dose}${quantity}`))
+        lines.push({ value });
+    }
+  }
+  if (entry.treatment_and_notes) {
+    lines.push({ value: language === "fr" ? "REMARQUES" : "NOTES", separator: lines.length > 0 });
+    for (const paragraph of entry.treatment_and_notes.split(/\r\n|\n|\r/u))
+      for (const value of wrapParagraph(paragraph)) lines.push({ value });
+  }
+  return lines;
+}
+
+const rowHeight = (lineCount: number) =>
+  Math.max(layout.minRowHeight, 9 + lineCount * layout.noteLeading + 4);
+
+// INVARIANT: a fragment is emitted only when it fits. Oversized entries are
+// split into dated continuations; every note line belongs to exactly one page.
+function paginate(entries: readonly SleepEntry[], language: Language): RowFragment[][] {
+  const pages: RowFragment[][] = [[]];
+  let remaining = layout.rowTop - layout.rowBottom;
+  const fresh = () => {
+    pages.push([]);
+    remaining = layout.rowTop - layout.rowBottom;
+  };
+  for (const entry of entries) {
+    const lines = noteLines(entry, language);
+    let offset = 0;
+    let first = true;
+    do {
+      const fullHeight = rowHeight(lines.length - offset);
+      if (fullHeight > remaining && pages[pages.length - 1].length > 0) fresh();
+      const maxLines = Math.floor((remaining - 13) / layout.noteLeading);
+      const count = Math.min(lines.length - offset, Math.max(1, maxLines));
+      const fragmentLines = lines.slice(offset, offset + count);
+      const height = rowHeight(fragmentLines.length);
+      if (height > remaining) throw new Error("PDF row exceeds available page height");
+      pages[pages.length - 1].push({ entry, lines: fragmentLines, first, height });
+      remaining -= height;
+      offset += count;
+      first = false;
+      if (offset < lines.length) fresh();
+    } while (offset < lines.length);
+  }
+  return pages;
+}
+
 const compactDate = (isoDate: string) => {
   const [year, month, day] = isoDate.split("-");
   return `${day}/${month}/${year}`;
@@ -113,104 +243,96 @@ const pointMarker = (type: SleepEventType) => {
 
 function row(
   stream: string[],
-  entry: SleepEntry,
+  fragment: RowFragment,
   y: number,
   language: Language,
   sport: readonly SportSession[],
 ) {
+  const { entry, lines, first, height } = fragment;
   const projection = projectSleepTimeline(entry);
   const window = sleepRowWindow(entry);
-  const timelineX = 112;
-  const width = 500;
-  stream.push(`0.7 G 30 ${y - 40} 782 40 re S\n`);
-  stream.push(text(33, y - 13, 5, compactDate(entry.night_start_date)));
+  const timelineX = layout.timelineX;
+  const width = layout.timelineWidth;
+  stream.push(`0.7 G ${layout.left} ${y - height} ${layout.right - layout.left} ${height} re S\n`);
+  stream.push(text(layout.dateX, y - 13, 5, compactDate(entry.night_start_date)));
   stream.push(
     text(
-      33,
+      layout.dateX,
       y - 23,
       5,
       `${language === "fr" ? "au" : "to"} ${compactDate(entry.night_end_date)}`,
     ),
   );
-  for (let hour = 0; hour <= 24; hour++) {
-    const x = timelineX + (hour / 24) * width;
-    stream.push(`0.9 G ${x} ${y - 40} m ${x} ${y} l S\n`);
-  }
-  [...projection.sleep, ...projection.awake, ...projection.otherIntervals]
-    .sort((left, right) => left.start - right.start || left.end - right.end)
-    .forEach((range) => {
-    const event = range.event;
-    const x =
-      timelineX +
-      timelinePosition(range.start, window.start, window.end) * width;
-    // INVARIANT: every projected interval keeps its canonical absolute
-    // start/end. An awakening interrupts rather than moves adjacent sleep;
-    // an estimated band is presentation-only and stays visually distinct.
-    const eventWidth = Math.max(
-      2,
-      timelineX +
-        timelinePosition(range.end, window.start, window.end) * width -
-        x,
-    );
-    const shade = range.kind === "sleep"
-      ? range.estimated ? 0.88 : 0.75
-      : event?.type === "half_sleep" ? 0.87 : 0.93;
-    if (range.kind === "awake") {
-      // CONTRACT: structured awakening intervals use the same orange semantic
-      // role in Web, HR, preview, and PDF; point markers remain separate.
-      stream.push(
-        `0.98 0.70 0.53 rg ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0.78 0.42 0.22 RG ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S 0 G 0 g\n`,
-      );
-    } else {
-      stream.push(
-        `${shade} g ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0 G ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S\n`,
-      );
+  if (!first) stream.push(text(layout.dateX, y - 34, 6, language === "fr" ? "suite" : "continued"));
+  if (first) {
+    for (let hour = 0; hour <= 24; hour++) {
+      const x = timelineX + (hour / 24) * width;
+      stream.push(`0.9 G ${x} ${y - 40} m ${x} ${y} l S\n`);
     }
-    if (eventWidth > 24) {
-      const label = event
-        ? eventLabels[language][event.type]
-        : language === "fr" ? "SOMMEIL ESTIMÉ" : "ESTIMATED SLEEP";
-      stream.push(text(x + 2, y - 23, 5, label));
-    }
+    [...projection.sleep, ...projection.awake, ...projection.otherIntervals]
+      .sort((left, right) => left.start - right.start || left.end - right.end)
+      .forEach((range) => {
+        const event = range.event;
+        const x =
+          timelineX +
+          timelinePosition(range.start, window.start, window.end) * width;
+        // INVARIANT: every projected interval keeps its canonical absolute
+        // start/end. An awakening interrupts rather than moves adjacent sleep;
+        // an estimated band is presentation-only and stays visually distinct.
+        const eventWidth = Math.max(
+          2,
+          timelineX +
+            timelinePosition(range.end, window.start, window.end) * width -
+            x,
+        );
+        const shade = range.kind === "sleep"
+          ? range.estimated ? 0.88 : 0.75
+          : event?.type === "half_sleep" ? 0.87 : 0.93;
+        if (range.kind === "awake") {
+          // CONTRACT: structured awakening intervals use the same orange semantic
+          // role in Web, HR, preview, and PDF; point markers remain separate.
+          stream.push(
+            `0.98 0.70 0.53 rg ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0.78 0.42 0.22 RG ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S 0 G 0 g\n`,
+          );
+        } else {
+          stream.push(
+            `${shade} g ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re f 0 G ${x.toFixed(2)} ${(y - 29).toFixed(2)} ${eventWidth.toFixed(2)} 18.00 re S\n`,
+          );
+        }
+        if (eventWidth > 24) {
+          const label = event
+            ? eventLabels[language][event.type]
+            : language === "fr" ? "SOMMEIL ESTIMÉ" : "ESTIMATED SLEEP";
+          stream.push(text(x + 2, y - 23, 5, label));
+        }
+      });
+    projection.pointEvents.forEach((event) => {
+      const x = timelineX +
+        timelinePosition(event.start_at, window.start, window.end) * width;
+      stream.push(text(x, y - 25, 8, pointMarker(event.type)));
     });
-  projection.pointEvents.forEach((event) => {
-    const x = timelineX +
-      timelinePosition(event.start_at, window.start, window.end) * width;
-    stream.push(text(x, y - 25, 8, pointMarker(event.type)));
-  });
-  projection.intakes.forEach((intake) => {
-    const x =
-      timelineX +
-      timelinePosition(intake.taken_at, window.start, window.end) * width;
-    stream.push(text(x, y - 36, 6, "M"));
-  });
-  stream.push(text(620, y - 16, 7, entry.sleep_quality ?? "-"));
-  stream.push(text(658, y - 16, 7, entry.wake_quality ?? "-"));
-  const medicationText = entry.intakes
-    .map(
-      (intake) =>
-        `${intake.taken_at.slice(11, 16)} — ${intake.medication_name}${
-          intake.dose_value === null
-            ? ""
-            : ` — ${formatDose(intake.dose_value)} ${intake.dose_unit ?? ""}${intake.quantity > 1 ? ` ×${intake.quantity}` : ""}`
-        }`,
-    )
-    .join(" ; ");
-  const notes = [medicationText, entry.treatment_and_notes]
-    .filter(Boolean)
-    .join(" | ");
-  stream.push(text(696, y - 16, 7, entry.day_form ?? "-"));
-  stream.push(text(730, y - 7, 4, notes.slice(0, 40)));
-  stream.push(text(730, y - 16, 4, notes.slice(40, 80)));
-  stream.push(text(730, y - 25, 4, notes.slice(80, 120)));
-  stream.push(text(730, y - 34, 4, notes.slice(120, 160)));
-  projectSportSegments(sport, window).forEach((segment) => {
-    const x = timelineX + segment.left * width;
-    const segmentWidth = segment.end === null ? 2 : Math.max(2, segment.width * width);
-    // PDF graphics state contains the blue fill and black outline. It cannot
-    // tint later sleep marks, grid lines, medication labels, or body text.
-    stream.push(`q 0.10 0.34 0.82 rg 0 G ${x.toFixed(2)} ${(y - 9).toFixed(2)} ` +
-      `${segmentWidth.toFixed(2)} 5 re B Q\n`);
+    projection.intakes.forEach((intake) => {
+      const x =
+        timelineX +
+        timelinePosition(intake.taken_at, window.start, window.end) * width;
+      stream.push(text(x, y - 36, 6, "M"));
+    });
+    stream.push(text(layout.qualityX[0], y - 16, 7, entry.sleep_quality ?? "-"));
+    stream.push(text(layout.qualityX[1], y - 16, 7, entry.wake_quality ?? "-"));
+    stream.push(text(layout.qualityX[2], y - 16, 7, entry.day_form ?? "-"));
+    projectSportSegments(sport, window).forEach((segment) => {
+      const x = timelineX + segment.left * width;
+      const segmentWidth = segment.end === null ? 2 : Math.max(2, segment.width * width);
+      // PDF graphics state contains the blue fill and black outline. It cannot
+      // tint later sleep marks, grid lines, medication labels, or body text.
+      stream.push(`q 0.10 0.34 0.82 rg 0 G ${x.toFixed(2)} ${(y - 9).toFixed(2)} ` +
+        `${segmentWidth.toFixed(2)} 5 re B Q\n`);
+    });
+  }
+  lines.forEach((line, index) => {
+    const baseline = y - 12 - index * layout.noteLeading;
+    if (line.separator) stream.push(`0.8 G ${layout.notesX + 3} ${(baseline + 5).toFixed(2)} m ${layout.notesRight - 3} ${(baseline + 5).toFixed(2)} l S 0 G\n`);
+    stream.push(text(layout.notesX + layout.notePadding, baseline, layout.noteFont, line.value));
   });
 }
 
@@ -236,7 +358,7 @@ function summaryLine(snapshot: SleepSnapshot, language: Language) {
 
 function page(
   snapshot: SleepSnapshot,
-  entries: SleepEntry[],
+  fragments: RowFragment[],
   index: number,
   count: number,
   language: Language,
@@ -255,29 +377,31 @@ function page(
     text(740, 565, 7, `${index + 1}/${count}`),
     text(30, 548, 7, "DATE"),
   ];
-  for (let hour = 0; hour <= 24; hour++)
+  for (let hour = 0; hour < 24; hour++)
     stream.push(
-      text(112 + (hour / 24) * 500, 548, 4, String((18 + hour) % 24)),
+      text(layout.timelineX + (hour / 24) * layout.timelineWidth, 548, 4, String((18 + hour) % 24)),
     );
   if (language === "fr") {
-    stream.push(text(616, 552, 4, "QUALITÉ DU"));
-    stream.push(text(616, 545, 4, "SOMMEIL"));
-    stream.push(text(654, 552, 4, "QUALITÉ DU"));
-    stream.push(text(654, 545, 4, "RÉVEIL"));
-    stream.push(text(692, 552, 4, "FORME DE LA"));
-    stream.push(text(692, 545, 4, "JOURNÉE"));
-    stream.push(text(728, 552, 4, "TRAITEMENT ET"));
-    stream.push(text(728, 545, 4, "REMARQUES"));
+    stream.push(text(layout.qualityX[0], 552, 4, "QUALITÉ DU"));
+    stream.push(text(layout.qualityX[0], 545, 4, "SOMMEIL"));
+    stream.push(text(layout.qualityX[1], 552, 4, "QUALITÉ DU"));
+    stream.push(text(layout.qualityX[1], 545, 4, "RÉVEIL"));
+    stream.push(text(layout.qualityX[2], 552, 4, "FORME DE LA"));
+    stream.push(text(layout.qualityX[2], 545, 4, "JOURNÉE"));
+    stream.push(text(layout.notesX, 552, 4, "TRAITEMENT ET"));
+    stream.push(text(layout.notesX, 545, 4, "REMARQUES"));
   } else {
-    stream.push(text(616, 552, 4, "SLEEP QUALITY"));
-    stream.push(text(654, 552, 4, "WAKE QUALITY"));
-    stream.push(text(692, 552, 4, "DAY FORM"));
-    stream.push(text(728, 552, 4, "TREATMENT / NOTES"));
+    stream.push(text(layout.qualityX[0], 552, 4, "SLEEP QUALITY"));
+    stream.push(text(layout.qualityX[1], 552, 4, "WAKE QUALITY"));
+    stream.push(text(layout.qualityX[2], 552, 4, "DAY FORM"));
+    stream.push(text(layout.notesX, 552, 4, "TREATMENT / NOTES"));
   }
-  entries.forEach((entry, rowIndex) =>
-    row(stream, entry, 538 - rowIndex * 40, language, sport),
-  );
-  const y = 520 - entries.length * 40;
+  let rowTop = layout.rowTop;
+  fragments.forEach((fragment) => {
+    row(stream, fragment, rowTop, language, sport);
+    rowTop -= fragment.height;
+  });
+  const y = 120;
   stream.push(text(30, y, 9, "OBSERVATIONS"));
   stream.push(text(30, y - 14, 6, summaryLine(snapshot, language)));
   const unvalidated = snapshot.entries.filter(
@@ -294,19 +418,6 @@ function page(
         language === "fr"
           ? `AVERTISSEMENT : ${plural(unvalidated, "jour non validé", "jours non validés")} dans cet export.`
           : `WARNING: ${plural(unvalidated, "unvalidated day", "unvalidated days")} in this export.`,
-      ),
-    );
-  entries
-    .filter((entry) => entry.treatment_and_notes)
-    .slice(0, 3)
-    .forEach((entry, noteIndex) =>
-      stream.push(
-        text(
-          30,
-          y - 36 - noteIndex * 10,
-          6,
-          `${compactDate(entry.night_start_date)} : ${entry.treatment_and_notes.slice(0, 110)}`,
-        ),
       ),
     );
   if (language === "fr") {
@@ -398,10 +509,7 @@ export function buildSleepDiaryPdf(
   reportStart = snapshot.entries[0]?.night_start_date ?? "—",
   reportEnd = snapshot.entries[snapshot.entries.length - 1]?.night_start_date ?? "—",
 ): Blob {
-  const groups = Array.from(
-    { length: Math.max(1, Math.ceil(snapshot.entries.length / 9)) },
-    (_, index) => snapshot.entries.slice(index * 9, (index + 1) * 9),
-  );
+  const groups = paginate(snapshot.entries, language);
   const sportGroups = Array.from({ length: Math.ceil(sport.length / 28) },
     (_, index) => sport.slice(index * 28, (index + 1) * 28));
   const reportEndTime = Date.parse(`${reportEnd}T12:00:00Z`);
