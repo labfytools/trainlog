@@ -1,21 +1,24 @@
 # Current implementation state
 
-## Private installation and Sleep sport overlay
+## Private installation and Sleep PDF treatments layout
 
-The private daily installation runs the explicit ordered Program rescheduling
-rollout from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema
-v37, Android schema v34, and the capability-selected `trainlog-programs` V2
-projection. The separate `trainlog-sleep-sport-overlay-v1` worktree starts from
-that Program source. Its `e2c07f1` desktop/Web bundle is now served by the
-private daily installation; the synchronization agents continue using the
-compatible Program rollout bundle. A read-only Firefox check of the deployed
-Web found blue sport segments on the real Sleep agenda and downloaded a
-three-page PDF from the same instance. An actual session start in the Web
-matched the PDF text; the rendered pages retained their margins and legend.
-Completed-session calendar dates continue to come from their linked factual
-sessions. No Android update or synchronization was required for this display.
-Rollout packaging requires an explicit Meson `-Dweb=enabled` build; the
-embedded frontend and its native Web tests are part of candidate validation.
+The private daily installation runs the ordered Program rescheduling rollout
+from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema v37,
+Android schema v34, and the capability-selected `trainlog-programs` V2
+projection. The PC/Web bundle from `trainlog-sleep-pdf-treatments-space-v1`
+at `3758875` is served, while synchronization agents retain the compatible
+Program rollout bundle. This PDF change builds on the deployed blue completed
+sport overlay from `e2c07f1`; no Android, schema, domain, or synchronization
+change accompanied it.
+
+Firefox downloaded a four-page PDF from the served Web. All pages were rendered
+and inspected. The PDF's 65 individual medication lines match its summary,
+its remarks remain visible, and no extracted word exceeds the page margins.
+The actual sport markers remain blue in Web, their recorded start time matches
+the PDF, and the PDF retains black-outlined blue sport bands. A separate
+synthetic set of 7, 14, 21, and 30 nights in French and English, plus long
+continuations, was rendered page by page and checked in grayscale. Rollout
+packaging requires a Meson `-Dweb=enabled` build with embedded frontend tests.
 
 Full-generation synchronization uses one generation/ACK business engine across
 versioned transports. On the paired 0.1.4 deployment, automatic local selection

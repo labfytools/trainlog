@@ -9,6 +9,8 @@
   on clearly dated pages. The former truncated observations duplicate is gone.
   The 18:00 timeline and factual blue sport overlay use one shared PDF geometry;
   Sleep, sport, database, and synchronization data are unchanged.
+  The private PC/Web rollout from `3758875` was verified with a four-page
+  browser-downloaded PDF; synchronization services retained their Program paths.
 
 - Added a read-only completed-session overlay to the Web Sleep agenda and its
   local vector PDF preview/export. Factual session start and end times share

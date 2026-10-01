@@ -1,11 +1,11 @@
 # Roadmap
 
 The Program cascade is deployed in the private daily installation from
-`trainlog-program-recalage-v1` at `3a4ec34`. The separate
-`trainlog-sleep-sport-overlay-v1` source adds the read-only Sleep sport display.
-The PC/Web rollout at `e2c07f1` has been verified on the actual Web and PDF
-installation. No new personal Program rescheduling is implied by this
-presentation work.
+`trainlog-program-recalage-v1` at `3a4ec34`. The PC/Web bundle from
+`trainlog-sleep-pdf-treatments-space-v1` at `3758875` is now served; it includes
+the verified blue Sleep sport overlay and the readable paginated treatment and
+remarks PDF. Synchronization services retain their Program rollout paths. No
+new personal Program rescheduling is implied by this presentation work.
 
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated
