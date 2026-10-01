@@ -131,6 +131,30 @@ class ProgramsProjectionRepositoryTest {
         }
     }
 
+    @Test
+    fun v2UpgradeKeepsV1DigestForIntegralDecimalWeights() {
+        val name = "program-decimal-upgrade-${UUID.randomUUID()}.db"
+        val repository = TrainlogRepository(context, name)
+        try {
+            // The desktop JSON exporter writes SQLite REAL values as 40.0.
+            // JSONObject's own serialization writes the same value as 40.
+            val v1 = artifact(JSONArray().put(program()))
+                .replace("\"target_weight_kg\":40", "\"target_weight_kg\":40.0")
+            val v2 = artifactV2(program())
+                .replace("\"target_weight_kg\":40", "\"target_weight_kg\":40.0")
+            assertTrue(v1.contains("\"target_weight_kg\":40.0"))
+            assertTrue(v2.contains("\"target_weight_kg\":40.0"))
+            assertEquals(ProgramsImportResult.Applied(1, 0, 0), repository.applyProgramsV1Json(v1))
+            assertEquals(ProgramsImportResult.Applied(1, 0, 0), repository.applyProgramsV2Json(v2))
+            assertEquals("2026-10-01", repository.getSyncedProgram(program().getString("program_id"))!!
+                .sessions.single().currentFor)
+            assertEquals(ProgramsImportResult.Applied(0, 0, 1), repository.applyProgramsV2Json(v2))
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     private fun preparationArtifact(
         includeProgramProvenance: Boolean = true,
         deliveryState: String = "pending",

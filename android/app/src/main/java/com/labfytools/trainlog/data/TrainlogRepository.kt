@@ -11829,6 +11829,34 @@ class TrainlogRepository(
 
     fun applyProgramsV2Json(json: String): ProgramsImportResult = applyProgramsJson(json, 2)
 
+    private fun legacyProgramDigest(program: JSONObject): String {
+        // WHY: serializing and reparsing JSONObject changes integral doubles (for
+        // example 52.0 to 52), which changes a V1 revision's causal digest.
+        // CONTRACT: discard only V2 fields while retaining the parsed V1 values.
+        val legacy = JSONObject()
+        program.keys().forEach { key ->
+            when (key) {
+                "revision_sequence" -> Unit
+                "sessions" -> {
+                    val rows = JSONArray()
+                    val sessions = program.getJSONArray("sessions")
+                    for (index in 0 until sessions.length()) {
+                        val source = sessions.getJSONObject(index)
+                        val row = JSONObject()
+                        source.keys().forEach { sessionKey ->
+                            if (sessionKey !in setOf("position", "current_for", "planning_state"))
+                                row.put(sessionKey, source.get(sessionKey))
+                        }
+                        rows.put(row)
+                    }
+                    legacy.put(key, rows)
+                }
+                else -> legacy.put(key, program.get(key))
+            }
+        }
+        return causalDigest(legacy)
+    }
+
     private fun applyProgramsJson(json: String, documentVersion: Int): ProgramsImportResult {
         if (json.toByteArray(StandardCharsets.UTF_8).size > 8 * 1024 * 1024 ||
             !jsonHasUniqueObjectKeys(json)) return ProgramsImportResult.Invalid("Invalid Programs JSON.")
@@ -12015,18 +12043,8 @@ class TrainlogRepository(
                     if (existing?.revisionId == program.getString("revision_id")) {
                         if (existing.digest == digest) { skipped++; continue }
                         if (documentVersion != 2 || existing.version != 1 ||
-                            existing.digest != causalDigest(JSONObject(program.toString()).apply {
-                                remove("revision_sequence")
-                                getJSONArray("sessions").let { rows ->
-                                    for (sessionIndex in 0 until rows.length()) {
-                                        rows.getJSONObject(sessionIndex).apply {
-                                            remove("position")
-                                            remove("current_for")
-                                            remove("planning_state")
-                                        }
-                                    }
-                                }
-                            })) throw ProgramsImportInvalid("Program revision identity conflict.")
+                            existing.digest != legacyProgramDigest(program))
+                            throw ProgramsImportInvalid("Program revision identity conflict.")
                     }
                     if (documentVersion == 2) {
                         val activeProgramSession = db.rawQuery(
