@@ -827,8 +827,13 @@ def main() -> int:
     # diagnostics to the separately bounded stderr channel.
     with redirect_stdout(sys.stderr):
         stage, manifest, digest = generation.capture_desktop(
-            args.database, args.owned_root, peer["peer_id"], args.run_id, outgoing_id
+            args.database, args.owned_root, peer["peer_id"], args.run_id, outgoing_id,
+            set(peer["capabilities"]), True,
         )
+    program_domain_incompatible = not any(
+        artifact["logical_name"] in ("programs-v1", "programs-v2")
+        for artifact in manifest["artifacts"]
+    )
     del stage
     published = generation.publish(
         args.database, outgoing_id, args.transport_root / "desktop-objects"
@@ -926,6 +931,14 @@ def main() -> int:
     if inbound_row != ("consumed",) or outbound_row != ("acknowledged",):
         raise RuntimeError("generation evidence did not corroborate completion")
     emit(args.run_id, "peer_consumed", outbound_generation_id=outgoing_id)
+    if program_domain_incompatible:
+        # WHY: the old peer cannot retain the new absolute schedule, but its
+        # unrelated domains can still converge through the same generation.
+        # CONTRACT: never report whole-run success while its Program view is stale.
+        raise RuntimeError(
+            "Programs V2 capability required: other domains synchronized, "
+            "Program planning not published to this peer"
+        )
     ai_post_sync = publish_ai_export_to_android(args, deadline)
     report = {
         "format": "trainlog-sync-worker-report",

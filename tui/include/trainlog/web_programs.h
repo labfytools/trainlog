@@ -63,4 +63,17 @@ TrainlogStatus trainlog_web_programs_prepare_json(TrainlogDatabase *database,
                                                   char **output_json,
                                                   size_t *output_size);
 
+/* WHY: original Program dates are immutable source evidence. CONTRACT: the
+ * preview is read only; commit requires its exact fact/choice fingerprint,
+ * current Program revision and a stable operation ID. INVARIANT: one commit
+ * changes absolute planning dates in one transaction, never history rows. */
+TrainlogStatus trainlog_web_programs_reschedule_json(TrainlogDatabase *database,
+                                                     const char *program_id,
+                                                     const char *operation_id,
+                                                     const char *body,
+                                                     size_t body_size,
+                                                     bool commit,
+                                                     char **output_json,
+                                                     size_t *output_size);
+
 #endif

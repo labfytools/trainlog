@@ -239,6 +239,7 @@ trainlog_core_sources = files(
   'src/web_sessions.c',
   'src/web_session_deletions.c',
   'src/web_programs.c',
+  'src/web_program_reschedule.c',
   'src/web_sleep.c',
   'src/web_exercises.c',
   'src/web_equipment.c',

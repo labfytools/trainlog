@@ -9,6 +9,8 @@ const api = vi.hoisted(() => ({
   fetchAllPrograms: vi.fn(),
   fetchProgram: vi.fn(),
   createPreparationFromProgram: vi.fn(),
+  previewProgramReschedule: vi.fn(),
+  applyProgramReschedule: vi.fn(),
 }))
 
 vi.mock('../api/programs', async (importOriginal) => ({
@@ -45,6 +47,8 @@ function session(
     title,
     session_type: 'training',
     planned_for: plannedFor,
+    current_for: plannedFor,
+    planning_state: 'active',
     note: null,
     execution_state: executionState,
     execution_session_id: null,
@@ -88,6 +92,8 @@ describe('ProgramsCalendarPage', () => {
     api.fetchAllPrograms.mockReset()
     api.fetchProgram.mockReset()
     api.createPreparationFromProgram.mockReset()
+    api.previewProgramReschedule.mockReset()
+    api.applyProgramReschedule.mockReset()
     api.fetchAllPrograms.mockResolvedValue([item()])
     api.fetchProgram.mockResolvedValue(detail())
   })
@@ -99,6 +105,53 @@ describe('ProgramsCalendarPage', () => {
     expect(api.fetchAllPrograms).toHaveBeenCalledWith('', 'active', expect.any(AbortSignal))
     expect(api.fetchProgram).toHaveBeenCalledWith('pg_one', expect.any(AbortSignal))
     expect(screen.queryByRole('combobox', { name: 'Programme actif' })).not.toBeInTheDocument()
+  })
+
+  it('keeps distinct cards on one date and labels a ceded slot separately', async () => {
+    const main = session('pgs_main', 'Séance principale', '2026-09-18')
+    const evening = session('pgs_evening', 'Étirements du soir', '2026-09-18')
+    const ceded = { ...session('pgs_ceded', 'Séance écartée', '2026-09-19'),
+      current_for: null, planning_state: 'ceded' as const }
+    api.fetchProgram.mockResolvedValue(detail({ sessions: [main, evening, ceded] }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const friday = await screen.findByLabelText('Ven 18/09/2026')
+    expect(within(friday).getAllByRole('article')).toHaveLength(2)
+    expect(within(friday).getByText('Séance principale')).toBeInTheDocument()
+    expect(within(friday).getByText('Étirements du soir')).toBeInTheDocument()
+    const saturday = screen.getByLabelText('Sam 19/09/2026')
+    expect(within(saturday).getByText('Créneau cédé')).toBeInTheDocument()
+    expect(within(saturday).queryByRole('button', { name: 'Préparer' })).not.toBeInTheDocument()
+  })
+
+  it('previews ordered changes before one confirmation', async () => {
+    const before = detail({ sessions: [
+      session('pgs_b', 'B', '2026-09-18'),
+      session('pgs_c', 'C', '2026-09-19'),
+    ] })
+    api.fetchProgram.mockResolvedValue(before)
+    api.previewProgramReschedule.mockResolvedValue({
+      api_version: 1, program_id: 'pg_one', revision_id: 'pgr_one',
+      preview_sha256: 'f'.repeat(64), moves: [
+        { program_session_id: 'pgs_b', original_for: '2026-09-18',
+          old_for: '2026-09-18', new_for: '2026-09-19', change: 'rescheduled' },
+        { program_session_id: 'pgs_c', original_for: '2026-09-19',
+          old_for: '2026-09-19', new_for: null, change: 'ceded' },
+      ],
+    })
+    api.applyProgramReschedule.mockResolvedValue({})
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    await screen.findByRole('heading', { level: 1, name: 'Cycle force' })
+    fireEvent.change(screen.getByLabelText('Première séance'), { target: { value: 'pgs_b' } })
+    fireEvent.change(screen.getByLabelText('Dernière séance'), { target: { value: 'pgs_c' } })
+    fireEvent.change(screen.getByLabelText('Date de reprise'), { target: { value: '2026-09-19' } })
+    fireEvent.click(screen.getByLabelText(/C \(2026-09-19\)/))
+    fireEvent.click(screen.getByRole('button', { name: 'Calculer l’aperçu' }))
+    expect(await screen.findByRole('heading', { name: 'Aperçu avant application' })).toBeInTheDocument()
+    expect(api.applyProgramReschedule).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer ce recalage' }))
+    await waitFor(() => expect(api.applyProgramReschedule).toHaveBeenCalledTimes(1))
+    expect(api.applyProgramReschedule.mock.calls[0][2]).toBe('f'.repeat(64))
   })
 
   it('shows the exact empty state and navigates to Sessions program administration', async () => {

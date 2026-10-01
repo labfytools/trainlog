@@ -1978,6 +1978,43 @@ h2 {
   color: var(--subtext-0);
   font-size: var(--font-size-sm);
 }
+.program-calendar-reschedule {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--surface-1);
+  border-radius: 0.75rem;
+}
+.program-calendar-reschedule-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.program-calendar-reschedule-fields label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: min(100%, 12rem);
+}
+.program-calendar-reschedule fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+.program-calendar-reschedule-preview {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+.program-calendar-reschedule-preview table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.program-calendar-reschedule-preview th,
+.program-calendar-reschedule-preview td {
+  padding: 0.35rem;
+  text-align: left;
+  border-bottom: 1px solid var(--surface-1);
+}
 .program-calendar-scroll {
   max-width: 100%;
   overflow-x: auto;

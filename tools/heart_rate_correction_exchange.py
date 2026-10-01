@@ -61,8 +61,8 @@ def split_target(value: str) -> tuple[str, str]:
 
 def require_schema(db: sqlite3.Connection) -> None:
     version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version not in range(27, 37):
-        raise CorrectionError(f"heart-rate correction requires schema v27-v36, found v{version}")
+    if version not in range(27, 38):
+        raise CorrectionError(f"heart-rate correction requires schema v27-v37, found v{version}")
 
 
 def _table_exists(db: sqlite3.Connection, table: str) -> bool:

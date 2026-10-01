@@ -370,6 +370,7 @@ internal class SyncGenerationCoordinator(
                             ACK_RECOVERY_CAPABILITY,
                             "session-preparations-v2",
                             "programs-v1",
+                            "programs-v2",
                         )
                     ),
                 )

@@ -365,10 +365,12 @@ static TrainlogStatus add_program_session_json(TrainlogDatabase *database,
         !add_column_text(document, session, "title", statement, 2) ||
         !add_column_text(document, session, "session_type", statement, 3) ||
         !add_column_text(document, session, "planned_for", statement, 4) ||
-        !add_column_text(document, session, "note", statement, 5) ||
-        !add_column_text(document, session, "execution_state", statement, 6) ||
-        !add_column_text(document, session, "execution_session_id", statement, 7) ||
-        !add_column_text(document, session, "execution_started_at", statement, 8) ||
+        !add_column_text(document, session, "current_for", statement, 5) ||
+        !add_column_text(document, session, "planning_state", statement, 6) ||
+        !add_column_text(document, session, "note", statement, 7) ||
+        !add_column_text(document, session, "execution_state", statement, 8) ||
+        !add_column_text(document, session, "execution_session_id", statement, 9) ||
+        !add_column_text(document, session, "execution_started_at", statement, 10) ||
         !yyjson_mut_obj_add_val(document, session, "occurrences", entries) ||
         !yyjson_mut_arr_add_val(sessions, session)) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
@@ -383,7 +385,9 @@ static TrainlogStatus add_program_sessions(TrainlogDatabase *database,
                                            yyjson_mut_val *sessions) {
     static const char SESSION_SQL[] =
         "SELECT ps.program_session_id,ps.position,ps.title,ps.session_type,ps.planned_for,"
-        "ps.note,CASE WHEN pe.state='completed' THEN 'completed' "
+        "CASE WHEN pp.state='ceded' THEN NULL ELSE COALESCE(pp.current_for,ps.planned_for) END,"
+        "COALESCE(pp.state,'active'),ps.note,"
+        "CASE WHEN pe.state='completed' THEN 'completed' "
         "WHEN pe.state='in_progress' THEN 'in_progress' "
         "WHEN pe.state='deleted' THEN 'deleted' "
         "WHEN EXISTS(SELECT 1 FROM session_preparations sp WHERE "
@@ -394,7 +398,9 @@ static TrainlogStatus add_program_sessions(TrainlogDatabase *database,
          * CONTRACT: expose that timestamp only for completed executions.
          * INVARIANT: the imported planned_for date and history are read only. */
         "CASE WHEN pe.state='completed' THEN actual.started_at ELSE NULL END "
-        "FROM program_sessions ps LEFT JOIN program_session_executions pe "
+        "FROM program_sessions ps LEFT JOIN program_session_planning pp "
+        "ON pp.program_session_id=ps.program_session_id "
+        "LEFT JOIN program_session_executions pe "
         "ON pe.program_session_id=ps.program_session_id "
         "LEFT JOIN sessions actual ON actual.session_id=pe.session_id "
         "WHERE ps.program_id=?1 ORDER BY ps.position,ps.program_session_id";
@@ -1165,7 +1171,25 @@ static TrainlogStatus program_replay_archive(TrainlogDatabase *database,
         result = SQLITE_OK;
     }
     (void)sqlite3_finalize(statement);
-    return result == SQLITE_OK ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+    if (result != SQLITE_OK || *found) {
+        return result == SQLITE_OK ? TRAINLOG_STATUS_OK : TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    statement = NULL;
+    result = sqlite3_prepare_v2(database->connection,
+                                "SELECT 1 FROM program_reschedule_operations WHERE operation_id=?",
+                                -1,
+                                &statement,
+                                NULL);
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_text(statement, 1, request_id, -1, SQLITE_TRANSIENT);
+    }
+    if (result == SQLITE_OK) {
+        result = sqlite3_step(statement);
+    }
+    (void)sqlite3_finalize(statement);
+    return result == SQLITE_ROW    ? TRAINLOG_STATUS_CONFLICT
+           : result == SQLITE_DONE ? TRAINLOG_STATUS_OK
+                                   : TRAINLOG_STATUS_DATABASE_ERROR;
 }
 
 static TrainlogStatus program_apply_archive(TrainlogDatabase *database,
@@ -1357,7 +1381,9 @@ static ProgramDeleteReplay program_replay_delete(TrainlogDatabase *database,
     }
 
     result = sqlite3_prepare_v2(database->connection,
-                                "SELECT 1 FROM program_requests WHERE request_id=?1",
+                                "SELECT 1 FROM program_requests WHERE request_id=?1 "
+                                "UNION ALL SELECT 1 FROM program_reschedule_operations "
+                                "WHERE operation_id=?1",
                                 -1,
                                 &statement,
                                 NULL);
@@ -1609,7 +1635,7 @@ static char *program_build_preparation_body(yyjson_val *session,
         command,
         root,
         "planned_for",
-        yyjson_val_mut_copy(command, yyjson_obj_get(session, "planned_for")));
+        yyjson_val_mut_copy(command, yyjson_obj_get(session, "current_for")));
     (void)yyjson_mut_obj_add_val(
         command, root, "notes", yyjson_val_mut_copy(command, yyjson_obj_get(session, "note")));
     (void)yyjson_mut_obj_add_strcpy(command, root, "editing_state", "draft");
@@ -1651,6 +1677,10 @@ TrainlogStatus trainlog_web_programs_prepare_json(TrainlogDatabase *database,
     if (session == NULL) {
         yyjson_doc_free(document);
         return TRAINLOG_STATUS_NOT_FOUND;
+    }
+    if (!yyjson_equals_str(yyjson_obj_get(session, "planning_state"), "active")) {
+        yyjson_doc_free(document);
+        return TRAINLOG_STATUS_CONFLICT;
     }
     body = program_build_preparation_body(session, program_id, program_session_id, &body_size);
     yyjson_doc_free(document);

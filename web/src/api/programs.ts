@@ -38,6 +38,8 @@ export interface ProgramSession {
   title: string
   session_type: 'training' | 'max_test'
   planned_for: string | null
+  current_for: string | null
+  planning_state: 'active' | 'ceded'
   note: string | null
   execution_state: 'todo' | 'prepared' | 'in_progress' | 'completed' | 'deleted'
   execution_session_id: string | null
@@ -60,6 +62,30 @@ export interface ProgramDetail {
   source_version: 1
   source_payload_sha256: string
   sessions: ProgramSession[]
+}
+
+export interface RescheduleChoice {
+  start_session_id: string
+  through_session_id: string
+  start_date: string
+  ceded_session_ids: string[]
+  expected_revision: string
+}
+
+export interface RescheduleMove {
+  program_session_id: string
+  original_for: string | null
+  old_for: string | null
+  new_for: string | null
+  change: 'rescheduled' | 'ceded' | 'unchanged'
+}
+
+export interface ReschedulePreview {
+  api_version: 1
+  program_id: string
+  revision_id: string
+  preview_sha256: string
+  moves: RescheduleMove[]
 }
 
 export interface ProgramImportPreview {
@@ -104,6 +130,47 @@ function requestId(prefix = 'web'): string {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
   return `${prefix}_${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`
+}
+
+export function newRescheduleOperationId(): string {
+  return requestId('pr')
+}
+
+async function rescheduleRequest(
+  programId: string,
+  mode: 'preview' | 'apply',
+  choice: RescheduleChoice & { preview_sha256?: string },
+  operationId?: string,
+): Promise<ReschedulePreview> {
+  const csrf = await mutationCsrfToken()
+  const response = await fetch(
+    `/api/v1/sessions/program/${encodeURIComponent(programId)}/reschedule/${mode}`,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json', 'Content-Type': 'application/json',
+        'X-Trainlog-CSRF-Token': csrf,
+        'X-Trainlog-Request-ID': operationId ?? requestId('pr'),
+      },
+      body: JSON.stringify(choice),
+    },
+  )
+  if (!response.ok) throw new Error(await errorReason(response))
+  const value: unknown = await response.json()
+  if (!object(value) || value.api_version !== 1 || value.program_id !== programId ||
+      typeof value.revision_id !== 'string' || typeof value.preview_sha256 !== 'string' ||
+      !Array.isArray(value.moves)) throw new TypeError('aperçu de recalage invalide')
+  return value as unknown as ReschedulePreview
+}
+
+export function previewProgramReschedule(programId: string, choice: RescheduleChoice) {
+  return rescheduleRequest(programId, 'preview', choice)
+}
+
+export function applyProgramReschedule(
+  programId: string, choice: RescheduleChoice, previewSha256: string, operationId: string,
+) {
+  return rescheduleRequest(programId, 'apply', { ...choice, preview_sha256: previewSha256 }, operationId)
 }
 
 export async function fetchAllPrograms(

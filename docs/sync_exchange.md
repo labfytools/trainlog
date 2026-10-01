@@ -277,6 +277,7 @@ does not publish to it or let it override an artifact in the new endpoint.
 | PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
 | PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1/v2 companion; v2 adds proposal withdrawals |
 | PC -> Android | `programs-v1.json` | optional staged `trainlog-programs` v1 companion: full nondeleted snapshot plus unacknowledged deletion tombstones |
+| PC -> Android | `programs-v2.json` | candidate `trainlog-programs` v2 companion: original and current dates, ceded state, ordered revision sequence, and the same deletion tombstones |
 | Android -> PC | `program-executions-v1.json` | optional `trainlog-program-executions` v1 companion: stable in-progress/completed provenance |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | Android -> full-generation daemon | `trainlog-sync-full-generation-request-v1.json` | `trainlog-sync-request` v1 |
@@ -298,6 +299,33 @@ This companion is independent of `trainlog-program` V1 import, mobile export
 V3, `trainlog-pc-catalog` V1, and `trainlog-session-preparations` V2. It does
 not change `TRAINLOG_FORMAT_V1`, active default V3 transport, or preparation
 semantics.
+
+### Isolated candidate: Programs V2 capability matrix
+
+`trainlog-programs` V2 is a separate strict artifact selected only for a peer
+advertising `programs-v2`. Its session adds `position`, nullable `current_for`
+and `planning_state=active|ceded`; its Program adds `revision_sequence`.
+`planned_for`, stable IDs, source entries and tombstones retain their V1
+meaning. One generation contains exactly one Programs version. Android v34
+stores the V2 projection transactionally and rejects a lower sequence, a
+same-sequence different revision, a later V1 downgrade, or a changed plan for
+its currently active Program draft. Execution facts return through the
+unchanged Program-executions V1 companion and retain their actual timestamps.
+
+| Desktop state | Android capability | Program result | Other domains |
+|---|---|---|---|
+| No reschedule | `programs-v1` only | V1 original plan | Normal generation |
+| No reschedule | `programs-v2` | V2 projection; V1 is omitted | Normal generation |
+| Rescheduled live Program | `programs-v2` | V2 absolute current plan | Normal generation |
+| Rescheduled live Program | V1 only, absent or stale V2 | Program artifact omitted; run reports incomplete Program convergence after ACK | Other artifacts still synchronize |
+| Program draft started offline after the last V2 ACK | `programs-v2` | Android rejects a changed plan without rewriting its draft; explicit conflict resolution is required | Generation rejection is durable |
+
+The desktop commit requires that the latest generation to each previously
+contacted Android peer was an acknowledged V2 Program generation no older than
+five minutes. This bounds, but cannot eliminate, a phone-side race: Android's
+active-draft check is the final guard. A failed or downgraded peer cannot be
+reported as current for the Program domain. The existing generation, request,
+ACK, tombstone, transport, Sleep and HR wire contracts are unchanged.
 
 ## Optional Program executions companion V1
 

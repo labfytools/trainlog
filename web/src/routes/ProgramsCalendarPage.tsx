@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createPreparationFromProgram,
+  applyProgramReschedule,
   fetchAllPrograms,
   fetchProgram,
+  newRescheduleOperationId,
+  previewProgramReschedule,
   type ProgramDetail,
   type ProgramListItem,
   type ProgramSession,
+  type RescheduleChoice,
+  type ReschedulePreview,
 } from '../api/programs'
 import { useDatePreferences } from '../presentation/DatePreferences'
 import { formatCivilDate, formatDate, parseCivilDate, validTimestampValue } from '../presentation/dateFormat'
@@ -59,7 +64,8 @@ function displayedDate(session: ProgramSession): string | null {
   // A completed link without a valid history timestamp must not masquerade as
   // a workout performed on the imported plan date.
   return session.execution_state === 'completed'
-    ? actualExecutionDate(session) : session.planned_for
+    ? actualExecutionDate(session)
+    : session.planning_state === 'ceded' ? session.planned_for : session.current_for
 }
 
 function calendarDays(program: ProgramDetail): CalendarDay[] {
@@ -126,7 +132,13 @@ function ProgramSessionCard({ programId, session, pending, preparationId, onPrep
   const actualDate = actualExecutionDate(session)
   return <article className={`program-calendar-session program-calendar-state-${session.execution_state}`}>
     <h3>{session.title}</h3>
-    <span className="program-calendar-state-label">{stateLabels[session.execution_state]}</span>
+    <span className="program-calendar-state-label">{session.planning_state === 'ceded' &&
+      session.execution_state !== 'completed' ? 'Créneau cédé' : stateLabels[session.execution_state]}</span>
+    {session.planning_state === 'active' && session.current_for !== session.planned_for &&
+      session.execution_state !== 'completed' && <p className="program-calendar-date-note">
+        Recalée du {session.planned_for === null ? 'jour initial non défini' : formatCivilDate(session.planned_for, dateFormat)}
+        {' au '}{session.current_for === null ? 'jour non défini' : formatCivilDate(session.current_for, dateFormat)}
+      </p>}
     {actualDate !== null && actualDate !== session.planned_for && <p className="program-calendar-date-note">
       Prévue le {session.planned_for === null ? 'date non définie' : formatCivilDate(session.planned_for, dateFormat)}
       {' · '}effectuée le {formatCivilDate(actualDate, dateFormat)}
@@ -134,7 +146,8 @@ function ProgramSessionCard({ programId, session, pending, preparationId, onPrep
     {session.execution_state === 'completed' && actualDate === null &&
       <p className="program-calendar-date-note">Date réelle indisponible</p>}
     <div className="program-calendar-action">
-      {session.execution_state === 'todo' && <button type="button" disabled={pending}
+      {session.execution_state === 'todo' && session.planning_state === 'active' &&
+        <button type="button" disabled={pending}
         onClick={() => onPrepare(programId, session)}>
         {pending ? 'Préparation…' : 'Préparer'}
       </button>}
@@ -156,6 +169,14 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
   const [pendingSessions, setPendingSessions] = useState<Set<string>>(new Set())
   const [preparationIds, setPreparationIds] = useState<Record<string, string>>({})
   const [announcement, setAnnouncement] = useState('')
+  const [rescheduleStart, setRescheduleStart] = useState('')
+  const [rescheduleThrough, setRescheduleThrough] = useState('')
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [cededIds, setCededIds] = useState<string[]>([])
+  const [reschedulePreview, setReschedulePreview] = useState<{
+    choice: RescheduleChoice, result: ReschedulePreview, operationId: string
+  } | null>(null)
+  const [reschedulePending, setReschedulePending] = useState(false)
   const preparing = useRef(new Set<string>())
   const mounted = useRef(true)
   const selectedIdRef = useRef('')
@@ -200,6 +221,11 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
     setDetailPending(true)
     setDetailError('')
     setAnnouncement('')
+    setReschedulePreview(null)
+    setRescheduleStart('')
+    setRescheduleThrough('')
+    setRescheduleDate('')
+    setCededIds([])
     setPreparationIds({})
     fetchProgram(selectedId, controller.signal).then((value) => {
       if (isCurrent()) setDetail(value)
@@ -215,6 +241,54 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
 
   const days = useMemo(() => detail === null ? [] : calendarDays(detail), [detail])
   const undatedSessions = detail?.sessions.filter((session) => dateValue(displayedDate(session)) === null) ?? []
+  const openSessions = detail?.sessions.filter((session) => session.execution_state === 'todo') ?? []
+
+  const previewReschedule = async () => {
+    if (!detail || !rescheduleStart || !rescheduleThrough || !rescheduleDate) return
+    const programId = detail.program_id
+    const generation = selectionGeneration.current
+    const choice: RescheduleChoice = {
+      start_session_id: rescheduleStart,
+      through_session_id: rescheduleThrough,
+      start_date: rescheduleDate,
+      ceded_session_ids: cededIds,
+      expected_revision: detail.revision_id,
+    }
+    setReschedulePending(true)
+    setReschedulePreview(null)
+    try {
+      const result = await previewProgramReschedule(programId, choice)
+      if (mounted.current && selectionGeneration.current === generation) {
+        setReschedulePreview({ choice, result, operationId: newRescheduleOperationId() })
+        setAnnouncement('Aperçu calculé. Vérifiez les dates avant de confirmer.')
+      }
+    } catch (reason) {
+      setAnnouncement(`Recalage impossible : ${errorMessage(reason, 'erreur inconnue')}`)
+    } finally {
+      setReschedulePending(false)
+    }
+  }
+
+  const confirmReschedule = async () => {
+    if (!detail || !reschedulePreview) return
+    const { choice, result, operationId } = reschedulePreview
+    const programId = detail.program_id
+    const generation = selectionGeneration.current
+    setReschedulePending(true)
+    try {
+      await applyProgramReschedule(programId, choice, result.preview_sha256, operationId)
+      const reread = await fetchProgram(programId)
+      if (mounted.current && selectionGeneration.current === generation) {
+        setDetail(reread)
+        setReschedulePreview(null)
+        setAnnouncement('Recalage enregistré. La synchronisation Android reste à vérifier.')
+      }
+    } catch (reason) {
+      setAnnouncement(`Recalage non confirmé : ${errorMessage(reason, 'erreur inconnue')}`)
+    } finally {
+      setReschedulePending(false)
+    }
+  }
 
   const prepare = async (programId: string, session: ProgramSession) => {
     const sessionId = session.program_session_id
@@ -316,6 +390,54 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
           </ul>
         </header>
         <p className="program-calendar-announcement" aria-live="polite">{announcement}</p>
+        <section className="program-calendar-reschedule" aria-label="Recaler le programme">
+          <h2>Recaler la suite</h2>
+          <p>Choisissez les séances concernées dans leur ordre, la reprise et les créneaux cédés.
+            L’aperçu utilise les dates de créneaux déjà inscrites au programme.</p>
+          <div className="program-calendar-reschedule-fields">
+            <label>Première séance<select value={rescheduleStart} onChange={(event) => {
+              setRescheduleStart(event.target.value); setReschedulePreview(null)
+            }}><option value="">Choisir</option>{openSessions.map((session) =>
+              <option key={session.program_session_id} value={session.program_session_id}>
+                Début : {session.title}</option>)}</select></label>
+            <label>Dernière séance<select value={rescheduleThrough} onChange={(event) => {
+              setRescheduleThrough(event.target.value); setReschedulePreview(null)
+            }}><option value="">Choisir</option>{openSessions.map((session) =>
+              <option key={session.program_session_id} value={session.program_session_id}>
+                Fin : {session.title}</option>)}</select></label>
+            <label>Date de reprise<input type="date" value={rescheduleDate}
+              min={detail.start_date ?? undefined} max={detail.end_date ?? undefined}
+              onChange={(event) => { setRescheduleDate(event.target.value); setReschedulePreview(null) }} /></label>
+          </div>
+          <fieldset><legend>Séances qui cèdent leur créneau</legend>
+            {openSessions.map((session) => <label key={session.program_session_id}>
+              <input type="checkbox" checked={cededIds.includes(session.program_session_id)}
+                onChange={(event) => {
+                  setCededIds((current) => event.target.checked
+                    ? [...current, session.program_session_id]
+                    : current.filter((id) => id !== session.program_session_id))
+                  setReschedulePreview(null)
+                }} />{session.title} ({session.planned_for ?? 'sans date'})
+            </label>)}
+          </fieldset>
+          <button type="button" disabled={reschedulePending || !rescheduleStart ||
+            !rescheduleThrough || !rescheduleDate} onClick={previewReschedule}>Calculer l’aperçu</button>
+          {reschedulePreview && <div className="program-calendar-reschedule-preview">
+            <h3>Aperçu avant application</h3>
+            <table><thead><tr><th>Séance</th><th>Date initiale</th><th>Date actuelle</th>
+              <th>Nouvelle date</th><th>Changement</th></tr></thead><tbody>
+              {reschedulePreview.result.moves.map((move) => <tr key={move.program_session_id}>
+                <td>{detail.sessions.find((session) => session.program_session_id === move.program_session_id)?.title}</td>
+                <td>{move.original_for ?? '—'}</td><td>{move.old_for ?? '—'}</td>
+                <td>{move.new_for ?? '—'}</td>
+                <td>{move.change === 'ceded' ? 'Créneau cédé'
+                  : move.change === 'unchanged' ? 'Inchangée' : 'Recalée'}</td>
+              </tr>)}
+            </tbody></table>
+            <button type="button" disabled={reschedulePending} onClick={confirmReschedule}>
+              Confirmer ce recalage</button>
+          </div>}
+        </section>
         {days.length > 0 && <div className="program-calendar-scroll" tabIndex={0}
           aria-label="Calendrier hebdomadaire du programme">
           <div className="program-calendar-grid">

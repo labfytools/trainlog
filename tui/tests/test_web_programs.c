@@ -608,10 +608,343 @@ static bool legacy_integer_weight_zero_prepares_editable_draft(void) {
     return true;
 }
 
+static bool ordered_reschedule_is_atomic_and_idempotent(void) {
+    static const char *const DATES[] = {
+        "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26",
+        "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03",
+        "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10",
+        "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17",
+    };
+    static const char REQUEST[] = "{\"start_session_id\":\"pgs_fixture_07\","
+                                  "\"through_session_id\":\"pgs_fixture_22\","
+                                  "\"start_date\":\"2026-10-01\","
+                                  "\"ceded_session_ids\":[\"pgs_fixture_11\",\"pgs_fixture_17\"],"
+                                  "\"expected_revision\":\"pgr_fixture\"}";
+    TrainlogDatabase *database = NULL;
+    char *preview = NULL;
+    char *applied = NULL;
+    char *replayed = NULL;
+    char *request = NULL;
+    size_t size = 0U;
+    size_t applied_size = 0U;
+    char fingerprint[80];
+    char sql[1024];
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO programs(program_id,title,state,start_date,end_date,"
+                       "created_at,updated_at,revision_id,source_format,source_version,"
+                       "source_payload_sha256) VALUES('pg_fixture','Fixture','active',"
+                       "'2026-09-21','2026-10-18','2026-09-20T00:00:00Z',"
+                       "'2026-09-20T00:00:00Z','pgr_fixture','trainlog-program',1,"
+                       "'0000000000000000000000000000000000000000000000000000000000000000')",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    for (size_t index = 0U; index < 24U; ++index) {
+        (void)snprintf(sql,
+                       sizeof(sql),
+                       "INSERT INTO program_sessions VALUES('pgs_fixture_%02zu','pg_fixture',"
+                       "%zu,'Session %zu','training','%s',NULL)",
+                       index,
+                       index,
+                       index,
+                       DATES[index]);
+        CHECK(sqlite3_exec(database->connection, sql, NULL, NULL, NULL) == SQLITE_OK);
+        if (index < 7U) {
+            const char *actual = index == 5U   ? "2026-09-28T09:00:00+02:00"
+                                 : index == 6U ? "2026-09-30T17:00:00+02:00"
+                                               : "2026-09-21T09:00:00+02:00";
+            (void)snprintf(sql,
+                           sizeof(sql),
+                           "INSERT INTO sessions(session_id,started_at) "
+                           "VALUES('se_fixture_%02zu','%s')",
+                           index,
+                           actual);
+            CHECK(sqlite3_exec(database->connection, sql, NULL, NULL, NULL) == SQLITE_OK);
+            (void)snprintf(sql,
+                           sizeof(sql),
+                           "INSERT INTO program_session_executions VALUES("
+                           "'pgs_fixture_%02zu','pg_fixture','se_fixture_%02zu',"
+                           "'completed','2026-09-30T00:00:00Z')",
+                           index,
+                           index);
+            CHECK(sqlite3_exec(database->connection, sql, NULL, NULL, NULL) == SQLITE_OK);
+        }
+    }
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO sessions(session_id,started_at) "
+                       "VALUES('se_evening_stretch','2026-10-01T20:00:00+02:00')",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    char *invalid_date = replace_once(REQUEST, "2026-10-01", "2026-02-30");
+    CHECK(invalid_date != NULL);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                NULL,
+                                                invalid_date,
+                                                strlen(invalid_date),
+                                                false,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_INVALID_ARGUMENT);
+    free(invalid_date);
+    free(replayed);
+    replayed = NULL;
+    char *too_late = replace_once(REQUEST, "2026-10-01", "2026-10-16");
+    CHECK(too_late != NULL);
+    CHECK(trainlog_web_programs_reschedule_json(
+              database, "pg_fixture", NULL, too_late, strlen(too_late), false, &replayed, &size) ==
+          TRAINLOG_STATUS_INVALID_ARGUMENT);
+    CHECK(strstr(replayed, "insufficient_or_duplicate_slots") != NULL);
+    free(too_late);
+    free(replayed);
+    replayed = NULL;
+    // The DST transition on October 25 is a rest day in this fixture.
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO programs(program_id,title,state,start_date,end_date,"
+                       "created_at,updated_at,revision_id,source_format,source_version,"
+                       "source_payload_sha256) VALUES('pg_dst','DST','active','2026-10-24',"
+                       "'2026-10-27','2026-10-20T00:00:00Z','2026-10-20T00:00:00Z',"
+                       "'pgr_dst','trainlog-program',1,"
+                       "'0000000000000000000000000000000000000000000000000000000000000000');"
+                       "INSERT INTO program_sessions VALUES"
+                       "('pgs_dst_0','pg_dst',0,'Before','training','2026-10-24',NULL),"
+                       "('pgs_dst_1','pg_dst',1,'After','training','2026-10-26',NULL),"
+                       "('pgs_dst_2','pg_dst',2,'Next','training','2026-10-27',NULL)",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    static const char DST_REQUEST[] =
+        "{\"start_session_id\":\"pgs_dst_0\",\"through_session_id\":\"pgs_dst_2\","
+        "\"start_date\":\"2026-10-24\",\"ceded_session_ids\":[],"
+        "\"expected_revision\":\"pgr_dst\"}";
+    CHECK(
+        trainlog_web_programs_reschedule_json(
+            database, "pg_dst", NULL, DST_REQUEST, strlen(DST_REQUEST), false, &replayed, &size) ==
+        TRAINLOG_STATUS_OK);
+    CHECK(strstr(replayed, "\"new_for\":\"2026-10-26\"") != NULL);
+    CHECK(strstr(replayed, "2026-10-25") == NULL);
+    free(replayed);
+    replayed = NULL;
+    CHECK(trainlog_web_programs_reschedule_json(
+              database, "pg_fixture", NULL, REQUEST, strlen(REQUEST), false, &preview, &size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(extract_string(preview, "preview_sha256", fingerprint, sizeof(fingerprint)));
+    CHECK(strstr(preview,
+                 "\"program_session_id\":\"pgs_fixture_07\","
+                 "\"original_for\":\"2026-09-29\","
+                 "\"old_for\":\"2026-09-29\","
+                 "\"new_for\":\"2026-10-01\"") != NULL);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_session_planning") == 0);
+    request = malloc(strlen(REQUEST) + strlen(fingerprint) + 32U);
+    CHECK(request != NULL);
+    (void)snprintf(request,
+                   strlen(REQUEST) + strlen(fingerprint) + 32U,
+                   "%.*s,\"preview_sha256\":\"%s\"}",
+                   (int)strlen(REQUEST) - 1,
+                   REQUEST,
+                   fingerprint);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO sync_generations(generation_id,run_id,producer_peer_id,"
+                       "consumer_peer_id,producer_kind,generated_at,manifest_sha256,status,"
+                       "manifest_json,staging_path) VALUES('gen_fixture','sy_fixture',"
+                       "'peer_desktop','peer_phone','desktop',"
+                       "strftime('%Y-%m-%dT%H:%M:%SZ','now'),'digest','captured','{}','/tmp')",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO sync_generation_artifacts VALUES('gen_fixture','programs-v2',"
+                       "'trainlog-programs',2,'programs-v2.json',0,'digest',0)",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                "op_fixture",
+                                                request,
+                                                strlen(request),
+                                                true,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(strstr(replayed, "program_peer_not_fresh") != NULL);
+    free(replayed);
+    replayed = NULL;
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_session_planning") == 0);
+    CHECK(sqlite3_exec(database->connection,
+                       "UPDATE sync_generations SET status='acknowledged',"
+                       "acknowledged_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                       "WHERE generation_id='gen_fixture'",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                "op_fixture",
+                                                request,
+                                                strlen(request),
+                                                true,
+                                                &applied,
+                                                &applied_size) == TRAINLOG_STATUS_OK);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_session_planning") == 11);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_session_planning WHERE state='ceded'") ==
+          2);
+    CHECK(scalar(database,
+                 "SELECT COUNT(DISTINCT current_for) FROM program_session_planning "
+                 "WHERE state='active'") == 9);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_session_executions "
+                 "WHERE state='completed'") == 7);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sessions WHERE "
+                 "session_id='se_fixture_05' AND started_at='2026-09-28T09:00:00+02:00'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sessions WHERE "
+                 "session_id='se_fixture_06' AND started_at='2026-09-30T17:00:00+02:00'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sessions WHERE "
+                 "session_id='se_evening_stretch' AND started_at='2026-10-01T20:00:00+02:00'") ==
+          1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_sessions WHERE "
+                 "planned_for='2026-09-29' AND program_session_id='pgs_fixture_07'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_session_planning WHERE "
+                 "program_session_id='pgs_fixture_09' AND current_for='2026-10-03'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_session_planning WHERE "
+                 "program_session_id='pgs_fixture_22'") == 0);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                "op_fixture",
+                                                request,
+                                                strlen(request),
+                                                true,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_OK);
+    CHECK(strcmp(applied, replayed) == 0);
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_reschedule_operations") == 1);
+    free(replayed);
+    replayed = NULL;
+    char *different_request = replace_once(request, "2026-10-01", "2026-10-02");
+    CHECK(different_request != NULL);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                "op_fixture",
+                                                different_request,
+                                                strlen(different_request),
+                                                true,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_CONFLICT);
+    free(different_request);
+    free(replayed);
+    replayed = NULL;
+    char new_revision[80];
+    char next_fingerprint[80];
+    CHECK(extract_string(applied, "new_revision_id", new_revision, sizeof(new_revision)));
+    CHECK(scalar(database,
+                 "SELECT revision_sequence FROM program_revision_sequences "
+                 "WHERE program_id='pg_fixture'") == 1);
+    char second_choice[512];
+    (void)snprintf(second_choice,
+                   sizeof(second_choice),
+                   "{\"start_session_id\":\"pgs_fixture_07\","
+                   "\"through_session_id\":\"pgs_fixture_09\","
+                   "\"start_date\":\"2026-10-01\",\"ceded_session_ids\":[],"
+                   "\"expected_revision\":\"%s\"}",
+                   new_revision);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                NULL,
+                                                second_choice,
+                                                strlen(second_choice),
+                                                false,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_OK);
+    CHECK(strstr(replayed,
+                 "\"program_session_id\":\"pgs_fixture_09\","
+                 "\"original_for\":\"2026-10-01\","
+                 "\"old_for\":\"2026-10-03\","
+                 "\"new_for\":\"2026-10-03\"") != NULL);
+    free(replayed);
+    replayed = NULL;
+    char *next_choice = replace_once(REQUEST, "pgr_fixture", new_revision);
+    CHECK(next_choice != NULL);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                NULL,
+                                                next_choice,
+                                                strlen(next_choice),
+                                                false,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_OK);
+    CHECK(extract_string(replayed, "preview_sha256", next_fingerprint, sizeof(next_fingerprint)));
+    free(replayed);
+    replayed = NULL;
+    char *next_request = malloc(strlen(next_choice) + strlen(next_fingerprint) + 32U);
+    CHECK(next_request != NULL);
+    (void)snprintf(next_request,
+                   strlen(next_choice) + strlen(next_fingerprint) + 32U,
+                   "%.*s,\"preview_sha256\":\"%s\"}",
+                   (int)strlen(next_choice) - 1,
+                   next_choice,
+                   next_fingerprint);
+    CHECK(sqlite3_exec(database->connection,
+                       "CREATE TRIGGER fail_reschedule_fixture BEFORE INSERT ON "
+                       "program_reschedule_operations WHEN NEW.operation_id='op_failure' "
+                       "BEGIN SELECT RAISE(ABORT,'fixture failure'); END",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                "op_failure",
+                                                next_request,
+                                                strlen(next_request),
+                                                true,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_DATABASE_ERROR);
+    free(replayed);
+    replayed = NULL;
+    CHECK(scalar(database, "SELECT COUNT(*) FROM program_reschedule_operations") == 1);
+    (void)snprintf(sql,
+                   sizeof(sql),
+                   "SELECT COUNT(*) FROM programs WHERE program_id='pg_fixture' "
+                   "AND revision_id='%s'",
+                   new_revision);
+    CHECK(scalar(database, sql) == 1);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO program_session_executions VALUES("
+                       "'pgs_fixture_07','pg_fixture','se_late','completed',"
+                       "'2026-10-01T10:00:00Z')",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_programs_reschedule_json(database,
+                                                "pg_fixture",
+                                                "op_stale",
+                                                next_request,
+                                                strlen(next_request),
+                                                true,
+                                                &replayed,
+                                                &size) == TRAINLOG_STATUS_CONFLICT);
+    CHECK(strstr(replayed, "prepared_or_executed_session") != NULL);
+    free(replayed);
+    free(next_request);
+    free(next_choice);
+    free(applied);
+    free(preview);
+    free(request);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void) {
     return import_archive_and_prepare() && strict_import_rejections() &&
                    mixed_profile_prepare_regression() &&
-                   legacy_integer_weight_zero_prepares_editable_draft()
+                   legacy_integer_weight_zero_prepares_editable_draft() &&
+                   ordered_reschedule_is_atomic_and_idempotent()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

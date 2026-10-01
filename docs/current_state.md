@@ -1,5 +1,16 @@
 # Current implementation state
 
+## Isolated Program rescheduling candidate
+
+The `trainlog-program-recalage-v1` worktree contains a local candidate for
+explicit ordered Program rescheduling, desktop schema v37, Android schema v34,
+and the capability-selected `trainlog-programs` V2 projection. The stable
+0.1.7 installation and personal Program have not been migrated or rescheduled.
+The candidate passed local native, Web, Android JVM, build, and targeted
+sanitizer validation. It still requires coordinated PC/Android deployment
+before it is an operational feature. Completed-session calendar
+dates in stable 0.1.7 continue to come from their linked factual sessions.
+
 Full-generation synchronization uses one generation/ACK business engine across
 versioned transports. On the paired 0.1.4 deployment, automatic local selection
 is Bluetooth Classic RFCOMM first and direct USB/MTP second. The desktop BlueZ

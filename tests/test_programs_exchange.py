@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import export_programs
+import export_programs_v2
 
 
 SCHEMA = """
@@ -78,6 +79,41 @@ class ProgramsExchangeTest(unittest.TestCase):
             "revision_id": "pgr_deleted",
             "requested_at": "2026-09-18T12:00:00Z",
         }], payload["deletions"])
+
+    def test_v2_carries_current_date_and_ceded_state_without_changing_v1(self):
+        with closing(sqlite3.connect(self.database)) as db:
+            db.executescript("""
+                CREATE TABLE program_session_planning(
+                    program_session_id TEXT PRIMARY KEY,current_for TEXT,
+                    state TEXT,operation_id TEXT,updated_at TEXT);
+                CREATE TABLE program_revision_sequences(
+                    program_id TEXT PRIMARY KEY,revision_sequence INTEGER NOT NULL);
+                INSERT INTO program_revision_sequences VALUES('pg_live',1);
+                INSERT INTO program_session_planning VALUES(
+                    'pgs_live','2026-10-01','active','op_fixture','2026-09-30T12:00:00Z');
+                PRAGMA user_version=37;
+            """)
+            db.commit()
+        initial = export_programs.export_programs(self.database)
+        current = export_programs_v2.export_programs_v2(self.database)
+        self.assertEqual(1, initial["version"])
+        self.assertEqual(2, current["version"])
+        original = initial["programs"][0]["sessions"][0]
+        planned = current["programs"][0]["sessions"][0]
+        self.assertIsNone(original["planned_for"])
+        self.assertEqual(set(original), {
+            "program_session_id", "title", "session_type", "planned_for", "note", "occurrences"
+        })
+        self.assertEqual("2026-10-01", planned["current_for"])
+        self.assertEqual(1, current["programs"][0]["revision_sequence"])
+        self.assertEqual("active", planned["planning_state"])
+        self.assertEqual(0, planned["position"])
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("UPDATE program_session_planning SET current_for=NULL,state='ceded'")
+            db.commit()
+        ceded = export_programs_v2.export_programs_v2(self.database)
+        self.assertIsNone(ceded["programs"][0]["sessions"][0]["current_for"])
+        self.assertEqual("ceded", ceded["programs"][0]["sessions"][0]["planning_state"])
 
 
 if __name__ == "__main__":

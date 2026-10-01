@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.7
 
+The isolated `trainlog-program-recalage-v1` candidate adds an explicit
+preview-and-confirm cascade for unfinished Program sessions. It retains source
+and actual dates, stores absolute current dates and ceded-slot state, and
+selects a separate Programs V2 Android projection by capability. This candidate
+is not merged into the stable installation or deployed to Android.
+
 Development opened after the stable v0.1.6 release. This line is restricted to
 observed bug fixes, regression fixes, directly related small UI corrections,
 documentation corrections, robustness, and associated tests. It does not admit

@@ -25,6 +25,8 @@ data class SyncedProgramSession(
     val title: String,
     val sessionType: String,
     val plannedFor: String?,
+    val currentFor: String?,
+    val planningState: String,
     val note: String?,
     val executionState: ProgramSessionExecutionState,
     val executionSessionId: String?,

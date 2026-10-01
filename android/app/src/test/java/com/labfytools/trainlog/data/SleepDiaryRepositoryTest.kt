@@ -245,7 +245,7 @@ class SleepDiaryRepositoryTest {
             SQLiteDatabase.OPEN_READWRITE,
         )
         try {
-            assertEquals(33, raw.version)
+            assertEquals(34, raw.version)
             assertThrows(SQLiteException::class.java) {
                 raw.execSQL(
                     "UPDATE sleep_diary_revisions SET sleep_quality='TB' WHERE revision_id=?",

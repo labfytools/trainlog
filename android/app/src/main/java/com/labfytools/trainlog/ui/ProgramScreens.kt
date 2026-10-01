@@ -118,7 +118,12 @@ fun ProgramDetailScreen(
             program.endDate?.let { TrainlogInfo(strings.getString(R.string.program_end_date, formatDate(it))) }
             program.note?.let { TrainlogInfo(it) }
             val completed = program.sessions.count { it.executionState == ProgramSessionExecutionState.COMPLETED }
-            TrainlogInfo("$completed / ${program.sessions.size} · ${strings.getString(R.string.program_session_completed)}", if (completed > 0) LocalTrainlogColors.current.success else LocalTrainlogColors.current.muted)
+            val ceded = program.sessions.count { it.planningState == "ceded" }
+            TrainlogInfo(
+                "$completed / ${program.sessions.size} · ${strings.getString(R.string.program_session_completed)}" +
+                    if (ceded > 0) " · $ceded créneau(x) cédé(s)" else "",
+                if (completed > 0) LocalTrainlogColors.current.success else LocalTrainlogColors.current.muted,
+            )
         }
         message?.let { TrainlogInfo(it) }
         program.sessions.forEachIndexed { index, session ->
@@ -145,12 +150,16 @@ fun ProgramDetailScreen(
                         color = LocalTrainlogColors.current.text,
                         fontWeight = FontWeight.Bold,
                     )
-                    ProgramStateBadge(strings.getString(stateLabel), completed)
+                    ProgramStateBadge(
+                        if (session.planningState == "ceded" && !completed) "Créneau cédé"
+                        else strings.getString(stateLabel),
+                        completed,
+                    )
                 }
                 TrainlogInfo(
                     listOfNotNull(
                         strings.getString(if (session.sessionType == "max_test") R.string.session_max_test else R.string.session_training),
-                        session.plannedFor?.let { strings.getString(R.string.planned_for, formatDate(it)) },
+                        session.currentFor?.let { strings.getString(R.string.planned_for, formatDate(it)) },
                         strings.resources.getQuantityString(R.plurals.exercise_count, session.occurrences.size, session.occurrences.size),
                     ).joinToString(" · "),
                 )
@@ -164,7 +173,7 @@ fun ProgramDetailScreen(
                     Modifier.testTag("program-session-toggle-${session.programSessionId}"),
                 )
                 when (session.executionState) {
-                    ProgramSessionExecutionState.TODO -> TrainlogButton(
+                    ProgramSessionExecutionState.TODO -> if (session.planningState == "active") TrainlogButton(
                         strings.getString(R.string.program_session_start),
                         { start(session.programSessionId) },
                         Modifier.testTag("program-session-start-${session.programSessionId}"),

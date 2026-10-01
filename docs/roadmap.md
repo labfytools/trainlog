@@ -1,5 +1,12 @@
 # Roadmap
 
+The isolated Program cascade candidate is implemented in the
+`trainlog-program-recalage-v1` worktree and remains outside the stable 0.1.7
+installation. Its next gate is a coordinated PC/Android deployment review,
+followed by a newly calculated personal Program preview and separate user
+confirmation. No personal reschedule or publication is implied by candidate
+tests.
+
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated
 ACKs, restart, and idempotent replay passed. Generation mode remains an

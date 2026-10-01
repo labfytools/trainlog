@@ -59,7 +59,7 @@ class AndroidV32SleepQuantityMigrationTest {
         migrated.listSleepDiary()
         migrated.close()
         SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            assertEquals(33, scalar(db, "PRAGMA user_version"))
+            assertEquals(34, scalar(db, "PRAGMA user_version"))
             assertEquals(
                 1,
                 scalar(

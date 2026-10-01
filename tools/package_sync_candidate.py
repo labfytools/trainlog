@@ -53,6 +53,7 @@ RUNTIME_TOOLS = [
     "post_sync_ai_drive.py",
     "export_session_preparations.py",
     "export_programs.py",
+    "export_programs_v2.py",
     "program_execution_exchange.py",
 ]
 
@@ -120,7 +121,7 @@ def main() -> int:
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip(),
         "product_version": "0.1.7",
-        "desktop_schema": 36,
+        "desktop_schema": 37,
         "android_schema": 32,
         "protocols": [
             "mobile-export-v3",

@@ -70,6 +70,67 @@ class ProgramsProjectionRepositoryTest {
             .put("deletions", deletions)
             .toString()
 
+    private fun artifactV2(
+        program: JSONObject,
+        sequence: Int = 0,
+        currentFor: String = "2026-10-01",
+    ): String {
+        program.put("revision_sequence", sequence)
+        val session = program.getJSONArray("sessions").getJSONObject(0)
+        session.put("position", 0)
+        session.put("current_for", currentFor)
+        session.put("planning_state", "active")
+        return JSONObject()
+            .put("format", "trainlog-programs")
+            .put("version", 2)
+            .put("generated_at", "2026-09-18T12:00:00Z")
+            .put("programs", JSONArray().put(program))
+            .put("deletions", JSONArray())
+            .toString()
+    }
+
+    @Test
+    fun v2UpgradePreservesCurrentDateAndRejectsLegacyDowngrade() {
+        val name = "program-v2-${UUID.randomUUID()}.db"
+        var repository = TrainlogRepository(context, name)
+        try {
+            assertEquals(
+                ProgramsImportResult.Applied(1, 0, 0),
+                repository.applyProgramsV1Json(artifact(JSONArray().put(program()))),
+            )
+            val upgraded = program()
+            assertEquals(
+                ProgramsImportResult.Applied(1, 0, 0),
+                repository.applyProgramsV2Json(artifactV2(upgraded)),
+            )
+            assertEquals("2026-10-01", repository.getSyncedProgram(upgraded.getString("program_id"))!!
+                .sessions.single().currentFor)
+            val stale = artifactV2(program())
+            val newer = program().put("revision_id", "pgr_99999999-9999-4999-8999-999999999999")
+            assertEquals(
+                ProgramsImportResult.Applied(1, 0, 0),
+                repository.applyProgramsV2Json(artifactV2(newer, 1, "2026-10-02")),
+            )
+            assertTrue(repository.applyProgramsV2Json(stale) is ProgramsImportResult.Invalid)
+            assertEquals("2026-10-02", repository.getSyncedProgram(upgraded.getString("program_id"))!!
+                .sessions.single().currentFor)
+            assertTrue(repository.applyProgramsV1Json(artifact(JSONArray().put(program())))
+                is ProgramsImportResult.Invalid)
+            assertEquals("2026-10-02", repository.getSyncedProgram(upgraded.getString("program_id"))!!
+                .sessions.single().currentFor)
+        } finally {
+            repository.close()
+        }
+        repository = TrainlogRepository(context, name)
+        try {
+            assertEquals("2026-10-02", repository.getSyncedProgram(program().getString("program_id"))!!
+                .sessions.single().currentFor)
+        } finally {
+            repository.close()
+            context.deleteDatabase(name)
+        }
+    }
+
     private fun preparationArtifact(
         includeProgramProvenance: Boolean = true,
         deliveryState: String = "pending",
@@ -211,6 +272,12 @@ class ProgramsProjectionRepositoryTest {
             val active = (repository.loadActiveSessionDraft() as ActiveDraftLoadResult.Loaded).draft
             assertEquals(programId, active.sourceProgramId)
             assertEquals(programSessionId, active.sourceProgramSessionId)
+            val changedPlan = program().apply {
+                put("revision_id", "pgr_99999999-9999-4999-8999-999999999999")
+            }
+            assertTrue(repository.applyProgramsV2Json(artifactV2(changedPlan))
+                is ProgramsImportResult.Invalid)
+            assertEquals(null, repository.getSyncedProgram(programId)!!.sessions.single().currentFor)
             val performed = active.copy(
                 exercises = active.exercises.map { occurrence ->
                     occurrence.copy(sets = listOf(SessionSetDraft(reps = 8, weightKg = 40.0)))
@@ -218,6 +285,12 @@ class ProgramsProjectionRepositoryTest {
             )
             assertEquals(ActiveDraftMutationResult.Saved, repository.saveActiveSessionDraft(performed))
             assertTrue(repository.finalizeActiveSessionDraft() is FinalizeActiveDraftResult.Saved)
+            assertEquals(
+                ProgramsImportResult.Applied(1, 0, 0),
+                repository.applyProgramsV2Json(artifactV2(changedPlan)),
+            )
+            assertEquals("2026-10-01", repository.getSyncedProgram(programId)!!
+                .sessions.single().currentFor)
             assertEquals(
                 ProgramSessionExecutionState.COMPLETED,
                 repository.getSyncedProgram(programId)!!.sessions.single().executionState,
@@ -238,6 +311,8 @@ class ProgramsProjectionRepositoryTest {
         try {
             val detail = repository.listSyncedPrograms().single()
             assertEquals(1, detail.sessionCount)
+            assertEquals("2026-10-01", repository.getSyncedProgram(detail.programId)!!
+                .sessions.single().currentFor)
             assertTrue(repository.loadActiveSessionDraft() is ActiveDraftLoadResult.None)
             assertEquals(1, repository.listSessions().size)
         } finally {

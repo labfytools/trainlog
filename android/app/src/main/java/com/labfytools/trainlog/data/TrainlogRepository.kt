@@ -11825,7 +11825,11 @@ class TrainlogRepository(
      * explicit tombstones are applied before live rows. INVARIANT: a durable tombstone always
      * wins over a later stale snapshot and never touches drafts, preparations, history or catalog.
      */
-    fun applyProgramsV1Json(json: String): ProgramsImportResult {
+    fun applyProgramsV1Json(json: String): ProgramsImportResult = applyProgramsJson(json, 1)
+
+    fun applyProgramsV2Json(json: String): ProgramsImportResult = applyProgramsJson(json, 2)
+
+    private fun applyProgramsJson(json: String, documentVersion: Int): ProgramsImportResult {
         if (json.toByteArray(StandardCharsets.UTF_8).size > 8 * 1024 * 1024 ||
             !jsonHasUniqueObjectKeys(json)) return ProgramsImportResult.Invalid("Invalid Programs JSON.")
         val root = try { JSONObject(json) } catch (_: Exception) {
@@ -11853,7 +11857,7 @@ class TrainlogRepository(
         try {
             if (!root.exact("format", "version", "generated_at", "programs", "deletions") ||
                 root.optString("format") != "trainlog-programs" || root.opt("version") !is Int ||
-                root.getInt("version") != 1 || !timestamp(root.opt("generated_at")) ||
+                root.getInt("version") != documentVersion || !timestamp(root.opt("generated_at")) ||
                 root.opt("programs") !is JSONArray || root.opt("deletions") !is JSONArray)
                 throw ProgramsImportInvalid("Unsupported Programs document.")
             val programs = root.getJSONArray("programs")
@@ -11880,11 +11884,16 @@ class TrainlogRepository(
             for (programIndex in 0 until programs.length()) {
                 val program = programs.optJSONObject(programIndex)
                     ?: throw ProgramsImportInvalid("Invalid program.")
-                if (!program.exact(
+                val programKeysValid = if (documentVersion == 2) program.exact(
+                        "program_id", "revision_id", "revision_sequence", "title", "note", "state", "start_date",
+                        "end_date", "created_at", "updated_at", "source_format", "source_version",
+                        "source_payload_sha256", "sessions",
+                    ) else program.exact(
                         "program_id", "revision_id", "title", "note", "state", "start_date",
                         "end_date", "created_at", "updated_at", "source_format", "source_version",
                         "source_payload_sha256", "sessions",
-                    ) ||
+                    )
+                if (!programKeysValid ||
                     !bounded(program.opt("program_id"), 128) || !programIds.add(program.getString("program_id")) ||
                     !bounded(program.opt("revision_id"), 128) || !bounded(program.opt("title"), 200) ||
                     !nullableBounded(program.opt("note"), 4000) || program.optString("state") !in setOf("active", "archived") ||
@@ -11894,17 +11903,33 @@ class TrainlogRepository(
                     (program.opt("source_payload_sha256") as? String)?.matches(Regex("^[0-9a-f]{64}$")) != true ||
                     program.opt("sessions") !is JSONArray)
                     throw ProgramsImportInvalid("Invalid program metadata.")
+                if (documentVersion == 2 && !integer(program.opt("revision_sequence"), 0, Int.MAX_VALUE))
+                    throw ProgramsImportInvalid("Invalid Program revision sequence.")
                 val sessions = program.getJSONArray("sessions")
                 if (sessions.length() !in 1..64) throw ProgramsImportInvalid("Invalid program session count.")
                 for (sessionIndex in 0 until sessions.length()) {
                     val session = sessions.optJSONObject(sessionIndex)
                         ?: throw ProgramsImportInvalid("Invalid program session.")
-                    if (!session.exact("program_session_id", "title", "session_type", "planned_for", "note", "occurrences") ||
+                    val validKeys = if (documentVersion == 2) session.exact(
+                        "program_session_id", "position", "title", "session_type", "planned_for",
+                        "current_for", "planning_state", "note", "occurrences",
+                    ) else session.exact(
+                        "program_session_id", "title", "session_type", "planned_for", "note", "occurrences",
+                    )
+                    if (!validKeys ||
                         !bounded(session.opt("program_session_id"), 128) || !sessionIds.add(session.getString("program_session_id")) ||
                         !bounded(session.opt("title"), 200) || session.optString("session_type") !in setOf("training", "max_test") ||
                         !date(session.opt("planned_for")) || !nullableBounded(session.opt("note"), 4000) ||
                         session.opt("occurrences") !is JSONArray)
                         throw ProgramsImportInvalid("Invalid program session metadata.")
+                    if (documentVersion == 2 &&
+                        (!integer(session.opt("position"), 0, 255) || session.getInt("position") != sessionIndex ||
+                            !date(session.opt("current_for")) ||
+                            session.optString("planning_state") !in setOf("active", "ceded") ||
+                            (session.optString("planning_state") == "ceded" && !session.isNull("current_for")) ||
+                            (session.optString("planning_state") == "active" &&
+                                session.isNull("current_for") && !session.isNull("planned_for"))))
+                        throw ProgramsImportInvalid("Invalid Program planning state.")
                     val occurrences = session.getJSONArray("occurrences")
                     if (occurrences.length() !in 1..64) throw ProgramsImportInvalid("Invalid program occurrence count.")
                     val entryIds = mutableSetOf<String>()
@@ -11930,6 +11955,12 @@ class TrainlogRepository(
                 }
             }
 
+            data class ExistingProjection(
+                val revisionId: String,
+                val digest: String,
+                val version: Int,
+                val sequence: Long,
+            )
             val db = database.writableDatabase
             db.beginTransaction()
             try {
@@ -11962,28 +11993,86 @@ class TrainlogRepository(
                         .use { it.moveToFirst() }
                     if (tombstoned) { skipped++; continue }
                     val digest = causalDigest(program)
-                    val existing = db.rawQuery("SELECT revision_id,snapshot_sha256 FROM synced_programs WHERE program_id=?", arrayOf(id))
-                        .use { cursor -> if (!cursor.moveToFirst()) null else cursor.getString(0) to cursor.getString(1) }
-                    if (existing?.first == program.getString("revision_id")) {
-                        if (existing.second != digest) throw ProgramsImportInvalid("Program revision identity conflict.")
-                        skipped++
-                        continue
+                    val existing = db.rawQuery(
+                        "SELECT revision_id,snapshot_sha256,projection_version,revision_sequence " +
+                            "FROM synced_programs WHERE program_id=?",
+                        arrayOf(id),
+                    ).use { cursor ->
+                        if (!cursor.moveToFirst()) null else ExistingProjection(
+                            cursor.getString(0), cursor.getString(1), cursor.getInt(2), cursor.getLong(3),
+                        )
+                    }
+                    val sequence = if (documentVersion == 2) program.getLong("revision_sequence") else 0L
+                    // WHY: a later V1 artifact cannot erase current dates or a
+                    // ceded slot after this phone has accepted Programs V2.
+                    if (existing != null && documentVersion < existing.version)
+                        throw ProgramsImportInvalid("Programs V2 capability required.")
+                    if (existing != null && documentVersion == 2 &&
+                        (sequence < existing.sequence ||
+                            (sequence == existing.sequence && existing.version == 2 &&
+                                existing.revisionId != program.getString("revision_id"))))
+                        throw ProgramsImportInvalid("Stale Program revision sequence.")
+                    if (existing?.revisionId == program.getString("revision_id")) {
+                        if (existing.digest == digest) { skipped++; continue }
+                        if (documentVersion != 2 || existing.version != 1 ||
+                            existing.digest != causalDigest(JSONObject(program.toString()).apply {
+                                remove("revision_sequence")
+                                getJSONArray("sessions").let { rows ->
+                                    for (sessionIndex in 0 until rows.length()) {
+                                        rows.getJSONObject(sessionIndex).apply {
+                                            remove("position")
+                                            remove("current_for")
+                                            remove("planning_state")
+                                        }
+                                    }
+                                }
+                            })) throw ProgramsImportInvalid("Program revision identity conflict.")
+                    }
+                    if (documentVersion == 2) {
+                        val activeProgramSession = db.rawQuery(
+                            "SELECT source_program_session_id FROM active_session_draft " +
+                                "WHERE id=1 AND source_program_id=?",
+                            arrayOf(id),
+                        ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                        if (activeProgramSession != null) {
+                            val newSessions = program.getJSONArray("sessions")
+                            for (sessionIndex in 0 until newSessions.length()) {
+                                val candidate = newSessions.getJSONObject(sessionIndex)
+                                if (candidate.getString("program_session_id") == activeProgramSession) {
+                                    val existingPlan = db.rawQuery(
+                                        "SELECT current_for,planning_state FROM synced_program_sessions " +
+                                            "WHERE program_session_id=?",
+                                        arrayOf(activeProgramSession),
+                                    ).use { cursor ->
+                                        if (!cursor.moveToFirst()) null else
+                                            (if (cursor.isNull(0)) null else cursor.getString(0)) to cursor.getString(1)
+                                    }
+                                    if (existingPlan != null &&
+                                        (existingPlan.first != candidate.optStringOrNull("current_for") ||
+                                            existingPlan.second != candidate.getString("planning_state")))
+                                        throw ProgramsImportInvalid("Active Program draft blocks reschedule.")
+                                }
+                            }
+                        }
                     }
                     db.delete("synced_programs", "program_id=?", arrayOf(id))
                     db.execSQL(
-                        "INSERT INTO synced_programs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT INTO synced_programs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         arrayOf<Any?>(id, program.getString("revision_id"), program.getString("title"), program.optStringOrNull("note"),
                             program.getString("state"), program.optStringOrNull("start_date"), program.optStringOrNull("end_date"),
                             program.getString("created_at"), program.getString("updated_at"), program.getString("source_format"),
-                            program.getInt("source_version"), program.getString("source_payload_sha256"), digest),
+                            program.getInt("source_version"), program.getString("source_payload_sha256"), digest,
+                            documentVersion, sequence),
                     )
                     val sessions = program.getJSONArray("sessions")
                     for (sessionIndex in 0 until sessions.length()) {
                         val session = sessions.getJSONObject(sessionIndex)
                         val sessionId = session.getString("program_session_id")
-                        db.execSQL("INSERT INTO synced_program_sessions VALUES(?,?,?,?,?,?,?)", arrayOf<Any?>(
+                        db.execSQL("INSERT INTO synced_program_sessions VALUES(?,?,?,?,?,?,?,?,?)", arrayOf<Any?>(
                             sessionId, id, sessionIndex, session.getString("title"), session.getString("session_type"),
-                            session.optStringOrNull("planned_for"), session.optStringOrNull("note")))
+                            session.optStringOrNull("planned_for"), session.optStringOrNull("note"),
+                            if (documentVersion == 2) session.optStringOrNull("current_for") else session.optStringOrNull("planned_for"),
+                            if (documentVersion == 2) session.getString("planning_state") else "active"))
                         val entries = session.getJSONArray("occurrences")
                         for (entryIndex in 0 until entries.length()) {
                             val entry = entries.getJSONObject(entryIndex)
@@ -12052,7 +12141,7 @@ class TrainlogRepository(
         } ?: return null
         val sessions = mutableListOf<SyncedProgramSession>()
         db.rawQuery(
-            "SELECT program_session_id,title,session_type,planned_for,note " +
+            "SELECT program_session_id,title,session_type,planned_for,note,current_for,planning_state " +
                 "FROM synced_program_sessions WHERE program_id=? " +
                 "ORDER BY position,program_session_id",
             arrayOf(programId),
@@ -12095,6 +12184,8 @@ class TrainlogRepository(
                     sessionCursor.getString(1),
                     sessionCursor.getString(2),
                     if (sessionCursor.isNull(3)) null else sessionCursor.getString(3),
+                    if (sessionCursor.isNull(5)) null else sessionCursor.getString(5),
+                    sessionCursor.getString(6),
                     if (sessionCursor.isNull(4)) null else sessionCursor.getString(4),
                     execution.first,
                     execution.second,
@@ -12160,7 +12251,8 @@ class TrainlogRepository(
                 val available = db.rawQuery(
                     "SELECT s.session_type FROM synced_program_sessions s " +
                         "JOIN synced_programs p ON p.program_id=s.program_id " +
-                        "WHERE p.program_id=? AND s.program_session_id=? AND p.state='active'",
+                        "WHERE p.program_id=? AND s.program_session_id=? AND p.state='active' " +
+                        "AND s.planning_state='active'",
                     arrayOf(programId, programSessionId),
                 ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
                     ?: return StartProgramSessionResult.NotAvailable
@@ -12454,7 +12546,7 @@ private class TrainlogDatabaseHelper(
             appContext,
     databaseName,
     null,
-    33,
+    34,
 ) {
     override fun onConfigure(
         db: SQLiteDatabase,
@@ -12808,6 +12900,34 @@ private class TrainlogDatabaseHelper(
             createSleepImmutabilityTriggers(db)
             version = 33
         }
+        if (version < 34 && newVersion >= 34) {
+            /* WHY: V1 retains the source date; V2 needs an independent current
+             * target and a durable ceded-slot state. INVARIANT: no local draft
+             * or completed workout is rewritten by the projection migration. */
+            if (!tableHasColumn(db, "synced_programs", "projection_version")) {
+                db.execSQL(
+                    "ALTER TABLE synced_programs ADD COLUMN projection_version INTEGER NOT NULL " +
+                        "DEFAULT 1 CHECK(projection_version IN(1,2))",
+                )
+            }
+            if (!tableHasColumn(db, "synced_programs", "revision_sequence")) {
+                db.execSQL(
+                    "ALTER TABLE synced_programs ADD COLUMN revision_sequence INTEGER NOT NULL " +
+                        "DEFAULT 0 CHECK(revision_sequence>=0)",
+                )
+            }
+            if (!tableHasColumn(db, "synced_program_sessions", "current_for")) {
+                db.execSQL("ALTER TABLE synced_program_sessions ADD COLUMN current_for TEXT")
+                db.execSQL("UPDATE synced_program_sessions SET current_for=planned_for")
+            }
+            if (!tableHasColumn(db, "synced_program_sessions", "planning_state")) {
+                db.execSQL(
+                    "ALTER TABLE synced_program_sessions ADD COLUMN planning_state TEXT NOT NULL " +
+                        "DEFAULT 'active' CHECK(planning_state IN('active','ceded'))",
+                )
+            }
+            version = 34
+        }
 
         if (version != newVersion) {
             error(
@@ -12824,7 +12944,9 @@ private class TrainlogDatabaseHelper(
                 note TEXT, state TEXT NOT NULL CHECK(state IN('active','archived')),
                 start_date TEXT, end_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                 source_format TEXT NOT NULL, source_version INTEGER NOT NULL,
-                source_payload_sha256 TEXT NOT NULL, snapshot_sha256 TEXT NOT NULL
+                source_payload_sha256 TEXT NOT NULL, snapshot_sha256 TEXT NOT NULL,
+                projection_version INTEGER NOT NULL DEFAULT 1 CHECK(projection_version IN(1,2)),
+                revision_sequence INTEGER NOT NULL DEFAULT 0 CHECK(revision_sequence>=0)
             )""".trimIndent(),
         )
         db.execSQL(
@@ -12833,7 +12955,9 @@ private class TrainlogDatabaseHelper(
                 program_id TEXT NOT NULL REFERENCES synced_programs(program_id) ON DELETE CASCADE,
                 position INTEGER NOT NULL CHECK(position>=0), title TEXT NOT NULL,
                 session_type TEXT NOT NULL CHECK(session_type IN('training','max_test')),
-                planned_for TEXT, note TEXT, UNIQUE(program_id,position)
+                planned_for TEXT, note TEXT, current_for TEXT,
+                planning_state TEXT NOT NULL DEFAULT 'active' CHECK(planning_state IN('active','ceded')),
+                UNIQUE(program_id,position)
             )""".trimIndent(),
         )
         db.execSQL(

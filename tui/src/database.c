@@ -1578,6 +1578,39 @@ static const char *const MIGRATE_V35_TO_V36_SQL =
     "immutable');END;"
     "PRAGMA user_version=36;COMMIT;";
 
+/* WHY: a Program's imported date is evidence, while an explicit reschedule
+ * owns its current target and an optional relinquishment of a future slot.
+ * CONTRACT: absent planning rows retain the original date and active state;
+ * operation identities bind replay to an exact request digest. INVARIANT:
+ * migration changes no execution, preparation, source date, or history row. */
+static const char *const MIGRATE_V36_TO_V37_SQL =
+    "BEGIN IMMEDIATE;"
+    "CREATE TABLE IF NOT EXISTS program_session_planning("
+    "program_session_id TEXT PRIMARY KEY REFERENCES program_sessions(program_session_id) "
+    "ON DELETE RESTRICT,"
+    "current_for TEXT,"
+    "state TEXT NOT NULL CHECK(state IN('active','ceded')),"
+    "operation_id TEXT NOT NULL,updated_at TEXT NOT NULL,"
+    "CHECK((state='active' AND current_for IS NOT NULL) OR "
+    "(state='ceded' AND current_for IS NULL)));"
+    "CREATE TABLE IF NOT EXISTS program_reschedule_operations("
+    "operation_id TEXT PRIMARY KEY,"
+    "program_id TEXT NOT NULL REFERENCES programs(program_id) ON DELETE RESTRICT,"
+    "request_sha256 TEXT NOT NULL CHECK(length(request_sha256)=64),"
+    "expected_revision TEXT NOT NULL,"
+    "response_json TEXT NOT NULL,created_at TEXT NOT NULL);"
+    "CREATE INDEX IF NOT EXISTS program_reschedule_operations_program "
+    "ON program_reschedule_operations(program_id,created_at);"
+    "CREATE TABLE IF NOT EXISTS program_revision_sequences("
+    "program_id TEXT PRIMARY KEY REFERENCES programs(program_id) ON DELETE RESTRICT,"
+    "revision_sequence INTEGER NOT NULL CHECK(revision_sequence>=1));"
+    "CREATE TRIGGER IF NOT EXISTS programs_revision_sequence AFTER UPDATE OF revision_id "
+    "ON programs WHEN OLD.revision_id<>NEW.revision_id BEGIN "
+    "INSERT INTO program_revision_sequences(program_id,revision_sequence) "
+    "VALUES(NEW.program_id,1) ON CONFLICT(program_id) DO UPDATE SET "
+    "revision_sequence=revision_sequence+1;END;"
+    "PRAGMA user_version=37;COMMIT;";
+
 /* WHY: schema v29 was already opened on the private 0.1.4 review installation
  * before medication capture joined the same unreleased migration. CONTRACT:
  * this additive repair is identical to the tail of v28 -> v29 and runs only
@@ -2413,7 +2446,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
                version == 21 || version == 22 || version == 23 || version == 24 || version == 25 ||
                version == 26 || version == 27 || version == 28 || version == 29 || version == 30 ||
                version == 31 || version == 32 || version == 33 || version == 34 || version == 35 ||
-               version == 36) {
+               version == 36 || version == 37) {
         status = TRAINLOG_STATUS_OK;
     } else {
         if (version == 1) {
@@ -2585,6 +2618,9 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status == TRAINLOG_STATUS_OK && version < 36) {
         status = execute_sql(database, MIGRATE_V35_TO_V36_SQL);
     }
+    if (status == TRAINLOG_STATUS_OK && version < 37) {
+        status = execute_sql(database, MIGRATE_V36_TO_V37_SQL);
+    }
     if (status == TRAINLOG_STATUS_OK) {
         status = ensure_v18_ai_draft_publication_state(database);
     }
@@ -2604,7 +2640,7 @@ static TrainlogStatus initialize_or_validate_schema(TrainlogDatabase *database,
     if (status != TRAINLOG_STATUS_OK) {
         set_open_diagnostic(output_diagnostic,
                             output_diagnostic_capacity,
-                            version == 0 ? "create schema v36" : "migrate database to schema v36",
+                            version == 0 ? "create schema v37" : "migrate database to schema v37",
                             database->connection,
                             SQLITE_ERROR);
         (void)sqlite3_exec(database->connection, "ROLLBACK;", NULL, NULL, NULL);

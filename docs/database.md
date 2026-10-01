@@ -1,5 +1,21 @@
 # Desktop database
 
+## Candidate schema v37: Program planning
+
+Schema v37 is additive to the isolated Program rescheduling candidate. It
+creates `program_session_planning` for absolute current dates and ceded-slot
+state, `program_reschedule_operations` for exact request replay, and
+`program_revision_sequences` for monotonically ordered Program snapshots.
+A trigger increments the per-Program sequence whenever its revision changes,
+including archive, reschedule and logical deletion. No date uniqueness or
+historical session mutation is introduced. Missing planning rows mean the
+original `planned_for` date and active planning state. The source format and
+published Programs V1 artifact remain strict and unchanged.
+
+This schema is present only in the candidate worktree/build. The stable
+installation's database remains at its existing schema until a separately
+authorized coordinated deployment and backup.
+
 ## Causal heart-rate tail correction (schema v36, no migration)
 
 The separate `trainlog-heart-rate-corrections` V1 companion reuses the existing

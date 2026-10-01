@@ -82,6 +82,8 @@ ARTIFACTS = (
      "session-preparations-v2.json", False, "export_session_preparations.py", ()),
     ("programs-v1", "trainlog-programs", 1, "programs-v1.json", False,
      "export_programs.py", ()),
+    ("programs-v2", "trainlog-programs", 2, "programs-v2.json", False,
+     "export_programs_v2.py", ()),
     ("sleep-diary", "trainlog-sleep-diary", 2, "sleep-diary-v2.json", False,
      "sleep_diary_exchange.py", ("export",)),
 )
@@ -221,9 +223,9 @@ def validate_manifest_bytes(raw: bytes, expected_consumer: str | None = None):
 
 
 def require_schema(db: sqlite3.Connection) -> None:
-    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+    supported_versions = (24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37)
     if db.execute("PRAGMA user_version").fetchone()[0] not in supported_versions:
-        raise GenerationError("desktop schema v24 through v36 required")
+        raise GenerationError("desktop schema v24 through v37 required")
 
 
 def peer_identity(db: sqlite3.Connection, kind: str) -> str:
@@ -366,7 +368,9 @@ def run_export(tool: str, extra: tuple[str, ...], output: Path, snapshot: Path) 
 
 
 def capture_desktop(database: Path, owned_root: Path, consumer: str,
-                    run_id: str | None = None, generation_id: str | None = None):
+                    run_id: str | None = None, generation_id: str | None = None,
+                    peer_capabilities: set[str] | None = None,
+                    allow_program_skip: bool = False):
     if not valid_id(consumer, "peer"):
         raise GenerationError("invalid expected consumer")
     generation = generation_id or "gen_" + str(uuid.uuid4())
@@ -405,9 +409,35 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
             producer = peer_identity(source, "desktop")
             source.commit()
             source.backup(target)
+        with closing(connect_database(snapshot)) as planning_db:
+            has_planning_table = planning_db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='program_session_planning'"
+            ).fetchone() is not None
+            has_reschedule = has_planning_table and planning_db.execute(
+                "SELECT 1 FROM program_session_planning plan "
+                "JOIN program_sessions session ON session.program_session_id=plan.program_session_id "
+                "JOIN programs program ON program.program_id=session.program_id "
+                "WHERE program.deleted_at IS NULL LIMIT 1"
+            ).fetchone() is not None
+        supports_v2 = peer_capabilities is not None and "programs-v2" in peer_capabilities
+        # CONTRACT: one generation contains exactly one Program revision per
+        # identity. A V1-only peer cannot preserve a changed current schedule.
+        # INVARIANT: reject before publication rather than claiming convergence.
+        skip_programs = has_reschedule and not supports_v2
+        if skip_programs and not allow_program_skip:
+            raise GenerationError("Programs V2 capability required for rescheduled programs")
+        if supports_v2 and not has_planning_table:
+            raise GenerationError("Programs V2 requires desktop schema v37")
         descriptors = []
         total = 0
         for logical, fmt, version, filename, required, tool, extra in ARTIFACTS:
+            if skip_programs and logical in ("programs-v1", "programs-v2"):
+                continue
+            if logical == "programs-v1" and supports_v2:
+                continue
+            if logical == "programs-v2" and not supports_v2:
+                continue
             output = stage / filename
             run_export(tool, extra, output, snapshot)
             size, checksum = digest_file(output)
@@ -521,7 +551,7 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
                     existed = db.execute("SELECT 1 FROM sync_causal_publications WHERE operation_id=?", (operation["operation_id"],)).fetchone()
                     db.execute("INSERT INTO sync_causal_publications VALUES(?,?,?)",
                                (operation["operation_id"], generation, 0 if existed else 1))
-            programs_path = stage / "programs-v1.json"
+            programs_path = stage / ("programs-v2.json" if supports_v2 else "programs-v1.json")
             if programs_path.is_file():
                 captured_programs = strict_json(programs_path.read_bytes(), MAX_ARTIFACT)
                 for deletion in captured_programs["deletions"]:

@@ -705,14 +705,22 @@ static enum MHD_Result queue_owned_programs_json(struct MHD_Connection *connecti
         return queue_json(connection, MHD_HTTP_NOT_FOUND, "{\"error\":\"not_found\"}\n", NULL);
     }
     if (status == TRAINLOG_STATUS_CONFLICT) {
+        enum MHD_Result result =
+            queue_json(connection,
+                       MHD_HTTP_CONFLICT,
+                       json == NULL ? "{\"error\":\"program_conflict\"}\n" : json,
+                       NULL);
         free(json);
-        return queue_json(
-            connection, MHD_HTTP_CONFLICT, "{\"error\":\"program_conflict\"}\n", NULL);
+        return result;
     }
     if (status == TRAINLOG_STATUS_INVALID_ARGUMENT) {
+        enum MHD_Result result =
+            queue_json(connection,
+                       MHD_HTTP_UNPROCESSABLE_CONTENT,
+                       json == NULL ? "{\"error\":\"invalid_program\"}\n" : json,
+                       NULL);
         free(json);
-        return queue_json(
-            connection, MHD_HTTP_UNPROCESSABLE_CONTENT, "{\"error\":\"invalid_program\"}\n", NULL);
+        return result;
     }
     return queue_owned_sessions_json(connection, status, json, json_size);
 }
@@ -930,6 +938,8 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
     static const char PREFIX[] = "/api/v1/sessions/program/";
     static const char ARCHIVE_SUFFIX[] = "/archive";
     static const char DELETE_SUFFIX[] = "/delete";
+    static const char PREVIEW_SUFFIX[] = "/reschedule/preview";
+    static const char APPLY_SUFFIX[] = "/reschedule/apply";
     const char *identity;
     const char *sessions_marker;
     char *json = NULL;
@@ -950,6 +960,38 @@ static enum MHD_Result handle_program_request(TrainlogWebContext *context,
     identity = url + strlen(PREFIX);
     identity_length = strlen(identity);
     sessions_marker = strstr(identity, "/sessions/");
+    if ((identity_length > strlen(PREVIEW_SUFFIX) &&
+         strcmp(identity + identity_length - strlen(PREVIEW_SUFFIX), PREVIEW_SUFFIX) == 0) ||
+        (identity_length > strlen(APPLY_SUFFIX) &&
+         strcmp(identity + identity_length - strlen(APPLY_SUFFIX), APPLY_SUFFIX) == 0)) {
+        bool commit = strcmp(identity + identity_length - strlen(APPLY_SUFFIX), APPLY_SUFFIX) == 0;
+        size_t suffix_length = commit ? strlen(APPLY_SUFFIX) : strlen(PREVIEW_SUFFIX);
+        char program_id[TRAINLOG_ID_MAX + 1U];
+        const char *operation_id =
+            MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "X-Trainlog-Request-ID");
+        if (strcmp(method, MHD_HTTP_METHOD_POST) != 0) {
+            return queue_json(connection,
+                              MHD_HTTP_METHOD_NOT_ALLOWED,
+                              "{\"error\":\"method_not_allowed\"}\n",
+                              "POST");
+        }
+        if (!program_mutation_allowed(context, connection) ||
+            !copy_path_component(
+                program_id, sizeof(program_id), identity, identity_length - suffix_length) ||
+            (commit && (operation_id == NULL || operation_id[0] == '\0'))) {
+            return queue_json(
+                connection, MHD_HTTP_FORBIDDEN, "{\"error\":\"mutation_forbidden\"}\n", NULL);
+        }
+        status = trainlog_web_programs_reschedule_json(context->database,
+                                                       program_id,
+                                                       operation_id,
+                                                       request->body,
+                                                       request->body_size,
+                                                       commit,
+                                                       &json,
+                                                       &json_size);
+        return queue_owned_programs_json(connection, status, json, json_size);
+    }
     if (identity_length > strlen(ARCHIVE_SUFFIX) &&
         strcmp(identity + identity_length - strlen(ARCHIVE_SUFFIX), ARCHIVE_SUFFIX) == 0) {
         return handle_program_archive(context, connection, identity, identity_length, method);

@@ -68,3 +68,32 @@ source definition and derived preparations. A deleted program cannot be
 resurrected or prepared; an archived program cannot be prepared. The optional
 `trainlog-programs` V1 synchronization companion is a separate PC-to-Android
 projection and does not alter this import format.
+
+## Local candidate: explicit ordered rescheduling
+
+The isolated `trainlog-program-recalage-v1` candidate adds a separate planning
+state. `planned_for` remains the imported date. `current_for` is an absolute
+current target for an active, unfinished session; `ceded` releases one selected
+future slot without completing or deleting its session identity. Completed
+cards still use the linked session's actual start timestamp. Positions from the
+imported Program determine the cascade order; titles never determine priority.
+
+The Web action selects a first and last unfinished session, a resumption date,
+and the exact session identities whose slots are ceded. Its available days are
+the dated original Program slots in that interval on or after resumption.
+The preview lists original, prior current and proposed dates. It rejects a
+missing slot, a date beyond the Program end, a completed/in-progress/prepared
+session, or a stale revision. It does not invent rest-day or post-end slots.
+An explicitly ceded session keeps its identity and remains visible as ceded.
+Unchanged sessions in the selected range are displayed in the preview but need
+no planning row. Other sessions and Programs are not moved. Multiple actual or
+independent sessions may still share one civil day.
+
+Confirmation binds the preview fingerprint to the current Program projection
+and writes absolute dates, ceded states, the Program revision and a durable
+operation response in one transaction. Exact operation replay returns that
+response; changed content under the same operation ID conflicts. A failed
+write rolls back every row. The candidate requires a recent acknowledged
+Programs V2 generation for every previously contacted Android peer. A newly
+started offline Android Program draft remains protected by Android's V2 import
+rejection; the sync run then reports a conflict for explicit resolution.

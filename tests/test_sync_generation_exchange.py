@@ -71,6 +71,58 @@ class GenerationTest(unittest.TestCase):
         with closing(sqlite3.connect(destination)) as reopened:
             self.assertEqual(ack,generation.record_consumed(reopened,manifest,checksum));self.assertEqual(1,reopened.execute("SELECT count(*) FROM facts WHERE id='imported'").fetchone()[0])
 
+    def test_rescheduled_program_requires_v2_capability_before_publication(self):
+        with closing(sqlite3.connect(self.database)) as db:
+            db.executescript("""
+                CREATE TABLE program_session_planning(
+                    program_session_id TEXT PRIMARY KEY,current_for TEXT,state TEXT);
+                CREATE TABLE programs(program_id TEXT PRIMARY KEY,deleted_at TEXT);
+                CREATE TABLE program_sessions(
+                    program_session_id TEXT PRIMARY KEY,program_id TEXT);
+                INSERT INTO programs VALUES('pg_fixture',NULL);
+                INSERT INTO program_sessions VALUES('pgs_fixture','pg_fixture');
+                INSERT INTO program_session_planning VALUES('pgs_fixture','2026-10-01','active');
+                PRAGMA user_version=37;
+            """)
+            db.commit()
+        artifacts = (
+            ("history", "trainlog-mobile-export", 4, "history.json", True,
+             "controlled.py", ()),
+            ("programs-v1", "trainlog-programs", 1, "programs-v1.json", False,
+             "export_programs.py", ()),
+            ("programs-v2", "trainlog-programs", 2, "programs-v2.json", False,
+             "export_programs_v2.py", ()),
+        )
+
+        def exporter(tool, _extra, output, _snapshot):
+            if tool == "controlled.py":
+                output.write_text(json.dumps({"format": "trainlog-mobile-export", "version": 4}))
+                return
+            output.write_text(json.dumps({"format": "trainlog-programs",
+                                          "version": 2 if tool.endswith("_v2.py") else 1,
+                                          "programs": [], "deletions": []}))
+
+        with mock.patch.object(generation, "ARTIFACTS", artifacts), \
+                mock.patch.object(generation, "run_export", exporter):
+            with self.assertRaisesRegex(generation.GenerationError, "Programs V2 capability"):
+                generation.capture_desktop(self.database, self.root / "legacy", PEER_B, RUN, GEN)
+            self.assertFalse((self.root / "legacy" / "staging" / GEN).exists())
+            legacy_stage, legacy_manifest, _ = generation.capture_desktop(
+                self.database, self.root / "legacy-domain-only", PEER_B, RUN, GEN,
+                set(), True,
+            )
+            self.assertFalse((legacy_stage / "programs-v1.json").exists())
+            self.assertEqual(["history"], [a["logical_name"] for a in legacy_manifest["artifacts"]])
+            stage, manifest, _ = generation.capture_desktop(
+                self.database, self.root / "modern", PEER_B, RUN,
+                "gen_55555555-5555-4555-8555-555555555555",
+                {"programs-v2"},
+            )
+        self.assertTrue((stage / "programs-v2.json").is_file())
+        self.assertFalse((stage / "programs-v1.json").exists())
+        self.assertEqual(["history", "programs-v2"],
+                         [a["logical_name"] for a in manifest["artifacts"]])
+
     def test_archived_acknowledged_fork_is_not_an_active_parent_tip(self):
         active = "gen_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         archived = "gen_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"

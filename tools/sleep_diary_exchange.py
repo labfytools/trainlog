@@ -637,8 +637,8 @@ def main() -> None:
     import_command.add_argument("--database", required=True, type=Path)
     args = parser.parse_args()
     with connect_database(args.database) as db:
-        if db.execute("PRAGMA user_version").fetchone()[0] not in (30, 31, 32, 33, 34, 35, 36):
-            fail("desktop schema v30-v36 required")
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (30, 31, 32, 33, 34, 35, 36, 37):
+            fail("desktop schema v30-v37 required")
         if args.command == "export":
             args.output.write_text(json.dumps(build(db), ensure_ascii=False, sort_keys=True,
                                                    separators=(",", ":")), encoding="utf-8")

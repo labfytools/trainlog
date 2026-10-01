@@ -86,7 +86,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
             (ANDROID_KINDS.values +
                     Kind("trainlog-ai-session-drafts", 2, "ai-proposals-v2.json", false) +
                     Kind("trainlog-session-preparations", 2, "session-preparations-v2.json", false) +
-                    Kind("trainlog-programs", 1, "programs-v1.json", false))
+                    Kind("trainlog-programs", 1, "programs-v1.json", false) +
+                    Kind("trainlog-programs", 2, "programs-v2.json", false))
                 .map { it.format to it.version }
                 .toSet()
 
@@ -773,6 +774,8 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 throw SyncGenerationException("artifact digest mismatch")
             artifacts[item.getString("logical_name")] = bytes.toString(StandardCharsets.UTF_8)
         }
+        if ("programs-v1" in artifacts && "programs-v2" in artifacts)
+            throw SyncGenerationException("multiple Program revisions in one generation")
         return ValidatedGeneration(manifest, sha256(raw), artifacts)
     }
 
@@ -946,6 +949,10 @@ internal class SyncGenerationService(private val repository: TrainlogRepository)
                 if ("programs-v1" in a)
                     apply("programs-v1") {
                         repository.applyProgramsV1Json(checkNotNull(a["programs-v1"]))
+                    }
+                if ("programs-v2" in a)
+                    apply("programs-v2") {
+                        repository.applyProgramsV2Json(checkNotNull(a["programs-v2"]))
                     }
                 apply("catalog") { repository.applyPcCatalogJson(checkNotNull(a["catalog"])) }
                 apply("exercise-profile-state") {
