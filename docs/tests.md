@@ -408,6 +408,12 @@ Firefox validation uses an isolated schema-v37 database and the embedded
 Synthetic French and English reports of 7, 14, 21, and 30 nights are rasterized
 for page, margin, and monochrome inspection. No personal health artifact is
 stored in the repository.
+The private PC/Web deployment was checked separately after the rollout switch:
+the running executable and the served JavaScript/CSS hashes matched the
+`e2c07f1` bundle. Read-only Firefox inspection found 9 blue segments across
+11 existing Sleep rows; a downloaded three-page PDF contained the same sampled
+factual start time and a printable sport listing. Its private images and PDF
+remain outside the repository.
 
 `WEB_DASHBOARD_TILES_V1` adds strict TypeScript parsing for every consumed
 field and Vitest fixtures confined to test sources. Coverage proves the 90-day

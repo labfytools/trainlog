@@ -2,10 +2,10 @@
 
 The Program cascade is deployed in the private daily installation from
 `trainlog-program-recalage-v1` at `3a4ec34`. The separate
-`trainlog-sleep-sport-overlay-v1` source candidate adds the read-only Sleep
-sport display and must be verified on the actual Web/PDF installation before
-that display is called deployed. No new personal Program rescheduling is
-implied by this presentation work.
+`trainlog-sleep-sport-overlay-v1` source adds the read-only Sleep sport display.
+The PC/Web rollout at `e2c07f1` has been verified on the actual Web and PDF
+installation. No new personal Program rescheduling is implied by this
+presentation work.
 
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated

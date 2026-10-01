@@ -1,15 +1,19 @@
 # Current implementation state
 
-## Private installation and isolated Sleep sport overlay
+## Private installation and Sleep sport overlay
 
 The private daily installation runs the explicit ordered Program rescheduling
 rollout from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema
 v37, Android schema v34, and the capability-selected `trainlog-programs` V2
 projection. The separate `trainlog-sleep-sport-overlay-v1` worktree starts from
-that deployed source and adds the read-only completed-sport Sleep overlay.
-Local source and isolated-browser validation do not by themselves establish
-that the new overlay is served by the daily installation. Completed-session
-calendar dates continue to come from their linked factual sessions.
+that Program source. Its `e2c07f1` desktop/Web bundle is now served by the
+private daily installation; the synchronization agents continue using the
+compatible Program rollout bundle. A read-only Firefox check of the deployed
+Web found blue sport segments on the real Sleep agenda and downloaded a
+three-page PDF from the same instance. An actual session start in the Web
+matched the PDF text; the rendered pages retained their margins and legend.
+Completed-session calendar dates continue to come from their linked factual
+sessions. No Android update or synchronization was required for this display.
 Rollout packaging requires an explicit Meson `-Dweb=enabled` build; the
 embedded frontend and its native Web tests are part of candidate validation.
 

@@ -10,6 +10,8 @@
   and export waits for the complete paginated history read. Sleep entries,
   session history, database schema, Android, and synchronization contracts
   remain unchanged.
+  The private PC/Web rollout from `e2c07f1` was verified against its served
+  agenda and an actual downloaded PDF; the phone installation was untouched.
 
 The isolated `trainlog-program-recalage-v1` candidate adds an explicit
 preview-and-confirm cascade for unfinished Program sessions. It retains source
