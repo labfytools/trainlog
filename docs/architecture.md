@@ -358,11 +358,16 @@ SVG was selected over Canvas because the bounded series has very few elements
 and vector sharpness/responsive scaling matter more than high-volume drawing.
 All colours are read from the live Catppuccin CSS variables.
 
-The muscle figure is an original code-native SVG. Canonical localized mappings
-are: `chest` to bilateral front chest; `back` to rear upper back and bilateral
-lats; `shoulders` to bilateral front/rear shoulders; `arms` to bilateral
-front/rear arms; `core` to the front trunk; `glutes` to bilateral rear glutes;
-`thighs` and `calves` to bilateral front/rear legs. Aggregate zones
+The muscle figure is a code-native SVG whose geometry is ported from the
+normalized Compose Canvas in Android `HomeScreen.kt`: `drawOval()` for the
+head, `neckPath()` for the neck, and `bodyRegions()` for 11 paths on each
+face. The SVG viewBox uses Android fractions multiplied by 100 and scales to
+a portrait ratio based on Android's 236dp tall two-panel Home layout.
+Canonical localized mappings are: `chest` to
+bilateral front chest; `back` to the contiguous rear trunk; `shoulders` to
+bilateral front/rear shoulders; `arms` to bilateral front/rear arms; `core` to
+the front trunk; `glutes` to bilateral rear glutes; `thighs` and `calves` to
+bilateral front/rear legs. Aggregate zones
 `full_body`, `upper_body`, and `lower_body` deliberately have no SVG region and
 remain in the complete text list. Visual levels are a deterministic ratio to
 the maximum `session_count` in the current snapshot: zero, up to one third, up

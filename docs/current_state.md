@@ -743,9 +743,12 @@ partial, invalid and transport-error states never synthesize values.
 `WEB_DASHBOARD_VISUALIZATIONS_V1=PASS/FROZEN` uses a lazy, modular Apache
 ECharts 6.1.0 SVG line chart for medium/large Progression tiles. Every real
 point remains visible, `smooth=false`, legacy zeroes are preserved, and only
-Core-owned `improved` flags alter markers. An original React SVG supplies
-front/back BODY ZONES regions whose discrete colour level depends solely on
-`session_count`; the factual text list remains authoritative and accessible.
+Core-owned `improved` flags alter markers. A React SVG ports the exact
+normalized head, neck, and 11 front/11 back BODY ZONES paths from Android
+`HomeScreen.kt` `bodyRegions()` and `neckPath()`. Its discrete Catppuccin colour
+level still depends solely on `session_count`; the factual text list remains
+authoritative and accessible. The figure geometry changes no zone mapping or
+30-day calculation.
 
 `TRAINLOG_I18N_V0_1_1=PASS` is covered by desktop presentation, persistence,
 formatting, layout-invariance and source-derived text-boundary tests, plus

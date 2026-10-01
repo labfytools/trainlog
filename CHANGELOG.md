@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.7
 
+- Aligned the Web front/back BODY ZONES figures with Android's normalized
+  Compose Canvas silhouettes. The Web now uses Android's head, neck and 11
+  region paths per face, while retaining the existing Catppuccin intensity
+  classes, 30-day session counts, legend, labels and keyboard focus behavior.
+  No Android, domain, database or synchronization behavior changed.
+
 - Widened the Sleep diary PDF treatment/remarks column from 84 to 180 pt
   and raised its text from 4 to 7.2 pt. Width-aware wrapping keeps paragraphs,
   separate medication intakes, accents, doses, units, and quantities visible.

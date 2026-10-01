@@ -549,7 +549,7 @@ h2 {
   gap: 2rem;
 }
 .analysis-zones .body-views svg {
-  height: clamp(22rem, 42vw, 31rem);
+  width: min(100%, 20rem);
 }
 .analysis-zones .muscle-legend {
   margin-top: 0.8rem;
@@ -1196,7 +1196,7 @@ h2 {
     flex: 1 1 8rem;
   }
   .analysis-zones .body-views svg {
-    height: clamp(16rem, 58vw, 23rem);
+    width: min(100%, 16rem);
   }
   .analysis-chart svg {
     height: 14rem;
@@ -2826,21 +2826,22 @@ h2 {
 }
 .body-views svg {
   display: block;
-  width: 100%;
-  height: 10.5rem;
+  width: min(100%, 11.75rem);
+  height: auto;
+  /* Android HomeScreen uses a 236dp Canvas with a roughly 168dp half-panel width. */
+  aspect-ratio: 168 / 236;
+  margin-inline: auto;
   overflow: visible;
 }
 .tile-large .body-views svg {
-  height: 16.5rem;
+  width: min(100%, 14rem);
 }
-.body-outline {
+.body-figure-base {
   fill: var(--surface-0);
-  stroke: var(--surface-2);
-  stroke-width: 1.2;
 }
 .body-region {
   stroke: var(--base);
-  stroke-width: 1.4;
+  stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
   transition:
     fill 140ms ease,
@@ -3121,7 +3122,7 @@ h2 {
   }
   .body-views svg,
   .tile-large .body-views svg {
-    height: 11rem;
+    width: min(100%, 8rem);
   }
   .status-footer {
     grid-template-columns: 1fr 1fr;
