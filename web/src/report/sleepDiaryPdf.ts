@@ -5,6 +5,8 @@ import type {
 } from "../api/sleepDiary";
 import { formatDose, formatDuration } from "../dashboard/dashboardFormat";
 import { projectSleepTimeline } from "../routes/sleepVisualProjection";
+import { projectSportSegments, sleepRowWindow, timelinePosition } from "../routes/sleepTimelineGeometry";
+import type { SportSession } from "../api/sportSessions";
 
 type Language = "fr" | "en";
 
@@ -85,16 +87,6 @@ const pdfString = (value: string) =>
 const text = (x: number, y: number, size: number, value: string) =>
   `0 g BT /F1 ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${pdfString(value)}) Tj ET\n`;
 
-const minute = (iso: string, night: string) =>
-  Math.max(
-    0,
-    Math.min(
-      1440,
-      (new Date(iso).getTime() - new Date(`${night}T18:00:00`).getTime()) /
-        60000,
-    ),
-  );
-
 const compactDate = (isoDate: string) => {
   const [year, month, day] = isoDate.split("-");
   return `${day}/${month}/${year}`;
@@ -124,8 +116,10 @@ function row(
   entry: SleepEntry,
   y: number,
   language: Language,
+  sport: readonly SportSession[],
 ) {
   const projection = projectSleepTimeline(entry);
+  const window = sleepRowWindow(entry);
   const timelineX = 112;
   const width = 500;
   stream.push(`0.7 G 30 ${y - 40} 782 40 re S\n`);
@@ -148,14 +142,14 @@ function row(
     const event = range.event;
     const x =
       timelineX +
-      (minute(new Date(range.start).toISOString(), entry.night_start_date) / 1440) * width;
+      timelinePosition(range.start, window.start, window.end) * width;
     // INVARIANT: every projected interval keeps its canonical absolute
     // start/end. An awakening interrupts rather than moves adjacent sleep;
     // an estimated band is presentation-only and stays visually distinct.
     const eventWidth = Math.max(
       2,
       timelineX +
-        (minute(new Date(range.end).toISOString(), entry.night_start_date) / 1440) * width -
+        timelinePosition(range.end, window.start, window.end) * width -
         x,
     );
     const shade = range.kind === "sleep"
@@ -181,13 +175,13 @@ function row(
     });
   projection.pointEvents.forEach((event) => {
     const x = timelineX +
-      (minute(event.start_at, entry.night_start_date) / 1440) * width;
+      timelinePosition(event.start_at, window.start, window.end) * width;
     stream.push(text(x, y - 25, 8, pointMarker(event.type)));
   });
   projection.intakes.forEach((intake) => {
     const x =
       timelineX +
-      (minute(intake.taken_at, entry.night_start_date) / 1440) * width;
+      timelinePosition(intake.taken_at, window.start, window.end) * width;
     stream.push(text(x, y - 36, 6, "M"));
   });
   stream.push(text(620, y - 16, 7, entry.sleep_quality ?? "-"));
@@ -210,6 +204,14 @@ function row(
   stream.push(text(730, y - 16, 4, notes.slice(40, 80)));
   stream.push(text(730, y - 25, 4, notes.slice(80, 120)));
   stream.push(text(730, y - 34, 4, notes.slice(120, 160)));
+  projectSportSegments(sport, window).forEach((segment) => {
+    const x = timelineX + segment.left * width;
+    const segmentWidth = segment.end === null ? 2 : Math.max(2, segment.width * width);
+    // PDF graphics state contains the blue fill and black outline. It cannot
+    // tint later sleep marks, grid lines, medication labels, or body text.
+    stream.push(`q 0.10 0.34 0.82 rg 0 G ${x.toFixed(2)} ${(y - 9).toFixed(2)} ` +
+      `${segmentWidth.toFixed(2)} 5 re B Q\n`);
+  });
 }
 
 function summaryLine(snapshot: SleepSnapshot, language: Language) {
@@ -238,6 +240,7 @@ function page(
   index: number,
   count: number,
   language: Language,
+  sport: readonly SportSession[],
 ) {
   const stream = [
     "0 G 0 g\n",
@@ -272,7 +275,7 @@ function page(
     stream.push(text(728, 552, 4, "TREATMENT / NOTES"));
   }
   entries.forEach((entry, rowIndex) =>
-    row(stream, entry, 538 - rowIndex * 40, language),
+    row(stream, entry, 538 - rowIndex * 40, language, sport),
   );
   const y = 520 - entries.length * 40;
   stream.push(text(30, y, 9, "OBSERVATIONS"));
@@ -307,6 +310,7 @@ function page(
       ),
     );
   if (language === "fr") {
+    stream.push(text(30, 38, 6, "Bleu : séance de sport effectuée (horaires enregistrés ; détails en fin de rapport)."));
     stream.push(
       text(
         30,
@@ -324,6 +328,7 @@ function page(
       ),
     );
   } else {
+    stream.push(text(30, 38, 6, "Blue: completed sport session (recorded times; details at end of report)."));
     stream.push(
       text(
         30,
@@ -344,22 +349,79 @@ function page(
   return stream.join("");
 }
 
+function sportPage(
+  sessions: readonly SportSession[],
+  entries: readonly SleepEntry[],
+  index: number,
+  count: number,
+  language: Language,
+  first: string,
+  last: string,
+): string {
+  const fr = language === "fr";
+  const stream = [
+    "0 G 0 g\n",
+    text(30, 565, 14, fr ? "SÉANCES DE SPORT EFFECTUÉES" : "COMPLETED SPORT SESSIONS"),
+    text(740, 565, 7, `${index + 1}/${count}`),
+    text(30, 547, 7, `${fr ? "Période des lignes" : "Row period"} : ${first} 18:00 - ${last} 18:00`),
+    text(30, 532, 7, fr
+      ? "Horaires enregistrés ; la durée est celle de la séance. Aucun lien médical déduit."
+      : "Recorded times and session duration. No medical conclusion is inferred."),
+  ];
+  sessions.forEach((session, rowIndex) => {
+    const y = 510 - rowIndex * 16;
+    const start = Date.parse(session.started_at);
+    const end = session.ended_at === null ? NaN : Date.parse(session.ended_at);
+    const validEnd = Number.isFinite(start) && Number.isFinite(end) && end > start;
+    const durationText = validEnd ? duration(Math.floor((end - start) / 1000), language)
+      : (fr ? "fin non renseignée" : "end not recorded");
+    const hasRow = entries.some((entry) =>
+      projectSportSegments([session], sleepRowWindow(entry)).length > 0);
+    const missing = hasRow ? "" : (fr ? " · sommeil non renseigné" : " · sleep not recorded");
+    stream.push(`q 0.10 0.34 0.82 rg 0 G 30 ${y - 2} 9 7 re B Q\n`);
+    stream.push(text(45, y, 7,
+      `${session.label.slice(0, 48)} (${session.session_type}) · ` +
+      `${session.started_at.slice(0, 16)} - ${validEnd ? session.ended_at?.slice(0, 16) : "—"}` +
+      ` · ${durationText}${missing}`));
+  });
+  stream.push(text(30, 25, 6, fr
+    ? "Bleu : séance de sport effectuée. Contour noir pour impression monochrome."
+    : "Blue: completed sport session. Black outline for monochrome printing."));
+  return stream.join("");
+}
+
 /** Builds a deterministic local vector document from the Core snapshot, never from screen pixels. */
 export function buildSleepDiaryPdf(
   snapshot: SleepSnapshot,
   language: Language,
+  sport: readonly SportSession[] = [],
+  reportStart = snapshot.entries[0]?.night_start_date ?? "—",
+  reportEnd = snapshot.entries[snapshot.entries.length - 1]?.night_start_date ?? "—",
 ): Blob {
   const groups = Array.from(
     { length: Math.max(1, Math.ceil(snapshot.entries.length / 9)) },
     (_, index) => snapshot.entries.slice(index * 9, (index + 1) * 9),
   );
+  const sportGroups = Array.from({ length: Math.ceil(sport.length / 28) },
+    (_, index) => sport.slice(index * 28, (index + 1) * 28));
+  const reportEndTime = Date.parse(`${reportEnd}T12:00:00Z`);
+  const reportEndExclusive = Number.isFinite(reportEndTime)
+    ? new Date(reportEndTime + 86400000).toISOString().slice(0, 10)
+    : reportEnd;
+  const contents = [
+    ...groups.map((entries, index) => page(snapshot, entries, index,
+      groups.length + sportGroups.length, language, sport)),
+    ...sportGroups.map((sessions, index) => sportPage(sessions, snapshot.entries,
+      groups.length + index, groups.length + sportGroups.length, language,
+      reportStart,
+      snapshot.entries[snapshot.entries.length - 1]?.night_end_date ?? reportEndExclusive)),
+  ];
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    `<< /Type /Pages /Kids [${groups.map((_, index) => `${4 + index * 2} 0 R`).join(" ")}] /Count ${groups.length} >>`,
+    `<< /Type /Pages /Kids [${contents.map((_, index) => `${4 + index * 2} 0 R`).join(" ")}] /Count ${contents.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
   ];
-  groups.forEach((entries, index) => {
-    const content = page(snapshot, entries, index, groups.length, language);
+  contents.forEach((content, index) => {
     objects.push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + index * 2} 0 R >>`,
       `<< /Length ${new TextEncoder().encode(content).length} >>\nstream\n${content}endstream`,

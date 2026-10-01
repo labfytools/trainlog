@@ -231,4 +231,35 @@ describe("sleep diary PDF", () => {
       expect(source).toContain("OBSERVATIONS");
     }
   });
+
+  it("prints factual sport bands and a separate legible listing without changing sleep totals", async () => {
+    const sessions = [
+      { identity: "se_morning", session_type: "training", label: "Musculation",
+        started_at: "2026-09-21T05:00:00+02:00", ended_at: "2026-09-21T06:00:00+02:00" },
+      { identity: "se_evening", session_type: "training", label: "Étirements",
+        started_at: "2026-09-21T18:30:00+02:00", ended_at: "2026-09-21T19:00:00+02:00" },
+    ];
+    const source = await buildSleepDiaryPdf(snapshot(1), "fr", sessions).text();
+    const content = await textualContent(buildSleepDiaryPdf(snapshot(1), "fr", sessions));
+    expect(source).toContain("0.10 0.34 0.82 rg 0 G");
+    expect(source).toContain(" re B Q");
+    expect(content).toContain("Musculation");
+    expect(content).toContain("05:00");
+    expect(content).toContain("Étirements");
+    expect(content).toContain("sommeil non renseigné");
+    expect(content).toContain("1 nuit");
+    expect((source.match(/\/Type \/Page /g) ?? []).length).toBe(2);
+  });
+
+  it("prints sport without inventing a Sleep entry", async () => {
+    const report = buildSleepDiaryPdf(snapshot(0), "fr", [{
+      identity: "se_only", session_type: "training", label: "Cardio",
+      started_at: "2026-09-21T05:00:00+02:00", ended_at: null,
+    }], "2026-09-20", "2026-09-20");
+    const content = await textualContent(report);
+    expect(content).toContain("0 nuits");
+    expect(content).toContain("Cardio");
+    expect(content).toContain("sommeil non renseigné");
+    expect(content).toContain("fin non renseignée");
+  });
 });

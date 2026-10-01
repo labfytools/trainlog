@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.7
 
+- Added a read-only completed-session overlay to the Web Sleep agenda and its
+  local vector PDF preview/export. Factual session start and end times share
+  the Sleep row's 18:00 axis in both renderers; blue outlined bands and a
+  printable paginated listing expose recorded names and times. Missing ends
+  remain point markers. The report flags sport without a recorded Sleep row,
+  and export waits for the complete paginated history read. Sleep entries,
+  session history, database schema, Android, and synchronization contracts
+  remain unchanged.
+
 The isolated `trainlog-program-recalage-v1` candidate adds an explicit
 preview-and-confirm cascade for unfinished Program sessions. It retains source
 and actual dates, stores absolute current dates and ceded-slot state, and

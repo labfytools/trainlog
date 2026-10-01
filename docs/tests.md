@@ -398,6 +398,17 @@ Firefox scenario exports a seven-night French PDF from the embedded production
 bundle, extracts its text with `pdftotext` and rasterizes its A4 landscape page
 with `pdftoppm` for retained visual inspection.
 
+The completed-sport Sleep overlay is covered by C read-only history
+intersection/pagination checks, Web pagination and failure-state tests, and
+pure geometry tests for 05:00 placement, midnight, 18:00 clipping, missing and
+invalid ends, and the Europe/Paris fall offset. PDF tests assert vector blue
+bands, black outlines, factual labels, and unchanged Sleep totals. Synthetic
+Firefox validation uses an isolated schema-v37 database and the embedded
+`-Dweb=enabled` binary, then inspects a downloaded PDF rendered by `pdftoppm`.
+Synthetic French and English reports of 7, 14, 21, and 30 nights are rasterized
+for page, margin, and monochrome inspection. No personal health artifact is
+stored in the repository.
+
 `WEB_DASHBOARD_TILES_V1` adds strict TypeScript parsing for every consumed
 field and Vitest fixtures confined to test sources. Coverage proves the 90-day
 activity map and direct totals, all compact/medium/large disclosure levels,

@@ -28,6 +28,11 @@ const api = vi.hoisted(() => ({
 const heartRateApi = vi.hoisted(() => ({
   fetchHeartRateTimeline: vi.fn(),
 }));
+const sportApi = vi.hoisted(() => ({ fetchSportSessions: vi.fn() }));
+
+vi.mock("../api/sportSessions", () => ({
+  fetchSportSessions: sportApi.fetchSportSessions,
+}));
 
 vi.mock("../api/sleepDiary", async (importOriginal) => {
   const original = await importOriginal<typeof import("../api/sleepDiary")>();
@@ -187,6 +192,7 @@ describe("SleepDiaryWorkspace", () => {
     api.nextId = 0;
     api.fetchSleepDiary.mockResolvedValue(emptySnapshot);
     api.fetchSleepMedications.mockResolvedValue([]);
+    sportApi.fetchSportSessions.mockResolvedValue([]);
     heartRateApi.fetchHeartRateTimeline.mockImplementation(async (contextId) => ({
       api_version: 1,
       context_id: contextId,
@@ -267,6 +273,7 @@ describe("SleepDiaryWorkspace", () => {
     fireEvent.change(screen.getByLabelText("au"), {
       target: { value: "2026-09-18" },
     });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prévisualiser" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
     fireEvent.click(screen.getByRole("button", { name: "Exporter PDF" }));
 
@@ -277,6 +284,56 @@ describe("SleepDiaryWorkspace", () => {
       expect(selected.summary.sleep_duration_seconds).toBe(5 * 3600);
     }
     expect(present.mock.calls.map((call) => call[1])).toEqual([false, true]);
+    expect(api.saveSleepEntry).not.toHaveBeenCalled();
+  });
+
+  it("blocks a complete PDF when completed-session history is unavailable", async () => {
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([dayAEntry()]));
+    sportApi.fetchSportSessions.mockRejectedValue(new Error("history unavailable"));
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    await screen.findByText("Séances indisponibles : export complet impossible.");
+    expect(screen.getByRole("button", { name: "Prévisualiser" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Exporter PDF" })).toBeDisabled();
+    expect(screen.queryByText(/Aucune dans la période/)).toBeNull();
+  });
+
+  it("discards a late sport response after the period changes", async () => {
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith([dayAEntry()]));
+    let finishOld!: (items: unknown[]) => void;
+    sportApi.fetchSportSessions
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockResolvedValueOnce([{
+        identity: "se_current", label: "Current session", session_type: "training",
+        started_at: "2026-09-21T05:00:00+02:00",
+        ended_at: "2026-09-21T06:00:00+02:00",
+      }]);
+    const view = render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    await waitFor(() => expect(sportApi.fetchSportSessions).toHaveBeenCalledTimes(1));
+    view.rerender(<SleepDiaryWorkspace period="7d" language="fr" />);
+    await screen.findByText(/Current session/);
+    finishOld([{
+      identity: "se_stale", label: "Stale session", session_type: "training",
+      started_at: "2026-09-21T07:00:00+02:00",
+      ended_at: "2026-09-21T08:00:00+02:00",
+    }]);
+    await waitFor(() => expect(screen.queryByText(/Stale session/)).toBeNull());
+  });
+
+  it("can export sport in a period with no recorded Sleep night", async () => {
+    sportApi.fetchSportSessions.mockResolvedValue([{
+      identity: "se_only", label: "Musculation", session_type: "training",
+      started_at: "2026-09-21T05:00:00+02:00",
+      ended_at: "2026-09-21T06:00:00+02:00",
+    }]);
+    const build = vi.spyOn(pdfReport, "buildSleepDiaryPdf").mockReturnValue(
+      new Blob(["sport"], { type: "application/pdf" }),
+    );
+    vi.spyOn(pdfReport, "presentSleepDiaryPdf").mockImplementation(() => {});
+    render(<SleepDiaryWorkspace period="30d" language="fr" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prévisualiser" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
+    expect(build.mock.calls[0][0].summary.nights).toBe(0);
+    expect(build.mock.calls[0][2]).toHaveLength(1);
     expect(api.saveSleepEntry).not.toHaveBeenCalled();
   });
 
@@ -301,6 +358,7 @@ describe("SleepDiaryWorkspace", () => {
       expect(screen.getByLabelText("PDF du")).toHaveValue("2026-09-19");
       expect(screen.getByLabelText("au")).toHaveValue(first.night_start_date);
     });
+    await screen.findByText(/Bleu : séance de sport effectuée/);
     fireEvent.change(screen.getByLabelText("PDF du"), {
       target: { value: "2026-09-21" },
     });

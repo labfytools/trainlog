@@ -17,6 +17,7 @@ import {
   type SleepQuality,
 } from "../api/sleepDiary";
 import type { AnalysisPeriod } from "../api/analysis";
+import { fetchSportSessions, type SportSession } from "../api/sportSessions";
 import { HeartRateTimelinePanel } from "../components/HeartRateTimelinePanel";
 import {
   buildSleepDiaryPdf,
@@ -26,8 +27,10 @@ import { formatDose, formatDuration } from "../dashboard/dashboardFormat";
 import { sleepEntryFacts } from "./sleepDiaryFacts";
 import {
   sleepAgendaTicks,
-  sleepTimelineInterval,
-  sleepTimelinePosition,
+  projectSportSegments,
+  sleepRowWindow,
+  timelineInterval,
+  timelinePosition,
 } from "./sleepTimelineGeometry";
 import {
   projectSleepTimeline,
@@ -287,6 +290,8 @@ export function SleepDiaryWorkspace({
   const [snapshot, setSnapshot] = useState<Awaited<
     ReturnType<typeof fetchSleepDiary>
   > | null>(null);
+  const [sport, setSport] = useState<SportSession[]>([]);
+  const [sportState, setSportState] = useState<"loading" | "ready" | "error">("loading");
   const entries = snapshot?.entries ?? [];
   const [draft, setDraft] = useState<SleepEntryInput>(blank);
   const [activeNight, setActiveNight] = useState(draft.night_start_date);
@@ -387,6 +392,29 @@ export function SleepDiaryWorkspace({
   useEffect(() => {
     void reload();
   }, [period]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setSportState("loading");
+    setSport([]);
+    // The read window covers the displayed period plus the preceding evening.
+    // A separate selection below trims the PDF to its chosen row windows.
+    const startDate = range.startDate ?? "1970-01-01";
+    const endDate = range.endDate ?? new Date().toISOString().slice(0, 10);
+    const start = new Date(`${startDate}T00:00:00`);
+    start.setDate(start.getDate() - 1);
+    const end = new Date(`${endDate}T00:00:00`);
+    end.setDate(end.getDate() + 2);
+    void fetchSportSessions(start.toISOString(), end.toISOString(), controller.signal)
+      .then((items) => {
+        if (controller.signal.aborted) return;
+        setSport(items);
+        setSportState("ready");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSportState("error");
+      });
+    return () => controller.abort();
+  }, [period, range.startDate, range.endDate]);
   const edit = (entry: SleepEntry) => {
     ++nightSelectionSequence.current;
     adoptEntry(entry);
@@ -702,15 +730,19 @@ export function SleepDiaryWorkspace({
   const [pdfEndDate, setPdfEndDate] = useState("");
   const pdfRangeInitialized = useRef(false);
   useEffect(() => {
-    if (pdfRangeInitialized.current || agendaEntries.length === 0) return;
+    if (pdfRangeInitialized.current || !snapshot) return;
     // WHY: opening the report controls should immediately cover the visible
     // loaded period while leaving all subsequent range choices user-owned.
-    setPdfStartDate(agendaEntries[0].night_start_date);
-    setPdfEndDate(agendaEntries[agendaEntries.length - 1].night_start_date);
+    setPdfStartDate(agendaEntries[0]?.night_start_date ?? range.startDate ??
+      new Date().toLocaleDateString("en-CA"));
+    setPdfEndDate(agendaEntries[agendaEntries.length - 1]?.night_start_date ??
+      range.endDate ?? new Date().toLocaleDateString("en-CA"));
     pdfRangeInitialized.current = true;
-  }, [agendaEntries]);
+  }, [agendaEntries, snapshot, range.startDate, range.endDate]);
   const pdfRangeValid = pdfStartDate !== "" && pdfEndDate !== "" &&
-    pdfStartDate <= pdfEndDate;
+    pdfStartDate <= pdfEndDate &&
+    (range.startDate === undefined || pdfStartDate >= range.startDate) &&
+    (range.endDate === undefined || pdfEndDate <= range.endDate);
   const pdfEntries = pdfRangeValid
     ? agendaEntries.filter(
       (entry) => entry.night_start_date >= pdfStartDate &&
@@ -720,7 +752,20 @@ export function SleepDiaryWorkspace({
   // CONTRACT: preview and download share the same inclusive date-range
   // selection. The range concerns the date on which each night begins; detail
   // selection remains independent and continues to drive the HR/editor view.
-  const selectedSnapshot = snapshot && pdfEntries.length > 0
+  const pdfWindows = pdfEntries.map(sleepRowWindow);
+  const agendaSport = sport.filter((session) => agendaEntries.some((entry) =>
+    projectSportSegments([session], sleepRowWindow(entry)).length > 0));
+  const fallbackStart = Date.parse(`${pdfStartDate}T18:00:00`);
+  const fallbackEnd = Date.parse(`${pdfEndDate}T18:00:00`) + 86400000;
+  const pdfWindow = pdfWindows.length > 0 ? {
+    start: pdfWindows[0].start,
+    end: pdfWindows[pdfWindows.length - 1].end,
+  } : { start: fallbackStart, end: fallbackEnd };
+  const pdfSport = pdfRangeValid ? sport.filter((session) =>
+    projectSportSegments([session], pdfWindow).length > 0) : [];
+  const listedSport = agendaEntries.length === 0 ? pdfSport : agendaSport;
+  const selectedSnapshot = snapshot && sportState === "ready" && pdfRangeValid &&
+    (pdfEntries.length > 0 || pdfSport.length > 0)
     ? sleepSnapshotSelection(snapshot, pdfEntries)
     : null;
   return (
@@ -754,7 +799,8 @@ export function SleepDiaryWorkspace({
               onClick={() =>
                 selectedSnapshot &&
                 presentSleepDiaryPdf(
-                  buildSleepDiaryPdf(selectedSnapshot, language),
+                  buildSleepDiaryPdf(selectedSnapshot, language, pdfSport,
+                    pdfStartDate, pdfEndDate),
                   false,
                 )
               }
@@ -768,7 +814,8 @@ export function SleepDiaryWorkspace({
               onClick={() =>
                 selectedSnapshot &&
                 presentSleepDiaryPdf(
-                  buildSleepDiaryPdf(selectedSnapshot, language),
+                  buildSleepDiaryPdf(selectedSnapshot, language, pdfSport,
+                    pdfStartDate, pdfEndDate),
                   true,
                 )
               }
@@ -778,8 +825,16 @@ export function SleepDiaryWorkspace({
           </div>
         </div>
         {!selectedSnapshot && agendaEntries.length > 0 && (
-          <p className="sleep-pdf-range-error" role="status">{t.pdfEmpty}</p>
+          <p className="sleep-pdf-range-error" role="status">{sportState === "loading"
+            ? (language === "fr" ? "Chargement des séances effectuées…" : "Loading completed sessions…")
+            : sportState === "error"
+              ? (language === "fr" ? "Séances indisponibles : export complet impossible." : "Sessions unavailable: complete export disabled.")
+              : t.pdfEmpty}</p>
         )}
+        {sportState === "ready" && <p className="sleep-sport-legend">
+          {language === "fr" ? "Bleu : séance de sport effectuée" : "Blue: completed sport session"}
+          {listedSport.length === 0 && (language === "fr" ? " · Aucune dans la période" : " · None in this period")}
+        </p>}
         {agendaEntries.length === 0 ? (
           <p className="analysis-empty">{t.agendaEmpty}</p>
         ) : (
@@ -816,10 +871,8 @@ export function SleepDiaryWorkspace({
                 // events carry the user's local offset. The 18:00 axis must
                 // use one factual local offset for the whole row or every
                 // marker is shifted by the UTC/local difference.
-                const timelineOffsetSource = entry.events.find(
-                  (event) => event.type === "bed_time",
-                )?.start_at ?? entry.events[0]?.start_at ??
-                  entry.intakes[0]?.taken_at ?? entry.created_at;
+                const window = sleepRowWindow(entry);
+                const sportSegments = projectSportSegments(sport, window);
                 const estimatedSleep = projection.sleep.filter(
                   (range) => range.estimated,
                 );
@@ -856,12 +909,7 @@ export function SleepDiaryWorkspace({
                     </strong>
                     <span className="sleep-track">
                       {estimatedSleep.map((range) => {
-                        const geometry = sleepTimelineInterval(
-                          new Date(range.start).toISOString(),
-                          new Date(range.end).toISOString(),
-                          entry.night_start_date,
-                          timelineOffsetSource,
-                        );
+                        const geometry = timelineInterval(range.start, range.end, window.start, window.end);
                         const label = `${
                           language === "fr" ? "Sommeil estimé" : "Estimated sleep"
                         } ${projectedClock(range.start)} → ${projectedClock(range.end)}`;
@@ -883,12 +931,8 @@ export function SleepDiaryWorkspace({
                       {intervalRanges.map((range) => {
                         const event = range.event;
                         if (!event) return null;
-                        const geometry = sleepTimelineInterval(
-                          event.start_at,
-                          event.end_at as string,
-                          entry.night_start_date,
-                          timelineOffsetSource,
-                        );
+                        const geometry = timelineInterval(event.start_at, event.end_at as string,
+                          window.start, window.end);
                         return (
                           <i
                             key={event.event_id}
@@ -903,11 +947,7 @@ export function SleepDiaryWorkspace({
                         );
                       })}
                       {projection.pointEvents.map((event) => {
-                        const left = sleepTimelinePosition(
-                          event.start_at,
-                          entry.night_start_date,
-                          timelineOffsetSource,
-                        );
+                        const left = timelinePosition(event.start_at, window.start, window.end);
                         return (
                           <i key={event.event_id}
                             className={`sleep-event sleep-${event.type} sleep-point`}
@@ -926,7 +966,7 @@ export function SleepDiaryWorkspace({
                           className="sleep-event sleep-medication"
                           data-testid="sleep-agenda-medication"
                           style={{
-                            left: `${sleepTimelinePosition(takenAt, entry.night_start_date, timelineOffsetSource) * 100}%`,
+                            left: `${timelinePosition(takenAt, window.start, window.end) * 100}%`,
                           }}
                           title={`${clock(takenAt)}\n${intakes.map(intakeLabel).join("\n")}`}
                         >
@@ -935,6 +975,21 @@ export function SleepDiaryWorkspace({
                           </span>
                         </i>
                       ))}
+                      {sportSegments.map((segment, index) => {
+                        const duration = segment.end === null ? null
+                          : formatDuration(Math.floor((segment.end - segment.start) / 1000));
+                        const label = `Sport · ${segment.session.label} (${segment.session.session_type}) · ` +
+                          `${segment.session.started_at.slice(0, 16)} → ` +
+                          (segment.end === null
+                            ? (language === "fr" ? "fin non renseignée" : "end not recorded")
+                            : `${segment.session.ended_at?.slice(0, 16)} · ${duration}`);
+                        return <i key={segment.session.identity} className="sleep-sport"
+                          role="img" aria-label={label} title={label}
+                          data-testid="sleep-agenda-sport"
+                          style={{ top: `${0.1 + (index % 3) * 0.2}rem`,
+                            left: `${segment.left * 100}%`,
+                            width: segment.end === null ? "3px" : `${segment.width * 100}%` }} />;
+                      })}
                     </span>
                     <span className="sleep-row-summary">
                       <span className="sleep-row-facts">
@@ -1023,6 +1078,21 @@ export function SleepDiaryWorkspace({
                 );
               })}
             </div>
+          </div>
+        )}
+        {sportState === "ready" && listedSport.length > 0 && (
+          <div className="sleep-sport-list">
+            <strong>{language === "fr" ? "Sport — horaires enregistrés" : "Sport — recorded times"}</strong>
+            <ul>{listedSport.map((session) => (
+              <li key={session.identity}>
+                {session.label} ({session.session_type}) · {session.started_at.slice(0, 16)} → {
+                  session.ended_at && Date.parse(session.ended_at) > Date.parse(session.started_at)
+                    ? session.ended_at.slice(0, 16)
+                    : (language === "fr" ? "fin non renseignée" : "end not recorded")}
+                {agendaEntries.length === 0 && (language === "fr"
+                  ? " · sommeil non renseigné" : " · sleep not recorded")}
+              </li>
+            ))}</ul>
           </div>
         )}
       </article>

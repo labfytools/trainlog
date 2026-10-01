@@ -6,6 +6,7 @@ import {
   sleepTimelinePosition,
   timelineInterval,
   timelinePosition,
+  projectSportSegments,
 } from "./sleepTimelineGeometry";
 
 describe("sleep timeline geometry", () => {
@@ -92,5 +93,53 @@ describe("sleep timeline geometry", () => {
       "14",
       "16",
     ]);
+  });
+});
+
+describe("completed sport projection", () => {
+  const window = {
+    start: Date.parse("2026-09-30T18:00:00+02:00"),
+    end: Date.parse("2026-10-01T18:00:00+02:00"),
+  };
+  const session = (identity: string, started_at: string, ended_at: string | null) => ({
+    identity, label: identity, session_type: "training", started_at, ended_at,
+  });
+
+  it("places an actual 05:00–06:00 session on the preceding 18:00 row", () => {
+    const segments = projectSportSegments([
+      session("morning", "2026-10-01T05:00:00+02:00", "2026-10-01T06:00:00+02:00"),
+    ], window);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].left).toBeCloseTo(11 / 24, 12);
+    expect(segments[0].width).toBeCloseTo(1 / 24, 12);
+  });
+
+  it("clips crossings without retaining out-of-window strokes or splitting identity", () => {
+    const sessions = [
+      session("midnight", "2026-09-30T23:30:00+02:00", "2026-10-01T00:30:00+02:00"),
+      session("boundary", "2026-10-01T17:30:00+02:00", "2026-10-01T18:30:00+02:00"),
+      session("before", "2026-09-30T16:00:00+02:00", "2026-09-30T17:00:00+02:00"),
+      session("point", "2026-10-01T13:00:00+02:00", null),
+      session("bad", "2026-10-01T14:00:00+02:00", "2026-10-01T13:00:00+02:00"),
+    ];
+    const segments = projectSportSegments(sessions, window);
+    expect(segments.map(({ session }) => session.identity)).toEqual([
+      "midnight", "boundary", "point", "bad",
+    ]);
+    expect(segments[1].left + segments[1].width).toBe(1);
+    expect(segments[2].end).toBeNull();
+    expect(segments[3].invalidEnd).toBe(true);
+  });
+
+  it("retains one row offset through the Europe/Paris fall transition", () => {
+    const autumn = {
+      start: Date.parse("2026-10-24T18:00:00+02:00"),
+      end: Date.parse("2026-10-24T18:00:00+02:00") + 86400000,
+    };
+    const segment = projectSportSegments([
+      session("after-shift", "2026-10-25T05:00:00+01:00", "2026-10-25T06:00:00+01:00"),
+    ], autumn)[0];
+    expect(segment.left).toBeCloseTo(12 / 24, 12);
+    expect(segment.width).toBeCloseTo(1 / 24, 12);
   });
 });

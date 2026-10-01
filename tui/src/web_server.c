@@ -1935,6 +1935,14 @@ static enum MHD_Result handle_request(void *closure,
                 context->database, search, offset, limit, &json, &json_size);
             return queue_owned_sessions_json(connection, status, json, json_size);
         }
+        if (strcmp(url, "/api/v1/sessions/sport") == 0) {
+            const char *start =
+                MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "start");
+            const char *end = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "end");
+            TrainlogStatus status = trainlog_web_sessions_sport_json(
+                context->database, start, end, offset, limit, &json, &json_size);
+            return queue_owned_sessions_json(connection, status, json, json_size);
+        }
         for (index = 0U; index < sizeof(collections) / sizeof(collections[0]); ++index) {
             if (strcmp(url, collections[index].path) == 0) {
                 TrainlogWebSessionsPageQuery query = {

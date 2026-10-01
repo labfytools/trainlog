@@ -1,5 +1,65 @@
 export const SLEEP_TIMELINE_DURATION_MS = 24 * 60 * 60 * 1000;
 
+import type { SleepEntry } from "../api/sleepDiary";
+import type { SportSession } from "../api/sportSessions";
+
+export interface SleepRowWindow {
+  start: number;
+  end: number;
+}
+
+/** WHY: event-specific offsets shift otherwise identical instants on the
+ * agenda. CONTRACT: one factual Sleep offset owns each 18:00 row, including
+ * its sport overlay and PDF. The existing axis spans 24 elapsed hours even
+ * across a daylight-saving transition. */
+export function sleepRowWindow(entry: SleepEntry): SleepRowWindow {
+  const source = entry.events.find((event) => event.type === "bed_time")?.start_at ??
+    entry.events[0]?.start_at ?? entry.intakes[0]?.taken_at ?? entry.created_at;
+  const offset = source.match(/(Z|[+-]\d{2}:\d{2})$/)?.[1] ?? "";
+  const start = Date.parse(`${entry.night_start_date}T18:00:00${offset}`);
+  return { start, end: start + SLEEP_TIMELINE_DURATION_MS };
+}
+
+export interface SportSegment {
+  session: SportSession;
+  start: number;
+  end: number | null;
+  left: number;
+  width: number;
+  invalidEnd: boolean;
+}
+
+/** INVARIANT: intersection precedes clipping; [start,end) prevents a session
+ * ending at 18:00 from appearing in the next row. Invalid/missing ends
+ * produce a point only and never a fabricated duration. */
+export function projectSportSegments(
+  sessions: readonly SportSession[],
+  window: SleepRowWindow,
+): SportSegment[] {
+  if (!Number.isFinite(window.start) || !Number.isFinite(window.end) ||
+      window.end <= window.start) return [];
+  return sessions.flatMap((session) => {
+    const start = Date.parse(session.started_at);
+    if (!Number.isFinite(start)) return [];
+    const parsedEnd = session.ended_at === null ? NaN : Date.parse(session.ended_at);
+    const validEnd = Number.isFinite(parsedEnd) && parsedEnd > start;
+    if (validEnd ? start >= window.end || parsedEnd <= window.start
+      : start < window.start || start >= window.end) return [];
+    const left = timelinePosition(Math.max(start, window.start), window.start, window.end);
+    const right = validEnd
+      ? timelinePosition(Math.min(parsedEnd, window.end), window.start, window.end)
+      : left;
+    return [{
+      session,
+      start,
+      end: validEnd ? parsedEnd : null,
+      left,
+      width: Math.max(0, right - left),
+      invalidEnd: session.ended_at !== null && !validEnd,
+    }];
+  });
+}
+
 export interface TimelineTick {
   timestamp: number;
   position: number;

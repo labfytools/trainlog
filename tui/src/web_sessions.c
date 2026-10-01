@@ -10,6 +10,7 @@
 #include <yyjson.h>
 
 #include "database_internal.h"
+#include "timestamp.h"
 #include "trainlog/id.h"
 
 typedef struct ListDefinition {
@@ -93,6 +94,117 @@ write_document(yyjson_mut_doc *document, char **output_json, size_t *output_size
     }
     *output_json = json;
     return TRAINLOG_STATUS_OK;
+}
+
+TrainlogStatus trainlog_web_sessions_sport_json(TrainlogDatabase *database,
+                                                const char *start,
+                                                const char *end,
+                                                size_t offset,
+                                                size_t limit,
+                                                char **output_json,
+                                                size_t *output_size) {
+    static const char SQL[] =
+        "SELECT s.session_id,s.session_type,s.started_at,s.ended_at,"
+        "COALESCE((SELECT group_concat(name, ', ') FROM (SELECT DISTINCT x.name AS name FROM "
+        "session_exercises se JOIN exercises x ON x.id=se.exercise_row_id WHERE "
+        "se.session_row_id=s.id ORDER BY se.position LIMIT 8)),s.session_type) "
+        "FROM sessions s WHERE unixepoch(s.started_at) IS NOT NULL AND "
+        "unixepoch(s.started_at)<unixepoch(?2) AND "
+        "(CASE WHEN unixepoch(s.ended_at)>unixepoch(s.started_at) "
+        "THEN unixepoch(s.ended_at)>unixepoch(?1) ELSE unixepoch(s.started_at)>=unixepoch(?1) "
+        "END) AND NOT EXISTS(SELECT 1 FROM sync_causal_state c WHERE "
+        "c.target_kind='session' AND c.target_id=s.session_id AND c.deleted=1) "
+        "ORDER BY unixepoch(s.started_at),s.session_id LIMIT ?3 OFFSET ?4";
+    sqlite3_stmt *statement = NULL;
+    yyjson_mut_doc *document = NULL;
+    yyjson_mut_val *root;
+    yyjson_mut_val *items;
+    TrainlogStatus status;
+    TrainlogStatus end_status;
+    size_t count = 0U;
+    int step = SQLITE_DONE;
+    TrainlogTimestampKey start_key;
+    TrainlogTimestampKey end_key;
+
+    if (database == NULL || start == NULL || end == NULL || output_json == NULL ||
+        output_size == NULL || limit == 0U || limit > TRAINLOG_WEB_SESSIONS_PAGE_MAX ||
+        offset > INT64_MAX || strlen(start) > 40U || strlen(end) > 40U ||
+        !trainlog_timestamp_parse(start, strlen(start), &start_key) ||
+        !trainlog_timestamp_parse(end, strlen(end), &end_key) ||
+        trainlog_timestamp_compare(&start_key, &end_key) >= 0) {
+        return TRAINLOG_STATUS_INVALID_ARGUMENT;
+    }
+    *output_json = NULL;
+    *output_size = 0U;
+    status = trainlog_database_read_snapshot_begin(database);
+    if (status != TRAINLOG_STATUS_OK) {
+        return status;
+    }
+    if (sqlite3_prepare_v2(database->connection, SQL, -1, &statement, NULL) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 1, start, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_text(statement, 2, end, -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 3, (sqlite3_int64)(limit + 1U)) != SQLITE_OK ||
+        sqlite3_bind_int64(statement, 4, (sqlite3_int64)offset) != SQLITE_OK) {
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto finish_sport;
+    }
+    document = yyjson_mut_doc_new(NULL);
+    root = document == NULL ? NULL : yyjson_mut_obj(document);
+    items = document == NULL ? NULL : yyjson_mut_arr(document);
+    if (root == NULL || items == NULL) {
+        status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finish_sport;
+    }
+    yyjson_mut_doc_set_root(document, root);
+    if (!yyjson_mut_obj_add_uint(document, root, "api_version", 1U) ||
+        !yyjson_mut_obj_add_uint(document, root, "offset", offset) ||
+        !yyjson_mut_obj_add_val(document, root, "items", items)) {
+        status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finish_sport;
+    }
+    while ((step = sqlite3_step(statement)) == SQLITE_ROW) {
+        yyjson_mut_val *item;
+        if (count == limit) {
+            ++count;
+            break;
+        }
+        item = yyjson_mut_obj(document);
+        if (item == NULL || !add_nullable_text(document, item, "identity", statement, 0) ||
+            !add_nullable_text(document, item, "session_type", statement, 1) ||
+            !add_nullable_text(document, item, "started_at", statement, 2) ||
+            !add_nullable_text(document, item, "ended_at", statement, 3) ||
+            !add_nullable_text(document, item, "label", statement, 4) ||
+            !yyjson_mut_arr_add_val(items, item)) {
+            status = TRAINLOG_STATUS_DATABASE_ERROR;
+            goto finish_sport;
+        }
+        ++count;
+    }
+    if (step != SQLITE_DONE && count <= limit) {
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+        goto finish_sport;
+    }
+    if (!yyjson_mut_obj_add_bool(document, root, "more", count > limit) ||
+        !yyjson_mut_obj_add_uint(document, root, "next_offset", offset + limit)) {
+        status = TRAINLOG_STATUS_SYSTEM_ERROR;
+        goto finish_sport;
+    }
+    status = TRAINLOG_STATUS_OK;
+
+finish_sport:
+    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK &&
+        status == TRAINLOG_STATUS_OK) {
+        status = TRAINLOG_STATUS_DATABASE_ERROR;
+    }
+    end_status = trainlog_database_read_snapshot_end(database, status == TRAINLOG_STATUS_OK);
+    if (status == TRAINLOG_STATUS_OK) {
+        status = end_status;
+    }
+    if (status != TRAINLOG_STATUS_OK) {
+        yyjson_mut_doc_free(document);
+        return status;
+    }
+    return write_document(document, output_json, output_size);
 }
 
 TrainlogStatus trainlog_web_sessions_list_json(TrainlogDatabase *database,

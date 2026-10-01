@@ -1,11 +1,11 @@
 # Roadmap
 
-The isolated Program cascade candidate is implemented in the
-`trainlog-program-recalage-v1` worktree and remains outside the stable 0.1.7
-installation. Its next gate is a coordinated PC/Android deployment review,
-followed by a newly calculated personal Program preview and separate user
-confirmation. No personal reschedule or publication is implied by candidate
-tests.
+The Program cascade is deployed in the private daily installation from
+`trainlog-program-recalage-v1` at `3a4ec34`. The separate
+`trainlog-sleep-sport-overlay-v1` source candidate adds the read-only Sleep
+sport display and must be verified on the actual Web/PDF installation before
+that display is called deployed. No new personal Program rescheduling is
+implied by this presentation work.
 
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated

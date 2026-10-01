@@ -41,6 +41,19 @@ TrainlogStatus trainlog_web_sessions_list_json(TrainlogDatabase *database,
                                                char **output_json,
                                                size_t *output_size);
 
+/* WHY: the Sleep agenda needs factual completed sessions without fetching one
+ * detail per row. CONTRACT: start/end are bounded ISO instants; intervals
+ * intersect [start,end), and a session with no valid end is a point at start.
+ * Pages are ordered by factual start and stable ID. No state is mutated.
+ * INVARIANT: the caller owns output_json and must paginate until more=false. */
+TrainlogStatus trainlog_web_sessions_sport_json(TrainlogDatabase *database,
+                                                const char *start,
+                                                const char *end,
+                                                size_t offset,
+                                                size_t limit,
+                                                char **output_json,
+                                                size_t *output_size);
+
 /* CONTRACT: kind is one of preparation, proposal, draft, or history. The
  * returned detail is a factual snapshot and performs no lifecycle transition. */
 TrainlogStatus trainlog_web_sessions_detail_json(TrainlogDatabase *database,

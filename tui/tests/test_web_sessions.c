@@ -438,9 +438,59 @@ static bool withdrawal_is_durable_and_preserves_evidence(void) {
     return true;
 }
 
+static bool sport_history_intersection_and_pagination(void) {
+    TrainlogDatabase *database = NULL;
+    char *page = NULL;
+    size_t size = 0U;
+    const char *start = "2026-10-01T00:00:00Z";
+    const char *end = "2026-10-02T00:00:00Z";
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO sessions(session_id,session_type,started_at,ended_at) VALUES"
+                       "('se_before','training','2026-09-30T23:00:00Z','2026-10-01T01:00:00Z'),"
+                       "('se_inside','training','2026-10-01T04:00:00Z','2026-10-01T05:00:00Z'),"
+                       "('se_point','max_test','2026-10-01T08:00:00Z',NULL),"
+                       "('se_after','training','2026-10-02T00:00:00Z','2026-10-02T01:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_sessions_sport_json(database, start, end, 0U, 1U, &page, &size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(page, "se_before") != NULL);
+    CHECK(strstr(page, "se_inside") == NULL);
+    CHECK(strstr(page, "\"more\":true") != NULL);
+    free(page);
+    page = NULL;
+    CHECK(trainlog_web_sessions_sport_json(database, start, end, 1U, 2U, &page, &size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(page, "se_inside") != NULL);
+    CHECK(strstr(page, "se_point") != NULL);
+    CHECK(strstr(page, "se_after") == NULL);
+    CHECK(strstr(page, "\"more\":false") != NULL);
+    free(page);
+    page = NULL;
+    CHECK(sqlite3_exec(database->connection,
+                       "DELETE FROM sessions WHERE session_id='se_inside'",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(trainlog_web_sessions_sport_json(database, start, end, 0U, 64U, &page, &size) ==
+          TRAINLOG_STATUS_OK);
+    CHECK(strstr(page, "se_inside") == NULL);
+    CHECK(strstr(page, "se_before") != NULL);
+    free(page);
+    page = NULL;
+    CHECK(trainlog_web_sessions_sport_json(database, "invalid", end, 0U, 64U, &page, &size) ==
+          TRAINLOG_STATUS_INVALID_ARGUMENT);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void) {
     return creation_replay_revision_and_pagination() &&
-                   withdrawal_is_durable_and_preserves_evidence()
+                   withdrawal_is_durable_and_preserves_evidence() &&
+                   sport_history_intersection_and_pagination()
                ? 0
                : 1;
 }

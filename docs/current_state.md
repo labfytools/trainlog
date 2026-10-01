@@ -1,15 +1,15 @@
 # Current implementation state
 
-## Isolated Program rescheduling candidate
+## Private installation and isolated Sleep sport overlay
 
-The `trainlog-program-recalage-v1` worktree contains a local candidate for
-explicit ordered Program rescheduling, desktop schema v37, Android schema v34,
-and the capability-selected `trainlog-programs` V2 projection. The stable
-0.1.7 installation and personal Program have not been migrated or rescheduled.
-The candidate passed local native, Web, Android JVM, build, and targeted
-sanitizer validation. It still requires coordinated PC/Android deployment
-before it is an operational feature. Completed-session calendar
-dates in stable 0.1.7 continue to come from their linked factual sessions.
+The private daily installation runs the explicit ordered Program rescheduling
+rollout from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema
+v37, Android schema v34, and the capability-selected `trainlog-programs` V2
+projection. The separate `trainlog-sleep-sport-overlay-v1` worktree starts from
+that deployed source and adds the read-only completed-sport Sleep overlay.
+Local source and isolated-browser validation do not by themselves establish
+that the new overlay is served by the daily installation. Completed-session
+calendar dates continue to come from their linked factual sessions.
 Rollout packaging requires an explicit Meson `-Dweb=enabled` build; the
 embedded frontend and its native Web tests are part of candidate validation.
 
@@ -224,8 +224,19 @@ night has one row on the shared 18:00-to-18:00 geometry. Selecting a row is
 presentation-only and atomically drives the detail dates, editor content, and
 full-width heart-rate detail; it performs no database mutation. PDF preview
 and download instead share an explicit inclusive range over night start dates,
-initialized to the loaded agenda bounds and independent of detail selection. Its
-rise/fall overlays are descriptive relative measured
+initialized to the loaded agenda bounds and independent of detail selection.
+The completed-sport overlay reads factual `sessions.started_at` and `ended_at`
+from desktop history through a read-only, period-bounded paginated Web endpoint.
+Each row uses its one Sleep-owned 18:00 offset and 24 elapsed-hour window for
+Sleep, medication, and sport in both Web and vector PDF. Valid sport intervals
+intersect `[start,end)` and are clipped only for display; missing or invalid
+ends are point markers without invented duration. The Web keeps a separate
+blue lane and accessible session list. Preview and download wait for the
+complete sport read and use the same selected sessions. The PDF prints blue
+outlined bands and paginated names, factual times, and durations, marking
+sessions without a corresponding Sleep row as `sleep not recorded`. Sport
+creates no Sleep event and changes no sleep total, session, schema, or sync
+contract. The HR detail's rise/fall overlays are descriptive relative measured
 variation only (five-minute trailing reference excluding the current 60-second
 window; threshold `max(10 BPM, 15%)`; gaps over three seconds excluded). They
 are not sleep events, sleep stages, causes, readiness, or medical inference.

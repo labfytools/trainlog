@@ -820,7 +820,7 @@ h2 {
 }
 .sleep-track {
   position: relative;
-  height: 1.75rem;
+  height: 2.4rem;
   /* CONTRACT: the 24 equal columns share the exact 18:00-to-18:00 geometry
    * used by the positioned events and by the hour labels above them. */
   background-color: var(--surface-0);
@@ -837,13 +837,36 @@ h2 {
 .sleep-event {
   position: absolute;
   display: block;
-  top: 0.15rem;
+  top: 0.78rem;
   bottom: 0.15rem;
   min-width: 0.3rem;
   overflow: visible;
   font-style: normal;
   text-align: center;
   color: var(--text);
+}
+.sleep-sport-legend {
+  margin: 0.35rem 0;
+  color: #629bff;
+  font-weight: 700;
+}
+.sleep-sport {
+  position: absolute;
+  top: 0.1rem;
+  height: 0.36rem;
+  min-width: 3px;
+  border: 1px solid #183f83;
+  border-radius: 2px;
+  background: #3984eb;
+  z-index: 3;
+}
+.sleep-sport-list {
+  margin-top: 0.6rem;
+  font-size: var(--font-size-sm);
+}
+.sleep-sport-list ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.3rem;
 }
 .sleep-point,
 .sleep-medication {
