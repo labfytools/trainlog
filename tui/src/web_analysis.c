@@ -646,26 +646,26 @@ static bool add_measurements(TrainlogDatabase *database,
 static bool
 add_program(TrainlogDatabase *database, yyjson_mut_doc *document, yyjson_mut_val *root) {
     static const char SQL[] =
+        /* WHY: imported dates are historical after Program rescheduling.
+         * CONTRACT: select one pending, non-ceded session with its current date.
+         * INVARIANT: a present planning row with NULL current_for stays undated. */
+        "WITH eligible AS (SELECT ps2.program_id,ps2.program_session_id,ps2.title,ps2.position,"
+        "CASE WHEN pp.program_session_id IS NULL THEN ps2.planned_for ELSE pp.current_for END "
+        "AS current_for FROM program_sessions ps2 LEFT JOIN program_session_planning pp ON "
+        "pp.program_session_id=ps2.program_session_id LEFT JOIN program_session_executions pe2 "
+        "ON pe2.program_session_id=ps2.program_session_id WHERE COALESCE(pp.state,'active')"
+        "!='ceded' AND COALESCE(pe2.state,'todo') NOT IN('completed','deleted')),"
+        "ranked AS (SELECT eligible.*,ROW_NUMBER() OVER (PARTITION BY program_id ORDER BY "
+        "CASE WHEN current_for IS NULL THEN 1 ELSE 0 END,current_for,position,"
+        "program_session_id) AS rank FROM eligible) "
         "SELECT p.program_id,p.title,COUNT(ps.program_session_id),"
         "SUM(CASE WHEN pe.state='completed' THEN 1 ELSE 0 END),"
-        "(SELECT ps2.title FROM program_sessions ps2 LEFT JOIN program_session_executions pe2 ON "
-        "pe2.program_session_id=ps2.program_session_id WHERE ps2.program_id=p.program_id AND "
-        "COALESCE(pe2.state,'todo') NOT IN('completed','deleted') ORDER BY "
-        "CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position LIMIT 1),"
-        "(SELECT ps2.program_session_id FROM program_sessions ps2 LEFT JOIN "
-        "program_session_executions pe2 ON pe2.program_session_id=ps2.program_session_id WHERE "
-        "ps2.program_id=p.program_id AND COALESCE(pe2.state,'todo') NOT IN('completed','deleted') "
-        "ORDER BY CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position "
-        "LIMIT 1),"
-        "(SELECT ps2.planned_for FROM program_sessions ps2 LEFT JOIN program_session_executions "
-        "pe2 "
-        "ON pe2.program_session_id=ps2.program_session_id WHERE ps2.program_id=p.program_id AND "
-        "COALESCE(pe2.state,'todo') NOT IN('completed','deleted') ORDER BY "
-        "CASE WHEN ps2.planned_for IS NULL THEN 1 ELSE 0 END,ps2.planned_for,ps2.position LIMIT 1) "
+        "next.title,next.program_session_id,next.current_for "
         "FROM programs p LEFT JOIN program_sessions ps ON ps.program_id=p.program_id LEFT JOIN "
-        "program_session_executions pe ON pe.program_session_id=ps.program_session_id WHERE "
+        "program_session_executions pe ON pe.program_session_id=ps.program_session_id LEFT JOIN "
+        "ranked next ON next.program_id=p.program_id AND next.rank=1 WHERE "
         "p.state='active' AND p.deleted_at IS NULL GROUP BY p.program_id ORDER BY p.updated_at "
-        "DESC "
+        "DESC,p.program_id "
         "LIMIT 1";
     sqlite3_stmt *statement = NULL;
     yyjson_mut_val *program = yyjson_mut_obj(document);

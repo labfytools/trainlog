@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.7
 
+- Corrected the Dashboard/Analysis active-Program next-session projection to
+  select title, identity, and current date from one pending Program session.
+  Recorded rescheduling dates replace imported dates, ceded slots are excluded,
+  and an overdue uncompleted session remains eligible. The read-only projection
+  does not change Program history, preparation priority, or synchronization.
+
 - Aligned the Web front/back BODY ZONES figures with Android's normalized
   Compose Canvas silhouettes. The Web now uses Android's head, neck and 11
   region paths per face, while retaining the existing Catppuccin intensity

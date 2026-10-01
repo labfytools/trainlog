@@ -225,7 +225,8 @@ static bool test_factual_models(void) {
     {
         yyjson_val *program = yyjson_obj_get(root, "active_program");
         CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_title")), "Next") == 0);
-        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_id")), "ps_analysis") == 0);
+        CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_id")), "ps_analysis") ==
+              0);
         CHECK(strcmp(yyjson_get_str(yyjson_obj_get(program, "next_session_planned_for")),
                      "2026-09-21") == 0);
     }
@@ -250,6 +251,123 @@ static bool test_factual_models(void) {
     return true;
 }
 
+static bool check_next_session(TrainlogDatabase *database,
+                               const char *expected_id,
+                               const char *expected_title,
+                               const char *expected_date) {
+    yyjson_doc *document = NULL;
+    yyjson_val *program;
+    yyjson_val *id;
+    yyjson_val *title;
+    yyjson_val *date;
+
+    CHECK(read_snapshot(database, TRAINLOG_WEB_ANALYSIS_30_DAYS, NULL, "weight", &document));
+    program = yyjson_obj_get(yyjson_doc_get_root(document), "active_program");
+    CHECK(!yyjson_is_null(program));
+    id = yyjson_obj_get(program, "next_session_id");
+    title = yyjson_obj_get(program, "next_session_title");
+    date = yyjson_obj_get(program, "next_session_planned_for");
+    CHECK(expected_id == NULL ? yyjson_is_null(id)
+                              : yyjson_is_str(id) && strcmp(yyjson_get_str(id), expected_id) == 0);
+    CHECK(expected_title == NULL
+              ? yyjson_is_null(title)
+              : yyjson_is_str(title) && strcmp(yyjson_get_str(title), expected_title) == 0);
+    CHECK(expected_date == NULL
+              ? yyjson_is_null(date)
+              : yyjson_is_str(date) && strcmp(yyjson_get_str(date), expected_date) == 0);
+    yyjson_doc_free(document);
+    return true;
+}
+
+static bool test_current_program_plan(void) {
+    TrainlogDatabase *database = NULL;
+    yyjson_doc *document = NULL;
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    /* WHY: source dates remain historical; current planning and execution are
+     * independent facts. These rows exercise their precedence without touching
+     * any user database or invoking the rescheduling command. */
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO programs VALUES('pg_current','Current',NULL,'active',NULL,"
+                       "NULL,'2026-09-01T00:00:00Z','2026-09-01T00:00:00Z','rev','test',1,"
+                       "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',"
+                       "NULL);"
+                       "INSERT INTO program_sessions VALUES"
+                       "('ps_ceded','pg_current',0,'Optional','training','2026-09-29',NULL),"
+                       "('ps_s2c','pg_current',1,'S2 C','training','2026-09-30',NULL),"
+                       "('ps_later','pg_current',2,'Later','training','2026-10-03',NULL),"
+                       "('ps_tie','pg_current',3,'Tie','training','2026-10-02',NULL),"
+                       "('ps_undated','pg_current',4,'Undated','training',NULL,NULL);",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(check_next_session(database, "ps_ceded", "Optional", "2026-09-29"));
+
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO program_session_planning VALUES"
+                       "('ps_ceded',NULL,'ceded','op_a','2026-10-01T00:00:00Z'),"
+                       "('ps_s2c','2026-10-02','active','op_b','2026-10-01T00:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(check_next_session(database, "ps_s2c", "S2 C", "2026-10-02"));
+
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO program_session_executions VALUES"
+                       "('ps_s2c','pg_current','se_fixture_1','in_progress',"
+                       "'2026-10-02T12:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(check_next_session(database, "ps_s2c", "S2 C", "2026-10-02"));
+
+    CHECK(sqlite3_exec(database->connection,
+                       "UPDATE program_session_executions SET state='completed' "
+                       "WHERE program_session_id='ps_s2c';",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(check_next_session(database, "ps_tie", "Tie", "2026-10-02"));
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO program_session_executions VALUES"
+                       "('ps_tie','pg_current','se_fixture_2','completed','2026-10-02T12:00:00Z'),"
+                       "('ps_later','pg_current','se_fixture_3','deleted','2026-10-03T12:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(check_next_session(database, "ps_undated", "Undated", NULL));
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO program_session_executions VALUES"
+                       "('ps_undated','pg_current','se_fixture_4','completed',"
+                       "'2026-10-04T12:00:00Z');",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(check_next_session(database, NULL, NULL, NULL));
+
+    CHECK(sqlite3_exec(database->connection,
+                       "UPDATE programs SET state='archived' WHERE program_id='pg_current';",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(read_snapshot(database, TRAINLOG_WEB_ANALYSIS_30_DAYS, NULL, "weight", &document));
+    CHECK(yyjson_is_null(yyjson_obj_get(yyjson_doc_get_root(document), "active_program")));
+    yyjson_doc_free(document);
+    document = NULL;
+
+    CHECK(sqlite3_exec(database->connection,
+                       "UPDATE programs SET state='active',deleted_at='2026-10-05T00:00:00Z' "
+                       "WHERE program_id='pg_current';",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    CHECK(read_snapshot(database, TRAINLOG_WEB_ANALYSIS_30_DAYS, NULL, "weight", &document));
+    CHECK(yyjson_is_null(yyjson_obj_get(yyjson_doc_get_root(document), "active_program")));
+    yyjson_doc_free(document);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void) {
-    return test_empty_and_periods() && test_factual_models() ? 0 : 1;
+    return test_empty_and_periods() && test_factual_models() && test_current_program_plan() ? 0 : 1;
 }
