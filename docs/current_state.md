@@ -10,6 +10,8 @@ The candidate passed local native, Web, Android JVM, build, and targeted
 sanitizer validation. It still requires coordinated PC/Android deployment
 before it is an operational feature. Completed-session calendar
 dates in stable 0.1.7 continue to come from their linked factual sessions.
+Rollout packaging requires an explicit Meson `-Dweb=enabled` build; the
+embedded frontend and its native Web tests are part of candidate validation.
 
 Full-generation synchronization uses one generation/ACK business engine across
 versioned transports. On the paired 0.1.4 deployment, automatic local selection

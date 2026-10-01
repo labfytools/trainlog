@@ -82,6 +82,8 @@ def main() -> int:
         raise RuntimeError("compiled generation MTP adapter is missing")
     if not sync_once.is_file():
         raise RuntimeError("compiled legacy synchronization helper is missing")
+    # WHY: web=auto can build a native executable without any embedded UI.
+    # CONTRACT: a rollout bundle must contain the frontend it will serve.
     build_options = json.loads(subprocess.check_output(
         ["meson", "introspect", "--buildoptions", str(args.build)], text=True
     ))

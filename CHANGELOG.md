@@ -7,6 +7,7 @@ preview-and-confirm cascade for unfinished Program sessions. It retains source
 and actual dates, stores absolute current dates and ceded-slot state, and
 selects a separate Programs V2 Android projection by capability. This candidate
 is not merged into the stable installation or deployed to Android.
+Rollout packaging now rejects a native build without the embedded Web frontend.
 
 Development opened after the stable v0.1.6 release. This line is restricted to
 observed bug fixes, regression fixes, directly related small UI corrections,
