@@ -110,7 +110,7 @@ These are unsigned development evidence, not deployment authorization.
 
 Do not delete an unacknowledged generation, the last acknowledged generation,
 its previous valid generation, or causal evidence. An ACK timeout is unresolved,
-not rollback. Eight retained outgoing generations exhaust admission and require
+not rollback. Sixteen retained outgoing generations exhaust admission and require
 operator diagnosis; this tranche adds no tombstone or evidence garbage
 collection. A migrated database is recovered from its verified backup, never by
 assuming an older binary reverses its migration.

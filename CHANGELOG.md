@@ -5,9 +5,13 @@
 The isolated `trainlog-program-recalage-v1` candidate adds an explicit
 preview-and-confirm cascade for unfinished Program sessions. It retains source
 and actual dates, stores absolute current dates and ceded-slot state, and
-selects a separate Programs V2 Android projection by capability. This candidate
-is not merged into the stable installation or deployed to Android.
-Rollout packaging now rejects a native build without the embedded Web frontend.
+selects a separate Programs V2 Android projection by capability. The source
+candidate remains isolated from the stable checkout while its private desktop
+and compatible Android build are installed for the coordinated rollout.
+Rollout packaging rejects a native build without the embedded Web frontend.
+The private rollout preserves parsed V1 Program number types during Android V2
+upgrade and raises the bounded local MTP operation budget to 90 seconds and
+retained outgoing generation capacity to 16 after interrupted exchanges.
 
 Development opened after the stable v0.1.6 release. This line is restricted to
 observed bug fixes, regression fixes, directly related small UI corrections,

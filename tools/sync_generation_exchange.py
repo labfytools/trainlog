@@ -51,7 +51,11 @@ MAX_GENERATION = 256 * 1024 * 1024
 MAX_NAME = 64
 MAX_PATH = 240
 MAX_DIAGNOSTIC = 1024
-MAX_RETAINED_PER_PEER = 8
+# WHY: interrupted MTP publications can leave immutable generations awaiting
+# an ACK alongside the two acknowledged lineage members kept for recovery.
+# CONTRACT: admission remains bounded and never erases unresolved generations.
+# INVARIANT: captured, published and waiting generations still consume a slot.
+MAX_RETAINED_PER_PEER = 16
 ID = re.compile(r"^(?:gen|peer|sy)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 HEX = re.compile(r"^[0-9a-f]{64}$")
 

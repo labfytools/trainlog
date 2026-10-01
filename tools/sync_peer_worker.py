@@ -37,7 +37,11 @@ CAPS = {
 
 ACK_RECOVERY_CAP = "generation-ack-recovery-v1"
 
-MTP_OPERATION_TIMEOUT_SECONDS = 30.0
+# WHY: a verified personal phone can need more than 30 seconds to publish an
+# immutable Programs generation over MTP. CONTRACT: this bounds each adapter
+# call independently of the configured overall conversation deadline.
+# INVARIANT: an adapter overrun remains an ambiguous transport failure.
+MTP_OPERATION_TIMEOUT_SECONDS = 90.0
 MTP_POLL_INTERVAL_SECONDS = 3.0
 
 

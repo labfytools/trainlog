@@ -1112,7 +1112,7 @@ named by that validated reference. It does not recursively mirror retained
 Android generations, desktop publications, or unrelated exchange history.
 Local correlation is checked every 50 ms without USB work; complete MTP pulls
 are throttled to a three-second cadence. Each MTP operation has its own
-30-second ceiling while the conversation retains its configured global
+90-second ceiling while the conversation retains its configured global
 deadline. Exhausting the global deadline while waiting for a correlated
 reference reports `timeout waiting for correlated android-generation-v1.json`;
 only an adapter that exceeds its independent operation budget reports

@@ -58,7 +58,8 @@ class SyncPeerWorkerTest(unittest.TestCase):
         with mock.patch.object(worker.subprocess, "run", return_value=completed) as run:
             worker.run_adapter(
                 Path("/fixed/adapter"), "pull", "peer_fixed",
-                self.transport, 100.0, clock=lambda: 50.0,
+                self.transport, 50.0 + worker.MTP_OPERATION_TIMEOUT_SECONDS + 10.0,
+                clock=lambda: 50.0,
             )
         self.assertEqual(worker.MTP_OPERATION_TIMEOUT_SECONDS, run.call_args.kwargs["timeout"])
 
@@ -112,7 +113,8 @@ class SyncPeerWorkerTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "transport_timeout"):
                 worker.run_adapter(
                     Path("/fixed/adapter"), "pull", "peer_fixed",
-                    self.transport, 100.0, clock=lambda: 50.0,
+                    self.transport, 50.0 + worker.MTP_OPERATION_TIMEOUT_SECONDS + 10.0,
+                    clock=lambda: 50.0,
                 )
 
     def test_delayed_correlated_generation_survives_multiple_polls(self):

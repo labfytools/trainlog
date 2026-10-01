@@ -59,7 +59,7 @@ callbacks complete before the mutable generation reference is published; the
 reference and Android ACK use the same confirmation. Bounded diagnostic logs
 contain only run/generation identities, artifact names, phases and results.
 The desktop worker performs lightweight local correlation checks continuously
-but opens a full MTP pull no more than once every three seconds. A 30-second
+but opens a full MTP pull no more than once every three seconds. A 90-second
 individual adapter budget is distinct from the overall conversation deadline,
 so an absent correlated generation reports a protocol wait timeout while an
 actually blocked adapter reports `transport_timeout`.
