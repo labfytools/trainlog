@@ -8,7 +8,7 @@ import {
   type ProgramSession,
 } from '../api/programs'
 import { useDatePreferences } from '../presentation/DatePreferences'
-import { formatCivilDate, parseCivilDate } from '../presentation/dateFormat'
+import { formatCivilDate, formatDate, parseCivilDate, validTimestampValue } from '../presentation/dateFormat'
 
 type ExecutionState = ProgramSession['execution_state']
 
@@ -44,9 +44,27 @@ function isoDate(value: number): string {
   return new Date(value).toISOString().slice(0, 10)
 }
 
+// WHY: Sessions history presents instants in the browser timezone, which may
+// place a workout on a different civil day than the timestamp's source offset.
+// CONTRACT: completed cards use that same local day; source planned_for stays
+// available to explain the move. No schedule mutation happens during render.
+function actualExecutionDate(session: ProgramSession): string | null {
+  if (session.execution_state !== 'completed' || typeof session.execution_started_at !== 'string') return null
+  if (validTimestampValue(session.execution_started_at) === null) return null
+  const day = formatDate(session.execution_started_at, 'iso')
+  return parseCivilDate(day) === null ? null : day
+}
+
+function displayedDate(session: ProgramSession): string | null {
+  // A completed link without a valid history timestamp must not masquerade as
+  // a workout performed on the imported plan date.
+  return session.execution_state === 'completed'
+    ? actualExecutionDate(session) : session.planned_for
+}
+
 function calendarDays(program: ProgramDetail): CalendarDay[] {
-  const datedSessions = program.sessions.filter((session) => dateValue(session.planned_for) !== null)
-  const values = [program.start_date, program.end_date, ...datedSessions.map((session) => session.planned_for)]
+  const datedSessions = program.sessions.filter((session) => dateValue(displayedDate(session)) !== null)
+  const values = [program.start_date, program.end_date, ...datedSessions.map(displayedDate)]
     .map(dateValue).filter((value): value is number => value !== null)
   if (values.length === 0) return []
 
@@ -58,9 +76,10 @@ function calendarDays(program: ProgramDetail): CalendarDay[] {
   const end = last + (6 - lastWeekday) * dayMilliseconds
   const sessionsByDate = new Map<string, ProgramSession[]>()
   for (const session of datedSessions) {
-    const sessions = sessionsByDate.get(session.planned_for as string) ?? []
+    const day = displayedDate(session) as string
+    const sessions = sessionsByDate.get(day) ?? []
     sessions.push(session)
-    sessionsByDate.set(session.planned_for as string, sessions)
+    sessionsByDate.set(day, sessions)
   }
 
   const days: CalendarDay[] = []
@@ -94,17 +113,26 @@ function NavigationLink({ path, onNavigate, children, className }: {
   }}>{children}</a>
 }
 
-function ProgramSessionCard({ programId, session, pending, preparationId, onPrepare, onNavigate }: {
+function ProgramSessionCard({ programId, session, pending, preparationId, onPrepare, onNavigate,
+  dateFormat }: {
   programId: string
   session: ProgramSession
   pending: boolean
   preparationId?: string
   onPrepare: (programId: string, session: ProgramSession) => void
   onNavigate: (path: string) => void
+  dateFormat: ReturnType<typeof useDatePreferences>['dateFormat']
 }) {
+  const actualDate = actualExecutionDate(session)
   return <article className={`program-calendar-session program-calendar-state-${session.execution_state}`}>
     <h3>{session.title}</h3>
     <span className="program-calendar-state-label">{stateLabels[session.execution_state]}</span>
+    {actualDate !== null && actualDate !== session.planned_for && <p className="program-calendar-date-note">
+      Prévue le {session.planned_for === null ? 'date non définie' : formatCivilDate(session.planned_for, dateFormat)}
+      {' · '}effectuée le {formatCivilDate(actualDate, dateFormat)}
+    </p>}
+    {session.execution_state === 'completed' && actualDate === null &&
+      <p className="program-calendar-date-note">Date réelle indisponible</p>}
     <div className="program-calendar-action">
       {session.execution_state === 'todo' && <button type="button" disabled={pending}
         onClick={() => onPrepare(programId, session)}>
@@ -186,7 +214,7 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
   }, [selectedId])
 
   const days = useMemo(() => detail === null ? [] : calendarDays(detail), [detail])
-  const undatedSessions = detail?.sessions.filter((session) => dateValue(session.planned_for) === null) ?? []
+  const undatedSessions = detail?.sessions.filter((session) => dateValue(displayedDate(session)) === null) ?? []
 
   const prepare = async (programId: string, session: ProgramSession) => {
     const sessionId = session.program_session_id
@@ -237,6 +265,7 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
     preparationId={preparationIds[session.program_session_id]}
     onPrepare={prepare}
     onNavigate={onNavigate}
+    dateFormat={dateFormat}
   />
 
   return <section className="page programs-calendar-page">

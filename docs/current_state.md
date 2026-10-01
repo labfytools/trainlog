@@ -457,8 +457,17 @@ The calendar uses the existing typed Core services `fetchAllPrograms(active)`,
 or execution state. With no active Program it shows an empty state and
 navigation to Sessions administration; with one it selects it automatically;
 with several it offers a non-persisted selector. Its continuous Monday–Sunday
-weeks derive from Program bounds and real `planned_for` dates, do not invent
-rest-day sessions, and retain undated sessions in a separate section. It shows
+weeks derive from Program bounds, imported `planned_for` dates, and the actual
+`sessions.started_at` instant for linked completed executions, presented on the
+same browser-local civil day as Web session history. The Program detail Web API
+adds the nullable read-only `execution_started_at` projection field; the
+Programs synchronization artifact and its strict fields are unchanged. A completed
+session moved from its imported date shows both dates without changing history
+or Program identity. Several cards may share a day; rest days contain no
+invented session. A completed execution with no valid history timestamp stays
+undated rather than appearing to have occurred on its planned day. Unfinished
+sessions still show their imported dates because no durable current-plan or
+ceded-optional-slot state exists in the stabilized Programs exchange. It shows
 all five Core execution states; only `todo` offers Prepare. Each Prepare result
 is followed by an authoritative Core reread and may expose the returned
 preparation link. This calendar adds no Android delivery, start, or execution

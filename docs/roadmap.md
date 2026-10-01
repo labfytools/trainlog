@@ -90,6 +90,29 @@ protocol evolution, new Android/Web/TUI capabilities, and speculative
 optimization are out of scope. Work outside this boundary waits for a later
 feature cycle rather than widening 0.1.7.
 
+### Deferred Program rescheduling
+
+Ordered Program rescheduling requires a separate, versioned shared-contract
+decision after the actual-date display correction. One explicit user action
+must select the starting session, restart date, affected successors, and usable
+slots; preview the old and new dates; then durably record one decision. Only
+unfinished sessions move, in Program position order. Explicitly ceded optional
+slots may absorb required sessions without marking optional sessions completed
+or removing historical identities. At most one principal Program session per
+selected slot is a rule for this action, not a limit on other same-day workouts.
+Rest days and Program bounds cannot be silently overridden. Preparations and
+in-progress executions require checks before applying the decision.
+
+The result must not cascade again on display, import, replay, or Bluetooth
+reconnection. PC and Android must receive the same business state; a Web-only
+plan is insufficient. Compatibility requires proof in both supported exchange
+directions and across revisions or reexports, including explicit behavior for
+older clients unable to represent the decision. Payload acceptance alone does
+not establish convergence. This future contract study does not reopen the
+Bluetooth transport, Sleep, HR, or general sync invariants. Before any real
+application, reread executions and preparations, confirm the restart date and
+slot choices, and preview the resulting plan again.
+
 Sleep Diary V1 stays frozen/readable while active capable peers require
 `sleep-diary-v2`. The Web’s relative HR rise/fall overlays remain descriptive
 measured-series presentation only, never inferred sleep states or causes.

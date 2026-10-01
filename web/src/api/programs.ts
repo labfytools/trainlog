@@ -41,6 +41,7 @@ export interface ProgramSession {
   note: string | null
   execution_state: 'todo' | 'prepared' | 'in_progress' | 'completed' | 'deleted'
   execution_session_id: string | null
+  execution_started_at: string | null
   occurrences: ProgramOccurrence[]
 }
 

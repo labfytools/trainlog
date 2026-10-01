@@ -7,6 +7,14 @@ observed bug fixes, regression fixes, directly related small UI corrections,
 documentation corrections, robustness, and associated tests. It does not admit
 new features, modules, protocols, or speculative refactors.
 
+- Corrected the Web Program calendar's completed-session placement using the
+  linked session's actual start date in the browser's history timezone. A
+  changed day displays both actual and imported dates, and concurrent cards
+  remain distinct. The Program detail Web API gains a nullable read-only
+  timestamp field; this changes no history, schema, Android behavior, or sync
+  artifact.
+  Durable ordered rescheduling remains outside the stabilized Programs V1
+  exchange: its strict snapshot has no current date or ceded-slot state.
 - Fixed automatic Bluetooth synchronization recovery when RFCOMM disconnects
   after `trainlog-syncd` admits Android's arrival request but before the
   generation conversation can start. Requests whose durable terminal result

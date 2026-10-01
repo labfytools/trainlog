@@ -167,6 +167,7 @@ describe('Programs tab', () => {
             note: null,
             execution_state: 'todo',
             execution_session_id: null,
+            execution_started_at: null,
             occurrences: [{
               entry_id: 'pge_test',
               position: 0,
@@ -217,6 +218,7 @@ describe('Programs tab', () => {
       note: null,
       execution_state: index === 0 ? 'completed' : 'todo',
       execution_session_id: index === 0 ? 'se_completed' : null,
+      execution_started_at: null,
       occurrences: [],
     }))
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {

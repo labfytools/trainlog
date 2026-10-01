@@ -2050,6 +2050,11 @@ h2 {
   display: inline-flex;
   padding: 0.2rem 0.4rem;
 }
+.program-calendar-date-note {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
 .program-calendar-action {
   margin-top: 0.55rem;
   display: grid;

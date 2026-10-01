@@ -368,6 +368,7 @@ static TrainlogStatus add_program_session_json(TrainlogDatabase *database,
         !add_column_text(document, session, "note", statement, 5) ||
         !add_column_text(document, session, "execution_state", statement, 6) ||
         !add_column_text(document, session, "execution_session_id", statement, 7) ||
+        !add_column_text(document, session, "execution_started_at", statement, 8) ||
         !yyjson_mut_obj_add_val(document, session, "occurrences", entries) ||
         !yyjson_mut_arr_add_val(sessions, session)) {
         return TRAINLOG_STATUS_DATABASE_ERROR;
@@ -388,9 +389,14 @@ static TrainlogStatus add_program_sessions(TrainlogDatabase *database,
         "WHEN EXISTS(SELECT 1 FROM session_preparations sp WHERE "
         "sp.source_program_session_id=ps.program_session_id AND sp.withdrawn_at IS NULL) "
         "THEN 'prepared' ELSE 'todo' END,"
-        "CASE WHEN pe.state='deleted' THEN NULL ELSE pe.session_id END "
+        "CASE WHEN pe.state='deleted' THEN NULL ELSE pe.session_id END,"
+        /* WHY: completion belongs to the linked session's actual start date.
+         * CONTRACT: expose that timestamp only for completed executions.
+         * INVARIANT: the imported planned_for date and history are read only. */
+        "CASE WHEN pe.state='completed' THEN actual.started_at ELSE NULL END "
         "FROM program_sessions ps LEFT JOIN program_session_executions pe "
         "ON pe.program_session_id=ps.program_session_id "
+        "LEFT JOIN sessions actual ON actual.session_id=pe.session_id "
         "WHERE ps.program_id=?1 ORDER BY ps.position,ps.program_session_id";
     sqlite3_stmt *session_statement = NULL;
     int step;

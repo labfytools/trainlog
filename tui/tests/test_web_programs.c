@@ -317,7 +317,13 @@ static bool import_archive_and_prepare(void) {
     free(response);
     response = NULL;
 
+    /* The linked workout owns its actual timestamp; planned_for must not be
+     * rewritten to make the Program calendar agree with history. */
     CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO sessions(session_id,started_at,ended_at,session_type) "
+                       "VALUES('se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',"
+                       "'2026-09-23T23:30:00+02:00',"
+                       "'2026-09-24T00:30:00+02:00','training');"
                        "INSERT INTO program_session_executions("
                        "program_session_id,program_id,session_id,state,observed_at) VALUES("
                        "'pgs_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',"
@@ -334,6 +340,11 @@ static bool import_archive_and_prepare(void) {
     CHECK(strstr(response,
                  "\"execution_session_id\":"
                  "\"se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee\"") != NULL);
+    CHECK(strstr(response, "\"execution_started_at\":\"2026-09-23T23:30:00+02:00\"") != NULL);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM sessions WHERE session_id="
+                 "'se_eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' AND "
+                 "started_at='2026-09-23T23:30:00+02:00'") == 1);
     free(response);
     response = NULL;
 

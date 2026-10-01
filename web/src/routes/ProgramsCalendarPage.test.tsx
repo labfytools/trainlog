@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProgramDetail, ProgramListItem, ProgramSession } from '../api/programs'
 import * as sessionsApi from '../api/sessions'
+import { formatCivilDate, formatDate } from '../presentation/dateFormat'
 import { ProgramsCalendarPage } from './ProgramsCalendarPage'
 
 const api = vi.hoisted(() => ({
@@ -47,6 +48,7 @@ function session(
     note: null,
     execution_state: executionState,
     execution_session_id: null,
+    execution_started_at: null,
     occurrences: [],
   }
 }
@@ -175,6 +177,104 @@ describe('ProgramsCalendarPage', () => {
     const undated = screen.getByRole('region', { name: 'Séances sans date' })
     expect(within(undated).getByText('Libre')).toBeInTheDocument()
     expect(within(undated).getByText('Date source invalide')).toBeInTheDocument()
+  })
+
+  it('places completed history on its real civil date without changing the source plan or hiding another card', async () => {
+    const completed = session('pgs_a', 'Séance A', '2026-09-22', 'completed')
+    completed.execution_session_id = 'se_actual'
+    completed.execution_started_at = '2026-09-23T23:30:00+02:00'
+    api.fetchProgram.mockResolvedValue(detail({ sessions: [
+      completed,
+      session('pgs_b', 'Séance B', '2026-09-23'),
+    ] }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const actualDay = await screen.findByLabelText('Mer 23/09/2026')
+    expect(within(actualDay).getByText('Séance A')).toBeInTheDocument()
+    expect(within(actualDay).getByText('Séance B')).toBeInTheDocument()
+    expect(within(actualDay).getByText('Prévue le 22/09/2026 · effectuée le 23/09/2026'))
+      .toBeInTheDocument()
+    expect(within(screen.getByLabelText('Mar 22/09/2026')).queryByText('Séance A'))
+      .not.toBeInTheDocument()
+    expect(completed.planned_for).toBe('2026-09-22')
+    expect(api.createPreparationFromProgram).not.toHaveBeenCalled()
+  })
+
+  it('does not present a completed session with missing history time as performed on the plan date', async () => {
+    const completed = session('pgs_a', 'Séance sans timestamp', '2026-09-22', 'completed')
+    completed.execution_session_id = 'se_missing'
+    api.fetchProgram.mockResolvedValue(detail({ sessions: [completed] }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const undated = await screen.findByRole('region', { name: 'Séances sans date' })
+    expect(within(undated).getByText('Séance sans timestamp')).toBeInTheDocument()
+    expect(within(undated).getByText('Date réelle indisponible')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Mar 22/09/2026')).queryByText('Séance sans timestamp'))
+      .not.toBeInTheDocument()
+  })
+
+  it('keeps an invalid completed timestamp undated rather than fabricating its plan date', async () => {
+    const completed = session('pgs_invalid', 'Séance horodatée invalide', '2026-09-22', 'completed')
+    completed.execution_session_id = 'se_invalid'
+    completed.execution_started_at = '2026-02-31T12:00:00Z'
+    api.fetchProgram.mockResolvedValue(detail({ sessions: [completed] }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const undated = await screen.findByRole('region', { name: 'Séances sans date' })
+    expect(within(undated).getByText('Séance horodatée invalide')).toBeInTheDocument()
+    expect(within(undated).getByText('Date réelle indisponible')).toBeInTheDocument()
+  })
+
+  it('keeps a prepared session on its plan date even if a timestamp is present', async () => {
+    const prepared = session('pgs_prepared', 'Séance préparée', '2026-09-22', 'prepared')
+    prepared.execution_started_at = '2026-09-23T12:00:00+02:00'
+    api.fetchProgram.mockResolvedValue(detail({ sessions: [prepared] }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const plannedDay = await screen.findByLabelText('Mar 22/09/2026')
+    expect(within(plannedDay).getByText('Séance préparée')).toBeInTheDocument()
+    expect(within(plannedDay).getByText('Préparée')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Mer 23/09/2026')).queryByText('Séance préparée'))
+      .not.toBeInTheDocument()
+  })
+
+  it('extends the calendar to include a completed session outside the original program bounds', async () => {
+    const completed = session('pgs_late', 'Séance tardive', '2026-09-16', 'completed')
+    completed.execution_session_id = 'se_late'
+    completed.execution_started_at = '2026-09-28T12:00:00Z'
+    api.fetchProgram.mockResolvedValue(detail({ sessions: [completed] }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const actualDate = formatDate(completed.execution_started_at, 'iso')
+    const actualDay = await screen.findByLabelText(new RegExp(formatCivilDate(actualDate, 'fr')))
+    expect(within(actualDay).getByText('Séance tardive')).toBeInTheDocument()
+    expect(screen.getAllByText('Séance tardive')).toHaveLength(1)
+    expect(within(screen.getByLabelText('Mer 16/09/2026')).queryByText('Séance tardive'))
+      .not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['spring transition', '2026-03-28T23:30:00Z', '2026-03-29'],
+    ['autumn transition', '2026-10-25T23:30:00Z', '2026-10-26'],
+  ])('uses the same local history day across the %s', async (_name, startedAt, parisDate) => {
+    const sourceDate = startedAt.slice(0, 10)
+    const completed = session('pgs_dst', 'Séance réelle', sourceDate, 'completed')
+    completed.execution_session_id = 'se_dst'
+    completed.execution_started_at = startedAt
+    api.fetchProgram.mockResolvedValue(detail({
+      start_date: sourceDate,
+      end_date: sourceDate,
+      sessions: [completed],
+    }))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+
+    const actualDate = formatDate(startedAt, 'iso')
+    if (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Paris') {
+      expect(actualDate).toBe(parisDate)
+    }
+    const actualDay = await screen.findByLabelText(new RegExp(formatCivilDate(actualDate, 'fr')))
+    expect(within(actualDay).getByText('Séance réelle')).toBeInTheDocument()
+    expect(screen.getAllByText('Séance réelle')).toHaveLength(1)
   })
 
   it('renders a planned session in year 0001 in its calendar day rather than as undated', async () => {
