@@ -1,8 +1,8 @@
 # Desktop database
 
-## Candidate schema v37: Program planning
+## Schema v37: Program planning
 
-Schema v37 is additive to the isolated Program rescheduling candidate. It
+Schema v37 is additive to the Program rescheduling development line. It
 creates `program_session_planning` for absolute current dates and ceded-slot
 state, `program_reschedule_operations` for exact request replay, and
 `program_revision_sequences` for monotonically ordered Program snapshots.
@@ -12,9 +12,9 @@ historical session mutation is introduced. Missing planning rows mean the
 original `planned_for` date and active planning state. The source format and
 published Programs V1 artifact remain strict and unchanged.
 
-This schema is present only in the candidate worktree/build. The stable
-installation's database remains at its existing schema until a separately
-authorized coordinated deployment and backup.
+This schema is present in the audited development commit. Its presence in
+source does not establish the schema of another installation; a deployment
+requires a compatible package, backup and migration verification.
 
 ## Causal heart-rate tail correction (schema v36, no migration)
 
@@ -256,8 +256,8 @@ is a later, separately versioned migration.
 ## 1. Status
 
 ```text
-TRAINLOG_DATABASE_SCHEMA_VERSION=28
-DATABASE_SCHEMA_V28=IMPLEMENTED
+TRAINLOG_DATABASE_SCHEMA_VERSION=37
+DATABASE_SCHEMA_V37=IMPLEMENTED
 TRAINLOG_FORMAT_V1=FROZEN
 ```
 
@@ -276,7 +276,7 @@ PRAGMA user_version;
 Current value:
 
 ```text
-27
+37
 ```
 
 The independent actual-set loads documented in the current desktop, Android
@@ -735,7 +735,7 @@ distance              km
 
 The Android SQLite database is independent.
 
-Current Android-local version: **17**. The explicit migration chain adds the
+Current Android-local version: **34**. The historical migration chain adds the
 durable draft in v4, equipment references in v5, per-set load in v6, occurrence
 identity/multi-occurrence support in v7, and the widened custom-equipment
 definition graph in v8. Version 9 adds completed/draft explicit max rows, raw

@@ -1,5 +1,17 @@
 # Tests and validation
 
+## Reading the evidence
+
+Counts below belong to the stated checkpoint, source revision and build
+configuration. They are historical evidence, not a claim that the present
+documentation checkout ran those tests. A native build with `-Dweb=enabled`
+registers embedded Web asset tests in Meson; `npm test` separately runs Vitest
+against Web source. A default `web=auto` build can omit embedded assets, so a
+green source test alone does not validate the packaged Web application.
+Skipped Android fixture tests, unrun instrumented tests and physical Bluetooth,
+MTP or Drive evidence are distinct outcomes. The primary personal phone is
+reserved for authorized manual smoke checks, not host automation.
+
 ## Sleep V2 concurrent-edit selection in 0.1.7
 
 Synthetic Desktop and Android regressions cover both edit-time orderings,

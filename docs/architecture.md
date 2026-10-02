@@ -524,12 +524,14 @@ silently rendered as unclassified.
 
 ### Desktop
 
-Desktop SQLite schema v26 is canonical long-term history. Its additive v25 ->
-v26 migration adds terminal Program logical deletion and its durable replay,
-generation, and acknowledgement ledger without deleting imported definitions,
-derived preparations, or workout facts. Android schema v24 maintains the
-separate read-only synchronized Programs projection; the optional staged
-`trainlog-programs` V1 companion does not replace mobile V3 or change
+Desktop SQLite schema v37 is canonical long-term history in the audited
+development source. The additive v37 migration stores absolute Program current
+dates, ceded slots and revision ordering. The earlier v25 -> v26 migration
+added terminal Program logical deletion and its durable replay, generation and
+acknowledgement ledger without deleting imported definitions, derived
+preparations or workout facts. Android schema v34 extends the read-only
+Programs projection with capability-selected V2 planning state; v24 introduced
+its original V1 projection. Neither Programs companion replaces mobile V3 or changes
 `TRAINLOG_FORMAT_V1`. Its additive desktop v23 -> v24 migration adds durable
 manual-preparation withdrawal identity without deleting revisions, deliveries
 or workout facts. Its additive v18 ->
@@ -589,7 +591,7 @@ exercise_body_zone_sync
 
 ### Android
 
-Android has an independent local SQLite schema, currently v14. Completed and
+Android has an independent local SQLite schema, v34 in the audited source. Completed and
 draft MAX values use one-to-one `max_results` and `draft_max_results` rows;
 resuming a completed Test max records its stable source session in the one
 durable draft.

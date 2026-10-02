@@ -1,8 +1,8 @@
 # Roadmap
 
 The Program cascade is deployed in the private daily installation from
-`trainlog-program-recalage-v1` at `3a4ec34`. The PC/Web bundle from
-`trainlog-sleep-pdf-treatments-space-v1` at `3758875` is now served; it includes
+`trainlog-program-recalage-v1` at `3a4ec34`. The observed PC/Web launcher points
+to the `f4ddcfd` package, which includes
 the verified blue Sleep sport overlay and the readable paginated treatment and
 remarks PDF. Synchronization services retain their Program rollout paths. No
 new personal Program rescheduling is implied by this presentation work.
@@ -38,7 +38,8 @@ estimates.
 ## Current baseline
 
 Stable v0.1.6 is the release baseline for the v0.1.7 stabilization cycle.
-Desktop schema v36, Android schema v33, Notcurses, direct `Documents/Trainlog`
+The audited development source has desktop schema v37 and Android schema v34.
+Stable v0.1.6 had desktop schema v36 and Android schema v33. Notcurses, direct `Documents/Trainlog`
 storage, mobile export V3, Training Knowledge V1, Body Zones V1, Training
 Feedback V1/V2, STATS V1, and Session Generator V1 are implemented. Session
 Generator V1 is hidden pending V2. AI session-draft exchange retains its
@@ -97,10 +98,10 @@ protocol evolution, new Android/Web/TUI capabilities, and speculative
 optimization are out of scope. Work outside this boundary waits for a later
 feature cycle rather than widening 0.1.7.
 
-### Deferred Program rescheduling
+### Program rescheduling in the audited development line
 
-Ordered Program rescheduling requires a separate, versioned shared-contract
-decision after the actual-date display correction. One explicit user action
+Ordered Program rescheduling is implemented in the audited development line
+and deployed in the recorded private Program rollout. One explicit user action
 must select the starting session, restart date, affected successors, and usable
 slots; preview the old and new dates; then durably record one decision. Only
 unfinished sessions move, in Program position order. Explicitly ceded optional
@@ -110,12 +111,12 @@ selected slot is a rule for this action, not a limit on other same-day workouts.
 Rest days and Program bounds cannot be silently overridden. Preparations and
 in-progress executions require checks before applying the decision.
 
-The result must not cascade again on display, import, replay, or Bluetooth
+The result does not cascade again on display, import, replay, or Bluetooth
 reconnection. PC and Android must receive the same business state; a Web-only
 plan is insufficient. Compatibility requires proof in both supported exchange
 directions and across revisions or reexports, including explicit behavior for
 older clients unable to represent the decision. Payload acceptance alone does
-not establish convergence. This future contract study does not reopen the
+not establish convergence. This development contract does not reopen the
 Bluetooth transport, Sleep, HR, or general sync invariants. Before any real
 application, reread executions and preparations, confirm the restart date and
 slot choices, and preview the resulting plan again.
@@ -180,7 +181,8 @@ remaining per-installation opt-ins are deployment policy, not the v0.1.3 cursor.
 TypeScript and Vite shell with its five client routes, Catppuccin Mocha design
 system, permanent Header/Footer, empty-data states and health status. The
 Dashboard slices below are complete; this does not authorize implementation of
-the remaining route placeholders.
+the then-remaining route placeholders; those routes are implemented on the
+audited 0.1.7 development line.
 `WEB_DASHBOARD_GRID_V1=PASS/FROZEN` adds the validated 12-column desktop grid,
 explicit edit mode, drag/resize, keyboard alternative and derived responsive
 projections without persisting layout state.
@@ -420,6 +422,20 @@ Templates are not rigid prescriptions and never become performed work before
 normal capture.
 
 ## Later
+
+### Proposed 0.1.8 training assistance (not implemented)
+
+Explore gradual, explained progression or maintaining a load from existing
+performance and subjective feedback. Compare exercises and equipment only when
+their context is genuinely comparable; account for effort, discomfort and
+missing observations. Explore requested or evidenced targeted strengthening,
+reasoned exercise diversity and dumbbell use without diagnosing weakness.
+Define cautious cardio reference points before any gradual introduction, with
+no maximal test or generated prescription from this documentation work. Reuse
+the existing medication diary, Sleep and Cardio facts as context without a
+second intake workflow or asserted medical causality. A human must validate
+any proposed training change before it alters a workout. These are ideas, not
+an implementation decision, delivery date, recovery score or clinical rule.
 
 - evolve training analytics only where sufficient real history supports the
   metric, without aggregating incomparable loads;

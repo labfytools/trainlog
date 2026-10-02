@@ -261,6 +261,28 @@ does not publish to it or let it override an artifact in the new endpoint.
 
 ## 3. Artifact table
 
+The following is a navigation matrix for the audited `f4ddcfd` source. A
+capability advertisement selects a companion; file presence alone is not an
+ACK or proof that every domain converged. The detailed versioned rules below
+remain authoritative.
+
+| Domain | Producer → consumer | Format/version | Selection and persistence | ACK/proof and limit |
+| --- | --- | --- | --- | --- |
+| Completed sessions | Android ↔ desktop | `trainlog-mobile-export` V3; V1/V2 legacy input | Default automatic snapshot; stable IDs in separate SQLite stores | V3 import/replay is idempotent; this is not a full-generation ACK |
+| Manual preparations | Desktop → Android | `trainlog-session-preparations` V2 | Full generation on capable peer; revisions, deliveries and withdrawals retained | Correlated generation ACK closes delivery/withdrawal; an active draft is preserved |
+| Programs | Desktop → Android | `trainlog-programs` V1 or V2 | Exactly one selected by peer capability; V2 carries current dates, ceded state and revision sequence; desktop owns plan | Correlated ACK; V1-only peer cannot represent a rescheduled live plan, so Program convergence may remain incomplete while other domains proceed |
+| Program executions | Android → desktop | `trainlog-program-executions` V1 | Stable in-progress/completed provenance, separate from `trainlog-program` V1 desktop import | Generation validation and ACK; no invented completed session |
+| Sleep diary | Android ↔ desktop | `sleep-diary-v2`; frozen V1 readable | Current causal revision and immutable history; v2 carries intake quantity | Generation/ACK plus revision validation; concurrent ambiguous edits can reject |
+| Heart rate and Cardio | Android → desktop | Heart Rate V1, session timeline V1, cardio sessions/calibration/guidance V1; separate heart-rate corrections V1 | Factual captures and versioned companions, selected by capabilities | Correlated generation/ACK; no sensor or medical inference on desktop |
+| Exercise/equipment context | Both directions | Catalog, aliases, BODY ZONES and equipment companions below | Stable IDs, revision and causal rules apply per domain | A generation ACK does not override a per-domain conflict |
+
+`trainlog-program` V1 is a strict desktop file import defined in
+[Program format V1](program_format_v1.md); it is never the synchronized
+`trainlog-programs` companion. `/api/v1` is the local Web API, not a JSON
+exchange format. Bluetooth, MTP and private Drive move bytes for the same
+full-generation business protocol; default V3 compatibility and installation
+opt-in remain separate from format capability.
+
 | Direction | File | Format |
 | --- | --- | --- |
 | Android -> PC | `trainlog-mobile-export-v1.json` | `trainlog-mobile-export` v1 |
@@ -277,7 +299,7 @@ does not publish to it or let it override an artifact in the new endpoint.
 | PC -> Android | `trainlog-exercise-aliases-v1.json` | `trainlog-exercise-aliases` v1 |
 | PC -> Android | `trainlog-ai-session-drafts-v1.json` | `trainlog-ai-session-drafts` v1/v2 companion; v2 adds proposal withdrawals |
 | PC -> Android | `programs-v1.json` | optional staged `trainlog-programs` v1 companion: full nondeleted snapshot plus unacknowledged deletion tombstones |
-| PC -> Android | `programs-v2.json` | candidate `trainlog-programs` v2 companion: original and current dates, ceded state, ordered revision sequence, and the same deletion tombstones |
+| PC -> Android | `programs-v2.json` | capability-selected `trainlog-programs` v2 companion: original and current dates, ceded state, ordered revision sequence, and the same deletion tombstones |
 | Android -> PC | `program-executions-v1.json` | optional `trainlog-program-executions` v1 companion: stable in-progress/completed provenance |
 | Android -> PC agent | `trainlog-sync-request-v1.json` | `trainlog-sync-request` v1 |
 | Android -> full-generation daemon | `trainlog-sync-full-generation-request-v1.json` | `trainlog-sync-request` v1 |
@@ -300,7 +322,7 @@ V3, `trainlog-pc-catalog` V1, and `trainlog-session-preparations` V2. It does
 not change `TRAINLOG_FORMAT_V1`, active default V3 transport, or preparation
 semantics.
 
-### Isolated candidate: Programs V2 capability matrix
+### Programs V2 capability matrix in the audited development line
 
 `trainlog-programs` V2 is a separate strict artifact selected only for a peer
 advertising `programs-v2`. Its session adds `position`, nullable `current_for`

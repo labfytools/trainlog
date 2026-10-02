@@ -145,13 +145,20 @@ cd ..
 
 meson setup build-web -Dweb=enabled
 meson compile -C build-web
+meson test -C build-web --print-errorlogs
 ./build-web/tui/trainlog --web
 ```
 
 The Web application listens on `127.0.0.1:8080` by default. Use
 `--port <port>` for an explicit alternative. For an existing build directory,
 use `meson configure build -Dweb=enabled` instead of running `meson setup`
-again.
+again. The separate `npm test` run checks Web source; the enabled Meson build
+registers embedded frontend tests and places its assets in the executable.
+The default `web=auto` configuration does not by itself prove embedded assets.
+For a compatible service bundle, use the versioned candidate packaging
+procedure in [rollout readiness](docs/sync_rollout_readiness.md); copying only
+`trainlog` omits its matching synchronization helpers. Restarting a service
+does not change the package selected by its launcher.
 
 ### Android
 

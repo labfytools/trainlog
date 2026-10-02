@@ -69,9 +69,9 @@ resurrected or prepared; an archived program cannot be prepared. The optional
 `trainlog-programs` V1 synchronization companion is a separate PC-to-Android
 projection and does not alter this import format.
 
-## Local candidate: explicit ordered rescheduling
+## Explicit ordered rescheduling in the audited development line
 
-The isolated `trainlog-program-recalage-v1` candidate adds a separate planning
+The `trainlog-program-recalage-v1` line adds a separate planning
 state. `planned_for` remains the imported date. `current_for` is an absolute
 current target for an active, unfinished session; `ceded` releases one selected
 future slot without completing or deleting its session identity. Completed
@@ -93,7 +93,7 @@ Confirmation binds the preview fingerprint to the current Program projection
 and writes absolute dates, ceded states, the Program revision and a durable
 operation response in one transaction. Exact operation replay returns that
 response; changed content under the same operation ID conflicts. A failed
-write rolls back every row. The candidate requires a recent acknowledged
+write rolls back every row. The development implementation requires a recent acknowledged
 Programs V2 generation for every previously contacted Android peer. A newly
 started offline Android Program draft remains protected by Android's V2 import
 rejection; the sync run then reports a conflict for explicit resolution.

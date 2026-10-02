@@ -2,6 +2,13 @@
 
 ## Unreleased — 0.1.7
 
+- Reconciled the canonical documentation against the `f4ddcfd` development
+  lineage: current source schemas v37/v34, implemented Web routes and Program
+  rescheduling, observed package provenance, Sleep row paging, capability
+  selected exchange, Web packaging requirements and validation limits. The
+  [documentation review](docs/reviews/documentation_deep_review_v1.md) records
+  the evidence matrix. This entry changes no runtime behavior or format.
+
 - Show the Web Sleep agenda newest first with one 7, 14, 21, 28, or All
   recorded-night selector (7 by default). Sleep reads its full available history
   without the Analysis period control; other Analysis sections retain their

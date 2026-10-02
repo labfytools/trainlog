@@ -1,8 +1,8 @@
 # Android application
 
-## Candidate schema v34: read-only Programs V2 projection
+## Schema v34: read-only Programs V2 projection
 
-The isolated Program rescheduling candidate additively stores a projection
+The audited Program rescheduling development line additively stores a projection
 version and revision sequence on synchronized Programs, plus `current_for` and
 `planning_state` on synchronized Program sessions. The original `planned_for`
 and all local completed sessions and drafts remain separate. Existing V1 rows
@@ -13,7 +13,8 @@ sequence or a later Programs V1 snapshot cannot overwrite accepted V2 planning.
 If the singleton active draft refers to a session whose current date or ceded
 state changes, V2 import rejects the generation; it does not alter the draft.
 The Program screen uses current dates for unfinished sessions and does not offer
-Start on a ceded slot. This candidate is not installed on the personal phone.
+Start on a ceded slot. The private Program rollout records a compatible v34
+Android installation; this source snapshot alone does not prove another device.
 
 ## Sleep Diary V1 and active V2 companion
 

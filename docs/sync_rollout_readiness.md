@@ -51,26 +51,29 @@ generalizes pairing to another phone or authorizes an unconfigured desktop.
 3. Quiesce old writers only during an authorized rollout. Desktop backup uses
    `backup_trainlog_sqlite.py` and SQLite's backup API, then integrity and
    foreign-key checks.
-4. V3 is not an Android backup. Current Android has a complete verified backup
-   container. For the installed schema-v17 release, build the pinned bridge
-   candidate, verify signing/version continuity separately, install only with
-   explicit approval, create and verify the user backup, and retain it before
-   installing current Android. None of those device/user operations occurred in
-   this software mission.
+4. V3 is not an Android backup. At the original September 2026 rollout, the
+   installed schema-v17 phone required a pinned bridge candidate, verified
+   signing/version continuity, and a complete retained user backup before the
+   newer Android package. That is historical procedure evidence, not a claim
+   about the currently installed phone schema or an instruction to repeat the
+   bridge. A new rollout must inspect its actual versions and backups first.
 5. Replacing a binary does not roll back a schema. Before any exchange, a
    mutually compatible captured pair may be restored. After causal writes or
    ACKs, never restore only one peer: stop synchronization, preserve both stores
    and all artifacts, and use an explicit paired recovery plan.
-6. The eight-generation-per-peer ceiling is an admission gate. Exhaustion must
-   preserve pending generations, tombstones, finalizations and ACK ledgers; it
-   must never trigger hidden eviction.
+6. Per-peer retained-generation ceilings are admission gates: the audited
+   desktop `sync_generation_exchange.py` permits 16 active outgoing entries;
+   Android `SyncGenerationService` permits eight. Exhaustion preserves pending
+   generations, tombstones, finalizations and ACK ledgers; it never triggers
+   hidden eviction. These counts are not a bound on all transient staging or
+   transport objects.
 
 The grouped rollout approval covered the signed APK, desktop bundle, verified
 user backups, coordinated service quiescence, pairing, synthetic smoke and
 non-destructive hardware smoke. Those steps are complete for the recorded
 private installation. Drive remains separate and untested.
 
-The latest software-only candidate set was rebuilt under the private root
+The software-only candidate recorded for the original rollout was rebuilt under the private root
 `/home/fy59/.cache/trainlog/sync-rollout-candidate-v1.NEoMDx` from source commit
 `dd8c91a946a9c836965818d8cc35b8f8bce74658`. Its desktop inventory records every
 packaged file digest plus schemas, protocols, entry points and runtime
@@ -84,7 +87,7 @@ synthetic schema-v17 backup SHA-256 is
 `06eb3999c6f3ce2fd8f551b38727a0a67fe6b48dde4c3244b3d50357afa7e6a3`.
 These are unsigned development evidence, not deployment authorization.
 
-## Compatible set
+## Compatible set for the original rollout
 
 - desktop binary containing schema v21, the Web API and the generation worker;
 - `sync_generation_exchange.py` and all matching transaction-neutral codecs;
@@ -115,6 +118,11 @@ operator diagnosis; this tranche adds no tombstone or evidence garbage
 collection. A migrated database is recovered from its verified backup, never by
 assuming an older binary reverses its migration.
 
+The audited MTP peer worker has a 90-second per-operation budget, further
+limited by the remaining conversation deadline. It is a timeout bound, not a
+success guarantee or proof that an interruption cause has disappeared.
+
 The recorded private installation completed physical MTP, service coordination
 and APK/desktop deployment. Actual Drive configuration remains untested; the
-eight-generation admission bound and foreground-phone requirement remain.
+Android eight-generation admission bound and foreground-phone requirement
+remain; the audited desktop limit is 16.

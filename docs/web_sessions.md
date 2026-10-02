@@ -84,7 +84,8 @@ Inactive execution drafts and completed sessions use the existing causal
 operation/state boundary. Active or stale drafts conflict, and completed-session
 deletion records a finalization so older snapshots cannot recreate the session.
 
-Programs are planning data owned by desktop schema v26. The Programs subtab
+Programs are planning data owned by desktop SQLite (introduced in v25 and
+extended through v37). The Programs subtab
 uses responsive cards and a timeline detail view backed by real imported
 definitions, sessions, usage, and provenance data. Import first runs the
 same strict Core validator in preview mode, then commits only after explicit

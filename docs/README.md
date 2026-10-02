@@ -19,6 +19,8 @@ evidence and chronology.
   existing-artifact synchronization boundary.
 - [Web Sessions V1](web_sessions.md) owns the implemented preparation, resume,
   history and Android-delivery workflow.
+- [Sleep Diary guide](sleep_diary.md) explains capture, agenda row paging,
+  factual sport and heart-rate displays, and independent PDF range selection.
 - [Program format V1](program_format_v1.md) owns the strict desktop planning
   import contract and program lifecycle used by the Sessions Programs subtab.
 
@@ -80,6 +82,9 @@ evidence and chronology.
 
 - [Review records](reviews/) retain historical audits, incidents, checkpoints,
   and validation evidence. Their status and paths are historical.
+- [Documentation deep review V1](reviews/documentation_deep_review_v1.md)
+  records the audited 0.1.7 source baseline, corrected claims, evidence limits,
+  and coverage matrix.
 - [Programs presentation / Android delete evidence](reviews/programs_presentation_android_delete_v1_evidence.md)
   records the implemented, not-deployed validation checkpoint and real-browser
   screenshot evidence.

@@ -1,12 +1,20 @@
 # Current implementation state
 
-## Private installation and Android body figure parity
+## Audited development line and private installation
+
+This snapshot audits `trainlog-sleep-single-selector-weeks-v1` at `f4ddcfd`
+on 2026-10-02. It includes the Program projection fix `8995843`, the body
+figure Web change `c2935b8`, and the Sleep PDF, sport and paging changes by
+ancestry. A later documentation-only commit does not imply a new runtime
+package. The uncommitted Dashboard layout work in the separate
+`trainlog-dashboard-polish-v1` worktree is outside this snapshot.
 
 The private daily installation runs the ordered Program rescheduling rollout
 from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema v37,
 Android schema v34, and the capability-selected `trainlog-programs` V2
-projection. The PC/Web bundle from `trainlog-body-figure-android-parity-v1`
-at `c2935b8` is served; synchronization agents retain the compatible Program
+projection. The observed PC/Web launcher points to the
+`sleep-single-selector-weeks-v1-f4ddcfd` package; synchronization agents
+retain the compatible Program
 rollout bundle. The previous PC/Web bundle from
 `trainlog-sleep-pdf-treatments-space-v1` at `3758875` remains available for
 rollback. The served Web uses Android Compose Canvas head, neck, and 22 body
@@ -170,8 +178,8 @@ parallel implementation of its rules.
 | Boundary | Current state |
 |---|---|
 | Frozen project exchange | `TRAINLOG_FORMAT_V1=PASS/FROZEN` |
-| Desktop SQLite | schema v36; v36 makes Sleep revision payload tables append-only; v35 gives every Sleep medication intake a structured `quantity` (1..99), defaulting historical rows to 1 |
-| Android SQLite | schema v33; v33 makes Sleep revision payload tables append-only; v32 gives every Sleep medication intake a structured `quantity` (1..99), defaults historical rows to 1, and records a distinct quick-publication tip |
+| Desktop SQLite | source schema v37; v37 adds Program current dates, ceded slots and revision ordering; v36 makes Sleep revision payload append-only; v35 adds intake quantity |
+| Android SQLite | source schema v34; v34 adds the read-only Programs V2 projection; v33 makes Sleep revision payload append-only; v32 adds intake quantity and quick publication |
 | Mobile snapshot | V3 active; V1/V2 readable legacy inputs; explicit V4 codec staged, not selected by transport |
 | Desktop terminal backend | Notcurses only |
 | Trainlog product version | `0.1.7` bugfix-only development, synchronized across Android and desktop; latest stable release: `v0.1.6` |
@@ -235,7 +243,7 @@ parallel implementation of its rules.
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
 
-The active Sleep V2 delta reads the complete available Sleep history independently
+The active Sleep V2 view reads the complete available Sleep history independently
 of the Analysis period used by other sections. Every returned night remains
 available on the shared 18:00-to-18:00 geometry. Sleep has one agenda display
 selector: the newest nights first, seven recorded nights per page by default,
@@ -511,18 +519,21 @@ The calendar uses the existing typed Core services `fetchAllPrograms(active)`,
 or execution state. With no active Program it shows an empty state and
 navigation to Sessions administration; with one it selects it automatically;
 with several it offers a non-persisted selector. Its continuous Monday–Sunday
-weeks derive from Program bounds, imported `planned_for` dates, and the actual
+weeks derive from Program bounds, each unfinished session's current date
+(`current_for` when present, otherwise imported `planned_for`), and the actual
 `sessions.started_at` instant for linked completed executions, presented on the
 same browser-local civil day as Web session history. The Program detail Web API
 adds the nullable read-only `execution_started_at` projection field; the
-Programs synchronization artifact and its strict fields are unchanged. A completed
+Programs V2 projection carries the current dates and ceded-slot state to
+capable Android peers without changing the strict Programs V1 artifact. A completed
 session moved from its imported date shows both dates without changing history
 or Program identity. Several cards may share a day; rest days contain no
 invented session. A completed execution with no valid history timestamp stays
 undated rather than appearing to have occurred on its planned day. Unfinished
-sessions still show their imported dates because no durable current-plan or
-ceded-optional-slot state exists in the stabilized Programs exchange. It shows
-all five Core execution states; only `todo` offers Prepare. Each Prepare result
+sessions show their current dates; ceded unfinished slots remain visible but
+are excluded from next-session selection and preparation, and are not counted
+as performed. It shows all five Core execution states; only eligible `todo`
+offers Prepare. Each Prepare result
 is followed by an authoritative Core reread and may expose the returned
 preparation link. This calendar adds no Android delivery, start, or execution
 behavior.
