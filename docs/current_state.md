@@ -511,7 +511,7 @@ catalogue state. Built-in identities cannot be retired, equipment associations
 are presented read-only, and profile edits affect future use only: occurrence
 snapshots, performed sets, feedback and MAX history are never rewritten. A
 successful mutation changes only the canonical desktop database; the existing
-USB-priority, Drive mirror/fallback synchronization later carries the existing
+configured generation synchronization later carries the existing
 catalogue/profile/BODY ZONES/causal artifacts. No Web mutation invokes sync.
 
 The calendar uses the existing typed Core services `fetchAllPrograms(active)`,

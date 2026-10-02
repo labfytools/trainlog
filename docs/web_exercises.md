@@ -51,5 +51,7 @@ Create, update and retirement first commit only to the desktop database. They
 do not call synchronization and do not require a phone. The next user-triggered
 normal synchronization reuses the existing PC catalogue, exercise profile
 state, BODY ZONES, equipment companions and causal deletion artifacts through
-the existing USB-priority engine with Drive as mirror/fallback. No Web
+the configured generation engine (Bluetooth primary with direct MTP recovery
+on the paired installation, or the separate USB/Drive workflow). Without that
+opt-in, the default V3 path retains its documented compatibility limits. No Web
 Exercises artifact or protocol version was introduced.

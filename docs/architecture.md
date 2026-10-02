@@ -3,12 +3,13 @@
 ## Synchronization transport boundary
 
 Generation capture, validation, causal import, publication and ACK acceptance
-are transport-neutral. `sync_peer_worker.py` owns that conversation; direct MTP
-and `sync_drive_transport.py` only move its bounded bytes. Automatic selection
-probes the expected MTP peer before preferring USB. A successful USB run is
-committed independently, then mirrored to Drive best-effort; Drive failure can
-never reopen its SQLite transactions. If MTP is unavailable, the same worker
-runs over the Drive byte adapter.
+are transport-neutral. `sync_peer_worker.py` owns that conversation. The paired
+private automatic path selects authenticated Bluetooth first and direct MTP as
+wired recovery. The separately configured legacy USB/Drive workflow probes the
+expected MTP peer before selecting USB. A successful USB run is committed
+independently, then mirrored to Drive best-effort; Drive failure cannot reopen
+its SQLite transactions. If MTP is unavailable in that workflow, the same
+worker runs over the Drive byte adapter. No transport carries a SQLite file.
 
 Android mirrors that ownership: one `SyncGenerationCoordinator` is called by
 SyncScreen, the visible USB foreground service, and the private-folder Drive
@@ -42,7 +43,7 @@ Android field client
              Android shared storage
              Documents/Trainlog
                     |
-                    | direct MTP
+                    | Bluetooth RFCOMM primary; direct MTP recovery
                     v
             shared desktop sync engine
                /               \
