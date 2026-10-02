@@ -236,7 +236,11 @@ Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
 
 The active Sleep V2 delta keeps the Web agenda period-owned: every returned
-night has one row on the shared 18:00-to-18:00 geometry. Selecting a row is
+night remains available on the shared 18:00-to-18:00 geometry. The Web shows
+the newest nights first, ten per page by default, with 5, 10, 15, and All
+choices. The size choice is local to the browser and survives reloads. Paging
+changes only the visible rows; PDF selection, statistics, and
+the current editor remain based on the complete loaded period. Selecting a row is
 presentation-only and atomically drives the detail dates, editor content, and
 full-width heart-rate detail; it performs no database mutation. PDF preview
 and download instead share an explicit inclusive range over night start dates,
@@ -247,7 +251,8 @@ Each row uses its one Sleep-owned 18:00 offset and 24 elapsed-hour window for
 Sleep, medication, and sport in both Web and vector PDF. Valid sport intervals
 intersect `[start,end)` and are clipped only for display; missing or invalid
 ends are point markers without invented duration. The Web keeps a separate
-blue lane and accessible session list. Preview and download wait for the
+blue lane with accessible labels and tooltips; the redundant textual Web sport
+list is removed. Preview and download wait for the
 complete sport read and use the same selected sessions. The PDF uses a 180 pt treatment/remarks column with 7.2 pt text,
 width-aware wrapping, content-driven row heights, and dated continuation pages
 for exceptional notes. Each selected intake and remark is printed once without

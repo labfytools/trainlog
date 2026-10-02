@@ -184,8 +184,25 @@ const dayAEntry = (): SleepEntry => ({
   ],
 });
 
+const datedEntries = (count: number): SleepEntry[] =>
+  Array.from({ length: count }, (_, index) => {
+    const date = `2026-09-${String(index + 1).padStart(2, "0")}`;
+    const next = `2026-09-${String(index + 2).padStart(2, "0")}`;
+    return {
+      ...dayAEntry(),
+      entry_id: `sd_${String(index + 1).padStart(3, "0")}`,
+      revision_id: `sdr_${String(index + 1).padStart(3, "0")}`,
+      night_start_date: date,
+      night_end_date: next,
+      // A recently edited old night must retain its chronological position.
+      updated_at: `2026-10-${String(count - index).padStart(2, "0")}T12:00:00+02:00`,
+      treatment_and_notes: `Observation ${index + 1}`,
+    };
+  });
+
 describe("SleepDiaryWorkspace", () => {
   beforeEach(() => {
+    window.localStorage.removeItem("trainlog.web.sleep.page-size.v1");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-21T16:00:00+02:00"));
     vi.clearAllMocks();
@@ -249,6 +266,116 @@ describe("SleepDiaryWorkspace", () => {
     );
   });
 
+  it.each([0, 1, 5, 6, 10, 11, 15, 16, 23])(
+    "paginates %i nights newest first without changing the source snapshot",
+    async (count) => {
+      const original = datedEntries(count);
+      const source = original.length === 0 ? [] :
+        [original[0], ...original.slice(1).reverse()];
+      if (source.length > 0) source.push(source[0]);
+      api.fetchSleepDiary.mockResolvedValue(snapshotWith(source));
+      render(<SleepDiaryWorkspace period="all" language="fr" />);
+      await waitFor(() => expect(screen.getByLabelText("Afficher")).toHaveValue("10"));
+      await waitFor(() => expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(Math.min(count, 10)));
+      const rows = () => screen.queryAllByTestId(/^sleep-agenda-row-/).map((row) => row.getAttribute("data-testid"));
+      expect(rows()).toEqual(original.slice().reverse().slice(0, 10).map((entry) =>
+        `sleep-agenda-row-${entry.entry_id}`));
+      expect(source[0]).toBe(original[0]);
+      if (count > 10) {
+        fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+        expect(rows()).toEqual(original.slice().reverse().slice(10, 20).map((entry) =>
+          `sleep-agenda-row-${entry.entry_id}`));
+        fireEvent.click(screen.getByRole("button", { name: "Précédent" }));
+      }
+      fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "all" } });
+      expect(rows()).toHaveLength(count);
+      expect(screen.queryByRole("button", { name: "Suivant" })).toBeNull();
+      for (const size of [5, 15, 10]) {
+        fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: String(size) } });
+        expect(rows()).toHaveLength(Math.min(count, size));
+      }
+      expect(screen.getByLabelText("Afficher").querySelectorAll("option")).toHaveLength(4);
+      expect(api.saveSleepEntry).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps PDF range, selected detail and pending form input across pages and sizes", async () => {
+    const entries = datedEntries(23);
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith(entries));
+    sportApi.fetchSportSessions.mockResolvedValue([{
+      identity: "se_old", label: "Old sport", session_type: "training",
+      started_at: "2026-09-02T20:00:00+02:00",
+      ended_at: "2026-09-02T21:00:00+02:00",
+    }]);
+    const build = vi.spyOn(pdfReport, "buildSleepDiaryPdf").mockReturnValue(
+      new Blob(["all nights"], { type: "application/pdf" }),
+    );
+    vi.spyOn(pdfReport, "presentSleepDiaryPdf").mockImplementation(() => {});
+    render(<SleepDiaryWorkspace period="all" language="fr" />);
+    await screen.findByTestId("sleep-agenda-row-sd_023");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prévisualiser" })).toBeEnabled());
+    expect(screen.queryByTestId("sleep-agenda-sport")).toBeNull();
+    expect(screen.queryByText(/Aucune dans la période/)).toBeNull();
+    fireEvent.change(screen.getByTestId("sleep-event-start"), { target: { value: "21:15" } });
+    const start = screen.getByLabelText("PDF du") as HTMLInputElement;
+    const end = screen.getByLabelText("au") as HTMLInputElement;
+    expect([start.value, end.value]).toEqual(["2026-09-01", "2026-09-23"]);
+    for (const size of ["10", "5", "15", "all"]) {
+      fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: size } });
+      if (size !== "all" && size !== "15")
+        fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+      if (size === "all")
+        expect(screen.getByTestId("sleep-agenda-sport")).toHaveAttribute("aria-label", expect.stringContaining("Old sport"));
+      fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
+      expect(screen.getByTestId("sleep-event-start")).toHaveValue("21:15");
+      expect([start.value, end.value]).toEqual(["2026-09-01", "2026-09-23"]);
+    }
+    expect(build).toHaveBeenCalledTimes(4);
+    for (const [selection, , sport, from, to] of build.mock.calls) {
+      expect(selection.entries.map((entry) => entry.entry_id)).toEqual(entries.map((entry) => entry.entry_id));
+      expect(selection.summary.nights).toBe(23);
+      expect(selection.summary.intake_count).toBe(23);
+      expect(sport).toHaveLength(1);
+      expect([from, to]).toEqual(["2026-09-01", "2026-09-23"]);
+    }
+    expect(screen.queryByText(/Sport — horaires enregistrés/)).toBeNull();
+    expect(screen.getByText("Bleu : séance de sport effectuée")).toBeInTheDocument();
+    expect(api.saveSleepEntry).not.toHaveBeenCalled();
+    expect(api.deleteSleepEntry).not.toHaveBeenCalled();
+  });
+
+  it("retains the page size but returns to newest on a deliberate period change", async () => {
+    const many = datedEntries(16);
+    const fewer = many.slice(0, 6);
+    api.fetchSleepDiary
+      .mockResolvedValueOnce(snapshotWith(many))
+      .mockResolvedValue(snapshotWith(fewer));
+    const view = render(<SleepDiaryWorkspace period="all" language="en" />);
+    await screen.findByTestId("sleep-agenda-row-sd_016");
+    fireEvent.change(screen.getByLabelText("Show"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Nights 6–10 of 16 · Page 2/4")).toBeInTheDocument();
+    view.rerender(<SleepDiaryWorkspace period="7d" language="en" />);
+    await waitFor(() => expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(5));
+    expect(screen.getByLabelText("Show")).toHaveValue("5");
+    expect(screen.getByTestId("sleep-agenda-row-sd_006")).toBeInTheDocument();
+    expect(screen.getByText("Nights 1–5 of 6 · Page 1/2")).toBeInTheDocument();
+    expect(api.saveSleepEntry).not.toHaveBeenCalled();
+  });
+
+  it("restores the local page-size choice after remounting", async () => {
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith(datedEntries(11)));
+    const first = render(<SleepDiaryWorkspace period="all" language="fr" />);
+    await screen.findByTestId("sleep-agenda-row-sd_011");
+    fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "5" } });
+    expect(window.localStorage.getItem("trainlog.web.sleep.page-size.v1")).toBe("5");
+    first.unmount();
+    render(<SleepDiaryWorkspace period="all" language="fr" />);
+    await screen.findByTestId("sleep-agenda-row-sd_011");
+    expect(screen.getByLabelText("Afficher")).toHaveValue("5");
+    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(5);
+  });
+
   it("uses the same inclusive date-range subset for PDF preview and export", async () => {
     const first = dayAEntry();
     const second = {
@@ -310,13 +437,13 @@ describe("SleepDiaryWorkspace", () => {
     const view = render(<SleepDiaryWorkspace period="30d" language="fr" />);
     await waitFor(() => expect(sportApi.fetchSportSessions).toHaveBeenCalledTimes(1));
     view.rerender(<SleepDiaryWorkspace period="7d" language="fr" />);
-    await screen.findByText(/Current session/);
+    await screen.findByRole("img", { name: /Current session/ });
     finishOld([{
       identity: "se_stale", label: "Stale session", session_type: "training",
       started_at: "2026-09-21T07:00:00+02:00",
       ended_at: "2026-09-21T08:00:00+02:00",
     }]);
-    await waitFor(() => expect(screen.queryByText(/Stale session/)).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("img", { name: /Stale session/ })).toBeNull());
   });
 
   it("can export sport in a period with no recorded Sleep night", async () => {

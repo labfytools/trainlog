@@ -2,6 +2,12 @@
 
 ## Unreleased — 0.1.7
 
+- Show the Web Sleep agenda newest first with a 5, 10, 15, or All night
+  selector (10 by default). Page changes leave the selected night, editor,
+  statistics, and inclusive PDF range untouched. Removed only the redundant
+  textual sport list below the Web agenda; factual blue overlays, the sport
+  legend, and the complete PDF sport appendix remain.
+
 - Corrected the Dashboard/Analysis active-Program next-session projection to
   select title, identity, and current date from one pending Program session.
   Recorded rescheduling dates replace imported dates, ceded slots are excluded,

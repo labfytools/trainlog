@@ -38,6 +38,19 @@ import {
 } from "./sleepVisualProjection";
 
 type Language = "fr" | "en";
+type AgendaPageSize = 5 | 10 | 15 | "all";
+const agendaPageSizeKey = "trainlog.web.sleep.page-size.v1";
+const initialAgendaPageSize = (): AgendaPageSize => {
+  try {
+    const stored = window.localStorage.getItem(agendaPageSizeKey);
+    if (stored === "all") return "all";
+    if (stored === "5" || stored === "10" || stored === "15")
+      return Number(stored) as 5 | 10 | 15;
+  } catch {
+    // A disabled browser storage falls back to the documented first-use size.
+  }
+  return 10;
+};
 const q: readonly SleepQuality[] = ["TB", "B", "Moy", "M", "TM"];
 const pointTypes: readonly SleepEventType[] = [
   "bed_time",
@@ -71,6 +84,13 @@ const copy = {
     summary: "Synthèse factuelle",
     empty: "Aucune nuit enregistrée.",
     agendaEmpty: "Aucune donnée pour cette nuit.",
+    show: "Afficher",
+    all: "Tout",
+    nightsCount: "Nuits",
+    of: "sur",
+    page: "Page",
+    previous: "Précédent",
+    next: "Suivant",
     preview: "Prévisualiser",
     export: "Exporter PDF",
     pdfFrom: "PDF du",
@@ -134,6 +154,13 @@ const copy = {
     summary: "Factual summary",
     empty: "No recorded nights.",
     agendaEmpty: "No data for this night.",
+    show: "Show",
+    all: "All",
+    nightsCount: "Nights",
+    of: "of",
+    page: "Page",
+    previous: "Previous",
+    next: "Next",
     preview: "Preview",
     export: "Export PDF",
     pdfFrom: "PDF from",
@@ -318,6 +345,8 @@ export function SleepDiaryWorkspace({
   const [intakeUnit, setIntakeUnit] = useState("mg");
   const [intakeQuantity, setIntakeQuantity] = useState(1);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [agendaPageSize, setAgendaPageSize] = useState<AgendaPageSize>(initialAgendaPageSize);
+  const [agendaPage, setAgendaPage] = useState(0);
   const identity = useRef<{ entry_id: string; revision_id: string } | null>(
     null,
   );
@@ -391,6 +420,11 @@ export function SleepDiaryWorkspace({
   };
   useEffect(() => {
     void reload();
+  }, [period]);
+  useEffect(() => {
+    // CONTRACT: a deliberate period change starts at its newest night while
+    // keeping the user's page-size choice and all editor/PDF state separate.
+    setAgendaPage(0);
   }, [period]);
   useEffect(() => {
     const controller = new AbortController();
@@ -725,7 +759,22 @@ export function SleepDiaryWorkspace({
   const selectedEntry =
     agendaEntries.find((entry) => entry.entry_id === selectedEntryId) ??
     activeEntry ??
-    agendaEntries[0];
+    agendaEntries[agendaEntries.length - 1];
+  // INVARIANT: presentation sorting and slicing never mutate or narrow the
+  // ascending, deduplicated collection used by PDF and sport projections.
+  const recentEntries = [...agendaEntries].sort((left, right) =>
+    right.night_start_date.localeCompare(left.night_start_date) ||
+    left.entry_id.localeCompare(right.entry_id));
+  const pageCount = agendaPageSize === "all" ? 1 :
+    Math.ceil(recentEntries.length / agendaPageSize);
+  useEffect(() => {
+    if (snapshot) setAgendaPage((current) => Math.min(current, Math.max(0, pageCount - 1)));
+  }, [pageCount, snapshot]);
+  const visiblePage = Math.min(agendaPage, Math.max(0, pageCount - 1));
+  const firstVisible = agendaPageSize === "all" ? 0 :
+    visiblePage * agendaPageSize;
+  const visibleEntries = agendaPageSize === "all" ? recentEntries :
+    recentEntries.slice(firstVisible, firstVisible + agendaPageSize);
   const [pdfStartDate, setPdfStartDate] = useState("");
   const [pdfEndDate, setPdfEndDate] = useState("");
   const pdfRangeInitialized = useRef(false);
@@ -753,8 +802,6 @@ export function SleepDiaryWorkspace({
   // selection. The range concerns the date on which each night begins; detail
   // selection remains independent and continues to drive the HR/editor view.
   const pdfWindows = pdfEntries.map(sleepRowWindow);
-  const agendaSport = sport.filter((session) => agendaEntries.some((entry) =>
-    projectSportSegments([session], sleepRowWindow(entry)).length > 0));
   const fallbackStart = Date.parse(`${pdfStartDate}T18:00:00`);
   const fallbackEnd = Date.parse(`${pdfEndDate}T18:00:00`) + 86400000;
   const pdfWindow = pdfWindows.length > 0 ? {
@@ -763,7 +810,6 @@ export function SleepDiaryWorkspace({
   } : { start: fallbackStart, end: fallbackEnd };
   const pdfSport = pdfRangeValid ? sport.filter((session) =>
     projectSportSegments([session], pdfWindow).length > 0) : [];
-  const listedSport = agendaEntries.length === 0 ? pdfSport : agendaSport;
   const selectedSnapshot = snapshot && sportState === "ready" && pdfRangeValid &&
     (pdfEntries.length > 0 || pdfSport.length > 0)
     ? sleepSnapshotSelection(snapshot, pdfEntries)
@@ -833,8 +879,46 @@ export function SleepDiaryWorkspace({
         )}
         {sportState === "ready" && <p className="sleep-sport-legend">
           {language === "fr" ? "Bleu : séance de sport effectuée" : "Blue: completed sport session"}
-          {listedSport.length === 0 && (language === "fr" ? " · Aucune dans la période" : " · None in this period")}
         </p>}
+        <div className="sleep-agenda-pagination" aria-label={t.nightsCount}>
+          <label>
+            <span>{t.show} :</span>
+            <select
+              aria-label={t.show}
+              value={agendaPageSize}
+              onChange={(event) => {
+                const value = event.target.value;
+                const next = value === "all" ? "all" : Number(value) as 5 | 10 | 15;
+                setAgendaPageSize(next);
+                try {
+                  window.localStorage.setItem(agendaPageSizeKey, String(next));
+                } catch {
+                  // The current page still works when browser storage is unavailable.
+                }
+                setAgendaPage(0);
+              }}
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+              <option value="all">{t.all}</option>
+            </select>
+          </label>
+          <span role="status" aria-live="polite">
+            {t.nightsCount} {recentEntries.length === 0 ? "0" :
+              `${firstVisible + 1}–${firstVisible + visibleEntries.length}`} {t.of} {recentEntries.length}
+            {agendaPageSize !== "all" && pageCount > 1 &&
+              ` · ${t.page} ${visiblePage + 1}/${pageCount}`}
+          </span>
+          {agendaPageSize !== "all" && pageCount > 1 && (
+            <div className="sleep-agenda-page-buttons">
+              <button type="button" className="quiet-action" disabled={visiblePage === 0}
+                onClick={() => setAgendaPage(Math.max(0, visiblePage - 1))}>{t.previous}</button>
+              <button type="button" className="quiet-action" disabled={visiblePage >= pageCount - 1}
+                onClick={() => setAgendaPage(Math.min(pageCount - 1, visiblePage + 1))}>{t.next}</button>
+            </div>
+          )}
+        </div>
         {agendaEntries.length === 0 ? (
           <p className="analysis-empty">{t.agendaEmpty}</p>
         ) : (
@@ -864,7 +948,7 @@ export function SleepDiaryWorkspace({
                 </span>
                 <span />
               </div>
-              {agendaEntries.map((entry) => {
+              {visibleEntries.map((entry) => {
                 const facts = sleepEntryFacts(entry);
                 const projection = projectSleepTimeline(entry);
                 // WHY: persistence metadata may be UTC while factual night
@@ -1078,21 +1162,6 @@ export function SleepDiaryWorkspace({
                 );
               })}
             </div>
-          </div>
-        )}
-        {sportState === "ready" && listedSport.length > 0 && (
-          <div className="sleep-sport-list">
-            <strong>{language === "fr" ? "Sport — horaires enregistrés" : "Sport — recorded times"}</strong>
-            <ul>{listedSport.map((session) => (
-              <li key={session.identity}>
-                {session.label} ({session.session_type}) · {session.started_at.slice(0, 16)} → {
-                  session.ended_at && Date.parse(session.ended_at) > Date.parse(session.started_at)
-                    ? session.ended_at.slice(0, 16)
-                    : (language === "fr" ? "fin non renseignée" : "end not recorded")}
-                {agendaEntries.length === 0 && (language === "fr"
-                  ? " · sommeil non renseigné" : " · sleep not recorded")}
-              </li>
-            ))}</ul>
           </div>
         )}
       </article>
