@@ -186,8 +186,8 @@ const dayAEntry = (): SleepEntry => ({
 
 const datedEntries = (count: number): SleepEntry[] =>
   Array.from({ length: count }, (_, index) => {
-    const date = `2026-09-${String(index + 1).padStart(2, "0")}`;
-    const next = `2026-09-${String(index + 2).padStart(2, "0")}`;
+    const date = new Date(Date.UTC(2026, 8, index + 1)).toISOString().slice(0, 10);
+    const next = new Date(Date.UTC(2026, 8, index + 2)).toISOString().slice(0, 10);
     return {
       ...dayAEntry(),
       entry_id: `sd_${String(index + 1).padStart(3, "0")}`,
@@ -195,7 +195,7 @@ const datedEntries = (count: number): SleepEntry[] =>
       night_start_date: date,
       night_end_date: next,
       // A recently edited old night must retain its chronological position.
-      updated_at: `2026-10-${String(count - index).padStart(2, "0")}T12:00:00+02:00`,
+      updated_at: new Date(Date.UTC(2026, 9, count - index)).toISOString(),
       treatment_and_notes: `Observation ${index + 1}`,
     };
   });
@@ -266,7 +266,7 @@ describe("SleepDiaryWorkspace", () => {
     );
   });
 
-  it.each([0, 1, 5, 6, 10, 11, 15, 16, 23])(
+  it.each([0, 1, 7, 8, 14, 15, 21, 22, 28, 29, 35])(
     "paginates %i nights newest first without changing the source snapshot",
     async (count) => {
       const original = datedEntries(count);
@@ -275,32 +275,113 @@ describe("SleepDiaryWorkspace", () => {
       if (source.length > 0) source.push(source[0]);
       api.fetchSleepDiary.mockResolvedValue(snapshotWith(source));
       render(<SleepDiaryWorkspace period="all" language="fr" />);
-      await waitFor(() => expect(screen.getByLabelText("Afficher")).toHaveValue("10"));
-      await waitFor(() => expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(Math.min(count, 10)));
+      await waitFor(() => expect(screen.getByLabelText("Afficher")).toHaveValue("7"));
+      await waitFor(() => expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(Math.min(count, 7)));
       const rows = () => screen.queryAllByTestId(/^sleep-agenda-row-/).map((row) => row.getAttribute("data-testid"));
-      expect(rows()).toEqual(original.slice().reverse().slice(0, 10).map((entry) =>
+      expect(rows()).toEqual(original.slice().reverse().slice(0, 7).map((entry) =>
         `sleep-agenda-row-${entry.entry_id}`));
       expect(source[0]).toBe(original[0]);
-      if (count > 10) {
+      if (count > 7) {
         fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
-        expect(rows()).toEqual(original.slice().reverse().slice(10, 20).map((entry) =>
+        expect(rows()).toEqual(original.slice().reverse().slice(7, 14).map((entry) =>
           `sleep-agenda-row-${entry.entry_id}`));
         fireEvent.click(screen.getByRole("button", { name: "Précédent" }));
       }
       fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "all" } });
       expect(rows()).toHaveLength(count);
       expect(screen.queryByRole("button", { name: "Suivant" })).toBeNull();
-      for (const size of [5, 15, 10]) {
+      for (const size of [14, 21, 28, 7]) {
         fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: String(size) } });
         expect(rows()).toHaveLength(Math.min(count, size));
       }
-      expect(screen.getByLabelText("Afficher").querySelectorAll("option")).toHaveLength(4);
+      expect(Array.from(screen.getByLabelText("Afficher").querySelectorAll("option"),
+        (option) => [option.value, option.textContent])).toEqual([
+          ["7", "7 jours"], ["14", "14 jours"], ["21", "21 jours"],
+          ["28", "28 jours"], ["all", "Tout"],
+        ]);
       expect(api.saveSleepEntry).not.toHaveBeenCalled();
     },
   );
 
+  it("bounds all pages of 35 nights and keeps partial last pages accurate", async () => {
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith(datedEntries(35)));
+    render(<SleepDiaryWorkspace period="all" language="fr" />);
+    await screen.findByTestId("sleep-agenda-row-sd_035");
+    const next = () => fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    for (let page = 1; page <= 5; page++) {
+      expect(screen.getByText(`Nuits ${(page - 1) * 7 + 1}–${page * 7} sur 35 · Page ${page}/5`)).toBeInTheDocument();
+      expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(7);
+      if (page < 5) next();
+    }
+    expect(screen.getByRole("button", { name: "Suivant" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "14" } });
+    expect(screen.getByText("Nuits 1–14 sur 35 · Page 1/3")).toBeInTheDocument();
+    next();
+    next();
+    expect(screen.getByText("Nuits 29–35 sur 35 · Page 3/3")).toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(7);
+    fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "21" } });
+    next();
+    expect(screen.getByText("Nuits 22–35 sur 35 · Page 2/2")).toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(14);
+    fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "28" } });
+    expect(screen.getByText("Nuits 1–28 sur 35 · Page 1/2")).toBeInTheDocument();
+    next();
+    expect(screen.getByText("Nuits 29–35 sur 35 · Page 2/2")).toBeInTheDocument();
+  });
+
+  it("counts recorded nights rather than assuming consecutive calendar days", async () => {
+    const gaps = datedEntries(14).filter((_, index) => index % 2 === 0);
+    api.fetchSleepDiary.mockResolvedValue(snapshotWith(gaps));
+    render(<SleepDiaryWorkspace period="all" language="fr" />);
+    await screen.findByTestId(`sleep-agenda-row-${gaps[gaps.length - 1].entry_id}`);
+    expect(screen.getByText("Nuits 1–7 sur 7")).toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(7);
+    expect(screen.queryByTestId("sleep-agenda-row-sd_014")).toBeNull();
+  });
+
+  it.each([
+    ["5", "7"], ["10", "14"], ["15", "21"],
+    ["7", "7"], ["14", "14"], ["21", "21"], ["28", "28"],
+    ["all", "all"], ["invalid", "7"],
+  ])("uses or migrates local page size %s to %s", async (stored, selected) => {
+    window.localStorage.setItem("trainlog.web.sleep.page-size.v1", stored);
+    render(<SleepDiaryWorkspace period="all" language="fr" />);
+    expect(screen.getByLabelText("Afficher")).toHaveValue(selected);
+    if (["5", "10", "15"].includes(stored))
+      expect(window.localStorage.getItem("trainlog.web.sleep.page-size.v1")).toBe(selected);
+  });
+
+  it("uses seven nights when local browser storage is unavailable", () => {
+    const read = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+    try {
+      render(<SleepDiaryWorkspace period="all" language="fr" />);
+      expect(screen.getByLabelText("Afficher")).toHaveValue("7");
+      fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "14" } });
+      expect(screen.getByLabelText("Afficher")).toHaveValue("14");
+    } finally {
+      read.mockRestore();
+      write.mockRestore();
+    }
+  });
+
+  it("shows an explicit error instead of an incomplete all-history agenda", async () => {
+    api.fetchSleepDiary.mockRejectedValue(new RangeError("sleep_diary_history_limit_reached"));
+    render(<SleepDiaryWorkspace period="all" language="fr" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Historique Sommeil trop long pour une lecture complète",
+    );
+    expect(screen.queryByLabelText("Afficher")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Exporter PDF" })).toBeNull();
+  });
+
   it("keeps PDF range, selected detail and pending form input across pages and sizes", async () => {
-    const entries = datedEntries(23);
+    const entries = datedEntries(28);
     api.fetchSleepDiary.mockResolvedValue(snapshotWith(entries));
     sportApi.fetchSportSessions.mockResolvedValue([{
       identity: "se_old", label: "Old sport", session_type: "training",
@@ -312,31 +393,32 @@ describe("SleepDiaryWorkspace", () => {
     );
     vi.spyOn(pdfReport, "presentSleepDiaryPdf").mockImplementation(() => {});
     render(<SleepDiaryWorkspace period="all" language="fr" />);
-    await screen.findByTestId("sleep-agenda-row-sd_023");
+    await screen.findByTestId("sleep-agenda-row-sd_028");
+    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(7);
     await waitFor(() => expect(screen.getByRole("button", { name: "Prévisualiser" })).toBeEnabled());
     expect(screen.queryByTestId("sleep-agenda-sport")).toBeNull();
     expect(screen.queryByText(/Aucune dans la période/)).toBeNull();
     fireEvent.change(screen.getByTestId("sleep-event-start"), { target: { value: "21:15" } });
     const start = screen.getByLabelText("PDF du") as HTMLInputElement;
     const end = screen.getByLabelText("au") as HTMLInputElement;
-    expect([start.value, end.value]).toEqual(["2026-09-01", "2026-09-23"]);
-    for (const size of ["10", "5", "15", "all"]) {
+    expect([start.value, end.value]).toEqual(["2026-09-01", "2026-09-28"]);
+    for (const size of ["7", "14", "21", "28", "all"]) {
       fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: size } });
-      if (size !== "all" && size !== "15")
+      if (size !== "all" && size !== "28")
         fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
       if (size === "all")
         expect(screen.getByTestId("sleep-agenda-sport")).toHaveAttribute("aria-label", expect.stringContaining("Old sport"));
       fireEvent.click(screen.getByRole("button", { name: "Prévisualiser" }));
       expect(screen.getByTestId("sleep-event-start")).toHaveValue("21:15");
-      expect([start.value, end.value]).toEqual(["2026-09-01", "2026-09-23"]);
+      expect([start.value, end.value]).toEqual(["2026-09-01", "2026-09-28"]);
     }
-    expect(build).toHaveBeenCalledTimes(4);
+    expect(build).toHaveBeenCalledTimes(5);
     for (const [selection, , sport, from, to] of build.mock.calls) {
       expect(selection.entries.map((entry) => entry.entry_id)).toEqual(entries.map((entry) => entry.entry_id));
-      expect(selection.summary.nights).toBe(23);
-      expect(selection.summary.intake_count).toBe(23);
+      expect(selection.summary.nights).toBe(28);
+      expect(selection.summary.intake_count).toBe(28);
       expect(sport).toHaveLength(1);
-      expect([from, to]).toEqual(["2026-09-01", "2026-09-23"]);
+      expect([from, to]).toEqual(["2026-09-01", "2026-09-28"]);
     }
     expect(screen.queryByText(/Sport — horaires enregistrés/)).toBeNull();
     expect(screen.getByText("Bleu : séance de sport effectuée")).toBeInTheDocument();
@@ -346,20 +428,20 @@ describe("SleepDiaryWorkspace", () => {
 
   it("retains the page size but returns to newest on a deliberate period change", async () => {
     const many = datedEntries(16);
-    const fewer = many.slice(0, 6);
+    const fewer = many.slice(0, 10);
     api.fetchSleepDiary
       .mockResolvedValueOnce(snapshotWith(many))
       .mockResolvedValue(snapshotWith(fewer));
     const view = render(<SleepDiaryWorkspace period="all" language="en" />);
     await screen.findByTestId("sleep-agenda-row-sd_016");
-    fireEvent.change(screen.getByLabelText("Show"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Show"), { target: { value: "7" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Nights 6–10 of 16 · Page 2/4")).toBeInTheDocument();
+    expect(screen.getByText("Nights 8–14 of 16 · Page 2/3")).toBeInTheDocument();
     view.rerender(<SleepDiaryWorkspace period="7d" language="en" />);
-    await waitFor(() => expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(5));
-    expect(screen.getByLabelText("Show")).toHaveValue("5");
-    expect(screen.getByTestId("sleep-agenda-row-sd_006")).toBeInTheDocument();
-    expect(screen.getByText("Nights 1–5 of 6 · Page 1/2")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(7));
+    expect(screen.getByLabelText("Show")).toHaveValue("7");
+    expect(screen.getByTestId("sleep-agenda-row-sd_010")).toBeInTheDocument();
+    expect(screen.getByText("Nights 1–7 of 10 · Page 1/2")).toBeInTheDocument();
     expect(api.saveSleepEntry).not.toHaveBeenCalled();
   });
 
@@ -367,13 +449,13 @@ describe("SleepDiaryWorkspace", () => {
     api.fetchSleepDiary.mockResolvedValue(snapshotWith(datedEntries(11)));
     const first = render(<SleepDiaryWorkspace period="all" language="fr" />);
     await screen.findByTestId("sleep-agenda-row-sd_011");
-    fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "5" } });
-    expect(window.localStorage.getItem("trainlog.web.sleep.page-size.v1")).toBe("5");
+    fireEvent.change(screen.getByLabelText("Afficher"), { target: { value: "14" } });
+    expect(window.localStorage.getItem("trainlog.web.sleep.page-size.v1")).toBe("14");
     first.unmount();
     render(<SleepDiaryWorkspace period="all" language="fr" />);
     await screen.findByTestId("sleep-agenda-row-sd_011");
-    expect(screen.getByLabelText("Afficher")).toHaveValue("5");
-    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(5);
+    expect(screen.getByLabelText("Afficher")).toHaveValue("14");
+    expect(screen.queryAllByTestId(/^sleep-agenda-row-/)).toHaveLength(11);
   });
 
   it("uses the same inclusive date-range subset for PDF preview and export", async () => {

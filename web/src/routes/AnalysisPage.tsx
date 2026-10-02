@@ -628,22 +628,24 @@ export function AnalysisPage() {
             </button>
           ))}
         </div>
-        <label>
-          {t.period}
-          <select
-            aria-label={t.period}
-            value={period}
-            onChange={(event) =>
-              choosePeriod(event.target.value as AnalysisPeriod)
-            }
-          >
-            {ANALYSIS_PERIODS.map((value) => (
-              <option key={value} value={value}>
-                {t.periods[value]}
-              </option>
-            ))}
-          </select>
-        </label>
+        {section !== "sleep" && (
+          <label>
+            {t.period}
+            <select
+              aria-label={t.period}
+              value={period}
+              onChange={(event) =>
+                choosePeriod(event.target.value as AnalysisPeriod)
+              }
+            >
+              {ANALYSIS_PERIODS.map((value) => (
+                <option key={value} value={value}>
+                  {t.periods[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       {pending && snapshot === null && <p role="status">{t.loading}</p>}
       {failed && snapshot === null && (
@@ -945,7 +947,9 @@ export function AnalysisPage() {
               }
               retryLabel={language === "fr" ? "Réessayer" : "Try again"}
             >
-              <SleepDiaryWorkspace period={period} language={language} />
+              {/* CONTRACT: Sleep owns its complete history; the retained
+                  Analysis period still belongs to the other sections. */}
+              <SleepDiaryWorkspace period="all" language={language} />
             </SectionErrorBoundary>
           )}
         </>

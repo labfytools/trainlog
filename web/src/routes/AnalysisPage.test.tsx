@@ -44,6 +44,49 @@ describe("AnalysisPage", () => {
     expect(window.location.search).toContain("section=measurements");
   });
 
+  it.each(["7d", "30d"])(
+    "does not apply legacy global period %s to the Sleep workspace",
+    async (legacyPeriod) => {
+      window.history.replaceState(null, "", `/analyse?section=sleep&period=${legacyPeriod}`);
+      vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/sleep-diary?"))
+          return new Response(JSON.stringify({ api_version: 1, entries: [], summary: {} }));
+        if (url === "/api/v1/sleep-medications")
+          return new Response(JSON.stringify({ api_version: 1, medications: [] }));
+        if (url.startsWith("/api/v1/sessions/sport?"))
+          return new Response(JSON.stringify({
+            api_version: 1, offset: 0, more: false, next_offset: 1, items: [],
+          }));
+        return new Response(JSON.stringify(analysisFixture));
+      });
+      render(<AnalysisPage />);
+      await screen.findByTestId("sleep-workspace");
+      expect(screen.queryByLabelText("Période")).toBeNull();
+      expect(screen.getByLabelText("Afficher")).toHaveValue("7");
+      expect(screen.getByLabelText("PDF du")).toBeInTheDocument();
+      expect(screen.getByLabelText("au")).toBeInTheDocument();
+      await waitFor(() => {
+        const sleepRead = vi.mocked(globalThis.fetch).mock.calls.find(([input]) =>
+          String(input).startsWith("/api/v1/sleep-diary?"));
+        expect(sleepRead).toBeDefined();
+        expect(String(sleepRead?.[0])).not.toContain("start_date");
+        expect(String(sleepRead?.[0])).not.toContain("end_date");
+      });
+      fireEvent.click(screen.getByRole("tab", { name: "Vue d’ensemble" }));
+      expect(screen.getByLabelText("Période")).toHaveValue(legacyPeriod);
+      fireEvent.change(screen.getByLabelText("Période"), { target: { value: "90d" } });
+      await waitFor(() => expect(window.location.search).toContain("period=90d"));
+      for (const section of ["Exercices", "Répartition", "Mensurations"]) {
+        fireEvent.click(screen.getByRole("tab", { name: section }));
+        expect(screen.getByLabelText("Période")).toHaveValue("90d");
+      }
+      fireEvent.click(screen.getByRole("tab", { name: "Sommeil" }));
+      expect(screen.queryByLabelText("Période")).toBeNull();
+      expect(window.location.search).toContain("period=90d");
+    },
+  );
+
   it("supports exercise and BODY ZONE deep-link sections without duplicating the global language control", async () => {
     window.history.replaceState(
       null,

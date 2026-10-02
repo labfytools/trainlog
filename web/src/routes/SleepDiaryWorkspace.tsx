@@ -38,18 +38,26 @@ import {
 } from "./sleepVisualProjection";
 
 type Language = "fr" | "en";
-type AgendaPageSize = 5 | 10 | 15 | "all";
+type AgendaPageSize = 7 | 14 | 21 | 28 | "all";
 const agendaPageSizeKey = "trainlog.web.sleep.page-size.v1";
 const initialAgendaPageSize = (): AgendaPageSize => {
   try {
     const stored = window.localStorage.getItem(agendaPageSizeKey);
     if (stored === "all") return "all";
-    if (stored === "5" || stored === "10" || stored === "15")
-      return Number(stored) as 5 | 10 | 15;
+    if (stored === "7" || stored === "14" || stored === "21" || stored === "28")
+      return Number(stored) as 7 | 14 | 21 | 28;
+    // CONTRACT: migrate only this browser-local choice from the previous
+    // 5/10/15 agenda; no synchronized preference or other key is changed.
+    const migrated = stored === "5" ? 7 : stored === "10" ? 14 :
+      stored === "15" ? 21 : null;
+    if (migrated !== null) {
+      window.localStorage.setItem(agendaPageSizeKey, String(migrated));
+      return migrated;
+    }
   } catch {
     // A disabled browser storage falls back to the documented first-use size.
   }
-  return 10;
+  return 7;
 };
 const q: readonly SleepQuality[] = ["TB", "B", "Moy", "M", "TM"];
 const pointTypes: readonly SleepEventType[] = [
@@ -84,7 +92,9 @@ const copy = {
     summary: "Synthèse factuelle",
     empty: "Aucune nuit enregistrée.",
     agendaEmpty: "Aucune donnée pour cette nuit.",
+    historyLimit: "Historique Sommeil trop long pour une lecture complète ; l’agenda et le PDF sont désactivés.",
     show: "Afficher",
+    days: "jours",
     all: "Tout",
     nightsCount: "Nuits",
     of: "sur",
@@ -154,7 +164,9 @@ const copy = {
     summary: "Factual summary",
     empty: "No recorded nights.",
     agendaEmpty: "No data for this night.",
+    historyLimit: "Sleep history exceeds the complete-read limit; the agenda and PDF are disabled.",
     show: "Show",
+    days: "days",
     all: "All",
     nightsCount: "Nights",
     of: "of",
@@ -414,8 +426,10 @@ export function SleepDiaryWorkspace({
       );
       if (exact) adoptEntry(exact);
       else resetNight(requestedNight);
-    } catch {
-      setError("sleep_diary_unavailable");
+    } catch (reason) {
+      setError(reason instanceof RangeError &&
+        reason.message === "sleep_diary_history_limit_reached"
+        ? reason.message : "sleep_diary_unavailable");
     }
   };
   useEffect(() => {
@@ -814,6 +828,8 @@ export function SleepDiaryWorkspace({
     (pdfEntries.length > 0 || pdfSport.length > 0)
     ? sleepSnapshotSelection(snapshot, pdfEntries)
     : null;
+  if (error === "sleep_diary_history_limit_reached")
+    return <p className="error-panel" role="alert">{t.historyLimit}</p>;
   return (
     <div className="sleep-workspace" data-testid="sleep-workspace">
       <article className="analysis-panel analysis-wide">
@@ -888,7 +904,7 @@ export function SleepDiaryWorkspace({
               value={agendaPageSize}
               onChange={(event) => {
                 const value = event.target.value;
-                const next = value === "all" ? "all" : Number(value) as 5 | 10 | 15;
+                const next = value === "all" ? "all" : Number(value) as 7 | 14 | 21 | 28;
                 setAgendaPageSize(next);
                 try {
                   window.localStorage.setItem(agendaPageSizeKey, String(next));
@@ -898,9 +914,10 @@ export function SleepDiaryWorkspace({
                 setAgendaPage(0);
               }}
             >
-              <option value="5">5</option>
-              <option value="10">10</option>
-              <option value="15">15</option>
+              <option value="7">7 {t.days}</option>
+              <option value="14">14 {t.days}</option>
+              <option value="21">21 {t.days}</option>
+              <option value="28">28 {t.days}</option>
               <option value="all">{t.all}</option>
             </select>
           </label>

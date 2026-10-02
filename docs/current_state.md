@@ -235,18 +235,22 @@ parallel implementation of its rules.
 Desktop and Android schema numbers are independent. Neither changes the frozen
 Trainlog JSON V1 contract.
 
-The active Sleep V2 delta keeps the Web agenda period-owned: every returned
-night remains available on the shared 18:00-to-18:00 geometry. The Web shows
-the newest nights first, ten per page by default, with 5, 10, 15, and All
-choices. The size choice is local to the browser and survives reloads. Paging
-changes only the visible rows; PDF selection, statistics, and
-the current editor remain based on the complete loaded period. Selecting a row is
+The active Sleep V2 delta reads the complete available Sleep history independently
+of the Analysis period used by other sections. Every returned night remains
+available on the shared 18:00-to-18:00 geometry. Sleep has one agenda display
+selector: the newest nights first, seven recorded nights per page by default,
+with 7, 14, 21, 28, and All choices. These are row counts, not calendar windows.
+The browser-local choice survives reloads; old 5/10/15 choices migrate to
+7/14/21. At the server's 3660-night read cap, the Web reports that completeness
+cannot be established instead of presenting a truncated agenda as All. Paging
+changes only the visible rows; PDF selection, statistics, and the current editor
+remain based on the complete loaded history. Selecting a row is
 presentation-only and atomically drives the detail dates, editor content, and
 full-width heart-rate detail; it performs no database mutation. PDF preview
 and download instead share an explicit inclusive range over night start dates,
-initialized to the loaded agenda bounds and independent of detail selection.
+initialized to the loaded history bounds and independent of detail selection.
 The completed-sport overlay reads factual `sessions.started_at` and `ended_at`
-from desktop history through a read-only, period-bounded paginated Web endpoint.
+from desktop history through a read-only, paginated Web endpoint.
 Each row uses its one Sleep-owned 18:00 offset and 24 elapsed-hour window for
 Sleep, medication, and sport in both Web and vector PDF. Valid sport intervals
 intersect `[start,end)` and are clipped only for display; missing or invalid

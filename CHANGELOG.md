@@ -2,11 +2,14 @@
 
 ## Unreleased — 0.1.7
 
-- Show the Web Sleep agenda newest first with a 5, 10, 15, or All night
-  selector (10 by default). Page changes leave the selected night, editor,
-  statistics, and inclusive PDF range untouched. Removed only the redundant
-  textual sport list below the Web agenda; factual blue overlays, the sport
-  legend, and the complete PDF sport appendix remain.
+- Show the Web Sleep agenda newest first with one 7, 14, 21, 28, or All
+  recorded-night selector (7 by default). Sleep reads its full available history
+  without the Analysis period control; other Analysis sections retain their
+  period choice. The browser-local 5/10/15 preference migrates to 7/14/21,
+  and a capped full-history read fails explicitly. Page changes leave the
+  selected night, editor, statistics, and inclusive PDF range untouched.
+  Removed only the redundant textual sport list below the Web agenda; factual
+  blue overlays, the sport legend, and the complete PDF sport appendix remain.
 
 - Corrected the Dashboard/Analysis active-Program next-session projection to
   select title, identity, and current date from one pending Program session.

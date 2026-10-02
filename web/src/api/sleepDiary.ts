@@ -189,6 +189,11 @@ export async function fetchSleepDiary(
     !object(value.summary)
   )
     throw new TypeError("sleep_diary_invalid");
+  // CONTRACT: the server caps one history read at 3660 nights and does not
+  // expose a continuation cursor. At the cap, completeness is unknowable;
+  // fail explicitly instead of labeling a possibly truncated subset "All".
+  if (!startDate && !endDate && value.entries.length === 3660)
+    throw new RangeError("sleep_diary_history_limit_reached");
   return value as unknown as SleepSnapshot;
 }
 
