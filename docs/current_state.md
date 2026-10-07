@@ -269,6 +269,13 @@ improve print hierarchy in color and grayscale. Agenda rows and PDF omit the
 publication/validation labels. The editor still exposes the exact-revision
 publication action and state required for synchronization; PDF selection and
 local editing do not depend on that state.
+The private daily Web launcher now serves the 0.1.7 PDF polish package from
+`3dcb7f6`. Read-only Firefox inspection of the served application on
+2026-10-07 downloaded a five-page report from existing data: its first night
+was 2026-10-06, all 17 nights and 98 medication intakes remained present, and
+the completed 2026-10-07 sport session retained its factual times and duration.
+Color and grayscale renders remained legible. No personal Sleep data were
+edited for this validation.
 The completed-sport overlay reads factual `sessions.started_at` and `ended_at`
 from desktop history through a read-only, paginated Web endpoint.
 Each row uses its one Sleep-owned 18:00 offset and 24 elapsed-hour window for

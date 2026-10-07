@@ -8,7 +8,9 @@
   Remove unhelpful validation labels from agenda rows and PDF warnings; the
   editor now names the exact-revision synchronization publication action and
   retains its meaningful state. Sleep facts, schema, sport rules, Android and
-  synchronization behavior are unchanged.
+  synchronization behavior are unchanged. The private daily Web launcher serves
+  package `3dcb7f6`; Firefox and a downloaded five-page report verified its
+  newest-first order and factual medication and sport content.
 
 - Recovered the Android-matched Web body figures and factual completed-sport
   Sleep agenda/PDF overlay after the Program calendar package was built from
