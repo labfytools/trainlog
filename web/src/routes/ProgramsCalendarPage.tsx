@@ -10,7 +10,6 @@ import {
   type ProgramListItem,
   type ProgramSession,
   type RescheduleChoice,
-  type ReschedulePreview,
 } from '../api/programs'
 import { useDatePreferences } from '../presentation/DatePreferences'
 import { formatCivilDate, formatDate, parseCivilDate, validTimestampValue } from '../presentation/dateFormat'
@@ -51,8 +50,9 @@ function isoDate(value: number): string {
 
 // WHY: Sessions history presents instants in the browser timezone, which may
 // place a workout on a different civil day than the timestamp's source offset.
-// CONTRACT: completed cards use that same local day; source planned_for stays
-// available to explain the move. No schedule mutation happens during render.
+// CONTRACT: completed cards use that same local day; imported planned_for
+// remains immutable while unfinished cards use their current planning date.
+// No schedule mutation happens during render.
 function actualExecutionDate(session: ProgramSession): string | null {
   if (session.execution_state !== 'completed' || typeof session.execution_started_at !== 'string') return null
   if (validTimestampValue(session.execution_started_at) === null) return null
@@ -65,17 +65,19 @@ function displayedDate(session: ProgramSession): string | null {
   // a workout performed on the imported plan date.
   return session.execution_state === 'completed'
     ? actualExecutionDate(session)
-    : session.planning_state === 'ceded' ? session.planned_for : session.current_for
+    : session.current_for ?? session.planned_for
 }
 
-function calendarDays(program: ProgramDetail): CalendarDay[] {
+function calendarDays(program: ProgramDetail, month: string): CalendarDay[] {
+  // INVARIANT: render one civil month plus week padding. A distant keyboard
+  // move must not allocate every intervening day in the browser.
   const datedSessions = program.sessions.filter((session) => dateValue(displayedDate(session)) !== null)
-  const values = [program.start_date, program.end_date, ...datedSessions.map(displayedDate)]
-    .map(dateValue).filter((value): value is number => value !== null)
-  if (values.length === 0) return []
-
-  const first = Math.min(...values)
-  const last = Math.max(...values)
+  const first = dateValue(`${month}-01`)
+  if (first === null) return []
+  const date = new Date(first)
+  date.setUTCMonth(date.getUTCMonth() + 1)
+  date.setUTCDate(0)
+  const last = date.valueOf()
   const firstWeekday = (new Date(first).getUTCDay() + 6) % 7
   const lastWeekday = (new Date(last).getUTCDay() + 6) % 7
   const start = first - firstWeekday * dayMilliseconds
@@ -86,6 +88,10 @@ function calendarDays(program: ProgramDetail): CalendarDay[] {
     const sessions = sessionsByDate.get(day) ?? []
     sessions.push(session)
     sessionsByDate.set(day, sessions)
+  }
+  for (const sessions of sessionsByDate.values()) {
+    sessions.sort((left, right) => left.position - right.position ||
+      left.program_session_id.localeCompare(right.program_session_id))
   }
 
   const days: CalendarDay[] = []
@@ -102,8 +108,41 @@ function calendarDays(program: ProgramDetail): CalendarDay[] {
   return days
 }
 
+function monthForProgram(program: ProgramDetail): string {
+  const today = formatDate(new Date().toISOString(), 'iso')
+  if (dateValue(program.start_date) !== null && dateValue(program.end_date) !== null &&
+      today >= (program.start_date as string) && today <= (program.end_date as string)) {
+    return today.slice(0, 7)
+  }
+  const first = [program.start_date, ...program.sessions.map(displayedDate)]
+    .find((value) => dateValue(value) !== null)
+  return first?.slice(0, 7) ?? today.slice(0, 7)
+}
+
+function adjacentMonth(month: string, delta: number): string {
+  const value = dateValue(`${month}-01`)
+  if (value === null) return month
+  const date = new Date(value)
+  date.setUTCMonth(date.getUTCMonth() + delta)
+  return date.getUTCFullYear() < 1 || date.getUTCFullYear() > 9999
+    ? month : isoDate(date.valueOf()).slice(0, 7)
+}
+
 function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error && reason.message ? reason.message : fallback
+}
+
+function moveFailureMessage(reason: unknown, commitAttempted: boolean): string {
+  const code = errorMessage(reason, '')
+  if (code === 'program_peer_not_fresh') {
+    return 'Modification impossible : synchronisez Trainlog avec le téléphone puis réessayez.'
+  }
+  if (code === 'stale_or_ineligible_program' || code === 'stale_reschedule_preview') {
+    return 'Modification impossible : le programme a changé. Rechargez la page puis réessayez.'
+  }
+  return commitAttempted
+    ? 'Modification non confirmée : rechargez la page pour vérifier la date.'
+    : 'Modification impossible : le planning n’a pas été modifié. Réessayez.'
 }
 
 function NavigationLink({ path, onNavigate, children, className }: {
@@ -119,41 +158,55 @@ function NavigationLink({ path, onNavigate, children, className }: {
   }}>{children}</a>
 }
 
-function ProgramSessionCard({ programId, session, pending, preparationId, onPrepare, onNavigate,
-  dateFormat }: {
+function ProgramSessionCard({ programId, session, pending, moving, preparationId, onPrepare,
+  onMove, onDragEnd, onNavigate, dateFormat }: {
   programId: string
   session: ProgramSession
   pending: boolean
+  moving: boolean
   preparationId?: string
   onPrepare: (programId: string, session: ProgramSession) => void
+  onMove: (session: ProgramSession, date: string) => void
+  onDragEnd: () => void
   onNavigate: (path: string) => void
   dateFormat: ReturnType<typeof useDatePreferences>['dateFormat']
 }) {
   const actualDate = actualExecutionDate(session)
-  return <article className={`program-calendar-session program-calendar-state-${session.execution_state}`}>
-    <h3>{session.title}</h3>
-    <span className="program-calendar-state-label">{session.planning_state === 'ceded' &&
-      session.execution_state !== 'completed' ? 'Créneau cédé' : stateLabels[session.execution_state]}</span>
-    {session.planning_state === 'active' && session.current_for !== session.planned_for &&
-      session.execution_state !== 'completed' && <p className="program-calendar-date-note">
-        Recalée du {session.planned_for === null ? 'jour initial non défini' : formatCivilDate(session.planned_for, dateFormat)}
-        {' au '}{session.current_for === null ? 'jour non défini' : formatCivilDate(session.current_for, dateFormat)}
-      </p>}
-    {actualDate !== null && actualDate !== session.planned_for && <p className="program-calendar-date-note">
-      Prévue le {session.planned_for === null ? 'date non définie' : formatCivilDate(session.planned_for, dateFormat)}
-      {' · '}effectuée le {formatCivilDate(actualDate, dateFormat)}
-    </p>}
+  const [editingDate, setEditingDate] = useState(false)
+  const [newDate, setNewDate] = useState(displayedDate(session) ?? '')
+  const movable = session.execution_state === 'todo' && !moving
+  const [shortId, ...titleParts] = session.title.split(' — ')
+  return <article className={`program-calendar-session program-calendar-state-${session.execution_state}`}
+    draggable={movable} tabIndex={0}
+    aria-label={`${session.title}, ${stateLabels[session.execution_state]}, ${
+      displayedDate(session) ? formatCivilDate(displayedDate(session) as string, dateFormat) : 'sans date'}`}
+    title={session.note ?? session.title}
+    onDragStart={(event) => {
+      if (!movable) { event.preventDefault(); return }
+      event.dataTransfer.setData('text/plain', session.program_session_id)
+      event.dataTransfer.effectAllowed = 'move'
+    }} onDragEnd={onDragEnd}>
+    <h3><strong>{shortId}</strong>{titleParts.length > 0 && <span>{titleParts.join(' — ')}</span>}</h3>
+    {session.execution_state === 'completed' && <span aria-label="Effectuée">✓</span>}
     {session.execution_state === 'completed' && actualDate === null &&
       <p className="program-calendar-date-note">Date réelle indisponible</p>}
-    <div className="program-calendar-action">
-      {session.execution_state === 'todo' && session.planning_state === 'active' &&
-        <button type="button" disabled={pending}
-        onClick={() => onPrepare(programId, session)}>
-        {pending ? 'Préparation…' : 'Préparer'}
-      </button>}
+    {movable && <button className="program-calendar-edit-date" type="button"
+      aria-label={`Modifier la date de ${session.title}`} onClick={() => setEditingDate(!editingDate)}>
+      Déplacer
+    </button>}
+    {editingDate && <form className="program-calendar-date-form" onSubmit={(event) => {
+      event.preventDefault()
+      if (parseCivilDate(newDate) !== null) { onMove(session, newDate); setEditingDate(false) }
+    }}><label>Nouvelle date pour {shortId}<input type="date" required value={newDate}
+        onChange={(event) => setNewDate(event.target.value)} /></label>
+      <button type="submit">Enregistrer</button></form>}
+    {(session.execution_state === 'todo' || preparationId) && <details className="program-calendar-details">
+      <summary>Actions</summary>
+      {session.execution_state === 'todo' && <button type="button" disabled={pending}
+        onClick={() => onPrepare(programId, session)}>{pending ? 'Préparation…' : 'Préparer'}</button>}
       {preparationId && <NavigationLink path={`/seances/preparation/${encodeURIComponent(preparationId)}`}
         onNavigate={onNavigate}>Ouvrir la préparation</NavigationLink>}
-    </div>
+    </details>}
   </article>
 }
 
@@ -169,18 +222,15 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
   const [pendingSessions, setPendingSessions] = useState<Set<string>>(new Set())
   const [preparationIds, setPreparationIds] = useState<Record<string, string>>({})
   const [announcement, setAnnouncement] = useState('')
-  const [rescheduleStart, setRescheduleStart] = useState('')
-  const [rescheduleThrough, setRescheduleThrough] = useState('')
-  const [rescheduleDate, setRescheduleDate] = useState('')
-  const [cededIds, setCededIds] = useState<string[]>([])
-  const [reschedulePreview, setReschedulePreview] = useState<{
-    choice: RescheduleChoice, result: ReschedulePreview, operationId: string
-  } | null>(null)
-  const [reschedulePending, setReschedulePending] = useState(false)
+  const [moveError, setMoveError] = useState(false)
+  const [visibleMonth, setVisibleMonth] = useState('')
+  const [movingSession, setMovingSession] = useState('')
+  const [dropDate, setDropDate] = useState('')
   const preparing = useRef(new Set<string>())
   const mounted = useRef(true)
   const selectedIdRef = useRef('')
   const selectionGeneration = useRef(0)
+  const announcementRef = useRef<HTMLParagraphElement>(null)
 
   useEffect(() => {
     mounted.current = true
@@ -221,14 +271,15 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
     setDetailPending(true)
     setDetailError('')
     setAnnouncement('')
-    setReschedulePreview(null)
-    setRescheduleStart('')
-    setRescheduleThrough('')
-    setRescheduleDate('')
-    setCededIds([])
+    setMoveError(false)
+    setMovingSession('')
+    setDropDate('')
     setPreparationIds({})
     fetchProgram(selectedId, controller.signal).then((value) => {
-      if (isCurrent()) setDetail(value)
+      if (isCurrent()) {
+        setDetail(value)
+        setVisibleMonth(monthForProgram(value))
+      }
     }).catch((reason) => {
       if (isCurrent()) {
         setDetailError(errorMessage(reason, 'Chargement du programme impossible.'))
@@ -239,54 +290,119 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
     return () => controller.abort()
   }, [selectedId])
 
-  const days = useMemo(() => detail === null ? [] : calendarDays(detail), [detail])
+  const days = useMemo(() => detail === null || !visibleMonth ? []
+    : calendarDays(detail, visibleMonth), [detail, visibleMonth])
   const undatedSessions = detail?.sessions.filter((session) => dateValue(displayedDate(session)) === null) ?? []
-  const openSessions = detail?.sessions.filter((session) => session.execution_state === 'todo') ?? []
-
-  const previewReschedule = async () => {
-    if (!detail || !rescheduleStart || !rescheduleThrough || !rescheduleDate) return
+  const moveSession = async (session: ProgramSession, date: string) => {
+    if (!detail || movingSession || session.execution_state !== 'todo' ||
+        parseCivilDate(date) === null) return
     const programId = detail.program_id
     const generation = selectionGeneration.current
+    const isCurrent = () => mounted.current && selectedIdRef.current === programId &&
+      selectionGeneration.current === generation
     const choice: RescheduleChoice = {
-      start_session_id: rescheduleStart,
-      through_session_id: rescheduleThrough,
-      start_date: rescheduleDate,
-      ceded_session_ids: cededIds,
+      start_session_id: session.program_session_id,
+      through_session_id: session.program_session_id,
+      start_date: date,
+      ceded_session_ids: [],
       expected_revision: detail.revision_id,
     }
-    setReschedulePending(true)
-    setReschedulePreview(null)
+    if (session.planning_state === 'active' && session.current_for === date) return
+    setMovingSession(session.program_session_id)
+    setAnnouncement('')
+    setMoveError(false)
+    let commitAttempted = false
     try {
-      const result = await previewProgramReschedule(programId, choice)
-      if (mounted.current && selectionGeneration.current === generation) {
-        setReschedulePreview({ choice, result, operationId: newRescheduleOperationId() })
-        setAnnouncement('Aperçu calculé. Vérifiez les dates avant de confirmer.')
-      }
+      // CONTRACT: one drop changes one identity through the existing revisioned
+      // preview/apply service. The authoritative reread publishes the new day.
+      const preview = await previewProgramReschedule(programId, choice)
+      if (!isCurrent()) return
+      commitAttempted = true
+      await applyProgramReschedule(programId, choice, preview.preview_sha256,
+        newRescheduleOperationId())
+      if (!isCurrent()) return
+      const reread = await fetchProgram(programId)
+      if (!isCurrent()) return
+      setDetail(reread)
+      setVisibleMonth(date.slice(0, 7))
+      setAnnouncement(`${session.title} déplacée au ${formatCivilDate(date, dateFormat)}.`)
     } catch (reason) {
-      setAnnouncement(`Recalage impossible : ${errorMessage(reason, 'erreur inconnue')}`)
+      if (isCurrent()) {
+        if (commitAttempted) {
+          try {
+            const reread = await fetchProgram(programId)
+            if (!isCurrent()) return
+            setDetail(reread)
+            const saved = reread.sessions.find((candidate) =>
+              candidate.program_session_id === session.program_session_id)
+            if (saved?.planning_state === 'active' && saved.current_for === date) {
+              setVisibleMonth(date.slice(0, 7))
+              setAnnouncement(`${session.title} déplacée au ${formatCivilDate(date, dateFormat)}.`)
+              return
+            }
+          } catch {
+            // The original, specific command error remains the user diagnostic.
+          }
+        }
+        // WHY: the service may reject a drop after a successful preview.
+        // CONTRACT: keep the canonical card in place and make the refusal
+        // visible without exposing the peer or revision protocol to users.
+        setMoveError(true)
+        setAnnouncement(moveFailureMessage(reason, commitAttempted))
+        announcementRef.current?.scrollIntoView?.({ block: 'nearest' })
+      }
     } finally {
-      setReschedulePending(false)
+      setDropDate('')
+      setMovingSession('')
     }
   }
 
-  const confirmReschedule = async () => {
-    if (!detail || !reschedulePreview) return
-    const { choice, result, operationId } = reschedulePreview
+  const restoreCeded = async () => {
+    if (!detail || movingSession) return
     const programId = detail.program_id
     const generation = selectionGeneration.current
-    setReschedulePending(true)
+    const isCurrent = () => mounted.current && selectedIdRef.current === programId &&
+      selectionGeneration.current === generation
+    let current = detail
+    setMovingSession('restore')
+    setMoveError(false)
     try {
-      await applyProgramReschedule(programId, choice, result.preview_sha256, operationId)
-      const reread = await fetchProgram(programId)
-      if (mounted.current && selectionGeneration.current === generation) {
-        setDetail(reread)
-        setReschedulePreview(null)
-        setAnnouncement('Recalage enregistré. La synchronisation Android reste à vérifier.')
+      // WHY: a past ceded decision removed the current date without removing
+      // its definition. CONTRACT: restore each exact identity to its original
+      // date; a reread supplies the next revision. Retrying skips active rows.
+      for (const session of detail.sessions.filter((candidate) =>
+        candidate.planning_state === 'ceded')) {
+        if (!session.planned_for) throw new Error(`Date initiale absente : ${session.title}`)
+        const choice: RescheduleChoice = {
+          start_session_id: session.program_session_id,
+          through_session_id: session.program_session_id,
+          start_date: session.planned_for,
+          ceded_session_ids: [],
+          expected_revision: current.revision_id,
+        }
+        const preview = await previewProgramReschedule(programId, choice)
+        if (!isCurrent()) return
+        await applyProgramReschedule(programId, choice, preview.preview_sha256,
+          newRescheduleOperationId())
+        if (!isCurrent()) return
+        current = await fetchProgram(programId)
+        if (!isCurrent()) return
+        setDetail(current)
       }
+      setAnnouncement('Séances restaurées dans le programme.')
     } catch (reason) {
-      setAnnouncement(`Recalage non confirmé : ${errorMessage(reason, 'erreur inconnue')}`)
+      if (isCurrent()) {
+        try {
+          setDetail(await fetchProgram(programId))
+        } catch {
+          // A later page load can reread any repair that committed before failure.
+        }
+        if (isCurrent()) {
+          setAnnouncement(`Restauration interrompue : ${errorMessage(reason, 'erreur inconnue')}`)
+        }
+      }
     } finally {
-      setReschedulePending(false)
+      setMovingSession('')
     }
   }
 
@@ -299,6 +415,7 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
     preparing.current.add(sessionId)
     setPendingSessions((current) => new Set(current).add(sessionId))
     setAnnouncement('')
+    setMoveError(false)
     try {
       const result = await createPreparationFromProgram(programId, sessionId)
       if (!isCurrent()) return
@@ -336,8 +453,11 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
     programId={detail?.program_id ?? ''}
     session={session}
     pending={pendingSessions.has(session.program_session_id)}
+    moving={Boolean(movingSession)}
     preparationId={preparationIds[session.program_session_id]}
     onPrepare={prepare}
+    onMove={(target, date) => void moveSession(target, date)}
+    onDragEnd={() => setDropDate('')}
     onNavigate={onNavigate}
     dateFormat={dateFormat}
   />
@@ -373,7 +493,6 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
       {!detailPending && detail && <>
         <header className="program-calendar-header">
           <div>
-            <p className="eyebrow">PROGRAMME ACTIF</p>
             <h1>{detail.title}</h1>
             <p className="program-calendar-summary">
               {detail.start_date && detail.end_date
@@ -381,72 +500,54 @@ export function ProgramsCalendarPage({ onNavigate }: { onNavigate: (path: string
                 : detail.start_date ? `À partir du ${formatCivilDate(detail.start_date, dateFormat)}`
                   : detail.end_date ? `Jusqu’au ${formatCivilDate(detail.end_date, dateFormat)}`
                     : 'Dates non définies'}
-              {' · '}{detail.sessions.length} séance{detail.sessions.length === 1 ? '' : 's'}
+              {' · '}{detail.sessions.filter((session) => session.execution_state === 'completed').length}
+              {' / '}{detail.sessions.length} séances effectuées
             </p>
           </div>
-          <ul className="program-calendar-legend" aria-label="Légende des états">
-            {(Object.keys(stateLabels) as ExecutionState[]).map((state) => <li key={state}
-              className={`program-calendar-state-${state}`}>{stateLabels[state]}</li>)}
-          </ul>
         </header>
-        <p className="program-calendar-announcement" aria-live="polite">{announcement}</p>
-        <section className="program-calendar-reschedule" aria-label="Recaler le programme">
-          <h2>Recaler la suite</h2>
-          <p>Choisissez les séances concernées dans leur ordre, la reprise et les créneaux cédés.
-            L’aperçu utilise les dates de créneaux déjà inscrites au programme.</p>
-          <div className="program-calendar-reschedule-fields">
-            <label>Première séance<select value={rescheduleStart} onChange={(event) => {
-              setRescheduleStart(event.target.value); setReschedulePreview(null)
-            }}><option value="">Choisir</option>{openSessions.map((session) =>
-              <option key={session.program_session_id} value={session.program_session_id}>
-                Début : {session.title}</option>)}</select></label>
-            <label>Dernière séance<select value={rescheduleThrough} onChange={(event) => {
-              setRescheduleThrough(event.target.value); setReschedulePreview(null)
-            }}><option value="">Choisir</option>{openSessions.map((session) =>
-              <option key={session.program_session_id} value={session.program_session_id}>
-                Fin : {session.title}</option>)}</select></label>
-            <label>Date de reprise<input type="date" value={rescheduleDate}
-              min={detail.start_date ?? undefined} max={detail.end_date ?? undefined}
-              onChange={(event) => { setRescheduleDate(event.target.value); setReschedulePreview(null) }} /></label>
-          </div>
-          <fieldset><legend>Séances qui cèdent leur créneau</legend>
-            {openSessions.map((session) => <label key={session.program_session_id}>
-              <input type="checkbox" checked={cededIds.includes(session.program_session_id)}
-                onChange={(event) => {
-                  setCededIds((current) => event.target.checked
-                    ? [...current, session.program_session_id]
-                    : current.filter((id) => id !== session.program_session_id))
-                  setReschedulePreview(null)
-                }} />{session.title} ({session.planned_for ?? 'sans date'})
-            </label>)}
-          </fieldset>
-          <button type="button" disabled={reschedulePending || !rescheduleStart ||
-            !rescheduleThrough || !rescheduleDate} onClick={previewReschedule}>Calculer l’aperçu</button>
-          {reschedulePreview && <div className="program-calendar-reschedule-preview">
-            <h3>Aperçu avant application</h3>
-            <table><thead><tr><th>Séance</th><th>Date initiale</th><th>Date actuelle</th>
-              <th>Nouvelle date</th><th>Changement</th></tr></thead><tbody>
-              {reschedulePreview.result.moves.map((move) => <tr key={move.program_session_id}>
-                <td>{detail.sessions.find((session) => session.program_session_id === move.program_session_id)?.title}</td>
-                <td>{move.original_for ?? '—'}</td><td>{move.old_for ?? '—'}</td>
-                <td>{move.new_for ?? '—'}</td>
-                <td>{move.change === 'ceded' ? 'Créneau cédé'
-                  : move.change === 'unchanged' ? 'Inchangée' : 'Recalée'}</td>
-              </tr>)}
-            </tbody></table>
-            <button type="button" disabled={reschedulePending} onClick={confirmReschedule}>
-              Confirmer ce recalage</button>
-          </div>}
-        </section>
+        <p ref={announcementRef} className="program-calendar-announcement"
+          role={moveError ? 'alert' : undefined} aria-live={moveError ? 'assertive' : 'polite'}>
+          {announcement}
+        </p>
+        {detail.sessions.some((session) => session.planning_state === 'ceded') &&
+          <button className="program-calendar-restore" type="button" disabled={Boolean(movingSession)}
+            onClick={() => void restoreCeded()}>
+            Restaurer les séances écartées
+          </button>}
+        <nav className="program-calendar-navigation" aria-label="Navigation du calendrier">
+          <button type="button" onClick={() => setVisibleMonth(
+            formatDate(new Date().toISOString(), 'iso').slice(0, 7))}>
+            Aujourd’hui</button>
+          <button type="button" aria-label="Mois précédent"
+            onClick={() => setVisibleMonth(adjacentMonth(visibleMonth, -1))}>‹</button>
+          <strong>{visibleMonth && new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric',
+            timeZone: 'UTC' }).format(new Date(`${visibleMonth}-01T00:00:00Z`))}</strong>
+          <button type="button" aria-label="Mois suivant"
+            onClick={() => setVisibleMonth(adjacentMonth(visibleMonth, 1))}>›</button>
+        </nav>
         {days.length > 0 && <div className="program-calendar-scroll" tabIndex={0}
           aria-label="Calendrier hebdomadaire du programme">
           <div className="program-calendar-grid">
-            {days.map((day) => <section className="program-calendar-day" key={day.date}
-              aria-label={`${day.weekday} ${formatCivilDate(day.date, dateFormat)}`}>
+            {days.map((day) => <section className={`program-calendar-day${
+              dropDate === day.date ? ' program-calendar-drop-target' : ''}`} key={day.date}
+              aria-label={`${day.weekday} ${formatCivilDate(day.date, dateFormat)}`}
+              onDragOver={(event) => {
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                setDropDate(day.date)
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                setDropDate('')
+                const id = event.dataTransfer.getData('text/plain')
+                const session = detail.sessions.find((candidate) =>
+                  candidate.program_session_id === id && candidate.execution_state === 'todo')
+                if (session) void moveSession(session, day.date)
+              }}>
               <header><span>{day.weekday}</span><strong>{day.dayNumber}</strong>
                 <time dateTime={day.date}>{formatCivilDate(day.date, dateFormat)}</time></header>
               {day.sessions.length === 0
-                ? <p className="program-calendar-rest">Repos</p>
+                ? <p className="program-calendar-rest">—</p>
                 : <div className="program-calendar-day-sessions">{day.sessions.map(renderSession)}</div>}
             </section>)}
           </div>

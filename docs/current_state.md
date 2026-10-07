@@ -2,22 +2,20 @@
 
 ## Audited development line and private installation
 
-This snapshot audits `trainlog-sleep-single-selector-weeks-v1` at `f4ddcfd`
-on 2026-10-02. It includes the Program projection fix `8995843`, the body
-figure Web change `c2935b8`, and the Sleep PDF, sport and paging changes by
-ancestry. A later documentation-only commit does not imply a new runtime
-package. The uncommitted Dashboard layout work in the separate
-`trainlog-dashboard-polish-v1` worktree is outside this snapshot.
+This 0.1.7 correction joins the audited `f4ddcfd` development lineage,
+including the Program projection fix `8995843`, Android-matched Web body
+figures `c2935b8`, and the Sleep PDF, sport and paging changes, to the compact
+Program month calendar. The uncommitted Dashboard layout work in the separate
+`trainlog-dashboard-polish-v1` worktree remains outside this snapshot.
 
-The private daily installation runs the ordered Program rescheduling rollout
-from `trainlog-program-recalage-v1` at `3a4ec34`, with desktop schema v37,
-Android schema v34, and the capability-selected `trainlog-programs` V2
-projection. The observed PC/Web launcher points to the
-`sleep-single-selector-weeks-v1-f4ddcfd` package; synchronization agents
-retain the compatible Program
-rollout bundle. The previous PC/Web bundle from
-`trainlog-sleep-pdf-treatments-space-v1` at `3758875` remains available for
-rollback. The served Web uses Android Compose Canvas head, neck, and 22 body
+The private daily Program rollout uses desktop schema v37, Android schema v34,
+and the capability-selected `trainlog-programs` V2 projection. The later
+`program-calendar-dnd-drop-failure-v1-final` PC/Web package declared source
+commit `3a4ec34` and carried the uncommitted calendar UI, but omitted the
+subsequent body-figure and Sleep sport commits. The 0.1.7 correction was
+validated in Firefox against a temporary snapshot of the real desktop data;
+it does not by itself prove a replacement daily package has been installed.
+The corrected Web uses Android Compose Canvas head, neck, and 22 body
 paths on Dashboard muscle distribution, Analysis overview, and Analysis body
 distribution. Firefox captures of all three served views show complete figures
 at the intended aspect ratio, with the existing color scale, legend, and focus
@@ -36,6 +34,12 @@ PDF inspection also confirmed black-outlined blue sport bands. A separate
 synthetic set of 7, 14, 21, and 30 nights in French and English, plus long
 continuations, was rendered page by page and checked in grayscale. Rollout
 packaging requires a Meson `-Dweb=enabled` build with embedded frontend tests.
+The corrected local build was checked in Firefox with a snapshot of the
+existing real data: the latest seven Sleep rows showed six blue sport marks,
+including the completed 2026-10-07 session at 06:59–08:02. The downloaded
+five-page PDF listed that same session and its 1 h 03 min duration on its
+sport appendix. The October Program calendar showed 35 day cells, seven
+completed fixed cards and twelve movable cards without a data mutation.
 
 Full-generation synchronization uses one generation/ACK business engine across
 versioned transports. On the paired 0.1.4 deployment, automatic local selection
@@ -482,7 +486,7 @@ persistence with optimistic conflict and CSRF/Origin protection. It provides no
 automatic browser launch. Sessions provides complete paged preparation,
 resume and history views, stable details, optimistic manual-preparation writes,
 explicit proposal derivation and generation-backed Android delivery. The
-top-level `/programmes` route is an operational daily active-Program calendar;
+top-level `/programmes` route is a compact monthly active-Program calendar;
 Sessions → Programmes remains the technical administration/import, list,
 detail, archive, and delete surface. `/exercices` is the operational desktop
 catalogue administration surface. `/analyse` is implemented with Overview,

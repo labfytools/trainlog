@@ -1743,20 +1743,20 @@ h2 {
   border-radius: 0.55rem;
 }
 .program-calendar-header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.75rem;
   display: flex;
   align-items: end;
   justify-content: space-between;
   gap: 2rem;
 }
 .program-calendar-header h1 {
-  max-width: 24ch;
-  display: -webkit-box;
-  overflow: hidden;
-  font-size: clamp(2.15rem, 4vw, 2.8rem);
-  line-height: 1.02;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  max-width: 55ch;
+  margin: 0;
+  font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+  line-height: 1.15;
+}
+.app-main:has(.programs-calendar-page) {
+  padding-top: 1.25rem;
 }
 
 .settings-grid,
@@ -2040,47 +2040,47 @@ h2 {
   background: color-mix(in srgb, var(--surface-1) 35%, transparent);
 }
 .program-calendar-announcement {
-  min-height: 1.5rem;
   margin: 0 0 0.5rem;
   color: var(--subtext-0);
   font-size: var(--font-size-sm);
 }
-.program-calendar-reschedule {
-  margin: 0 0 1rem;
-  padding: 1rem;
+.program-calendar-announcement:empty {
+  display: none;
+}
+.program-calendar-announcement[role="alert"] {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--red);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--red) 10%, var(--mantle));
+}
+.program-calendar-restore {
+  margin-bottom: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--peach);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: color-mix(in srgb, var(--peach) 9%, var(--mantle));
+  cursor: pointer;
+}
+.program-calendar-navigation {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.program-calendar-navigation strong {
+  min-width: 8rem;
+  text-align: center;
+  text-transform: capitalize;
+}
+.program-calendar-navigation button {
   border: 1px solid var(--surface-1);
-  border-radius: 0.75rem;
-}
-.program-calendar-reschedule-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.program-calendar-reschedule-fields label {
-  display: grid;
-  gap: 0.25rem;
-  min-width: min(100%, 12rem);
-}
-.program-calendar-reschedule fieldset {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  margin: 0.75rem 0;
-}
-.program-calendar-reschedule-preview {
-  max-width: 100%;
-  overflow-x: auto;
-  margin-top: 1rem;
-}
-.program-calendar-reschedule-preview table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.program-calendar-reschedule-preview th,
-.program-calendar-reschedule-preview td {
-  padding: 0.35rem;
-  text-align: left;
-  border-bottom: 1px solid var(--surface-1);
+  border-radius: 0.5rem;
+  background: var(--mantle);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.3rem 0.55rem;
 }
 .program-calendar-scroll {
   max-width: 100%;
@@ -2092,25 +2092,29 @@ h2 {
   outline: 2px solid var(--lavender);
 }
 .program-calendar-grid {
-  min-width: 72rem;
+  min-width: 56rem;
   display: grid;
-  grid-template-columns: repeat(7, minmax(9rem, 1fr));
+  grid-template-columns: repeat(7, minmax(7rem, 1fr));
   border-top: 1px solid var(--surface-1);
   border-left: 1px solid var(--surface-1);
 }
 .program-calendar-day {
   min-width: 0;
-  min-height: 12rem;
-  padding: 0.7rem;
+  min-height: 6.5rem;
+  padding: 0.4rem;
   background: var(--mantle);
   border-right: 1px solid var(--surface-1);
   border-bottom: 1px solid var(--surface-1);
 }
+.program-calendar-drop-target {
+  background: color-mix(in srgb, var(--lavender) 18%, var(--mantle));
+  outline: 2px solid var(--lavender);
+  outline-offset: -2px;
+}
 .program-calendar-day > header {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: baseline;
-  gap: 0.15rem 0.5rem;
+  gap: 0.35rem;
 }
 .program-calendar-day > header span {
   color: var(--subtext-0);
@@ -2119,67 +2123,80 @@ h2 {
 }
 .program-calendar-day > header strong {
   color: var(--text);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-sm);
 }
 .program-calendar-day > header time {
-  grid-column: 1 / -1;
-  color: var(--overlay-1);
-  font-size: var(--font-size-xs);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 .program-calendar-rest {
-  margin: 2rem 0 0;
+  margin: 0.7rem 0 0;
   color: var(--overlay-1);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   text-align: center;
 }
 .program-calendar-day-sessions {
-  margin-top: 0.75rem;
+  margin-top: 0.35rem;
   display: grid;
-  gap: 0.55rem;
+  gap: 0.3rem;
 }
 .program-calendar-session {
-  padding: 0.65rem;
+  padding: 0.4rem;
   background: var(--base);
   border: 1px solid var(--surface-1);
-  border-left: 0.22rem solid currentColor;
-  border-radius: 0.55rem;
+  border-left: 0.2rem solid currentColor;
+  border-radius: 0.5rem;
 }
 .program-calendar-session h3 {
-  margin: 0 0 0.5rem;
+  margin: 0;
   color: var(--text);
-  font-size: var(--font-size-sm);
-  line-height: 1.35;
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
 }
-.program-calendar-state-label {
-  display: inline-flex;
-  padding: 0.2rem 0.4rem;
+.program-calendar-session h3 strong,
+.program-calendar-session h3 span {
+  display: block;
+}
+.program-calendar-session[draggable="true"] {
+  cursor: grab;
+}
+.program-calendar-session:focus-visible {
+  outline: 2px solid var(--lavender);
+}
+.program-calendar-session.program-calendar-state-completed {
+  border-color: var(--green);
+  color: var(--green);
+}
+.program-calendar-edit-date,
+.program-calendar-details summary {
+  color: var(--subtext-0);
+  font-size: var(--font-size-xs);
+}
+.program-calendar-edit-date {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.program-calendar-date-form {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+.program-calendar-date-form label {
+  display: grid;
+}
+.program-calendar-details {
+  margin-top: 0.25rem;
 }
 .program-calendar-date-note {
-  margin: 0.45rem 0 0;
+  margin: 0.35rem 0 0;
   color: var(--muted);
   font-size: var(--font-size-xs);
-}
-.program-calendar-action {
-  margin-top: 0.55rem;
-  display: grid;
-  gap: 0.4rem;
-}
-.program-calendar-action button,
-.program-calendar-action a {
-  min-height: 2.35rem;
-  padding: 0.48rem 0.6rem;
-  border: 1px solid var(--lavender);
-  border-radius: 0.45rem;
-  color: var(--text);
-  background: transparent;
-  cursor: pointer;
-  font-size: var(--font-size-xs);
-  text-align: center;
-  text-decoration: none;
-}
-.program-calendar-action button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 .program-calendar-undated {
   margin-top: 2rem;

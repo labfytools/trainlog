@@ -1,11 +1,11 @@
 # Roadmap
 
-The Program cascade is deployed in the private daily installation from
-`trainlog-program-recalage-v1` at `3a4ec34`. The observed PC/Web launcher points
-to the `f4ddcfd` package, which includes
-the verified blue Sleep sport overlay and the readable paginated treatment and
-remarks PDF. Synchronization services retain their Program rollout paths. No
-new personal Program rescheduling is implied by this presentation work.
+The Program rescheduling service is deployed in the private daily installation
+from `trainlog-program-recalage-v1` at `3a4ec34`. A later compact-calendar
+PC/Web package was built from that older source base and omitted the Web body
+figure and Sleep sport commits. The corrected 0.1.7 source combines the
+calendar with those later changes; replacement installation and verification
+on the daily launcher remain operational work.
 
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated
@@ -100,10 +100,18 @@ feature cycle rather than widening 0.1.7.
 
 ### Program rescheduling in the audited development line
 
+The Web month calendar performs an individual revisioned move by drag and drop
+or an accessible date action. It preserves every Program session, including
+FACULTATIVE sessions, and offers explicit restoration of legacy ceded rows.
+The earlier ordered cascade remains an API compatibility surface but is no
+longer offered by the calendar. Completed sessions remain fixed to factual
+execution dates. Coordinated deployment of the corrected PC/Web bundle and
+verification against the daily launcher are pending.
+
 Ordered Program rescheduling is implemented in the audited development line
-and deployed in the recorded private Program rollout. One explicit user action
-must select the starting session, restart date, affected successors, and usable
-slots; preview the old and new dates; then durably record one decision. Only
+and deployed in the recorded private Program rollout. The retained cascade API
+selects the starting session, restart date, affected successors, and usable
+slots; previews the old and new dates; then durably records one decision. Only
 unfinished sessions move, in Program position order. Explicitly ceded optional
 slots may absorb required sessions without marking optional sessions completed
 or removing historical identities. At most one principal Program session per

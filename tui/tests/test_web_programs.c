@@ -940,11 +940,115 @@ static bool ordered_reschedule_is_atomic_and_idempotent(void) {
     return true;
 }
 
+static bool calendar_move_preserves_other_sessions_and_restores_ceded(void) {
+    /* CONTRACT: an occupied target and a legacy ceded optional identity are
+     * independent Program sessions. The repeated command proves durable
+     * idempotence without changing the imported definitions. */
+    TrainlogDatabase *database = NULL;
+    char *preview = NULL;
+    char *applied = NULL;
+    char *replay = NULL;
+    char *request = NULL;
+    size_t size = 0U;
+    char fingerprint[80];
+    char revision[80] = "pgr_calendar";
+    static const char *const TARGETS[] = {"2026-10-04", "2026-10-03", "2026-10-10"};
+    static const char *const IDENTITIES[] = {"pgs_main", "pgs_main", "pgs_optional"};
+
+    CHECK(trainlog_database_open(":memory:", &database) == TRAINLOG_STATUS_OK);
+    CHECK(sqlite3_exec(database->connection,
+                       "INSERT INTO programs(program_id,title,state,start_date,end_date,"
+                       "created_at,updated_at,revision_id,source_format,source_version,"
+                       "source_payload_sha256) VALUES('pg_calendar','Fixture','active',"
+                       "'2026-10-01','2026-10-18','2026-10-01T00:00:00Z',"
+                       "'2026-10-01T00:00:00Z','pgr_calendar','trainlog-program',1,"
+                       "'0000000000000000000000000000000000000000000000000000000000000000');"
+                       "INSERT INTO program_sessions VALUES"
+                       "('pgs_main','pg_calendar',0,'S2 D','training','2026-10-01',NULL),"
+                       "('pgs_other','pg_calendar',1,'S2 E','training','2026-10-03',NULL),"
+                       "('pgs_optional','pg_calendar',2,'S2 F FACULTATIVE','training',"
+                       "'2026-10-10',NULL);"
+                       "INSERT INTO program_session_planning(program_session_id,current_for,"
+                       "state,operation_id,updated_at) VALUES"
+                       "('pgs_optional',NULL,'ceded','pr_old','2026-10-01T00:00:00Z')",
+                       NULL,
+                       NULL,
+                       NULL) == SQLITE_OK);
+    for (size_t index = 0U; index < 3U; ++index) {
+        char choice[512];
+        char operation_id[48];
+        (void)snprintf(operation_id, sizeof(operation_id), "pr_calendar_move_%zu", index);
+        (void)snprintf(choice,
+                       sizeof(choice),
+                       "{\"start_session_id\":\"%s\",\"through_session_id\":\"%s\","
+                       "\"start_date\":\"%s\",\"ceded_session_ids\":[],"
+                       "\"expected_revision\":\"%s\"}",
+                       IDENTITIES[index],
+                       IDENTITIES[index],
+                       TARGETS[index],
+                       revision);
+        CHECK(trainlog_web_programs_reschedule_json(
+                  database, "pg_calendar", NULL, choice, strlen(choice), false, &preview, &size) ==
+              TRAINLOG_STATUS_OK);
+        CHECK(extract_string(preview, "preview_sha256", fingerprint, sizeof(fingerprint)));
+        CHECK(strstr(preview, "\"change\":\"ceded\"") == NULL);
+        request = malloc(strlen(choice) + strlen(fingerprint) + 32U);
+        CHECK(request != NULL);
+        (void)snprintf(request,
+                       strlen(choice) + strlen(fingerprint) + 32U,
+                       "%.*s,\"preview_sha256\":\"%s\"}",
+                       (int)strlen(choice) - 1,
+                       choice,
+                       fingerprint);
+        CHECK(trainlog_web_programs_reschedule_json(database,
+                                                    "pg_calendar",
+                                                    operation_id,
+                                                    request,
+                                                    strlen(request),
+                                                    true,
+                                                    &applied,
+                                                    &size) == TRAINLOG_STATUS_OK);
+        CHECK(trainlog_web_programs_reschedule_json(database,
+                                                    "pg_calendar",
+                                                    operation_id,
+                                                    request,
+                                                    strlen(request),
+                                                    true,
+                                                    &replay,
+                                                    &size) == TRAINLOG_STATUS_OK);
+        CHECK(strcmp(applied, replay) == 0);
+        CHECK(extract_string(applied, "new_revision_id", revision, sizeof(revision)));
+        CHECK(scalar(database,
+                     "SELECT COUNT(*) FROM program_sessions WHERE "
+                     "program_id='pg_calendar'") == 3);
+        CHECK(scalar(database,
+                     "SELECT COUNT(*) FROM program_session_planning WHERE "
+                     "state='ceded'") == (index < 2U ? 1 : 0));
+        free(request);
+        free(preview);
+        free(applied);
+        free(replay);
+        request = NULL;
+        preview = NULL;
+        applied = NULL;
+        replay = NULL;
+    }
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_session_planning WHERE "
+                 "current_for='2026-10-03'") == 1);
+    CHECK(scalar(database,
+                 "SELECT COUNT(*) FROM program_sessions WHERE "
+                 "planned_for='2026-10-03'") == 1);
+    trainlog_database_close(database);
+    return true;
+}
+
 int main(void) {
     return import_archive_and_prepare() && strict_import_rejections() &&
                    mixed_profile_prepare_regression() &&
                    legacy_integer_weight_zero_prepares_editable_draft() &&
-                   ordered_reschedule_is_atomic_and_idempotent()
+                   ordered_reschedule_is_atomic_and_idempotent() &&
+                   calendar_move_preserves_other_sessions_and_restores_ceded()
                ? EXIT_SUCCESS
                : EXIT_FAILURE;
 }

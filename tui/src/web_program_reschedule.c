@@ -190,8 +190,7 @@ static TrainlogStatus build_preview(TrainlogDatabase *database,
     if (program == NULL || count > 64U ||
         !yyjson_equals_str(yyjson_obj_get(program, "state"), "active") ||
         !yyjson_equals_str(yyjson_obj_get(program, "revision_id"),
-                           yyjson_get_str(yyjson_obj_get(request, "expected_revision"))) ||
-        !yyjson_is_str(yyjson_obj_get(program, "end_date"))) {
+                           yyjson_get_str(yyjson_obj_get(request, "expected_revision")))) {
         status = planning_error(
             "stale_or_ineligible_program", TRAINLOG_STATUS_CONFLICT, output, output_size);
         goto done;
@@ -213,8 +212,9 @@ static TrainlogStatus build_preview(TrainlogDatabase *database,
         }
     }
     if (first >= count || last >= count || first > last ||
-        strcmp(yyjson_get_str(yyjson_obj_get(request, "start_date")),
-               yyjson_get_str(yyjson_obj_get(program, "end_date"))) > 0) {
+        (first != last && (!yyjson_is_str(yyjson_obj_get(program, "end_date")) ||
+                           strcmp(yyjson_get_str(yyjson_obj_get(request, "start_date")),
+                                  yyjson_get_str(yyjson_obj_get(program, "end_date"))) > 0))) {
         status = planning_error(
             "invalid_selection", TRAINLOG_STATUS_INVALID_ARGUMENT, output, output_size);
         goto done;
@@ -239,6 +239,20 @@ static TrainlogStatus build_preview(TrainlogDatabase *database,
                 "invalid_ceded_identity", TRAINLOG_STATUS_INVALID_ARGUMENT, output, output_size);
             goto done;
         }
+    }
+    /* WHY: calendar moves target one identity, including a formerly ceded
+     * identity. CONTRACT: its requested civil day is the new current date,
+     * even when another session already occupies that day. INVARIANT: no
+     * other planning row is included in the resulting mutation. */
+    if (first == last && yyjson_arr_size(ceded) == 0U) {
+        PlanningRow *row = &rows[first];
+        if (strcmp(row->execution, "todo") != 0 || has_preparation(database, row->id)) {
+            status = planning_error(
+                "prepared_or_executed_session", TRAINLOG_STATUS_CONFLICT, output, output_size);
+            goto done;
+        }
+        row->assigned = yyjson_get_str(yyjson_obj_get(request, "start_date"));
+        goto assigned;
     }
     for (size_t index = first; index <= last; ++index) {
         if (strcmp(rows[index].execution, "todo") != 0 ||
@@ -295,6 +309,7 @@ static TrainlogStatus build_preview(TrainlogDatabase *database,
         }
         rows[index].assigned = slots[next_slot++];
     }
+assigned:
     // CONTRACT: the choice digest includes stable identities in their supplied
     // order. The fact digest includes the complete current Program projection.
     {

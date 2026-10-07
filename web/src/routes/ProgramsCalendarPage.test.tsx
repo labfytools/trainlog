@@ -107,7 +107,7 @@ describe('ProgramsCalendarPage', () => {
     expect(screen.queryByRole('combobox', { name: 'Programme actif' })).not.toBeInTheDocument()
   })
 
-  it('keeps distinct cards on one date and labels a ceded slot separately', async () => {
+  it('keeps ceded definitions visible and offers explicit restoration', async () => {
     const main = session('pgs_main', 'Séance principale', '2026-09-18')
     const evening = session('pgs_evening', 'Étirements du soir', '2026-09-18')
     const ceded = { ...session('pgs_ceded', 'Séance écartée', '2026-09-19'),
@@ -120,38 +120,161 @@ describe('ProgramsCalendarPage', () => {
     expect(within(friday).getByText('Séance principale')).toBeInTheDocument()
     expect(within(friday).getByText('Étirements du soir')).toBeInTheDocument()
     const saturday = screen.getByLabelText('Sam 19/09/2026')
-    expect(within(saturday).getByText('Créneau cédé')).toBeInTheDocument()
-    expect(within(saturday).queryByRole('button', { name: 'Préparer' })).not.toBeInTheDocument()
+    expect(within(saturday).getByText('Séance écartée')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restaurer les séances écartées' })).toBeInTheDocument()
+    expect(screen.queryByText('Créneau cédé')).not.toBeInTheDocument()
   })
 
-  it('previews ordered changes before one confirmation', async () => {
-    const before = detail({ sessions: [
-      session('pgs_b', 'B', '2026-09-18'),
-      session('pgs_c', 'C', '2026-09-19'),
-    ] })
-    api.fetchProgram.mockResolvedValue(before)
+  it('moves one future session onto an occupied day without losing the other card', async () => {
+    const first = session('pgs_b', 'S2 D — Haut du corps', '2026-09-18')
+    const optional = session('pgs_f', 'S2 F — Technique (FACULTATIVE)', '2026-09-19')
+    optional.position = 1
+    api.fetchProgram.mockResolvedValueOnce(detail({ sessions: [first, optional] }))
+      .mockResolvedValue(detail({ sessions: [
+        { ...first, current_for: '2026-09-19' }, optional,
+      ], revision_id: 'pgr_next' }))
     api.previewProgramReschedule.mockResolvedValue({
       api_version: 1, program_id: 'pg_one', revision_id: 'pgr_one',
-      preview_sha256: 'f'.repeat(64), moves: [
-        { program_session_id: 'pgs_b', original_for: '2026-09-18',
-          old_for: '2026-09-18', new_for: '2026-09-19', change: 'rescheduled' },
-        { program_session_id: 'pgs_c', original_for: '2026-09-19',
-          old_for: '2026-09-19', new_for: null, change: 'ceded' },
-      ],
+      preview_sha256: 'f'.repeat(64), moves: [{ program_session_id: 'pgs_b',
+        original_for: '2026-09-18', old_for: '2026-09-18',
+        new_for: '2026-09-19', change: 'rescheduled' }],
     })
     api.applyProgramReschedule.mockResolvedValue({})
-    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
-    await screen.findByRole('heading', { level: 1, name: 'Cycle force' })
-    fireEvent.change(screen.getByLabelText('Première séance'), { target: { value: 'pgs_b' } })
-    fireEvent.change(screen.getByLabelText('Dernière séance'), { target: { value: 'pgs_c' } })
-    fireEvent.change(screen.getByLabelText('Date de reprise'), { target: { value: '2026-09-19' } })
-    fireEvent.click(screen.getByLabelText(/C \(2026-09-19\)/))
-    fireEvent.click(screen.getByRole('button', { name: 'Calculer l’aperçu' }))
-    expect(await screen.findByRole('heading', { name: 'Aperçu avant application' })).toBeInTheDocument()
-    expect(api.applyProgramReschedule).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer ce recalage' }))
+    const view = render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    const source = await screen.findByRole('article', { name: /S2 D/ })
+    expect(source).toHaveAttribute('draggable', 'true')
+    const dataTransfer = {
+      setData: vi.fn(), getData: vi.fn(() => 'pgs_b'), effectAllowed: '', dropEffect: '',
+    }
+    fireEvent.dragStart(source, { dataTransfer })
+    const target = screen.getByRole('region', { name: 'Sam 19/09/2026' })
+    fireEvent.dragOver(target, { dataTransfer })
+    expect(target).toHaveClass('program-calendar-drop-target')
+    fireEvent.drop(target, { dataTransfer })
     await waitFor(() => expect(api.applyProgramReschedule).toHaveBeenCalledTimes(1))
-    expect(api.applyProgramReschedule.mock.calls[0][2]).toBe('f'.repeat(64))
+    expect(api.previewProgramReschedule.mock.calls[0][1]).toMatchObject({
+      start_session_id: 'pgs_b', through_session_id: 'pgs_b',
+      start_date: '2026-09-19', ceded_session_ids: [],
+    })
+    await waitFor(() => expect(within(target).getAllByRole('article')).toHaveLength(2))
+    expect(within(target).getByText('Technique (FACULTATIVE)')).toBeInTheDocument()
+    expect(document.querySelector('.program-calendar-summary')).toHaveTextContent(
+      '0 / 2 séances effectuées',
+    )
+    view.unmount()
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    expect(within(await screen.findByRole('region', { name: 'Sam 19/09/2026' }))
+      .getAllByRole('article')).toHaveLength(2)
+  })
+
+  it('keeps a refused drop at its original date and explains a stale program revision', async () => {
+    api.previewProgramReschedule.mockRejectedValue(new Error('stale_or_ineligible_program'))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    const source = await screen.findByRole('article', { name: /Jambes/ })
+    const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => 'pgs_one'),
+      effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(source, { dataTransfer })
+    fireEvent.drop(screen.getByRole('region', { name: 'Jeu 17/09/2026' }), { dataTransfer })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Modification impossible : le programme a changé. Rechargez la page puis réessayez.',
+    )
+    expect(within(screen.getByRole('region', { name: 'Mer 16/09/2026' }))
+      .getByRole('article', { name: /Jambes/ })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Jeu 17/09/2026' }))
+      .queryByRole('article')).not.toBeInTheDocument()
+    expect(api.applyProgramReschedule).not.toHaveBeenCalled()
+  })
+
+  it('explains a refused ACK-gated apply without moving or exposing its error code', async () => {
+    api.previewProgramReschedule.mockResolvedValue({ preview_sha256: 'f'.repeat(64), moves: [] })
+    api.applyProgramReschedule.mockRejectedValue(new Error('program_peer_not_fresh'))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    const source = await screen.findByRole('article', { name: /Jambes/ })
+    const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => 'pgs_one'),
+      effectAllowed: '', dropEffect: '' }
+    fireEvent.dragStart(source, { dataTransfer })
+    fireEvent.drop(screen.getByRole('region', { name: 'Jeu 17/09/2026' }), { dataTransfer })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Modification impossible : synchronisez Trainlog avec le téléphone puis réessayez.',
+    )
+    expect(screen.queryByText('program_peer_not_fresh')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Mer 16/09/2026' }))
+      .getByRole('article', { name: /Jambes/ })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Jeu 17/09/2026' }))
+      .queryByRole('article')).not.toBeInTheDocument()
+    expect(api.fetchProgram).toHaveBeenCalledTimes(2)
+  })
+
+  it('moves an optional session by keyboard to an empty day and survives reload', async () => {
+    const optional = session('pgs_f', 'S2 F — Technique (FACULTATIVE)', '2026-09-19')
+    const before = detail({ sessions: [optional] })
+    const after = detail({ sessions: [{ ...optional, current_for: '2026-09-20' }],
+      revision_id: 'pgr_next' })
+    api.fetchProgram.mockResolvedValueOnce(before).mockResolvedValue(after)
+    api.previewProgramReschedule.mockResolvedValue({ preview_sha256: 'f'.repeat(64), moves: [] })
+    api.applyProgramReschedule.mockResolvedValue({})
+    const view = render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    const card = await screen.findByRole('article', { name: /S2 F/ })
+    expect(card).toHaveAttribute('draggable', 'true')
+    fireEvent.click(screen.getByRole('button', { name: /Modifier la date de S2 F/ }))
+    fireEvent.change(screen.getByLabelText('Nouvelle date pour S2 F'), {
+      target: { value: '2026-09-20' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(api.applyProgramReschedule).toHaveBeenCalledTimes(1))
+    expect(api.previewProgramReschedule.mock.calls[0][1]).toMatchObject({
+      start_session_id: 'pgs_f', through_session_id: 'pgs_f',
+      start_date: '2026-09-20', ceded_session_ids: [],
+    })
+    expect(within(await screen.findByRole('region', { name: 'Dim 20/09/2026' }))
+      .getByText('Technique (FACULTATIVE)')).toBeInTheDocument()
+    view.unmount()
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    expect(within(await screen.findByRole('region', { name: 'Dim 20/09/2026' }))
+      .getByText('Technique (FACULTATIVE)')).toBeInTheDocument()
+  })
+
+  it('rereads after an uncertain apply response before reporting the move as failed', async () => {
+    const first = session('pgs_a', 'S2 D — Machines', '2026-09-18')
+    api.fetchProgram.mockResolvedValueOnce(detail({ sessions: [first] }))
+      .mockResolvedValueOnce(detail({ sessions: [{ ...first, current_for: '2026-09-20' }],
+        revision_id: 'pgr_next' }))
+    api.previewProgramReschedule.mockResolvedValue({ preview_sha256: 'f'.repeat(64), moves: [] })
+    api.applyProgramReschedule.mockRejectedValue(new Error('réponse perdue'))
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Modifier la date de S2 D/ }))
+    fireEvent.change(screen.getByLabelText('Nouvelle date pour S2 D'), {
+      target: { value: '2026-09-20' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByText(/S2 D — Machines déplacée au 20\/09\/2026/))
+      .toBeInTheDocument()
+    expect(api.fetchProgram).toHaveBeenCalledTimes(2)
+  })
+
+  it('restores each ceded identity once using successive authoritative revisions', async () => {
+    const first = { ...session('pgs_f2', 'S2 F — Technique (FACULTATIVE)', '2026-09-19'),
+      planning_state: 'ceded' as const, current_for: null }
+    const second = { ...session('pgs_f3', 'S3 F — Technique (FACULTATIVE)', '2026-09-26'),
+      planning_state: 'ceded' as const, current_for: null, position: 1 }
+    api.fetchProgram.mockResolvedValueOnce(detail({ sessions: [first, second] }))
+      .mockResolvedValueOnce(detail({ sessions: [{ ...first, planning_state: 'active',
+        current_for: first.planned_for }, second], revision_id: 'pgr_second' }))
+      .mockResolvedValue(detail({ sessions: [{ ...first, planning_state: 'active',
+        current_for: first.planned_for }, { ...second, planning_state: 'active',
+        current_for: second.planned_for }], revision_id: 'pgr_third' }))
+    api.previewProgramReschedule.mockResolvedValue({ preview_sha256: 'f'.repeat(64), moves: [] })
+    api.applyProgramReschedule.mockResolvedValue({})
+    render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Restaurer les séances écartées' }))
+    await waitFor(() => expect(api.applyProgramReschedule).toHaveBeenCalledTimes(2))
+    expect(api.previewProgramReschedule.mock.calls.map((call) => call[1].expected_revision))
+      .toEqual(['pgr_one', 'pgr_second'])
+    expect(screen.queryByRole('button', { name: 'Restaurer les séances écartées' }))
+      .not.toBeInTheDocument()
+    expect(screen.getAllByRole('article', { name: /FACULTATIVE/ })).toHaveLength(2)
   })
 
   it('shows the exact empty state and navigates to Sessions program administration', async () => {
@@ -205,13 +328,13 @@ describe('ProgramsCalendarPage', () => {
     render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
 
     await screen.findByRole('heading', { level: 1, name: 'Cycle force' })
-    expect(screen.getByText('PROGRAMME ACTIF')).toBeInTheDocument()
-    expect(screen.getByText('16/09/2026 – 24/09/2026 · 1 séance')).toBeInTheDocument()
+    expect(screen.queryByText('PROGRAMME ACTIF')).not.toBeInTheDocument()
+    expect(screen.getByText('16/09/2026 – 24/09/2026 · 0 / 1 séances effectuées')).toBeInTheDocument()
     const calendar = screen.getByLabelText('Calendrier hebdomadaire du programme')
-    expect(within(calendar).getAllByRole('region')).toHaveLength(14)
-    expect(within(calendar).getByLabelText('Lun 14/09/2026')).toBeInTheDocument()
-    expect(within(calendar).getByLabelText('Dim 27/09/2026')).toBeInTheDocument()
-    expect(within(calendar).getAllByText('Repos')).toHaveLength(13)
+    expect(within(calendar).getAllByRole('region')).toHaveLength(35)
+    expect(within(calendar).getByLabelText('Lun 31/08/2026')).toBeInTheDocument()
+    expect(within(calendar).getByLabelText('Dim 04/10/2026')).toBeInTheDocument()
+    expect(within(calendar).getAllByText('—')).toHaveLength(34)
     expect(within(calendar).getAllByText('Jambes')).toHaveLength(1)
   })
 
@@ -245,8 +368,8 @@ describe('ProgramsCalendarPage', () => {
     const actualDay = await screen.findByLabelText('Mer 23/09/2026')
     expect(within(actualDay).getByText('Séance A')).toBeInTheDocument()
     expect(within(actualDay).getByText('Séance B')).toBeInTheDocument()
-    expect(within(actualDay).getByText('Prévue le 22/09/2026 · effectuée le 23/09/2026'))
-      .toBeInTheDocument()
+    expect(within(actualDay).getByRole('article', { name: /Séance A/ })).toHaveAttribute('draggable', 'false')
+    expect(within(actualDay).getByText('✓')).toBeInTheDocument()
     expect(within(screen.getByLabelText('Mar 22/09/2026')).queryByText('Séance A'))
       .not.toBeInTheDocument()
     expect(completed.planned_for).toBe('2026-09-22')
@@ -286,7 +409,8 @@ describe('ProgramsCalendarPage', () => {
 
     const plannedDay = await screen.findByLabelText('Mar 22/09/2026')
     expect(within(plannedDay).getByText('Séance préparée')).toBeInTheDocument()
-    expect(within(plannedDay).getByText('Préparée')).toBeInTheDocument()
+    expect(within(plannedDay).getByRole('article', { name: /Séance préparée/ }))
+      .toHaveClass('program-calendar-state-prepared')
     expect(within(screen.getByLabelText('Mer 23/09/2026')).queryByText('Séance préparée'))
       .not.toBeInTheDocument()
   })
@@ -299,7 +423,7 @@ describe('ProgramsCalendarPage', () => {
     render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
 
     const actualDate = formatDate(completed.execution_started_at, 'iso')
-    const actualDay = await screen.findByLabelText(new RegExp(formatCivilDate(actualDate, 'fr')))
+    const actualDay = await screen.findByRole('region', { name: new RegExp(formatCivilDate(actualDate, 'fr')) })
     expect(within(actualDay).getByText('Séance tardive')).toBeInTheDocument()
     expect(screen.getAllByText('Séance tardive')).toHaveLength(1)
     expect(within(screen.getByLabelText('Mer 16/09/2026')).queryByText('Séance tardive'))
@@ -325,7 +449,7 @@ describe('ProgramsCalendarPage', () => {
     if (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Paris') {
       expect(actualDate).toBe(parisDate)
     }
-    const actualDay = await screen.findByLabelText(new RegExp(formatCivilDate(actualDate, 'fr')))
+    const actualDay = await screen.findByRole('region', { name: new RegExp(formatCivilDate(actualDate, 'fr')) })
     expect(within(actualDay).getByText('Séance réelle')).toBeInTheDocument()
     expect(screen.getAllByText('Séance réelle')).toHaveLength(1)
   })
@@ -351,12 +475,10 @@ describe('ProgramsCalendarPage', () => {
       session(`pgs_${state}`, `Séance ${index}`, `2026-09-${String(16 + index).padStart(2, '0')}`, state)) }))
     render(<ProgramsCalendarPage onNavigate={vi.fn()} />)
 
-    const labels = ['À préparer', 'Préparée', 'En cours', 'Effectuée', 'Retirée']
     await screen.findByRole('heading', { level: 1, name: 'Cycle force' })
     states.forEach((state, index) => {
       const title = screen.getByText(`Séance ${index}`)
       expect(title.closest('article')).toHaveClass(`program-calendar-state-${state}`)
-      expect(within(title.closest('article') as HTMLElement).getByText(labels[index])).toBeInTheDocument()
     })
     expect(screen.getAllByRole('button', { name: 'Préparer' })).toHaveLength(1)
   })
@@ -379,7 +501,7 @@ describe('ProgramsCalendarPage', () => {
     command.resolve({ preparation_id: 'sp_created' })
     await waitFor(() => expect(screen.getByText('Préparation créée.')).toBeInTheDocument())
     expect(api.fetchProgram).toHaveBeenCalledTimes(2)
-    expect(screen.getAllByText('Préparée')).toHaveLength(2)
+    expect(screen.getByRole('article', { name: /Jambes, Préparée/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Préparer' })).not.toBeInTheDocument()
   })
 
@@ -450,7 +572,7 @@ describe('ProgramsCalendarPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Préparer' }))
     expect(await screen.findByText('Préparation impossible : conflit de révision')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Préparer' })).toBeEnabled()
-    expect(screen.getAllByText('À préparer')).toHaveLength(2)
+    expect(screen.getByRole('article', { name: /Jambes, À préparer/ })).toBeInTheDocument()
     expect(api.fetchProgram).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('link', { name: 'Ouvrir la préparation' })).not.toBeInTheDocument()
   })
@@ -463,6 +585,6 @@ describe('ProgramsCalendarPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Préparer' }))
     expect(await screen.findByText(/programme n’a pas pu être actualisé : réseau indisponible/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Préparer' })).toBeEnabled()
-    expect(screen.getAllByText('À préparer')).toHaveLength(2)
+    expect(screen.getByRole('article', { name: /Jambes, À préparer/ })).toBeInTheDocument()
   })
 })

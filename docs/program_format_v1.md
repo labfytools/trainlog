@@ -69,7 +69,7 @@ resurrected or prepared; an archived program cannot be prepared. The optional
 `trainlog-programs` V1 synchronization companion is a separate PC-to-Android
 projection and does not alter this import format.
 
-## Explicit ordered rescheduling in the audited development line
+## Program calendar planning in the audited development line
 
 The `trainlog-program-recalage-v1` line adds a separate planning
 state. `planned_for` remains the imported date. `current_for` is an absolute
@@ -78,8 +78,19 @@ future slot without completing or deleting its session identity. Completed
 cards still use the linked session's actual start timestamp. Positions from the
 imported Program determine the cascade order; titles never determine priority.
 
-The Web action selects a first and last unfinished session, a resumption date,
-and the exact session identities whose slots are ceded. Its available days are
+The compact Web month calendar moves one eligible unfinished session to a
+chosen civil date by drag and drop or an accessible date action. Other sessions
+retain their current dates, and several cards may occupy one day. Completed
+cards use factual execution dates and cannot move. FACULTATIVE is descriptive
+metadata and never authorizes automatic deletion. The calendar no longer offers
+the cascade or ceded-slot selection. Existing ceded rows remain readable and
+can be restored to their imported dates with the revisioned, idempotent
+planning command. The Programs V2 companion projects the resulting current
+dates through normal synchronization.
+
+The retained ordered-rescheduling API selects a first and last unfinished
+session, a resumption date, and the exact session identities whose slots are
+ceded. Its available days are
 the dated original Program slots in that interval on or after resumption.
 The preview lists original, prior current and proposed dates. It rejects a
 missing slot, a date beyond the Program end, a completed/in-progress/prepared

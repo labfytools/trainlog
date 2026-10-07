@@ -2,6 +2,15 @@
 
 ## Unreleased — 0.1.7
 
+- Recovered the Android-matched Web body figures and factual completed-sport
+  Sleep agenda/PDF overlay after the Program calendar package was built from
+  `3a4ec34`, before their commits `c2935b8` and `e2c07f1`. The development
+  branch now includes the later Sleep PDF, paging and Program analysis fixes.
+  Kept the compact month calendar, individual drag and drop and accessible
+  date action, green fixed completed cards, same-day sessions, and revisioned
+  restoration of legacy ceded optional sessions. No Android source, database
+  format, or synchronization protocol changed in this correction.
+
 - Reconciled the canonical documentation against the `f4ddcfd` development
   lineage: current source schemas v37/v34, implemented Web routes and Program
   rescheduling, observed package provenance, Sleep row paging, capability
