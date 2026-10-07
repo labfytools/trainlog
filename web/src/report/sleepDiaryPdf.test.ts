@@ -134,7 +134,7 @@ describe("sleep diary PDF", () => {
     expect(new TextDecoder().decode(bytes.slice(0, 8))).toBe("%PDF-1.4");
     expect(
       await textualContent(buildSleepDiaryPdf(snapshot(7), "fr")),
-    ).toContain("AGENDA TRAINLOG");
+    ).toContain("Trainlog — Agenda sommeil");
   });
 
   it("fully localizes the complete French document", async () => {
@@ -158,7 +158,7 @@ describe("sleep diary PDF", () => {
       "Demi-sommeil",
       "1 nuit",
       "Sommeil déclaré : 7 h 15 min",
-      "AVERTISSEMENT : 1 jour non validé dans cet export.",
+      "Trainlog — Agenda sommeil",
       "20/09/2026",
       "au 21/09/2026",
       "loxapine",
@@ -167,6 +167,7 @@ describe("sleep diary PDF", () => {
       "37,5 mg",
     ])
       expect(content).toContain(expected);
+    expect(content).not.toContain("non validé");
 
     for (const forbidden of [
       "SLEEP",
@@ -198,14 +199,46 @@ describe("sleep diary PDF", () => {
     ).not.toContain("AWAKE");
   });
 
-  it("uses correct French plurals for multiple draft days", async () => {
+  it("keeps the factual summary without a global validation warning", async () => {
     const content = await textualContent(buildSleepDiaryPdf(snapshot(2), "fr"));
     expect(content).toContain("2 nuits");
-    expect(content).toContain(
-      "AVERTISSEMENT : 2 jours non validés dans cet export.",
-    );
+    expect(content).not.toContain("non validé");
+    expect(content).not.toContain("validation");
     expect(content).not.toContain("jour(s)");
     expect(content).not.toContain("nuit(s)");
+  });
+
+  it("starts with the newest night even when input is oldest first", async () => {
+    const data = snapshot(3);
+    data.entries.reverse();
+    const source = await buildSleepDiaryPdf(data, "fr", [], undefined, undefined,
+      new Date("2026-10-07T12:00:00Z")).text();
+    const dates = ["20/09/2026", "19/09/2026", "18/09/2026"];
+    const positions = dates.map((date) => source.indexOf(`(${date})`));
+    expect(positions.every((position) => position > -1)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const content = await textualContent(buildSleepDiaryPdf(data, "fr", [],
+      undefined, undefined, new Date("2026-10-07T12:00:00Z")));
+    expect(content).toContain("Période : 18/09/2026 – 20/09/2026");
+    expect(content).toContain("Généré le 07/10/2026");
+  });
+
+  it("keeps timed content within one night chronological", async () => {
+    const data = snapshot(1);
+    data.entries[0].events.reverse();
+    data.entries[0].intakes = [
+      { ...data.entries[0].intakes[0], intake_id: "late", medication_name: "LateMed",
+        taken_at: timestamp("2026-09-21", "07:30") },
+      { ...data.entries[0].intakes[1], intake_id: "early", medication_name: "EarlyMed",
+        taken_at: timestamp("2026-09-20", "21:30") },
+    ];
+    const source = await buildSleepDiaryPdf(data, "fr").text();
+    const content = await textualContent(buildSleepDiaryPdf(data, "fr"));
+    expect(content.indexOf("EarlyMed")).toBeLessThan(content.indexOf("LateMed"));
+    expect(source.indexOf("0.75 g 183.58 509.00")).toBeLessThan(
+      source.indexOf("0.98 0.70 0.53 rg 255.25 509.00"));
+    expect(source.indexOf("0.98 0.70 0.53 rg 255.25 509.00")).toBeLessThan(
+      source.indexOf("0.75 g 268.69 509.00"));
   });
 
   it("prints structured medication quantity without replacing the unit dose", async () => {
@@ -220,12 +253,13 @@ describe("sleep diary PDF", () => {
     expect(content).toContain("WAKE QUALITY");
     expect(content).toContain("Long awakening");
     expect(content).toContain("Medication intake");
+    expect(content).not.toContain("unvalidated day");
     expect(content).not.toContain("QUALITÉ");
     expect(content).not.toContain("Long réveil");
   });
 
   it("paginates fourteen, twenty-one and thirty days", async () => {
-    for (const count of [14, 21, 30]) {
+    for (const count of [14, 21, 28, 30]) {
       const source = await buildSleepDiaryPdf(snapshot(count), "en").text();
       const pageCount = (source.match(/\/Type \/Page /g) ?? []).length;
       expect(pageCount).toBeGreaterThan(Math.ceil(count / 9));
@@ -280,8 +314,8 @@ describe("sleep diary PDF", () => {
     expect(content).toContain("Short note.");
   });
 
-  it("paginates 7, 14, 21 and 30 selected nights in FR and EN without empty pages", async () => {
-    for (const count of [7, 14, 21, 30]) {
+  it("paginates 7, 14, 21, 28 and 30 selected nights in FR and EN without empty pages", async () => {
+    for (const count of [7, 14, 21, 28, 30]) {
       for (const language of ["fr", "en"] as const) {
         const data = snapshot(count);
         const source = await buildSleepDiaryPdf(data, language).text();
@@ -310,6 +344,7 @@ describe("sleep diary PDF", () => {
     expect(content).toContain("Musculation");
     expect(content).toContain("05:00");
     expect(content).toContain("Étirements");
+    expect(content.indexOf("Étirements")).toBeLessThan(content.indexOf("Musculation"));
     expect(content).toContain("sommeil non renseigné");
     expect(content).toContain("1 nuit");
     expect((source.match(/\/Type \/Page /g) ?? []).length).toBe(2);

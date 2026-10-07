@@ -262,6 +262,13 @@ presentation-only and atomically drives the detail dates, editor content, and
 full-width heart-rate detail; it performs no database mutation. PDF preview
 and download instead share an explicit inclusive range over night start dates,
 initialized to the loaded history bounds and independent of detail selection.
+The vector PDF now presents selected nights newest first, while retaining
+chronological timed content within each night; its sport appendix is also
+newest first. A light header, period, generation date and pale alternating rows
+improve print hierarchy in color and grayscale. Agenda rows and PDF omit the
+publication/validation labels. The editor still exposes the exact-revision
+publication action and state required for synchronization; PDF selection and
+local editing do not depend on that state.
 The completed-sport overlay reads factual `sessions.started_at` and `ended_at`
 from desktop history through a read-only, paginated Web endpoint.
 Each row uses its one Sleep-owned 18:00 offset and 24 elapsed-hour window for

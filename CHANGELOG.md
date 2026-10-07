@@ -2,6 +2,14 @@
 
 ## Unreleased — 0.1.7
 
+- Present Sleep PDF nights and the completed-sport appendix newest first while
+  preserving chronological timed content within each night. Add a restrained
+  printable header, period and generation date, and pale row separation.
+  Remove unhelpful validation labels from agenda rows and PDF warnings; the
+  editor now names the exact-revision synchronization publication action and
+  retains its meaningful state. Sleep facts, schema, sport rules, Android and
+  synchronization behavior are unchanged.
+
 - Recovered the Android-matched Web body figures and factual completed-sport
   Sleep agenda/PDF overlay after the Program calendar package was built from
   `3a4ec34`, before their commits `c2935b8` and `e2c07f1`. The development

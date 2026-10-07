@@ -84,8 +84,14 @@ const pdfString = (value: string) =>
     return `\\${byte.toString(8).padStart(3, "0")}`;
   }).join("");
 
-const text = (x: number, y: number, size: number, value: string) =>
-  `0 g BT /F1 ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${pdfString(value)}) Tj ET\n`;
+const text = (x: number, y: number, size: number, value: string,
+  color = "0 g") =>
+  `${color} BT /F1 ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${pdfString(value)}) Tj ET\n`;
+
+// CONTRACT: restrained accents retain contrast when the report is printed in
+// grayscale; the blue sport mark remains outlined independently of color.
+const pdfAccent = "0.25 0.23 0.40 rg";
+const pdfMuted = "0.33 0.34 0.40 rg";
 
 // CONTRACT: all timeline marks, grid ticks, headers, and sport bands use these
 // same coordinates. The notes column gets over twice its former 84 pt width.
@@ -167,7 +173,11 @@ function noteLines(entry: SleepEntry, language: Language): NoteLine[] {
   const lines: NoteLine[] = [];
   if (entry.intakes.length) {
     lines.push({ value: language === "fr" ? "TRAITEMENTS" : "TREATMENTS" });
-    for (const intake of entry.intakes) {
+    // INVARIANT: a night is newest-first only as a whole. Its timed content
+    // remains chronological even if a caller supplied unsorted intake rows.
+    for (const intake of [...entry.intakes].sort((left, right) =>
+      Date.parse(left.taken_at) - Date.parse(right.taken_at) ||
+      left.intake_id.localeCompare(right.intake_id))) {
       const dose = intake.dose_value === null ? "" :
         ` — ${formatDose(intake.dose_value)}${intake.dose_unit ? ` ${intake.dose_unit}` : ""}`;
       const quantity = intake.quantity > 1 ? ` ×${intake.quantity}` : "";
@@ -218,6 +228,7 @@ function paginate(entries: readonly SleepEntry[], language: Language): RowFragme
 }
 
 const compactDate = (isoDate: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
   const [year, month, day] = isoDate.split("-");
   return `${day}/${month}/${year}`;
 };
@@ -247,14 +258,18 @@ function row(
   y: number,
   language: Language,
   sport: readonly SportSession[],
+  shaded: boolean,
 ) {
   const { entry, lines, first, height } = fragment;
   const projection = projectSleepTimeline(entry);
   const window = sleepRowWindow(entry);
   const timelineX = layout.timelineX;
   const width = layout.timelineWidth;
-  stream.push(`0.7 G ${layout.left} ${y - height} ${layout.right - layout.left} ${height} re S\n`);
-  stream.push(text(layout.dateX, y - 13, 5, compactDate(entry.night_start_date)));
+  if (shaded) stream.push(`q 0.975 0.974 0.985 rg ${layout.left} ${y - height} ` +
+    `${layout.right - layout.left} ${height} re f Q\n`);
+  stream.push(`0.75 G ${layout.left} ${y - height} ${layout.right - layout.left} ${height} re S\n`);
+  stream.push(`q 0.40 0.35 0.57 rg ${layout.left} ${y - height} 2 ${height} re f Q\n`);
+  stream.push(text(layout.dateX, y - 13, 6.5, compactDate(entry.night_start_date), pdfAccent));
   stream.push(
     text(
       layout.dateX,
@@ -332,8 +347,29 @@ function row(
   lines.forEach((line, index) => {
     const baseline = y - 12 - index * layout.noteLeading;
     if (line.separator) stream.push(`0.8 G ${layout.notesX + 3} ${(baseline + 5).toFixed(2)} m ${layout.notesRight - 3} ${(baseline + 5).toFixed(2)} l S 0 G\n`);
-    stream.push(text(layout.notesX + layout.notePadding, baseline, layout.noteFont, line.value));
+    const heading = line.value === "TRAITEMENTS" || line.value === "TREATMENTS" ||
+      line.value === "REMARQUES" || line.value === "NOTES";
+    stream.push(text(layout.notesX + layout.notePadding, baseline, layout.noteFont,
+      line.value, heading ? pdfAccent : "0 g"));
   });
+}
+
+function reportHeader(title: string, index: number, count: number,
+  language: Language, first: string, last: string, generatedAt: Date,
+  dividerY = 555): string[] {
+  const generationDate = new Intl.DateTimeFormat(language === "fr" ? "fr-FR" : "en-GB",
+    { year: "numeric", month: "2-digit", day: "2-digit" }).format(generatedAt);
+  return [
+    "0 G 0 g\n",
+    text(30, 575, 15, title, pdfAccent),
+    text(760, 575, 7, `${index + 1}/${count}`, pdfMuted),
+    text(30, 560, 7,
+      `${language === "fr" ? "Période" : "Period"} : ${compactDate(first)} – ${compactDate(last)}`,
+      pdfMuted),
+    text(700, 560, 6,
+      `${language === "fr" ? "Généré le" : "Generated"} ${generationDate}`, pdfMuted),
+    `0.55 0.51 0.69 RG 30 ${dividerY} m 812 ${dividerY} l S 0 G\n`,
+  ];
 }
 
 function summaryLine(snapshot: SleepSnapshot, language: Language) {
@@ -363,20 +399,13 @@ function page(
   count: number,
   language: Language,
   sport: readonly SportSession[],
+  first: string,
+  last: string,
+  generatedAt: Date,
 ) {
-  const stream = [
-    "0 G 0 g\n",
-    text(
-      30,
-      565,
-      14,
-      language === "fr"
-        ? "AGENDA TRAINLOG DE VIGILANCE ET DE SOMMEIL"
-        : "TRAINLOG SLEEP AND ALERTNESS DIARY",
-    ),
-    text(740, 565, 7, `${index + 1}/${count}`),
-    text(30, 548, 7, "DATE"),
-  ];
+  const stream = reportHeader(language === "fr" ? "Trainlog — Agenda sommeil" :
+    "Trainlog — Sleep diary", index, count, language, first, last, generatedAt, 540);
+  stream.push(text(30, 548, 7, "DATE", pdfAccent));
   for (let hour = 0; hour < 24; hour++)
     stream.push(
       text(layout.timelineX + (hour / 24) * layout.timelineWidth, 548, 4, String((18 + hour) % 24)),
@@ -397,29 +426,13 @@ function page(
     stream.push(text(layout.notesX, 552, 4, "TREATMENT / NOTES"));
   }
   let rowTop = layout.rowTop;
-  fragments.forEach((fragment) => {
-    row(stream, fragment, rowTop, language, sport);
+  fragments.forEach((fragment, fragmentIndex) => {
+    row(stream, fragment, rowTop, language, sport, fragmentIndex % 2 === 0);
     rowTop -= fragment.height;
   });
   const y = 120;
   stream.push(text(30, y, 9, "OBSERVATIONS"));
   stream.push(text(30, y - 14, 6, summaryLine(snapshot, language)));
-  const unvalidated = snapshot.entries.filter(
-    (entry) =>
-      entry.publication_status === "draft" ||
-      entry.publication_status === "modified",
-  ).length;
-  if (unvalidated > 0)
-    stream.push(
-      text(
-        30,
-        y - 24,
-        6,
-        language === "fr"
-          ? `AVERTISSEMENT : ${plural(unvalidated, "jour non validé", "jours non validés")} dans cet export.`
-          : `WARNING: ${plural(unvalidated, "unvalidated day", "unvalidated days")} in this export.`,
-      ),
-    );
   if (language === "fr") {
     stream.push(text(30, 38, 6, "Bleu : séance de sport effectuée (horaires enregistrés ; détails en fin de rapport)."));
     stream.push(
@@ -468,19 +481,17 @@ function sportPage(
   language: Language,
   first: string,
   last: string,
+  generatedAt: Date,
 ): string {
   const fr = language === "fr";
-  const stream = [
-    "0 G 0 g\n",
-    text(30, 565, 14, fr ? "SÉANCES DE SPORT EFFECTUÉES" : "COMPLETED SPORT SESSIONS"),
-    text(740, 565, 7, `${index + 1}/${count}`),
-    text(30, 547, 7, `${fr ? "Période des lignes" : "Row period"} : ${first} 18:00 - ${last} 18:00`),
-    text(30, 532, 7, fr
+  const stream = reportHeader(fr ? "Trainlog — Séances de sport" :
+    "Trainlog — Sport sessions", index, count, language, first, last, generatedAt);
+  stream.push(text(30, 539, 8, fr ? "SÉANCES EFFECTUÉES" : "COMPLETED SESSIONS", pdfAccent));
+  stream.push(text(30, 526, 7, fr
       ? "Horaires enregistrés ; la durée est celle de la séance. Aucun lien médical déduit."
-      : "Recorded times and session duration. No medical conclusion is inferred."),
-  ];
+      : "Recorded times and session duration. No medical conclusion is inferred."));
   sessions.forEach((session, rowIndex) => {
-    const y = 510 - rowIndex * 16;
+    const y = 505 - rowIndex * 16;
     const start = Date.parse(session.started_at);
     const end = session.ended_at === null ? NaN : Date.parse(session.ended_at);
     const validEnd = Number.isFinite(start) && Number.isFinite(end) && end > start;
@@ -506,23 +517,34 @@ export function buildSleepDiaryPdf(
   snapshot: SleepSnapshot,
   language: Language,
   sport: readonly SportSession[] = [],
-  reportStart = snapshot.entries[0]?.night_start_date ?? "—",
-  reportEnd = snapshot.entries[snapshot.entries.length - 1]?.night_start_date ?? "—",
+  reportStart?: string,
+  reportEnd?: string,
+  generatedAt = new Date(),
 ): Blob {
-  const groups = paginate(snapshot.entries, language);
-  const sportGroups = Array.from({ length: Math.ceil(sport.length / 28) },
-    (_, index) => sport.slice(index * 28, (index + 1) * 28));
-  const reportEndTime = Date.parse(`${reportEnd}T12:00:00Z`);
+  // CONTRACT: reverse only day/appendix presentation order. Timed details in
+  // each night continue to use the shared chronological projection.
+  const orderedEntries = [...snapshot.entries].sort((left, right) =>
+    right.night_start_date.localeCompare(left.night_start_date) ||
+    left.entry_id.localeCompare(right.entry_id));
+  const orderedSport = [...sport].sort((left, right) =>
+    Date.parse(right.started_at) - Date.parse(left.started_at) ||
+    left.identity.localeCompare(right.identity));
+  const first = reportStart ?? orderedEntries[orderedEntries.length - 1]?.night_start_date ?? "—";
+  const last = reportEnd ?? orderedEntries[0]?.night_start_date ?? "—";
+  const groups = paginate(orderedEntries, language);
+  const sportGroups = Array.from({ length: Math.ceil(orderedSport.length / 28) },
+    (_, index) => orderedSport.slice(index * 28, (index + 1) * 28));
+  const reportEndTime = Date.parse(`${last}T12:00:00Z`);
   const reportEndExclusive = Number.isFinite(reportEndTime)
     ? new Date(reportEndTime + 86400000).toISOString().slice(0, 10)
-    : reportEnd;
+    : last;
   const contents = [
     ...groups.map((entries, index) => page(snapshot, entries, index,
-      groups.length + sportGroups.length, language, sport)),
-    ...sportGroups.map((sessions, index) => sportPage(sessions, snapshot.entries,
+      groups.length + sportGroups.length, language, orderedSport, first, last, generatedAt)),
+    ...sportGroups.map((sessions, index) => sportPage(sessions, orderedEntries,
       groups.length + index, groups.length + sportGroups.length, language,
-      reportStart,
-      snapshot.entries[snapshot.entries.length - 1]?.night_end_date ?? reportEndExclusive)),
+      first,
+      orderedEntries[0]?.night_end_date ?? reportEndExclusive, generatedAt)),
   ];
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

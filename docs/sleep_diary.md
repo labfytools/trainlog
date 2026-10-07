@@ -1,7 +1,7 @@
 # Sleep Diary: capture, review and PDF
 
-This guide describes the Web and Android behavior in the audited `f4ddcfd`
-0.1.7 development source. The [current state](current_state.md) owns rollout
+This guide describes the Web and Android behavior in the 0.1.7 development
+source. The [current state](current_state.md) owns rollout
 and validation status; [synchronization exchange](sync_exchange.md) owns the
 versioned Sleep companion. Sleep facts and medication intakes are not a medical
 interpretation or an automatic training decision.
@@ -37,6 +37,15 @@ their own period control. Select a night to inspect and edit that entry and
 its measured heart-rate timeline. Paging does not discard the selected night,
 editor state, loaded statistics or PDF range.
 
+Saving a Web entry creates a durable local revision. The editor's **Allow
+synchronization** action publishes that exact revision; only a current
+published revision is eligible for the Sleep synchronization companion. A
+subsequent edit needs a new publication action. The editor shows local draft,
+ready, synchronized or modified state so this choice remains explicit. Agenda
+rows and the PDF do not display publication status because it does not describe
+the recorded sleep or affect PDF inclusion. The publication API and durable
+state are unchanged.
+
 Blue sport bands come from completed session start/end history, not the
 Program plan. A missing or invalid end is shown as a point marker with no
 invented duration. The Web agenda omits the redundant sport text list; the PDF
@@ -55,6 +64,14 @@ factual sport intervals in blue, and lists sessions even when there is no
 matching Sleep row. Treatments and remarks wrap by available width and continue
 on dated pages instead of truncating silently. Review the chosen range before
 export; a PDF is a local copy of potentially sensitive information.
+
+The PDF prints the newest selected night first and orders its sport appendix by
+actual session start, newest first. Events and medication intakes within each
+night keep their chronological order. A light, printable header shows the
+selected period and generation date; alternating pale rows and a restrained
+accent distinguish nights. Publication status and global validation warnings
+are omitted from the report. This presentation does not alter Sleep facts,
+timing, sport attribution, synchronization or the database schema.
 
 The descriptive heart-rate rise/fall overlays compare measured BPM with a
 recent reference. They do not infer sleep stages, causes, readiness or medical

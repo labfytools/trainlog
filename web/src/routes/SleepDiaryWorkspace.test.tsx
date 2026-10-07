@@ -1061,9 +1061,9 @@ describe("SleepDiaryWorkspace", () => {
       await screen.findByTestId("sleep-agenda-event-bed_time"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("sleep-publication-status")).toHaveTextContent(
-      "Journée validée",
+      "Prête à synchroniser",
     );
-    expect(screen.queryByText("Prête à synchroniser")).toBeNull();
+    expect(screen.queryByText("Journée validée")).toBeNull();
     expect(
       screen.getByLabelText("Traitement et remarques particulières"),
     ).toHaveValue("Observation du jour A");
@@ -1104,7 +1104,7 @@ describe("SleepDiaryWorkspace", () => {
       screen.getByLabelText("Traitement et remarques particulières"),
     ).toHaveValue("Observation du jour A");
     expect(screen.getByTestId("sleep-publication-status")).toHaveTextContent(
-      "Journée validée",
+      "Prête à synchroniser",
     );
   });
 
@@ -1137,7 +1137,7 @@ describe("SleepDiaryWorkspace", () => {
     ).toBeInTheDocument();
   });
 
-  it("presents validation as a local completion state without transport wording", async () => {
+  it("keeps the publication action while removing validation labels from agenda rows", async () => {
     let current: SleepEntry = {
       ...dayAEntry(),
       publication_status: "draft",
@@ -1159,15 +1159,18 @@ describe("SleepDiaryWorkspace", () => {
     render(<SleepDiaryWorkspace period="30d" language="fr" />);
     expect(
       await screen.findByTestId("sleep-publication-status"),
-    ).toHaveTextContent("Brouillon");
+    ).toHaveTextContent("Brouillon local");
+    expect(screen.getByTestId(`sleep-agenda-row-${current.entry_id}`)).not.toHaveTextContent("Brouillon");
 
     fireEvent.click(screen.getByTestId("sleep-validate-day"));
     await waitFor(() =>
       expect(screen.getByTestId("sleep-publication-status")).toHaveTextContent(
-        "Journée validée",
+        "Prête à synchroniser",
       ),
     );
-    expect(screen.queryByText("Prête à synchroniser")).toBeNull();
+    expect(api.validateSleepEntry).toHaveBeenCalled();
+    expect(screen.getByTestId(`sleep-agenda-row-${current.entry_id}`)).not.toHaveTextContent("synchroniser");
+    expect(screen.queryByText("Journée validée")).toBeNull();
     expect(screen.getByTestId("sleep-save-state")).toHaveTextContent(
       "Enregistré localement",
     );

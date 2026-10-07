@@ -118,7 +118,7 @@ const copy = {
     end: "Fin",
     dose: "Dosage",
     modify: "Modifier",
-    validate: "Valider la journée",
+    validate: "Autoriser la synchronisation",
     continue: "Continuer",
     saved: "Enregistré localement",
     saving: "Enregistrement…",
@@ -132,10 +132,10 @@ const copy = {
     medicationEmpty: "Aucun médicament enregistré.",
     notesPlaceholder: "Notes utiles pour cette nuit…",
     statuses: {
-      draft: "Brouillon",
-      ready: "Journée validée",
-      synchronized: "Journée validée",
-      modified: "Modifiée",
+      draft: "Brouillon local",
+      ready: "Prête à synchroniser",
+      synchronized: "Synchronisée",
+      modified: "Modifiée depuis la synchronisation",
     },
     qualities: ["Très bon", "Bon", "Moyen", "Mauvais", "Très mauvais"],
   },
@@ -201,13 +201,13 @@ const copy = {
     deleteEntry: "Delete entry",
     medicationEmpty: "No saved medications.",
     notesPlaceholder: "Useful notes about this night…",
-    validate: "Validate day",
+    validate: "Allow synchronization",
     continue: "Continue",
     statuses: {
-      draft: "Draft",
-      ready: "Day validated",
-      synchronized: "Day validated",
-      modified: "Modified",
+      draft: "Local draft",
+      ready: "Ready to sync",
+      synchronized: "Synchronized",
+      modified: "Modified since synchronization",
     },
     qualities: ["Very good", "Good", "Average", "Bad", "Very bad"],
   },
@@ -774,8 +774,9 @@ export function SleepDiaryWorkspace({
     agendaEntries.find((entry) => entry.entry_id === selectedEntryId) ??
     activeEntry ??
     agendaEntries[agendaEntries.length - 1];
-  // INVARIANT: presentation sorting and slicing never mutate or narrow the
-  // ascending, deduplicated collection used by PDF and sport projections.
+  // INVARIANT: agenda sorting and slicing never mutate or narrow the
+  // deduplicated collection used by PDF and sport projections. The PDF owns
+  // its own newest-first presentation order.
   const recentEntries = [...agendaEntries].sort((left, right) =>
     right.night_start_date.localeCompare(left.night_start_date) ||
     left.entry_id.localeCompare(right.entry_id));
@@ -1005,7 +1006,7 @@ export function SleepDiaryWorkspace({
                     <strong>
                       {t.night} {displayDate(entry.night_start_date, language)}
                       <small>
-                        {t.statuses[entry.publication_status]} · {t.continue}
+                        {t.continue}
                       </small>
                     </strong>
                     <span className="sleep-track">
@@ -1618,6 +1619,8 @@ export function SleepDiaryWorkspace({
             disabled={pending}
             onClick={() => void validate()}
           >
+            {/* CONTRACT: this action publishes the exact saved revision for
+                synchronization; its durable publication state stays intact. */}
             {t.validate}
           </button>
           {draft.expected_revision && (
