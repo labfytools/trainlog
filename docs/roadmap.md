@@ -3,9 +3,10 @@
 The Program rescheduling service is deployed in the private daily installation
 from `trainlog-program-recalage-v1` at `3a4ec34`. A later compact-calendar
 PC/Web package was built from that older source base and omitted the Web body
-figure and Sleep sport commits. The corrected 0.1.7 source combines the
-calendar with those later changes; replacement installation and verification
-on the daily launcher remain operational work.
+figure and Sleep sport commits. The corrected 0.1.7 package from `700dfc0`
+combines the calendar with those later changes and is installed on the daily
+Web launcher. Firefox and a downloaded PDF verified the served result on
+2026-10-07; synchronization agents retain their separate Program rollout.
 
 The controlled private rollout is complete for the paired daily installation:
 physical libmtp, verified backups, signing continuity, migrations, correlated
@@ -105,8 +106,8 @@ or an accessible date action. It preserves every Program session, including
 FACULTATIVE sessions, and offers explicit restoration of legacy ceded rows.
 The earlier ordered cascade remains an API compatibility surface but is no
 longer offered by the calendar. Completed sessions remain fixed to factual
-execution dates. Coordinated deployment of the corrected PC/Web bundle and
-verification against the daily launcher are pending.
+execution dates. The corrected PC/Web bundle is served by the daily launcher;
+its calendar, body figures and Sleep sport PDF were checked in Firefox.
 
 Ordered Program rescheduling is implemented in the audited development line
 and deployed in the recorded private Program rollout. The retained cascade API

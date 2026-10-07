@@ -9,7 +9,9 @@
   Kept the compact month calendar, individual drag and drop and accessible
   date action, green fixed completed cards, same-day sessions, and revisioned
   restoration of legacy ceded optional sessions. No Android source, database
-  format, or synchronization protocol changed in this correction.
+  format, or synchronization protocol changed in this correction. The private
+  daily Web launcher now serves package `700dfc0`; Firefox and a downloaded
+  PDF verified its factual session overlay.
 
 - Reconciled the canonical documentation against the `f4ddcfd` development
   lineage: current source schemas v37/v34, implemented Web routes and Program

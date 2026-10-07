@@ -12,10 +12,10 @@ The private daily Program rollout uses desktop schema v37, Android schema v34,
 and the capability-selected `trainlog-programs` V2 projection. The later
 `program-calendar-dnd-drop-failure-v1-final` PC/Web package declared source
 commit `3a4ec34` and carried the uncommitted calendar UI, but omitted the
-subsequent body-figure and Sleep sport commits. The 0.1.7 correction was
-validated in Firefox against a temporary snapshot of the real desktop data;
-it does not by itself prove a replacement daily package has been installed.
-The corrected Web uses Android Compose Canvas head, neck, and 22 body
+subsequent body-figure and Sleep sport commits. The corrected package from
+`700dfc0` is installed as the daily Web launcher; the live service executable,
+health endpoint and Firefox views were checked on 2026-10-07. The corrected
+Web uses Android Compose Canvas head, neck, and 22 body
 paths on Dashboard muscle distribution, Analysis overview, and Analysis body
 distribution. Firefox captures of all three served views show complete figures
 at the intended aspect ratio, with the existing color scale, legend, and focus
@@ -34,8 +34,9 @@ PDF inspection also confirmed black-outlined blue sport bands. A separate
 synthetic set of 7, 14, 21, and 30 nights in French and English, plus long
 continuations, was rendered page by page and checked in grayscale. Rollout
 packaging requires a Meson `-Dweb=enabled` build with embedded frontend tests.
-The corrected local build was checked in Firefox with a snapshot of the
-existing real data: the latest seven Sleep rows showed six blue sport marks,
+The corrected build was checked in Firefox first with a snapshot and then
+against the live daily Web service without mutating user data. The latest seven
+Sleep rows showed six blue sport marks,
 including the completed 2026-10-07 session at 06:59–08:02. The downloaded
 five-page PDF listed that same session and its 1 h 03 min duration on its
 sport appendix. The October Program calendar showed 35 day cells, seven
