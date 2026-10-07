@@ -271,7 +271,7 @@ publication/validation labels. The editor still exposes the exact-revision
 publication action and state required for synchronization; PDF selection and
 local editing do not depend on that state.
 The private daily Web launcher now serves the 0.1.7 PDF polish package from
-`3dcb7f6`. Read-only Firefox inspection of the served application on
+`e454c86`. Read-only Firefox inspection of the served application on
 2026-10-07 downloaded a five-page report from existing data: its first night
 was 2026-10-06, all 17 nights and 98 medication intakes remained present, and
 the completed 2026-10-07 sport session retained its factual times and duration.
