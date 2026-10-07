@@ -409,9 +409,10 @@ subset summaries cannot inherit facts from unselected nights. The same real
 Firefox scenario exports a seven-night French PDF from the embedded production
 bundle, extracts its text with `pdftotext` and rasterizes its A4 landscape page
 with `pdftoppm` for retained visual inspection.
-The 0.1.7 PDF polish tests also assert newest-first night and sport appendix
-order, unchanged chronological intervals and medication intakes within a night,
-7/14/21/28-night pagination, and absence of global validation warnings. Web
+The 0.1.7 PDF polish tests also assert newest-first night and sport day order,
+chronological sessions within each day, unchanged chronological intervals and
+medication intakes within a night, 7/14/21/28-night pagination, and absence of
+global validation warnings. Web
 tests keep the exact-revision publication action and editing while excluding
 publication labels from agenda rows.
 

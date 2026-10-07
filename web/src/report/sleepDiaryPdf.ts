@@ -527,7 +527,8 @@ export function buildSleepDiaryPdf(
     right.night_start_date.localeCompare(left.night_start_date) ||
     left.entry_id.localeCompare(right.entry_id));
   const orderedSport = [...sport].sort((left, right) =>
-    Date.parse(right.started_at) - Date.parse(left.started_at) ||
+    right.started_at.slice(0, 10).localeCompare(left.started_at.slice(0, 10)) ||
+    Date.parse(left.started_at) - Date.parse(right.started_at) ||
     left.identity.localeCompare(right.identity));
   const first = reportStart ?? orderedEntries[orderedEntries.length - 1]?.night_start_date ?? "—";
   const last = reportEnd ?? orderedEntries[0]?.night_start_date ?? "—";

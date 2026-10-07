@@ -2,8 +2,9 @@
 
 ## Unreleased — 0.1.7
 
-- Present Sleep PDF nights and the completed-sport appendix newest first while
-  preserving chronological timed content within each night. Add a restrained
+- Present Sleep PDF nights and completed-sport days newest first while
+  preserving chronological timed content within each night and sport day.
+  Add a restrained
   printable header, period and generation date, and pale row separation.
   Remove unhelpful validation labels from agenda rows and PDF warnings; the
   editor now names the exact-revision synchronization publication action and

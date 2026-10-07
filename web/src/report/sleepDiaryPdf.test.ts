@@ -332,6 +332,8 @@ describe("sleep diary PDF", () => {
 
   it("prints factual sport bands and a separate legible listing without changing sleep totals", async () => {
     const sessions = [
+      { identity: "se_previous", session_type: "training", label: "Yoga",
+        started_at: "2026-09-20T19:00:00+02:00", ended_at: "2026-09-20T19:30:00+02:00" },
       { identity: "se_morning", session_type: "training", label: "Musculation",
         started_at: "2026-09-21T05:00:00+02:00", ended_at: "2026-09-21T06:00:00+02:00" },
       { identity: "se_evening", session_type: "training", label: "Étirements",
@@ -344,7 +346,8 @@ describe("sleep diary PDF", () => {
     expect(content).toContain("Musculation");
     expect(content).toContain("05:00");
     expect(content).toContain("Étirements");
-    expect(content.indexOf("Étirements")).toBeLessThan(content.indexOf("Musculation"));
+    expect(content.indexOf("Musculation")).toBeLessThan(content.indexOf("Étirements"));
+    expect(content.indexOf("Étirements")).toBeLessThan(content.indexOf("Yoga"));
     expect(content).toContain("sommeil non renseigné");
     expect(content).toContain("1 nuit");
     expect((source.match(/\/Type \/Page /g) ?? []).length).toBe(2);

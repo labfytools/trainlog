@@ -66,8 +66,9 @@ on dated pages instead of truncating silently. Review the chosen range before
 export; a PDF is a local copy of potentially sensitive information.
 
 The PDF prints the newest selected night first and orders its sport appendix by
-actual session start, newest first. Events and medication intakes within each
-night keep their chronological order. A light, printable header shows the
+actual session day, newest first, with sessions chronological within each day.
+Events and medication intakes within each night keep their chronological order.
+A light, printable header shows the
 selected period and generation date; alternating pale rows and a restrained
 accent distinguish nights. Publication status and global validation warnings
 are omitted from the report. This presentation does not alter Sleep facts,

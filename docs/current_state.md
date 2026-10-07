@@ -263,8 +263,9 @@ full-width heart-rate detail; it performs no database mutation. PDF preview
 and download instead share an explicit inclusive range over night start dates,
 initialized to the loaded history bounds and independent of detail selection.
 The vector PDF now presents selected nights newest first, while retaining
-chronological timed content within each night; its sport appendix is also
-newest first. A light header, period, generation date and pale alternating rows
+chronological timed content within each night; its sport appendix shows newest
+days first and chronological sessions within each day. A light header, period,
+generation date and pale alternating rows
 improve print hierarchy in color and grayscale. Agenda rows and PDF omit the
 publication/validation labels. The editor still exposes the exact-revision
 publication action and state required for synchronization; PDF selection and
