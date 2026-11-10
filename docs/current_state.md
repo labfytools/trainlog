@@ -1,5 +1,27 @@
 # Current implementation state
 
+## Generation capacity recovery
+
+Desktop full-generation admission now excludes retained pending branches only
+when an exact durable consumed ACK proves a distinct sibling for the same
+producer, consumer and parent. The limit remains 16. The worker replays the
+unique unresolved immutable generation across conversation runs and accepts
+its original-run ACK; it rejects ambiguous unresolved branches. This changes
+no database schema, domain artifact, Android data or frozen V1 format.
+
+The 2026-11-10 incident was reproduced on a consistent private database copy:
+13 of 14 pending generations had this sibling proof; the remaining generation
+was recoverable by exact replay. All 14 immutable generations verified, and a
+complete current capture succeeded on the copy without changing business
+values. See the [recovery record](reviews/sync_generation_capacity_recovery_v1.md)
+for deployment, controlled-run evidence and validation limits. The isolated
+helper package is active for the Web and sync services. Historical replay,
+current-state exchange and a distinct idempotence run completed with authentic
+ACKs. Android returned all 46 exercises, 31 sessions and 7 body observations,
+including the two newly added cable exercises. The 13 superseded historical
+branches remain preserved; the active window is three with no unresolved retry.
+The mission is PASS; the review records the unrelated baseline TUI-test failure.
+
 ## Audited development line and private installation
 
 This 0.1.7 correction joins the audited `f4ddcfd` development lineage,

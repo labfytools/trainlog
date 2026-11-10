@@ -1010,7 +1010,8 @@ transaction while calling the existing domain exporters. Both validate domain
 and outer limits before recording a captured generation. Publication copies
 verified immutable bytes into `generations/<generation_id>/`, resumes only
 byte-identical partial publication, and writes `manifest.json` last. Capacity
-admits at most eight active outgoing generations per consumer. Acknowledged
+admits at most sixteen desktop and eight Android active outgoing generations
+per consumer. Acknowledged
 generations older than the two newest lineage members leave active admission
 only after their exact consumed ACK, manifest, artifact sizes and digests have
 been reconciled and a complete atomic archive copy has been verified and
@@ -1020,12 +1021,19 @@ active. Archive directories are outside bounded MTP polling and are never
 uploaded recursively. Failure or interruption leaves admission closed rather
 than fabricating an ACK or discarding evidence.
 
-An unacknowledged generation whose parent also has a distinct, ledger-backed
-acknowledged child is a retained superseded branch: it stays available for
+An unacknowledged generation whose parent (including the null root) also has a
+distinct acknowledged child for the same producer and consumer, with an exact
+consumed `sqlite-commit-full` ACK matching its original run, peers and manifest
+digest, is a retained superseded branch: it stays available for
 audit and is never deleted or assigned a fabricated ACK, but it no longer
 consumes active admission because it cannot become the causal tip. After a
-transport reset, the next run republishes the newest unsuperseded immutable
-generation for that peer before attempting a new capture. The mutable
+transport reset, the next run republishes the unique unsuperseded immutable
+generation for that peer before attempting a new capture. Multiple unresolved
+branches fail closed; a timestamp never selects a winner. Desktop admission and
+retry selection share this same proof predicate, including archived siblings.
+All pending rows, payloads and publication memberships remain retained and
+can still receive their own authentic late ACK. No sibling ACK acknowledges
+the superseded generation or its domain publication state. The mutable
 generation reference uses the new conversation run; generation ID, manifest,
 artifact bytes and eventual ACK correlation remain unchanged. Because the
 immutable manifest and its durable ACK retain the original run identity, a

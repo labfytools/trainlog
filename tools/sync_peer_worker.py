@@ -825,15 +825,21 @@ def main() -> int:
         inbound_generation_id=ack["generation_id"],
         manifest_sha256=ack["manifest_sha256"],
     )
-    outgoing_id = "gen_" + str(uuid.uuid4())
-    # Export codecs retain human diagnostics on stdout when invoked as CLIs.
-    # The worker stdout contract is typed NDJSON only, so route those bounded
-    # diagnostics to the separately bounded stderr channel.
-    with redirect_stdout(sys.stderr):
-        stage, manifest, digest = generation.capture_desktop(
-            args.database, args.owned_root, peer["peer_id"], args.run_id, outgoing_id,
-            set(peer["capabilities"]), True,
-        )
+    # WHY: interrupted publication must resume its immutable generation rather
+    # than allocate another slot. The reference belongs to this conversation;
+    # the manifest and ACK retain their original run correlation.
+    recovered = generation.resumable_desktop(args.database, peer["peer_id"])
+    if recovered is None:
+        outgoing_id = "gen_" + str(uuid.uuid4())
+        # Exporter diagnostics must not corrupt the typed NDJSON stdout stream.
+        with redirect_stdout(sys.stderr):
+            stage, manifest, digest = generation.capture_desktop(
+                args.database, args.owned_root, peer["peer_id"], args.run_id, outgoing_id,
+                set(peer["capabilities"]), True,
+            )
+    else:
+        stage, manifest, digest = recovered
+        outgoing_id = manifest["generation_id"]
     program_domain_incompatible = not any(
         artifact["logical_name"] in ("programs-v1", "programs-v2")
         for artifact in manifest["artifacts"]
@@ -904,8 +910,9 @@ def main() -> int:
     android_ack_value = wait_json(
         android_ack,
         deadline,
-        lambda value: value.get("run_id") == args.run_id
-        and value.get("generation_id") == outgoing_id,
+        lambda value: value.get("run_id") == manifest["run_id"]
+        and value.get("generation_id") == outgoing_id
+        and value.get("manifest_sha256") == digest,
         pump,
     )
     result = generation.accept_ack(args.database, android_ack)

@@ -2132,3 +2132,20 @@ and the complete Web inventory **191/191** with typecheck and production build.
 JSON validators, changed-file formatting, and `git diff --check` also pass.
 This is software evidence only: it records no device rollout and authorizes no
 stable release.
+
+## Generation capacity recovery regressions
+
+`tests/test_sync_generation_exchange.py` covers the unchanged desktop limit
+(15 pending generations admit one more; 16 reject), the incident-shaped 14
+pending branches with and without exact acknowledged-sibling evidence, wrong
+peer/run/digest/result/durability evidence, null-parent branches, interrupted
+publication and restart, byte-identical retry, authentic late ACK replay,
+ambiguous unresolved branches, committed inbound facts surviving outgoing
+capacity failure and restart, and archive/ACK evidence preservation. Fixtures
+are fictitious and inspect actual ledger rows and immutable bytes.
+
+The recovery incident additionally validates the production codecs on a private
+SQLite backup, with immutable-file digests and before/after business-table
+fingerprints. Personal database files and payloads are never test fixtures or
+Git artifacts. Physical-device convergence is recorded separately from these
+automated checks in the recovery review record.

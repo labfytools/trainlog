@@ -22,6 +22,12 @@ This document owns future work. The implemented baseline is summarized in
 [current_state.md](current_state.md); completed narratives and evidence belong
 in [reviews](reviews/) and [CHANGELOG.md](../CHANGELOG.md).
 
+The desktop generation-capacity correction preserves pending evidence outside
+the active window only with exact acknowledged-sibling proof and resumes the
+unique unresolved generation. It does not expand the default V3 rollout.
+Current recovery validation and any remaining physical-device work are owned by
+[current_state.md](current_state.md) and the linked recovery record.
+
 ## Product boundary
 
 ```text

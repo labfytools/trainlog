@@ -479,4 +479,229 @@ class GenerationTest(unittest.TestCase):
             self.assertEqual(0,db.execute("SELECT COUNT(*) FROM facts WHERE id='partial'").fetchone()[0])
             self.assertEqual(1,db.execute("SELECT COUNT(*) FROM sync_consumed_generations WHERE result='rejected'").fetchone()[0])
 
+
+class CapacityRecoveryTest(unittest.TestCase):
+    """Fictitious immutable generations exercise production admission/recovery."""
+
+    def setUp(self):
+        GenerationTest.setUp(self)
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("INSERT OR REPLACE INTO sync_peer_identity VALUES(1,?,'desktop')", (PEER_A,))
+            db.commit()
+
+    tearDown = GenerationTest.tearDown
+    artifacts = staticmethod(GenerationTest.artifacts)
+
+    def new_capture(self):
+        import uuid
+
+        def exporter(_tool, _extra, output, snapshot):
+            with closing(sqlite3.connect(snapshot)) as db:
+                facts = dict(db.execute("SELECT id,value FROM facts"))
+            output.write_text(json.dumps({
+                "format": "trainlog-mobile-export", "version": 4, "facts": facts,
+            }))
+
+        with mock.patch.object(generation, "ARTIFACTS", self.artifacts()), \
+                mock.patch.object(generation, "SUPPORTED", {("trainlog-mobile-export", 4)}), \
+                mock.patch.object(generation, "run_export", exporter):
+            return generation.capture_desktop(
+                self.database, self.root / "owned", PEER_B,
+                "sy_" + str(uuid.uuid4()), "gen_" + str(uuid.uuid4()),
+            )
+
+    def pending_rows(self, count, parent=None):
+        import uuid
+
+        identities = []
+        with closing(sqlite3.connect(self.database)) as db:
+            for _ in range(count):
+                identity = "gen_" + str(uuid.uuid4())
+                identities.append(identity)
+                db.execute(
+                    "INSERT INTO sync_generations VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (identity, RUN, PEER_A, PEER_B, "desktop", "2026-01-01",
+                     parent, "a" * 64, "waiting_acknowledgement", "{}", "unused", None),
+                )
+            db.commit()
+        return identities
+
+    def consumed_ack(self, captured):
+        _, manifest, checksum = captured
+        destination = self.root / "consumer.sqlite"
+        with closing(sqlite3.connect(destination)) as db:
+            if not db.execute("SELECT name FROM sqlite_master WHERE name='facts'").fetchone():
+                db.executescript(SCHEMA)
+                db.execute("INSERT INTO sync_peer_identity VALUES(1,?,'desktop')", (PEER_B,))
+            ack = generation.record_consumed(db, manifest, checksum)
+            db.commit()
+        return generation.canonical(ack)
+
+    def publish_captured(self, captured):
+        with mock.patch.object(generation, "ARTIFACTS", self.artifacts()), \
+                mock.patch.object(generation, "SUPPORTED", {("trainlog-mobile-export", 4)}):
+            return generation.publish(
+                self.database, captured[1]["generation_id"], self.root / "objects",
+            )
+
+    def test_fifteen_admits_sixteenth_and_sixteen_rejects(self):
+        self.pending_rows(15)
+        captured = self.new_capture()
+        self.assertTrue((captured[0] / "manifest.json").is_file())
+        with self.assertRaisesRegex(generation.GenerationError, "capacity exhausted"):
+            self.new_capture()
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(16, generation.active_generation_count(db, PEER_B))
+            self.assertEqual(16, db.execute("SELECT COUNT(*) FROM sync_generations").fetchone()[0])
+
+    def test_fourteen_orphans_require_correlated_sibling_and_preserve_evidence(self):
+        pending = self.pending_rows(14)
+        sibling = self.new_capture()
+        self.publish_captured(sibling)
+        raw = self.consumed_ack(sibling)
+        with closing(sqlite3.connect(self.database)) as db:
+            before = db.execute(
+                "SELECT * FROM sync_generations WHERE generation_id<>? ORDER BY generation_id",
+                (sibling[1]["generation_id"],),
+            ).fetchall()
+            self.assertEqual(15, generation.active_generation_count(db, PEER_B))
+        self.assertEqual("acknowledged", generation.accept_ack_bytes(self.database, raw))
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(1, generation.active_generation_count(db, PEER_B))
+            self.assertEqual(before, db.execute(
+                "SELECT * FROM sync_generations WHERE generation_id<>? ORDER BY generation_id",
+                (sibling[1]["generation_id"],),
+            ).fetchall())
+            # A wrong peer, run, digest or rejected result cannot prove a sibling.
+            for column, invalid in (
+                ("consumer_peer_id", PEER_A), ("producer_peer_id", PEER_B),
+                ("run_id", RUN), ("manifest_sha256", "0" * 64),
+                ("result", "rejected"), ("durability", "none"),
+            ):
+                db.execute("SAVEPOINT invalid_evidence")
+                db.execute("UPDATE sync_acknowledgements SET " + column + "=?", (invalid,))
+                self.assertEqual(15, generation.active_generation_count(db, PEER_B))
+                db.execute("ROLLBACK TO invalid_evidence")
+                db.execute("RELEASE invalid_evidence")
+        self.assertEqual(14, len(pending))
+        self.assertEqual("unchanged", generation.accept_ack_bytes(self.database, raw))
+
+    def test_interrupted_publication_restart_and_late_ack(self):
+        captured = self.new_capture()
+        published = self.publish_captured(captured)
+        original = {p.name: p.read_bytes() for p in published.iterdir()}
+        with mock.patch.object(generation, "ARTIFACTS", self.artifacts()), \
+                mock.patch.object(generation, "SUPPORTED", {("trainlog-mobile-export", 4)}):
+            for _ in range(2):
+                recovered = generation.resumable_desktop(self.database, PEER_B)
+                self.assertEqual(captured, recovered)
+                self.publish_captured(recovered)
+                self.assertEqual(original, {p.name: p.read_bytes() for p in published.iterdir()})
+        raw = self.consumed_ack(captured)
+        invalid = json.loads(raw)
+        invalid["consumer_peer_id"] = PEER_A
+        with self.assertRaises(generation.GenerationError):
+            generation.accept_ack_bytes(self.database, generation.canonical(invalid))
+        self.assertEqual("acknowledged", generation.accept_ack_bytes(self.database, raw))
+        self.assertEqual("unchanged", generation.accept_ack_bytes(self.database, raw))
+        self.assertIsNone(generation.resumable_desktop(self.database, PEER_B))
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual([("state", "A")], db.execute("SELECT * FROM facts").fetchall())
+            self.assertEqual(1, db.execute("SELECT COUNT(*) FROM sync_acknowledgements").fetchone()[0])
+
+    def test_late_ack_for_superseded_branch_keeps_its_own_identity(self):
+        older = self.new_capture()
+        self.publish_captured(older)
+        newer = self.new_capture()
+        self.publish_captured(newer)
+        newer_ack = self.consumed_ack(newer)
+        generation.accept_ack_bytes(self.database, newer_ack)
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(1, generation.active_generation_count(db, PEER_B))
+            self.assertEqual("waiting_acknowledgement", db.execute(
+                "SELECT status FROM sync_generations WHERE generation_id=?",
+                (older[1]["generation_id"],),
+            ).fetchone()[0])
+        late_ack = self.consumed_ack(older)
+        self.assertEqual("acknowledged", generation.accept_ack_bytes(self.database, late_ack))
+        self.assertEqual("unchanged", generation.accept_ack_bytes(self.database, late_ack))
+        # Authentic historical evidence must be retained even when it exposes
+        # a fork. It never authorizes choosing a new producer tip by timestamp.
+        with self.assertRaisesRegex(generation.GenerationError, "multiple tips"):
+            self.new_capture()
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(2, db.execute("SELECT COUNT(*) FROM sync_acknowledgements").fetchone()[0])
+            self.assertEqual([("state", "A")], db.execute("SELECT * FROM facts").fetchall())
+
+    def test_recovery_rejects_bytes_that_disagree_with_ledger(self):
+        captured = self.new_capture()
+        (captured[0] / "history.json").write_text("{}")
+        with mock.patch.object(generation, "ARTIFACTS", self.artifacts()), \
+                mock.patch.object(generation, "SUPPORTED", {("trainlog-mobile-export", 4)}):
+            with self.assertRaises(generation.GenerationError):
+                generation.resumable_desktop(self.database, PEER_B)
+
+    def test_inbound_commit_survives_outbound_capacity_failure_and_restart(self):
+        self.pending_rows(16)
+        inbound = {
+            "generation_id": GEN,
+            "run_id": RUN,
+            "producer": {"peer_id": PEER_B},
+            "consumer_peer_id": PEER_A,
+            "parent_generation_id": None,
+        }
+        # Model the worker's transaction boundary: business facts and the
+        # inbound receipt commit before outgoing admission is attempted.
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("INSERT INTO facts VALUES('inbound','preserved')")
+            ack = generation.record_consumed(db, inbound, "c" * 64)
+            db.commit()
+        with self.assertRaisesRegex(generation.GenerationError, "capacity exhausted"):
+            self.new_capture()
+        with closing(sqlite3.connect(self.database)) as reopened:
+            self.assertEqual(ack, generation.record_consumed(reopened, inbound, "c" * 64))
+            self.assertEqual([("inbound", "preserved")], reopened.execute(
+                "SELECT * FROM facts WHERE id='inbound'",
+            ).fetchall())
+            self.assertEqual(1, reopened.execute(
+                "SELECT COUNT(*) FROM sync_consumed_generations",
+            ).fetchone()[0])
+            self.assertEqual(16, generation.active_generation_count(reopened, PEER_B))
+
+    def test_divergent_pending_branches_fail_closed(self):
+        self.pending_rows(2)
+        with self.assertRaisesRegex(generation.GenerationError, "multiple unresolved"):
+            generation.resumable_desktop(self.database, PEER_B)
+
+    def test_archival_retains_exact_bytes_and_ack_replay(self):
+        # Archiving the acknowledged sibling must retain its proof for all
+        # pending branches; moving it out of admission never resurrects them.
+        self.pending_rows(14)
+        captures = []
+        for _ in range(3):
+            captured = self.new_capture()
+            self.publish_captured(captured)
+            raw = self.consumed_ack(captured)
+            generation.accept_ack_bytes(self.database, raw)
+            captures.append((captured, raw))
+        with mock.patch.object(generation, "ARTIFACTS", self.artifacts()), \
+                mock.patch.object(generation, "SUPPORTED", {("trainlog-mobile-export", 4)}):
+            self.assertEqual(1, generation.archive_acknowledged(
+                self.database, self.root / "owned", PEER_B,
+            ))
+            self.assertEqual(0, generation.archive_acknowledged(
+                self.database, self.root / "owned", PEER_B,
+            ))
+        captured, raw = captures[0]
+        archived = self.root / "owned/archives/generations" / captured[1]["generation_id"]
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in captured[0].iterdir()},
+            {p.name: p.read_bytes() for p in archived.iterdir()},
+        )
+        self.assertEqual("unchanged", generation.accept_ack_bytes(self.database, raw))
+        with closing(sqlite3.connect(self.database)) as db:
+            self.assertEqual(2, generation.active_generation_count(db, PEER_B))
+            self.assertEqual(3, db.execute("SELECT COUNT(*) FROM sync_acknowledgements").fetchone()[0])
+
 if __name__=="__main__":unittest.main()

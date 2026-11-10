@@ -2,6 +2,17 @@
 
 ## Unreleased — 0.1.7
 
+- Fix desktop full-generation capacity exhaustion caused by retained pending
+  branches after interrupted conversations. Exclude a branch from active
+  admission only with exact durable acknowledged-sibling evidence, retain all
+  immutable files and causal records, and resume the unique unresolved
+  generation with its original manifest/ACK correlation. Keep the limit at 16
+  and fail closed on divergent unresolved branches. No schema, Android data,
+  frozen exchange format or fabricated acknowledgement is involved. The local
+  helper rollout completed historical recovery and distinct current-state and
+  idempotence exchanges with authentic Android ACKs; both new cable exercises
+  returned from Android and existing business records remained intact.
+
 - Present Sleep PDF nights and completed-sport days newest first while
   preserving chronological timed content within each night and sport day.
   Add a restrained

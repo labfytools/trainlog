@@ -54,7 +54,8 @@ MAX_DIAGNOSTIC = 1024
 # WHY: interrupted MTP publications can leave immutable generations awaiting
 # an ACK alongside the two acknowledged lineage members kept for recovery.
 # CONTRACT: admission remains bounded and never erases unresolved generations.
-# INVARIANT: captured, published and waiting generations still consume a slot.
+# INVARIANT: unresolved branches consume a slot unless an exact consumed ACK
+# proves that a distinct sibling has advanced the same peer lineage.
 MAX_RETAINED_PER_PEER = 16
 ID = re.compile(r"^(?:gen|peer|sy)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -371,6 +372,68 @@ def run_export(tool: str, extra: tuple[str, ...], output: Path, snapshot: Path) 
         raise GenerationError(f"export {tool} failed: {result.stdout}{result.stderr}")
 
 
+# WHY: a failed conversation may leave a branch behind while a later sibling
+# advances the consumer. CONTRACT: only an exact, durable consumed ACK for the
+# same producer and consumer proves supersession; age or a missing ACK does not.
+# INVARIANT: this predicate never updates status, membership, bytes or ACKs.
+SUPERSEDED_BRANCH = """
+EXISTS(SELECT 1 FROM sync_generations sibling
+JOIN sync_acknowledgements a ON a.generation_id=sibling.generation_id
+WHERE sibling.parent_generation_id IS g.parent_generation_id
+AND sibling.generation_id<>g.generation_id
+AND sibling.producer_peer_id=g.producer_peer_id
+AND sibling.consumer_peer_id=g.consumer_peer_id
+AND sibling.status='acknowledged'
+AND a.run_id=sibling.run_id
+AND a.producer_peer_id=sibling.producer_peer_id
+AND a.consumer_peer_id=sibling.consumer_peer_id
+AND a.manifest_sha256=sibling.manifest_sha256
+AND a.result='consumed' AND a.durability='sqlite-commit-full')
+"""
+
+
+def active_generation_count(db: sqlite3.Connection, consumer: str) -> int:
+    """Count the bounded window without discarding retained causal evidence."""
+    return db.execute(
+        "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? "
+        "AND ((g.status IN('captured','published','waiting_acknowledgement') "
+        "AND NOT " + SUPERSEDED_BRANCH + ") OR "
+        "(g.status='acknowledged' AND EXISTS(SELECT 1 FROM sync_acknowledgements k "
+        "WHERE k.generation_id=g.generation_id))) "
+        "AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a "
+        "WHERE a.generation_id=g.generation_id)",
+        (consumer,),
+    ).fetchone()[0]
+
+
+def resumable_desktop(database: Path, consumer: str):
+    """Recover the one unresolved branch; divergent branches require evidence.
+
+    WHY: recapturing after transport interruption leaks admission slots and can
+    fork a lineage. CONTRACT: replay exact immutable bytes, including the old
+    manifest run, under the new conversation reference. INVARIANT: ambiguity
+    fails closed and neither missing ACKs nor restarts imply non-consumption.
+    """
+    with closing(connect_database(database)) as db:
+        require_schema(db)
+        rows = db.execute(
+            "SELECT g.staging_path,g.manifest_json,g.manifest_sha256 "
+            "FROM sync_generations g WHERE g.consumer_peer_id=? "
+            "AND g.status IN('captured','published','waiting_acknowledgement') "
+            "AND NOT " + SUPERSEDED_BRANCH + " LIMIT 2",
+            (consumer,),
+        ).fetchall()
+    if len(rows) > 1:
+        raise GenerationError("outgoing generation lineage has multiple unresolved branches")
+    if not rows:
+        return None
+    staging, raw, checksum = rows[0]
+    manifest, actual = validate_published(Path(staging), consumer)
+    if canonical(manifest) != raw.encode() or actual != checksum:
+        raise GenerationError("resumable generation differs from immutable ledger")
+    return Path(staging), manifest, checksum
+
+
 def capture_desktop(database: Path, owned_root: Path, consumer: str,
                     run_id: str | None = None, generation_id: str | None = None,
                     peer_capabilities: set[str] | None = None,
@@ -384,22 +447,9 @@ def capture_desktop(database: Path, owned_root: Path, consumer: str,
     archive_acknowledged(database, owned_root, consumer)
     with closing(connect_database(database)) as admission:
         require_schema(admission)
-        # WHY: early private generation builds can contain terminal
-        # acknowledged rows from before durable ACK-ledger insertion was
-        # enforced. They cannot be archived without fabricating missing ACK
-        # evidence, but they are terminal and must not permanently consume the
-        # active admission window. Current production acknowledgements always
-        # have a durable sync_acknowledgements row and remain counted until
-        # archive_acknowledged() safely moves them out of the active window.
-        retained = admission.execute(
-            "SELECT COUNT(*) FROM sync_generations g WHERE consumer_peer_id=? "
-            "AND (g.status IN('captured','published','waiting_acknowledgement') OR "
-            "(g.status='acknowledged' AND EXISTS(SELECT 1 FROM sync_acknowledgements k "
-            "WHERE k.generation_id=g.generation_id))) "
-            "AND NOT EXISTS(SELECT 1 FROM sync_generation_archives a "
-            "WHERE a.generation_id=g.generation_id)",
-            (consumer,),
-        ).fetchone()[0]
+        # Legacy terminal rows without ACK evidence remain preserved but cannot
+        # be archived. Pending branches leave admission only with sibling proof.
+        retained = active_generation_count(admission, consumer)
         if retained >= MAX_RETAINED_PER_PEER:
             raise GenerationError("generation retention capacity exhausted")
     stage = owned_root / "staging" / generation
